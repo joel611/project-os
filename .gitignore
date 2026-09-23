@@ -1,2 +1,8 @@
 .claude/worktrees
-.turbo/
+node_modules
+.turbo
+.wrangler
+dist
+*.tsbuildinfo
+.env
+.env.local

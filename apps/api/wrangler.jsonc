@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "project-os",
+      "database_id": "local-dev",
+      "migrations_dir": "../../packages/core/drizzle",
+      "migrations_pattern": "../../packages/core/drizzle/*/migration.sql",
+    },
+  ],
+}
