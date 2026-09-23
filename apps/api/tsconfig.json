@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src", "wrangler.jsonc"],
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "types": ["@cloudflare/workers-types"]
+  }
+}
