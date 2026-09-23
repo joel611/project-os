@@ -7,19 +7,20 @@
 
 ## 1. Tech Stack (Locked)
 
-| Layer                    | Choice                                      | Notes |
-|--------------------------|---------------------------------------------|-------|
-| Frontend                 | TanStack Start (React)                      | Official Cloudflare Workers support |
-| API / Auth routes        | Cloudflare Worker                           | Hono or TanStack server functions |
-| Database                 | D1 (SQLite) + Drizzle ORM                   | Primary store for all structured data |
-| Cache / Sessions         | KV                                          | Sessions, rate limits, short-lived state |
-| Auth & Organizations     | Better Auth + organization plugin           | Domain-restricted orgs; per-request instance |
-| Agent runtime            | Durable Objects (Cloudflare Agents)         | Multi-step tool calling, hibernation, streaming |
-| Data connectors          | Custom OAuth + encrypted tokens in D1       | Separate from login auth (Gmail, Drive, later GitHub) |
-| Object storage           | R2 (later)                                  | Only if large artifacts needed |
-| Background jobs          | Cloudflare Queues (later)                   | Email processing, async work |
+| Layer | Choice | Notes |
+| --- | --- | --- |
+| Frontend | TanStack Start (React) | Official Cloudflare Workers support |
+| API / Auth routes | Cloudflare Worker | Hono or TanStack server functions |
+| Database | D1 (SQLite) + Drizzle ORM | Primary store for all structured data |
+| Cache / Sessions | KV | Sessions, rate limits, short-lived state |
+| Auth & Organizations | Better Auth + organization plugin | Domain-restricted orgs; per-request instance |
+| Agent runtime | Durable Objects (Cloudflare Agents) | Multi-step tool calling, hibernation, streaming |
+| Data connectors | Custom OAuth + encrypted tokens in D1 | Separate from login auth (Gmail, Drive, later GitHub) |
+| Object storage | R2 (later) | Only if large artifacts needed |
+| Background jobs | Cloudflare Queues (later) | Email processing, async work |
 
 ### Why Durable Objects for the Agent
+
 - Multi-step tool calls (Drive fetch → memory search → LLM → more tools) need longer wall time and persistent state.
 - Durable Objects hibernate when idle (zero cost) and wake on demand.
 - Cloudflare Agents framework provides built-in patterns for tool calling, streaming, and WebSockets.
@@ -71,15 +72,15 @@
 
 ### Key Architectural Decisions
 
-| Area                    | Decision                                                                 | Rationale |
-|-------------------------|--------------------------------------------------------------------------|---------|
-| Drive & GitHub content  | On-demand fetch at query time                                            | Avoids heavy indexing, stays fresh, respects user permissions |
-| Email                   | Webhook (or polling fallback) → classify → structured summary stored     | Real-time enough, creates persistent memory |
-| Credentials             | Strictly per-user OAuth tokens (encrypted in D1)                         | Accountability + security |
-| Agent context           | Always scoped to one Project; runs inside Durable Object                 | Keeps answers grounded; supports long tool chains |
-| Vector / search         | SQLite FTS for MemoryEntries; optional light embeddings later            | Most content is fetched live |
-| Multi-tenancy           | Strong isolation by Org (domain) via Better Auth organization plugin     | Simple and secure for Phase 1 |
-| Auth instance           | Created **per request** (inject D1 binding)                              | Required pattern for Better Auth + D1 on Workers |
+| Area | Decision | Rationale |
+| --- | --- | --- |
+| Drive & GitHub content | On-demand fetch at query time | Avoids heavy indexing, stays fresh, respects user permissions |
+| Email | Webhook (or polling fallback) → classify → structured summary stored | Real-time enough, creates persistent memory |
+| Credentials | Strictly per-user OAuth tokens (encrypted in D1) | Accountability + security |
+| Agent context | Always scoped to one Project; runs inside Durable Object | Keeps answers grounded; supports long tool chains |
+| Vector / search | SQLite FTS for MemoryEntries; optional light embeddings later | Most content is fetched live |
+| Multi-tenancy | Strong isolation by Org (domain) via Better Auth organization plugin | Simple and secure for Phase 1 |
+| Auth instance | Created **per request** (inject D1 binding) | Required pattern for Better Auth + D1 on Workers |
 
 ---
 
@@ -88,6 +89,7 @@
 > Note: `jsonb` from the earlier draft becomes `TEXT` storing JSON (or Drizzle `json` mode). SQLite FTS can be added on `MemoryEntry.content`.
 
 ### Organization (Better Auth organization plugin + custom fields)
+
 - id
 - name
 - slug
@@ -95,6 +97,7 @@
 - created_at
 
 ### User (Better Auth core + org membership)
+
 - id
 - email
 - name
@@ -105,6 +108,7 @@
 - (membership via Better Auth `member` table with roles)
 
 ### Folder (optional grouping)
+
 - id
 - org_id
 - name
@@ -112,18 +116,20 @@
 - created_at
 
 ### Project
+
 - id
 - org_id
 - folder_id (nullable)
 - name
 - custom_instructions (TEXT – markdown)
-- can_write_code (INTEGER, default 0)          -- Phase 1.5+
+- can_write_code (INTEGER, default 0) -- Phase 1.5+
 - status (active | archived | deleted)
 - created_by
 - created_at
 - updated_at
 
 ### ProjectAttachment
+
 - id
 - project_id
 - type (drive_folder | github_repo | figma | im_channel | ...)
@@ -136,6 +142,7 @@
 - updated_at
 
 ### UserConnection (data connectors – separate from Better Auth login accounts)
+
 - id
 - user_id
 - service (gmail | google_drive | github | teams | discord | ...)
@@ -148,6 +155,7 @@
 - updated_at
 
 ### MemoryEntry (email summaries + manual notes)
+
 - id
 - project_id
 - type (email_summary | manual)
@@ -160,6 +168,7 @@
 - created_by (nullable for automated email)
 
 ### ChatSession
+
 - id
 - project_id
 - user_id
@@ -168,6 +177,7 @@
 - updated_at
 
 ### ChatMessage
+
 - id
 - session_id
 - role (user | assistant | system | tool)
@@ -176,6 +186,7 @@
 - created_at
 
 ### AuditLog
+
 - id
 - org_id
 - actor_user_id
@@ -190,6 +201,7 @@
 ## 4. Key Flows
 
 ### 4.1 Email Ingestion
+
 1. Gmail webhook (or periodic poll) notifies the Worker.
 2. Worker fetches the message using the **recipient’s** stored credentials (UserConnection).
 3. Classifier decides: client-related? → which Project(s)?
@@ -198,6 +210,7 @@
 6. Multi-recipient handling: first assignment propagates to other recipients’ copies.
 
 ### 4.2 Project Chat (Agent Flow)
+
 1. User opens a Project and starts/continues a chat.
 2. Request is routed to (or wakes) a Durable Object scoped to that chat session / Project.
 3. Agent receives: Project custom instructions + list of attachments + relevant MemoryEntries.
@@ -211,17 +224,20 @@
 8. Streaming response back to the TanStack Start frontend.
 
 ### 4.3 Manual Memory via Bot
+
 1. User `@mentions` the bot inside a Project-linked channel.
 2. Bot presents a simple “Save to Project memory” action.
 3. Entry is stored as type = `manual` with the user as creator.
 
 ### 4.4 Attachment Lifecycle
+
 - Adding an attachment only stores a reference + display name.
 - Actual content is never copied into the platform.
 - When the connecting user revokes their connection → status becomes `ghost`.
 - Agent can still see the name and prompt the current user.
 
 ### 4.5 Auth & Domain Restriction
+
 - Better Auth handles email/password + Google login.
 - Organization plugin manages Orgs and membership.
 - On signup / Google callback: enforce that the email domain matches the Org’s allowed domain (or create Org from hosted domain `hd` claim).
