@@ -57,10 +57,12 @@ export class Auth extends Context.Service<Auth>()("Auth", {
 }) {
   static readonly layerNoDeps = Layer.effect(this, this.make);
   static readonly layer = this.layerNoDeps.pipe(Layer.provide(Db.layer));
-  static readonly layerMemory = Layer.effect(
-    this,
-    build(
-      memoryAdapter({ account: [], session: [], user: [], verification: [] })
+  static readonly layerMemory = Layer.suspend(() =>
+    Layer.effect(
+      this,
+      build(
+        memoryAdapter({ account: [], session: [], user: [], verification: [] })
+      )
     )
   );
 }
