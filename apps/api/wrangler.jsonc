@@ -13,4 +13,8 @@
       "migrations_pattern": "../../packages/core/drizzle/*/migration.sql",
     },
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "AGENT", "class_name": "AgentDurableObject" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AgentDurableObject"] }],
 }

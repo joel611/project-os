@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -12,6 +13,11 @@ const attempt = <A>(run: () => Promise<A>) =>
     try: run,
   });
 
+const firstRow = <A>(rows: A[]) =>
+  rows[0]
+    ? Effect.succeed(rows[0])
+    : Effect.fail(new TaskError({ cause: "no matching row" }));
+
 export class Task extends Context.Service<Task>()("Task", {
   make: Effect.gen(function* make() {
     const db = yield* Db;
@@ -19,13 +25,17 @@ export class Task extends Context.Service<Task>()("Task", {
     return {
       create: (title: string) =>
         attempt(() => db.insert(task).values({ title }).returning()).pipe(
-          Effect.flatMap(([row]) =>
-            row
-              ? Effect.succeed(row)
-              : Effect.fail(new TaskError({ cause: "insert returned no rows" }))
-          )
+          Effect.flatMap(firstRow)
         ),
       list: () => attempt(() => db.select().from(task)),
+      remove: (id: number) =>
+        attempt(() => db.delete(task).where(eq(task.id, id)).returning()).pipe(
+          Effect.flatMap(firstRow)
+        ),
+      update: (id: number, changes: { title?: string; done?: boolean }) =>
+        attempt(() =>
+          db.update(task).set(changes).where(eq(task.id, id)).returning()
+        ).pipe(Effect.flatMap(firstRow)),
     };
   }),
 }) {

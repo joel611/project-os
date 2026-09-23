@@ -9,7 +9,7 @@
     "catalog": {
       "typescript": "7.0.2",
       "@types/bun": "latest",
-      "@typescript/native-preview": "latest",
+      "@typescript/native-preview": "7.0.0-dev.20260707.2",
       "effect": "4.0.0-rc.115",
       "drizzle-orm": "1.0.0-rc.5-5935859",
       "drizzle-kit": "1.0.0-rc.5-5935859",

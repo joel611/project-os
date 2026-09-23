@@ -44,6 +44,52 @@ describe("apps/api", () => {
     expect(listedBody.length).toBeGreaterThan(0);
   });
 
+  it("updates and deletes a task", async () => {
+    const created = await app.request(
+      "/api/tasks",
+      {
+        body: JSON.stringify({ title: "to update" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+      env
+    );
+    const { id } = (await created.json()) as { id: number };
+
+    const updated = await app.request(
+      `/api/tasks/${id}`,
+      {
+        body: JSON.stringify({ done: true }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+      env
+    );
+    expect(updated.status).toBe(200);
+    const updatedBody = (await updated.json()) as { done: boolean };
+    expect(updatedBody.done).toBe(true);
+
+    const removed = await app.request(
+      `/api/tasks/${id}`,
+      { method: "DELETE" },
+      env
+    );
+    expect(removed.status).toBe(200);
+  });
+
+  it("404s when updating a task that does not exist", async () => {
+    const res = await app.request(
+      "/api/tasks/999999",
+      {
+        body: JSON.stringify({ done: true }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+      env
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("rejects task creation without a title", async () => {
     const res = await app.request(
       "/api/tasks",
