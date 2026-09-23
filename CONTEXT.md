@@ -8,8 +8,6 @@ Project-centric AI agent (see `docs/product-brief.md`) — PMs/Team Leads get ci
 
 **Auth**: Effect `Context.Service` wrapping Better Auth's official `drizzleAdapter` over the same request's `Db` instance. Exposes session/sign-in/sign-up as Effects with a tagged error.
 
-**Domain module**: the convention for anything DB-backed under `packages/core/src`: its own folder holding the service (`Context.Service`), a typed error (`Data.TaggedError`), and its own Drizzle schema, colocated rather than centralized. `libs/db` and `libs/auth` stay thin client/adapter wrappers — no schema of their own.
-_Avoid_: package, feature, module (alone) — always "domain module" so it isn't confused with an npm workspace package.
+**Domain module**: the convention for anything DB-backed under `packages/core/src`: its own folder holding the service (`Context.Service`), a typed error (`Data.TaggedError`), and its own Drizzle schema, colocated rather than centralized. `libs/db` and `libs/auth` stay thin client/adapter wrappers — no schema of their own. _Avoid_: package, feature, module (alone) — always "domain module" so it isn't confused with an npm workspace package.
 
-**Task**: throwaway demo entity used to prove the Db/Auth/Effect wiring round-trips through D1 before any real domain module is built. Deliberately meaningless.
-_Avoid_: To-do, ticket.
+**Task**: throwaway demo entity used to prove the Db/Auth/Effect wiring round-trips through D1 before any real domain module is built. Deliberately meaningless. _Avoid_: To-do, ticket.

@@ -24,6 +24,7 @@ Org (domain-restricted)
 ```
 
 ### A Project contains
+
 - Custom instructions (free-text markdown editor)
 - Attachments (names always visible to everyone in the org):
   - Google Drive folders (any level the user selects)
@@ -36,6 +37,7 @@ Org (domain-restricted)
 - Optional permission flag: “Agent can create PRs / write code”
 
 ### Access Model
+
 - Projects are visible to the entire organization.
 - Anyone can attach or remove sources, or delete a Project (full audit log).
 - The agent **always** runs with the credentials of the person currently chatting.
@@ -43,6 +45,7 @@ Org (domain-restricted)
 - When a user disconnects a service, the attachment becomes a “ghost” (name remains visible; agent can prompt to reconnect or skip).
 
 ### Email Handling
+
 - External domain addresses are treated as client-related.
 - Each user sees only their own mailbox and personal “Need Assign” queue.
 - Multi-recipient emails: if any recipient assigns the email to a Project, other recipients’ copies are automatically assigned to the same Project.
@@ -52,12 +55,14 @@ Org (domain-restricted)
 - Everyone else sees the structured, PII-redacted summary stored in the Project.
 
 ### Instant Messaging
+
 - User-connected accounts only.
 - On Project creation the system can optionally create a channel (no users are auto-added; people join manually).
 - A bot is assigned to the channel and listens to all messages.
 - Users can `@mention` the bot to trigger the full Project agent flow (same as the primary chat interface).
 
 ### Memory
+
 - Incoming/outgoing client emails → automatic structured summary (PII redacted) stored in the Project.
 - Manual: a PM can `@mention` the bot and write a memory entry (e.g. after a client phone call).
 
@@ -66,6 +71,7 @@ Org (domain-restricted)
 ## Phase 1 Scope (Pilot)
 
 **Must ship**
+
 1. Domain-restricted login (email/password or Google OAuth)
 2. Gmail connection + classification + “Need Assign” queue + structured PII-redacted summaries
 3. Google Drive attachments + on-demand file reading at query time
@@ -74,6 +80,7 @@ Org (domain-restricted)
 6. Basic audit log (who attached, removed, deleted, assigned emails, etc.)
 
 **Explicitly deferred**
+
 - GitHub integration (Phase 1.5)
 - Agent writing code or creating PRs
 - Drafting external email replies
