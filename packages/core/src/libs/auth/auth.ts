@@ -1,7 +1,6 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import { betterAuth } from "better-auth";
 import type { BetterAuthOptions } from "better-auth";
-import { memoryAdapter } from "better-auth/adapters/memory";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -24,7 +23,7 @@ const attempt = <A>(run: () => Promise<A>) =>
     try: run,
   });
 
-const build = (database: AuthDatabase) =>
+export const build = (database: AuthDatabase) =>
   Effect.gen(function* buildAuth() {
     const secret = yield* Config.Redacted("BETTER_AUTH_SECRET");
     const baseURL = yield* Config.String("BETTER_AUTH_URL");
@@ -57,12 +56,4 @@ export class Auth extends Context.Service<Auth>()("Auth", {
 }) {
   static readonly layerNoDeps = Layer.effect(this, this.make);
   static readonly layer = this.layerNoDeps.pipe(Layer.provide(Db.layer));
-  static readonly layerMemory = Layer.suspend(() =>
-    Layer.effect(
-      this,
-      build(
-        memoryAdapter({ account: [], session: [], user: [], verification: [] })
-      )
-    )
-  );
 }
