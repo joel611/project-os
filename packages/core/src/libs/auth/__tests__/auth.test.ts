@@ -1,9 +1,11 @@
+import { memoryAdapter } from "better-auth/adapters/memory";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vitest";
 
-import { Auth } from "../auth";
+import { Auth, build } from "../auth";
 
 const credentials = {
   email: "memory@example.com",
@@ -12,7 +14,12 @@ const credentials = {
 };
 
 describe("Auth over an in-memory adapter", () => {
-  const layer = Auth.layerMemory;
+  const layer = Layer.effect(
+    Auth,
+    build(
+      memoryAdapter({ account: [], session: [], user: [], verification: [] })
+    )
+  );
 
   it("signs up, signs in and reads the session back", async () => {
     const program = Effect.gen(function* program() {
