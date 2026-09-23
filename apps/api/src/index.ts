@@ -6,8 +6,13 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 
+import type { AgentDurableObject } from "./agent-durable-object";
+
+export { AgentDurableObject } from "./agent-durable-object";
+
 interface Bindings {
   DB: D1Database;
+  AGENT: DurableObjectNamespace<AgentDurableObject>;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
 }
@@ -85,6 +90,39 @@ app.post("/api/tasks", async (c) => {
     })
   );
   return c.json(created, 201);
+});
+
+app.patch("/api/tasks/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const body = await c.req.json<{ title?: string; done?: boolean }>();
+  const runtime = c.get("runtime");
+  try {
+    const updated = await runtime.runPromise(
+      Effect.gen(function* update() {
+        const repo = yield* Task;
+        return yield* repo.update(id, body);
+      })
+    );
+    return c.json(updated);
+  } catch {
+    return c.json({ error: "task not found" }, 404);
+  }
+});
+
+app.delete("/api/tasks/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const runtime = c.get("runtime");
+  try {
+    const removed = await runtime.runPromise(
+      Effect.gen(function* remove() {
+        const repo = yield* Task;
+        return yield* repo.remove(id);
+      })
+    );
+    return c.json(removed);
+  } catch {
+    return c.json({ error: "task not found" }, 404);
+  }
 });
 
 export default app;

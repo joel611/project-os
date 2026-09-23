@@ -16,7 +16,7 @@ See `CONTEXT.md` for the domain vocabulary and `docs/adr/` for the reasoning beh
 ## Getting started
 
 ```sh
-cp .env.example .env
+cp apps/api/.dev.vars.example apps/api/.dev.vars
 bun install
 bun run --cwd apps/api db:migrate
 bun run dev

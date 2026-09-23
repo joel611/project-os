@@ -12,7 +12,6 @@
       "dependsOn": ["^test"],
       "cache": false
     },
-    "lint": {},
     "db:generate": {
       "cache": false
     },
