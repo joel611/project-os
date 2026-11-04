@@ -1,7 +1,13 @@
-import type { Ticket, TicketEvent, TicketStatus } from "@project-os/contracts";
+import {
+  TERMINAL_STATUSES,
+  type Ticket,
+  type TicketEvent,
+  type TicketStatus,
+} from "@project-os/contracts";
 import { Data, Effect } from "effect";
 
 export type { Ticket, TicketEvent, TicketStatus };
+export { TERMINAL_STATUSES };
 
 export class TicketNotFound extends Data.TaggedError("TicketNotFound")<{
   readonly ticketId: string;
@@ -20,8 +26,6 @@ export class ClaimConflict extends Data.TaggedError("ClaimConflict")<{
   readonly status: TicketStatus;
   readonly assignedTo: string | null;
 }> {}
-
-export const TERMINAL_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed", "cancelled"];
 
 export const ACTIVE_STATUSES: ReadonlyArray<TicketStatus> = [
   "open",
