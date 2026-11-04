@@ -28,15 +28,18 @@ if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
 const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
   runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
 
-const AiLive = Layer.mergeAll(
-  makeIntentClassifier({ classifier: models, model: jev }),
-  makeAgentRuntime({
-    storage: await openLocalStorage(env("PI_STORAGE_PATH", "./pi-durable.sqlite")),
-    models,
-    model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
-    // `runtime` is assigned below; the actions only run once a message arrives.
-    adminActions: makeAdminActions({ run: runAdmin, orgId }),
-  }),
+// Failing to open the Pi harness at startup is fatal, so build errors become defects.
+const AiLive = Layer.orDie(
+  Layer.mergeAll(
+    makeIntentClassifier({ classifier: models, model: jev }),
+    makeAgentRuntime({
+      storage: await openLocalStorage(env("PI_STORAGE_PATH", "./pi-durable.sqlite")),
+      models,
+      model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
+      // `runtime` is assigned below; the actions only run once a message arrives.
+      adminActions: makeAdminActions({ run: runAdmin, orgId }),
+    }),
+  ),
 );
 
 // AiLive goes last so it replaces LocalLive's AgentRuntime placeholder.
@@ -70,6 +73,7 @@ createApp(
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },
     },
+    mcp: runtime,
   },
 ).listen(port);
-console.log(`coordinator listening on :${port}`);
+console.log(`coordinator listening on :${port} (MCP at /mcp)`);
