@@ -33,6 +33,7 @@ createApp(
         ...(process.env.ADMIN_CHANNEL_ID && { adminChannelId: process.env.ADMIN_CHANNEL_ID }),
       },
     },
+    mcp: runtime,
   },
 ).listen(port);
-console.log(`coordinator listening on :${port}`);
+console.log(`coordinator listening on :${port} (MCP at /mcp)`);
