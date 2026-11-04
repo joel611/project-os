@@ -53,6 +53,12 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
       ),
     listByStatus: (statuses) =>
       Effect.sync(() => [...tickets.values()].filter((t) => statuses.includes(t.status))),
+    assign: (ticketId, worker, at) =>
+      Effect.flatMap(find(ticketId), (t) =>
+        Effect.map(transitionTicket(t, "assigned", at), (a) =>
+          put({ ...a, workerType: worker.workerType, workerId: worker.workerId }),
+        ),
+      ),
     claim: (ticketId, workerId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(claimTicket(t, workerId, at), put)),
     updateStatus: (ticketId, to, at, extra) =>
