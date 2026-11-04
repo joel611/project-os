@@ -17,6 +17,7 @@
       "name": "@project-os/coordinator",
       "version": "0.0.0",
       "dependencies": {
+        "@project-os/agent-runtime": "workspace:*",
         "@project-os/config": "workspace:*",
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",

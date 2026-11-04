@@ -17,6 +17,11 @@ import { nowIso } from "./tickets.ts";
 export interface HandleInboundConfig {
   /** Discord channel id of the dedicated admin channel. */
   readonly adminChannelId?: string;
+  /**
+   * Discord user ids allowed to act in the admin channel. Unset: no check. Empty: nobody.
+   * Composition roots that set `adminChannelId` should always pass this.
+   */
+  readonly adminUserIds?: ReadonlyArray<string>;
   /** Below this the Coordinator asks a clarifying question. Default 0.5. */
   readonly confidenceThreshold?: number;
   readonly defaultWorkerType?: WorkerType;
@@ -35,6 +40,7 @@ export type InboundOutcome =
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
   | { readonly kind: "status_answered" }
   | { readonly kind: "admin_handled" }
+  | { readonly kind: "admin_forbidden" }
   | { readonly kind: "clarification_sent" };
 
 const TITLE_MAX = 80;
@@ -73,6 +79,11 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
 
     const isAdminChannel =
       message.channelType === "discord" && message.channelId === config.adminChannelId;
+
+    if (isAdminChannel && config.adminUserIds && !config.adminUserIds.includes(message.sender.id)) {
+      yield* reply("Not authorized: you are not on the admin list.");
+      return { kind: "admin_forbidden" } as InboundOutcome;
+    }
 
     const sourceType = sourceTypeFor(message.channelType);
     const source =
