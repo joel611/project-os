@@ -12,3 +12,5 @@ export const TICKET_STATUSES = [
 
 export const TicketStatus = Schema.Literals(TICKET_STATUSES);
 export type TicketStatus = typeof TicketStatus.Type;
+
+export const TERMINAL_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed", "cancelled"];
