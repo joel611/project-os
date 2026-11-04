@@ -2,7 +2,9 @@ import {
   ClaimConflict,
   TicketNotFound,
   transitionTicket,
+  type InvalidTransition,
   type Ticket,
+  type TicketStatus,
   type TicketRepository,
 } from "@project-os/core";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -20,7 +22,16 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
       ),
     );
 
-  const updateStatus: Impl["updateStatus"] = (ticketId, to, at, extra) =>
+  type Extra = Parameters<Impl["updateStatus"]>[3];
+  type Worker = Parameters<Impl["assign"]>[1];
+
+  const transition = (
+    ticketId: string,
+    to: TicketStatus,
+    at: string,
+    extra: Extra,
+    worker?: Worker,
+  ): Effect.Effect<Ticket, TicketNotFound | InvalidTransition> =>
     find(ticketId).pipe(
       Effect.flatMap((current) =>
         transitionTicket(current, to, at, extra).pipe(
@@ -30,6 +41,7 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
               db
                 .update(tickets)
                 .set({
+                  ...(worker && { workerType: worker.workerType, workerId: worker.workerId }),
                   status: next.status,
                   result: next.result,
                   error: next.error,
@@ -43,13 +55,18 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
                 .returning(),
             ).pipe(
               Effect.flatMap(([row]) =>
-                row ? Effect.succeed(row) : updateStatus(ticketId, to, at, extra),
+                row ? Effect.succeed(row) : transition(ticketId, to, at, extra, worker),
               ),
             ),
           ),
         ),
       ),
     );
+
+  const updateStatus: Impl["updateStatus"] = (ticketId, to, at, extra) =>
+    transition(ticketId, to, at, extra);
+  const assign: Impl["assign"] = (ticketId, worker, at) =>
+    transition(ticketId, "assigned", at, undefined, worker);
 
   return {
     insert: (ticket) => q(() => db.insert(tickets).values(ticket)).pipe(Effect.as(ticket)),
@@ -74,6 +91,7 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
               .from(tickets)
               .where(inArray(tickets.status, [...statuses])),
           ),
+    assign,
     claim: (ticketId, workerId, at) =>
       // One conditional UPDATE: of N concurrent claims exactly one matches `status = 'assigned'`.
       q(() =>
