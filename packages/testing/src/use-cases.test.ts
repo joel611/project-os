@@ -163,6 +163,22 @@ describe("handleInbound", () => {
     expect(value.types).toEqual(["follow_up"]);
   });
 
+  it("follow_up targets the most recently active ticket and ignores terminal ones", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ id: "old", lastActivityAt: T0 }));
+        yield* repo.insert(ticket({ id: "new", lastActivityAt: "2026-11-04T00:05:00.000Z" }));
+        yield* repo.insert(
+          ticket({ id: "done", status: "completed", lastActivityAt: "2026-11-04T00:09:00.000Z" }),
+        );
+        return yield* handleInbound(msg(), config);
+      }),
+      inbound("follow_up"),
+    );
+    expect(value).toEqual({ kind: "follow_up_added", ticketId: "new" });
+  });
+
   it("follow_up with no open ticket asks for clarification", async () => {
     const { value, sent } = await run(handleInbound(msg(), config), inbound("follow_up"));
     expect(value.kind).toBe("clarification_sent");
@@ -194,6 +210,28 @@ describe("handleInbound", () => {
   it("admin_command outside the admin channel is not honoured", async () => {
     const { value } = await run(handleInbound(msg(), config), inbound("admin_command"));
     expect(value.kind).toBe("clarification_sent");
+  });
+
+  it("admin channel with a non-admin intent or low confidence asks for clarification", async () => {
+    const adminMsg = msg({ channelId: ADMIN });
+    const low = await run(handleInbound(adminMsg, config), inbound("admin_command", 0.1));
+    expect(low.value.kind).toBe("clarification_sent");
+    const other = await run(handleInbound(adminMsg, config), inbound("new_request"));
+    expect(other.value.kind).toBe("clarification_sent");
+  });
+
+  it("messages from a channel type with no source mapping are unlinked", async () => {
+    const { value } = await run(
+      handleInbound(msg({ channelType: "chat" }), config),
+      inbound("new_request"),
+    );
+    expect(value.kind).toBe("unlinked");
+  });
+
+  it("status_question with no active tickets says so", async () => {
+    const { value, sent } = await run(handleInbound(msg(), config), inbound("status_question"));
+    expect(value.kind).toBe("status_answered");
+    expect(sent).toHaveLength(1);
   });
 
   it("low confidence asks a clarifying question and creates nothing", async () => {
