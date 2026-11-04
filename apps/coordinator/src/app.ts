@@ -1,9 +1,12 @@
 import { Elysia } from "elysia";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
+import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
 
 export interface AppDeps {
-  /** HTTP ingress + admin routes (#13). Omitted: only `/health` is served. */
+  /** HTTP ingress + admin routes (#13). Omitted: no ingress routes. */
   readonly http?: HttpDeps;
+  /** MCP server (#12). Omitted: `/mcp` is not mounted. */
+  readonly mcp?: McpRuntime;
 }
 
 /**
@@ -16,5 +19,6 @@ export const createApp = (
   deps: AppDeps = {},
 ) => {
   const app = new Elysia(options).get("/health", () => ({ status: "ok", service: "coordinator" }));
-  return deps.http ? app.use(httpRoutes(deps.http)) : app;
+  const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
+  return deps.mcp ? withHttp.use(mcpRoutes(deps.mcp)) : withHttp;
 };
