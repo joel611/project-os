@@ -3,6 +3,7 @@ node_modules/
 dist/
 .wrangler/
 .vite/
+.data/
 *.sqlite
 *.sqlite-*
 .env

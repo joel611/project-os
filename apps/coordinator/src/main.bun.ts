@@ -6,6 +6,7 @@ import {
   openLocalStorage,
 } from "@project-os/agent-runtime";
 import { DEFAULT_WORKER_ID, env, envNumber, healthConfig } from "@project-os/config";
+import { dataPath } from "@project-os/config/data";
 import { DEFAULT_ORG, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
@@ -14,7 +15,7 @@ import { startHealthSweep } from "./health/start.ts";
 
 // Local target: Bun + infra-local + Pi/Jev agent runtime (docs/technical-architecture.md §8).
 const port = envNumber("PORT", 8080);
-const dbPath = process.env.DATABASE_PATH ?? env("DB_PATH", "./project-os.sqlite");
+const dbPath = dataPath("project-os.sqlite", process.env.DATABASE_PATH ?? process.env.DB_PATH);
 
 // Projects reference an org (FK), and nothing else creates one.
 const orgId = ensureOrg(dbPath, DEFAULT_ORG);
@@ -33,7 +34,7 @@ const AiLive = Layer.orDie(
   Layer.mergeAll(
     makeIntentClassifier({ classifier: models, model: jev }),
     makeAgentRuntime({
-      storage: await openLocalStorage(env("PI_STORAGE_PATH", "./pi-durable.sqlite")),
+      storage: await openLocalStorage(dataPath("pi-durable.sqlite", process.env.PI_STORAGE_PATH)),
       models,
       model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
       // `runtime` is assigned below; the actions only run once a message arrives.

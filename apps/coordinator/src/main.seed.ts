@@ -1,11 +1,12 @@
 import { env } from "@project-os/config";
+import { dataPath } from "@project-os/config/data";
 import { DEFAULT_ORG, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { Effect, ManagedRuntime } from "effect";
 import { seedDefaults } from "./admin/seed.ts";
 
 // `bun run seed`: default org + a project + its Discord channel as the default response.
 // Safe to re-run. Set SEED_DISCORD_CHANNEL_ID (and optionally SEED_PROJECT_NAME).
-const dbPath = process.env.DATABASE_PATH ?? env("DB_PATH", "./project-os.sqlite");
+const dbPath = dataPath("project-os.sqlite", process.env.DATABASE_PATH ?? process.env.DB_PATH);
 const orgId = ensureOrg(dbPath, DEFAULT_ORG);
 
 const runtime = ManagedRuntime.make(LocalLive({ dbPath, adapterUrls: {} }));
