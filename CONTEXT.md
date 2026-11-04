@@ -1,15 +1,35 @@
 # project-os
 
-Project-centric AI agent (see `docs/product-brief.md`) — PMs/Team Leads get cited answers across email, Drive, and (later) code without pinging engineers. Built on Cloudflare Workers + D1 + Drizzle + Better Auth + Effect v4 (see `docs/technical-architecture.md`).
+Project-centric AI agent (see `docs/product-brief.md`). A Coordinator receives messages from channels (Discord, email), turns them into Tickets, and Workers (local Claude Code, Daytona + Pi) work those Tickets through MCP tools. Built with Bun, Vite+, Effect, Elysia, and Drizzle; targets Cloudflare Workers + D1 + KV, with a local Bun + SQLite target for the POC (see `docs/technical-architecture.md`).
 
 ## Language
 
-**Db**: Effect `Context.Service` wrapping a plain `drizzle-orm/d1` instance over the Cloudflare D1 binding (`env.DB`). Built fresh per request, not a shared pool — D1's binding isn't a pooled resource the way `pg.Pool` is, so per-request construction is cheap and there's nothing to prove shared. Every Drizzle call is wrapped in `Effect.tryPromise` at the call site, not native Effect queries.
+**Coordinator**: the single service that owns the agent loop, intent classification, Project Memory, the Ticket lifecycle, the MCP server, and all outbound messages to channels. Only the Coordinator talks to channels or the database.
 
-**Auth**: Effect `Context.Service` wrapping Better Auth's official `drizzleAdapter` over the same request's `Db` instance. Exposes session/sign-in/sign-up as Effects with a tagged error.
+**Channel Adapter**: a thin process that normalizes an external event (Discord message, email) into the common inbound message shape, forwards it to the Coordinator, and posts replies when the Coordinator tells it to. No business logic.
+_Avoid_: bot, integration (alone).
 
-**Domain module**: the convention for anything DB-backed under `packages/core/src`: its own folder holding the service (`Context.Service`), a typed error (`Data.TaggedError`), and its own Drizzle schema, colocated rather than centralized. `libs/db` and `libs/auth` stay thin client/adapter wrappers — no schema of their own.
-_Avoid_: package, feature, module (alone) — always "domain module" so it isn't confused with an npm workspace package.
+**Project**: the unit of context. Owns sources, custom instructions, memory, and tickets. One Discord channel maps to exactly one Project.
 
-**Task**: throwaway demo entity used to prove the Db/Auth/Effect wiring round-trips through D1 before any real domain module is built. Deliberately meaningless.
-_Avoid_: To-do, ticket.
+**ProjectSource**: a link between a Project and something external (Discord channel, email address, repo, Drive folder). `(type, external_id)` is unique.
+
+**Project Memory**: the durable knowledge of a Project, stored as MemoryEntries. Readable by the Coordinator, Workers (via MCP), and the Web UI.
+
+**Ticket**: the internal work item the Coordinator creates for each piece of work. All status, follow-ups, and results live on it as TicketEvents. Channels only see what the Coordinator chooses to surface.
+_Avoid_: task, job.
+
+**TicketEvent**: one entry in a Ticket's activity log (created, assigned, status_update, comment, follow_up, result, error, system).
+
+**Worker**: an agent session that works exactly one Ticket through MCP tools and never talks to channels. Pulls work: on session start it lists Tickets assigned to it and claims one.
+_Avoid_: agent (alone), runner.
+
+**Claim**: the atomic `assigned → in_progress` transition a Worker makes on a Ticket. Two Workers can never claim the same Ticket.
+
+**Watcher**: a host-run program that polls the Coordinator every 5 minutes for assigned, unclaimed Tickets and starts a local Claude Code Worker session for each.
+
+**Port**: an interface in `packages/core/src/application/ports`, declared as an Effect `Context.Service` (e.g. `TicketRepository`, `KeyValueStore`, `Scheduler`). Core code depends only on ports.
+
+**Provider**: a package (`infra-cloudflare`, `infra-local`, …) that implements every port for one hosting target and exports an Effect `Layer`. Switching provider means switching the Layer in an app's entry file.
+
+**Domain module**: one folder per entity under `packages/core/src/domain/` holding the entity, its rules, and its typed error (`Data.TaggedError`). It contains no Drizzle schema or provider code; the shared SQLite schema lives in `packages/db-sqlite`.
+_Avoid_: package, feature, module (alone), so it isn't confused with a workspace package.
