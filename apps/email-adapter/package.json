@@ -1,0 +1,14 @@
+{
+  "name": "@project-os/email-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts"
+  },
+  "dependencies": {
+    "@project-os/config": "workspace:*",
+    "@project-os/contracts": "workspace:*"
+  }
+}

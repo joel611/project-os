@@ -1,0 +1,25 @@
+{
+  "name": "project-os",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "libs/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp run --parallel -r dev",
+    "build": "vp run -r build",
+    "check": "vp check",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "test": "vp test run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "typescript": "^5.9.3",
+    "vite-plus": "1.4.0"
+  },
+  "packageManager": "bun@1.4.4"
+}
