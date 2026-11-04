@@ -32,7 +32,15 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "libs/*/src/**/*.ts"],
-      exclude: ["**/*.test.ts", "**/main.*.ts", "**/dist/**", "**/migrations/**", "**/index.ts"],
+      exclude: [
+        "**/*.test.ts",
+        "**/main.*.ts",
+        "**/dist/**",
+        "**/migrations/**",
+        "**/index.ts",
+        // Test fakes are test infrastructure, not production code.
+        "packages/testing/**",
+      ],
       reporter: ["text", "html", "json", "json-summary"],
       reportOnFailure: true,
       // Floor = measured baseline, rounded down. The floor only rises.
