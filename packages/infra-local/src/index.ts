@@ -15,6 +15,7 @@ import { makeMemoryKeyValueStore } from "./kv.ts";
 import { makeTimerScheduler } from "./scheduler.ts";
 
 export { SystemClockLive, openLocalDb };
+export { DEFAULT_ORG, ensureOrg } from "./org.ts";
 
 export interface LocalConfig {
   /** SQLite file path; created and migrated on start. */

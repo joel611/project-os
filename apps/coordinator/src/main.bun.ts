@@ -1,27 +1,62 @@
-import { env, envNumber } from "@project-os/config";
-import { IntentClassifier } from "@project-os/core";
-import { LocalLive } from "@project-os/infra-local";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import {
+  JEV_MODEL_ID,
+  makeAgentRuntime,
+  makeIntentClassifier,
+  newModels,
+  openLocalStorage,
+} from "@project-os/agent-runtime";
+import { env, envNumber, healthConfig } from "@project-os/config";
+import { DEFAULT_ORG, ensureOrg, LocalLive } from "@project-os/infra-local";
+import { type Effect, Layer, ManagedRuntime } from "effect";
+import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp } from "./app.ts";
+import { startHealthSweep } from "./health/start.ts";
 
-// Local target: Bun + infra-local. The setInterval sweep lands in #15.
+// Local target: Bun + infra-local + Pi/Jev agent runtime (docs/technical-architecture.md §8).
 const port = envNumber("PORT", 8080);
+const dbPath = process.env.DATABASE_PATH ?? env("DB_PATH", "./project-os.sqlite");
 
-// Placeholder until the agent-runtime ticket (#14) supplies a real classifier:
-// every message is a new request.
-const IntentClassifierPlaceholder = Layer.succeed(IntentClassifier, {
-  classify: () => Effect.succeed({ intent: "new_request", confidence: 1 }),
-});
+// Projects reference an org (FK), and nothing else creates one.
+const orgId = ensureOrg(dbPath, DEFAULT_ORG);
 
+const models = newModels();
+const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
+const jev = models.getModelOfType("classifier", "openrouter", jevModelId);
+if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
+
+// Explicit return type: `runtime` is defined below and depends on this function.
+const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
+  runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
+
+const AiLive = Layer.mergeAll(
+  makeIntentClassifier({ classifier: models, model: jev }),
+  makeAgentRuntime({
+    storage: await openLocalStorage(env("PI_STORAGE_PATH", "./pi-durable.sqlite")),
+    models,
+    model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
+    // `runtime` is assigned below; the actions only run once a message arrives.
+    adminActions: makeAdminActions({ run: runAdmin, orgId }),
+  }),
+);
+
+// AiLive goes last so it replaces LocalLive's AgentRuntime placeholder.
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     LocalLive({
-      dbPath: env("DB_PATH", "./project-os.sqlite"),
+      dbPath,
       adapterUrls: { discord: env("DISCORD_ADAPTER_URL", "http://localhost:8081") },
     }),
-    IntentClassifierPlaceholder,
+    AiLive,
   ),
 );
+
+await runtime.runPromise(startHealthSweep(healthConfig()));
+
+const adminChannelId = process.env.ADMIN_CHANNEL_ID;
+const adminUserIds = (process.env.ADMIN_USER_IDS ?? "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
 
 createApp(
   {},
@@ -30,7 +65,9 @@ createApp(
       run: (effect) => runtime.runPromise(effect),
       inbound: {
         workerId: env("WORKER_ID", "local-claude-1"),
-        ...(process.env.ADMIN_CHANNEL_ID && { adminChannelId: process.env.ADMIN_CHANNEL_ID }),
+        confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
+        // Admin identity (POC): only these Discord user ids may use the admin channel.
+        ...(adminChannelId && { adminChannelId, adminUserIds }),
       },
     },
   },

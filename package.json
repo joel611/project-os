@@ -9,6 +9,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp run --parallel -r dev",
+    "seed": "bun apps/coordinator/src/main.seed.ts",
     "build": "vp run -r build",
     "prepare": "vp config",
     "check": "vp check",

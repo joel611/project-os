@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "bun --watch src/main.bun.ts",
     "start": "bun src/main.bun.ts",
+    "seed": "bun src/main.seed.ts",
     "dev:cf": "wrangler dev"
   },
   "dependencies": {
+    "@project-os/agent-runtime": "workspace:*",
     "@project-os/config": "workspace:*",
     "@project-os/contracts": "workspace:*",
     "@project-os/core": "workspace:*",

@@ -5,7 +5,9 @@ import {
   ProjectSourceRepository,
   TicketRepository,
 } from "../ports/index.ts";
+import type { TicketStatus } from "../../domain/index.ts";
 import { channelTypeFor } from "./channels.ts";
+import { updateStatus } from "./tickets.ts";
 
 /**
  * Composes the curated reply via `AgentRuntime` and sends it to the project's default
@@ -38,3 +40,18 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
     yield* gateway.send({ channelType, channelId: target.externalId, content });
     return true;
   });
+
+/**
+ * Status change plus the completion hook. Every path that moves a ticket (HTTP, MCP) should
+ * use this rather than `updateStatus`, so a `completed` ticket always gets its reply.
+ */
+export const updateStatusAndNotify = (input: {
+  readonly ticketId: string;
+  readonly status: TicketStatus;
+  readonly error?: string;
+}) =>
+  updateStatus(input).pipe(
+    Effect.tap((ticket) =>
+      ticket.status === "completed" ? onTicketCompleted({ ticketId: ticket.id }) : Effect.void,
+    ),
+  );
