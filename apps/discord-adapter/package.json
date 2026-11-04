@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
-    "start": "bun src/main.bun.ts"
+    "start": "bun src/main.bun.ts",
+    "fake": "bun --env-file=../../.env src/main.fake.ts"
   },
   "dependencies": {
     "@project-os/config": "workspace:*",
