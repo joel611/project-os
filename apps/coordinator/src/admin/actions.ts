@@ -1,6 +1,8 @@
 import type { AdminActions } from "@project-os/agent-runtime";
+import { PROJECT_SOURCE_TYPES, type ProjectSourceType } from "@project-os/contracts";
 import {
   addSource,
+  CHANNEL_SOURCE_TYPES,
   createProject,
   getTicket,
   setDefaultChannel,
@@ -8,7 +10,6 @@ import {
   type IdGenerator,
   type ProjectRepository,
   type ProjectSourceRepository,
-  type ProjectSourceType,
   type TicketRepository,
 } from "@project-os/core";
 import { Effect } from "effect";
@@ -23,13 +24,8 @@ export type AdminEnv =
 
 /** Short names the admin dialogue may use, plus the full source types. */
 const SOURCE_TYPES: Record<string, ProjectSourceType> = {
-  discord: "discord_channel",
-  email: "email_address",
-  discord_channel: "discord_channel",
-  email_address: "email_address",
-  clickup_list: "clickup_list",
-  google_drive_folder: "google_drive_folder",
-  github_repo: "github_repo",
+  ...CHANNEL_SOURCE_TYPES,
+  ...Object.fromEntries(PROJECT_SOURCE_TYPES.map((t) => [t, t])),
 };
 
 /** Failures become text the model can relay, never exceptions out of a tool call. */

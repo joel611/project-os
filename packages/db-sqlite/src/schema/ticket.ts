@@ -1,3 +1,4 @@
+import { TICKET_STATUSES } from "@project-os/contracts";
 import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { projects } from "./project.ts";
 
@@ -9,7 +10,7 @@ export const tickets = sqliteTable(
       .notNull()
       .references(() => projects.id),
     status: text("status", {
-      enum: ["open", "assigned", "in_progress", "blocked", "completed", "failed", "cancelled"],
+      enum: TICKET_STATUSES,
     }).notNull(),
     title: text("title").notNull(),
     intent: text("intent"),

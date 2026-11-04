@@ -1,3 +1,4 @@
+import { PROJECT_SOURCE_TYPES } from "@project-os/contracts";
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { projects } from "./project.ts";
@@ -10,13 +11,7 @@ export const projectSources = sqliteTable(
       .notNull()
       .references(() => projects.id),
     type: text("type", {
-      enum: [
-        "discord_channel",
-        "email_address",
-        "clickup_list",
-        "google_drive_folder",
-        "github_repo",
-      ],
+      enum: PROJECT_SOURCE_TYPES,
     }).notNull(),
     externalId: text("external_id").notNull(),
     name: text("name").notNull(),
