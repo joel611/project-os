@@ -7,3 +7,5 @@ export const env = (key: string, fallback?: string): string => {
 
 export const envNumber = (key: string, fallback?: number): number =>
   Number(env(key, fallback === undefined ? undefined : String(fallback)));
+
+export * from "./health.ts";
