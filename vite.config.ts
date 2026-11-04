@@ -19,7 +19,7 @@ const edgeOnly = [
   "@project-os/infra-cloudflare",
 ].map((name) => ({
   name,
-  message: "adapters and the watcher may only use contracts + libs/config.",
+  message: "adapters, the watcher, and the web UI may only use contracts + libs/config.",
 }));
 
 export default defineConfig({
@@ -69,7 +69,12 @@ export default defineConfig({
         },
       },
       {
-        files: ["apps/discord-adapter/**", "apps/email-adapter/**", "apps/watcher/**"],
+        files: [
+          "apps/discord-adapter/**",
+          "apps/email-adapter/**",
+          "apps/watcher/**",
+          "apps/web/**",
+        ],
         rules: { "no-restricted-imports": ["error", { paths: edgeOnly }] },
       },
     ],
