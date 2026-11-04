@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "project-os-coordinator",
+  "main": "src/main.cloudflare.ts",
+  "compatibility_date": "2026-10-01",
+  // Placeholders; real ids come with infra-cloudflare.
+  "d1_databases": [{ "binding": "DB", "database_name": "project-os", "database_id": "local" }],
+  "kv_namespaces": [{ "binding": "KV", "id": "local" }],
+  "triggers": { "crons": ["* * * * *"] },
+}

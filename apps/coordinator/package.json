@@ -1,0 +1,24 @@
+{
+  "name": "@project-os/coordinator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.bun.ts",
+    "start": "bun src/main.bun.ts",
+    "dev:cf": "wrangler dev"
+  },
+  "dependencies": {
+    "@project-os/config": "workspace:*",
+    "@project-os/contracts": "workspace:*",
+    "@project-os/core": "workspace:*",
+    "@project-os/infra-cloudflare": "workspace:*",
+    "@project-os/infra-local": "workspace:*",
+    "effect": "4.1.2",
+    "elysia": "1.4.30"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261104.1",
+    "wrangler": "4.157.0"
+  }
+}
