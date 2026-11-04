@@ -1,0 +1,25 @@
+# Local POC target. The Watcher runs on the host, not here (§5.6).
+services:
+  coordinator:
+    build: { context: ., dockerfile: apps/coordinator/Dockerfile }
+    ports: ["8080:8080"]
+    environment:
+      PORT: "8080"
+      DATABASE_PATH: /data/project-os.sqlite
+    volumes: ["coordinator-data:/data"]
+
+  discord-adapter:
+    build: { context: ., dockerfile: apps/discord-adapter/Dockerfile }
+    environment:
+      COORDINATOR_URL: http://coordinator:8080
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+    depends_on: [coordinator]
+
+  email-adapter:
+    build: { context: ., dockerfile: apps/email-adapter/Dockerfile }
+    environment:
+      COORDINATOR_URL: http://coordinator:8080
+    depends_on: [coordinator]
+
+volumes:
+  coordinator-data:

@@ -1,0 +1,13 @@
+{
+  "name": "@project-os/testing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@project-os/core": "workspace:*",
+    "effect": "4.1.2"
+  }
+}

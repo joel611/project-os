@@ -1,0 +1,32 @@
+{
+  "name": "project-os",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "libs/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp run --parallel -r dev",
+    "build": "vp run -r build",
+    "prepare": "vp config",
+    "check": "vp check",
+    "fix": "vp check --fix",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "test": "vp test",
+    "test:run": "vp test run",
+    "test:coverage": "vp test run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@types/bun": "1.4.4",
+    "@vitest/coverage-v8": "5.0.5",
+    "typescript": "^5.9.3",
+    "vite-plus": "1.4.0"
+  },
+  "packageManager": "bun@1.4.4"
+}
