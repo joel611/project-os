@@ -1,10 +1,15 @@
 import { ProjectSourceType, TICKET_STATUSES, TicketStatus } from "@project-os/contracts";
 import {
   addSource,
+  Clock,
   createProject as createProjectUseCase,
   ProjectRepository,
+  ProjectSourceRepository,
+  readMemory,
   TicketRepository,
   updateStatusAndNotify,
+  WorkerRepository,
+  workerStatus,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 
@@ -35,6 +40,27 @@ export const decode = <S extends Schema.Decoder<unknown>>(schema: S, body: unkno
 export const createProject = (body: typeof CreateProjectBody.Type) => createProjectUseCase(body);
 
 export const listProjects = Effect.flatMap(ProjectRepository, (repo) => repo.list);
+
+export const getProject = (projectId: string) =>
+  Effect.gen(function* () {
+    const project = yield* (yield* ProjectRepository).get(projectId);
+    const sources = yield* (yield* ProjectSourceRepository).listByProject(projectId);
+    return { project, sources };
+  });
+
+export const listProjectMemory = (projectId: string) =>
+  Effect.gen(function* () {
+    yield* (yield* ProjectRepository).get(projectId);
+    return yield* readMemory({ projectId });
+  });
+
+/** Workers with online/offline derived from `lastSeenAt` (never stored). */
+export const listWorkers = (staleAfterMs: number) =>
+  Effect.gen(function* () {
+    const now = yield* Effect.flatMap(Clock, (c) => c.now);
+    const workers = yield* (yield* WorkerRepository).list;
+    return workers.map((w) => ({ ...w, status: workerStatus(w, now, staleAfterMs) }));
+  });
 
 export const linkSource = (projectId: string, body: typeof CreateSourceBody.Type) =>
   addSource({ projectId, ...body });
