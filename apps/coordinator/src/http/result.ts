@@ -13,6 +13,8 @@ const STATUS = {
   SourceNotFound: 404,
   SourceAlreadyLinked: 409,
   InvalidTransition: 409,
+  AgentRuntimeError: 502,
+  ClassifierError: 502,
 } as const;
 
 type KnownError = { readonly _tag: keyof typeof STATUS };
