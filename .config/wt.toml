@@ -1,0 +1,10 @@
+# Worktrunk project hooks. Runs on `wt switch --create`.
+
+# Blocking: deps must exist before anything else in the new worktree.
+[[pre-start]]
+install = "bun install --frozen-lockfile"
+
+# Local config: .env is gitignored, so each worktree needs its own copy.
+# `-n` never overwrites an existing .env.
+[[pre-start]]
+env = "cp -n .env.example .env"
