@@ -1,4 +1,5 @@
-# Local POC target. The Watcher runs on the host, not here (§5.6).
+# Local POC target. The Watcher runs on the host (it spawns local Claude Code) and
+# talks to the published Coordinator port: MCP_URL=http://localhost:8080/mcp (§5.6).
 services:
   coordinator:
     build: { context: ., dockerfile: apps/coordinator/Dockerfile }
@@ -6,13 +7,25 @@ services:
     environment:
       PORT: "8080"
       DATABASE_PATH: /data/project-os.sqlite
+      PI_STORAGE_PATH: /data/pi-durable.sqlite
+      DISCORD_ADAPTER_URL: http://discord-adapter:8081
+      WORKER_ID: ${WORKER_ID:-local-claude-1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      CHAT_MODEL_PROVIDER: ${CHAT_MODEL_PROVIDER:-openrouter}
+      CHAT_MODEL_ID: ${CHAT_MODEL_ID:-anthropic/claude-sonnet-4.5}
+      JEV_MODEL_ID: ${JEV_MODEL_ID:-typesafe/jev-1.14}
+      INTENT_CONFIDENCE_THRESHOLD: ${INTENT_CONFIDENCE_THRESHOLD:-0.5}
+      ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
+      ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
     volumes: ["coordinator-data:/data"]
 
   discord-adapter:
     build: { context: ., dockerfile: apps/discord-adapter/Dockerfile }
+    expose: ["8081"]
     environment:
+      PORT: "8081"
       COORDINATOR_URL: http://coordinator:8080
-      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
     depends_on: [coordinator]
 
   email-adapter:

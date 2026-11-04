@@ -1,11 +1,7 @@
+import type { ProjectSourceType } from "@project-os/contracts";
 import { Data } from "effect";
 
-export type ProjectSourceType =
-  | "discord_channel"
-  | "email_address"
-  | "clickup_list"
-  | "google_drive_folder"
-  | "github_repo";
+export type { ProjectSourceType };
 
 export type SourceDirection = "inbound" | "outbound" | "both";
 export type SourceStatus = "active" | "disabled";

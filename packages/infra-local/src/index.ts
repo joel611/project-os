@@ -1,7 +1,56 @@
-import { Layer } from "effect";
+import { type ChannelType } from "@project-os/contracts";
+import {
+  AgentRuntime,
+  IdGenerator,
+  KeyValueStore,
+  Scheduler,
+  WorkerLauncher,
+} from "@project-os/core";
+import { ChannelGateway } from "@project-os/core";
+import { Effect, Layer } from "effect";
 import { SystemClockLive } from "./clock.ts";
+import { openLocalDb, SqliteLive } from "./database.ts";
+import { makeHttpChannelGateway } from "./gateway.ts";
+import { makeMemoryKeyValueStore } from "./kv.ts";
+import { makeTimerScheduler } from "./scheduler.ts";
 
-export { SystemClockLive };
+export { SystemClockLive, openLocalDb };
+export { DEFAULT_ORG, ensureOrg } from "./org.ts";
 
-/** Every core port for the local target (Bun + bun:sqlite). Grows in #10. */
-export const LocalLive = Layer.mergeAll(SystemClockLive);
+export interface LocalConfig {
+  /** SQLite file path; created and migrated on start. */
+  readonly dbPath: string;
+  /** Base URL per Channel Adapter (its `/reply` endpoint host). */
+  readonly adapterUrls: Partial<Record<ChannelType, string>>;
+}
+
+const IdGeneratorUuid = Layer.succeed(IdGenerator, {
+  next: Effect.sync(() => crypto.randomUUID()),
+});
+
+const KeyValueStoreMemory = Layer.sync(KeyValueStore, () => makeMemoryKeyValueStore(Date.now));
+
+const SchedulerTimer = Layer.succeed(Scheduler, makeTimerScheduler());
+
+const WorkerLauncherNoop = Layer.succeed(WorkerLauncher, { launch: () => Effect.void });
+
+/** Placeholder until the agent-runtime ticket (#14) supplies the in-process implementation. */
+const AgentRuntimePending = Layer.succeed(AgentRuntime, {
+  respond: () => Effect.die(new Error("AgentRuntime not wired yet (see #14)")),
+});
+
+/** Every core port for the local target (Bun + bun:sqlite), except IntentClassifier. */
+export const LocalLive = (config: LocalConfig) =>
+  Layer.mergeAll(
+    SystemClockLive,
+    IdGeneratorUuid,
+    SqliteLive(config.dbPath),
+    KeyValueStoreMemory,
+    SchedulerTimer,
+    Layer.succeed(
+      ChannelGateway,
+      makeHttpChannelGateway({ adapterUrls: config.adapterUrls, fetch }),
+    ),
+    AgentRuntimePending,
+    WorkerLauncherNoop,
+  );

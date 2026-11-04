@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./data": "./src/data.ts"
   },
   "dependencies": {
     "effect": "4.1.2"

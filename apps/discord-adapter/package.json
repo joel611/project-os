@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/main.ts",
-    "start": "bun src/main.ts"
+    "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
+    "start": "bun src/main.bun.ts"
   },
   "dependencies": {
     "@project-os/config": "workspace:*",
-    "@project-os/contracts": "workspace:*"
+    "@project-os/contracts": "workspace:*",
+    "discord.js": "^14.28.1",
+    "effect": "4.1.2",
+    "elysia": "^1.4.30"
   }
 }

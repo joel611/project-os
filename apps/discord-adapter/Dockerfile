@@ -2,6 +2,7 @@
 FROM oven/bun:1.4.4-slim
 WORKDIR /repo
 COPY . .
-RUN bun install --frozen-lockfile --production
+# --ignore-scripts: root `prepare` runs `vp config` (git hooks), vp is a devDependency
+RUN bun install --frozen-lockfile --production --ignore-scripts
 WORKDIR /repo/apps/discord-adapter
-CMD ["bun", "run", "src/main.ts"]
+CMD ["bun", "run", "src/main.bun.ts"]
