@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ApiError, makeApi } from "./api.ts";
+import { ApiError, describeError, makeApi } from "./api.ts";
 
 const T = "2026-11-05T00:00:00.000Z";
 const project = {
@@ -99,5 +99,24 @@ describe("makeApi", () => {
   it("rejects a response that drifted from the contract", async () => {
     const { api } = respond(200, [{ ...project, status: "bogus" }]);
     await expect(api.projects()).rejects.toThrow();
+  });
+});
+
+describe("describeError", () => {
+  const unreachable = "Can't reach the Coordinator. Is it running?";
+
+  it.each([
+    [new TypeError("Failed to fetch"), unreachable],
+    [new ApiError(502, "Unreachable"), unreachable],
+    [new ApiError(404, "TicketNotFound"), "Not found."],
+    [new ApiError(502, "AgentRuntimeError"), "Coordinator returned 502 (AgentRuntimeError)."],
+  ])("%s → %s", (error, message) => {
+    expect(describeError(error)).toBe(message);
+  });
+
+  it("reports contract drift as an unexpected response, not as unreachable", async () => {
+    const { api } = respond(200, [{ ...project, status: "bogus" }]);
+    const error = await api.projects().catch((e: Error) => e);
+    expect(describeError(error as Error)).toMatch(/^Unexpected response from the Coordinator: /);
   });
 });

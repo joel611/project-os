@@ -42,6 +42,18 @@ const errorCode = (body: unknown, res: Response): string => {
   return GATEWAY_STATUSES.includes(res.status) ? "Unreachable" : res.statusText;
 };
 
+const UNREACHABLE = "Can't reach the Coordinator. Is it running?";
+
+/** One line for the operator, whatever went wrong between the dashboard and the Coordinator. */
+export const describeError = (error: Error): string => {
+  if (error instanceof TypeError) return UNREACHABLE;
+  if (!(error instanceof ApiError))
+    return `Unexpected response from the Coordinator: ${error.message}`;
+  if (error.code === "Unreachable") return UNREACHABLE;
+  if (error.status === 404) return "Not found.";
+  return `Coordinator returned ${error.status} (${error.code}).`;
+};
+
 /** Typed client for the Coordinator read API. Responses are decoded with the contract schemas. */
 export const makeApi = (fetchFn: typeof fetch = fetch) => {
   const get = async <S extends Schema.Decoder<unknown>>(path: string, schema: S) => {
