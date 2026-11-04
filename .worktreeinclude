@@ -1,0 +1,9 @@
+# Gitignored files copied into new worktrees by `wt step copy-ignored`.
+# Local config
+.env
+# Installed deps (bun install then only relinks/verifies)
+node_modules/
+# Build caches
+.turbo/
+.vite/
+dist/
