@@ -1,4 +1,5 @@
-// Placeholder so the package has a real export; the full set of schemas lands in #7.
+import { Schema } from "effect";
+
 export const TICKET_STATUSES = [
   "open",
   "assigned",
@@ -9,4 +10,5 @@ export const TICKET_STATUSES = [
   "cancelled",
 ] as const;
 
-export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export const TicketStatus = Schema.Literals(TICKET_STATUSES);
+export type TicketStatus = typeof TicketStatus.Type;
