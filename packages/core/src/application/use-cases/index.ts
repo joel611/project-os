@@ -1,4 +1,5 @@
 export * from "./admin.ts";
+export * from "./channels.ts";
 export * from "./handle-inbound.ts";
 export * from "./health-sweep.ts";
 export * from "./heartbeat.ts";

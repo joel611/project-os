@@ -1,4 +1,4 @@
-import { TicketStatus } from "@project-os/contracts";
+import { ProjectSourceType, TICKET_STATUSES, TicketStatus } from "@project-os/contracts";
 import {
   addSource,
   createProject as createProjectUseCase,
@@ -7,14 +7,6 @@ import {
   updateStatusAndNotify,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
-
-const ProjectSourceType = Schema.Literals([
-  "discord_channel",
-  "email_address",
-  "clickup_list",
-  "google_drive_folder",
-  "github_repo",
-]);
 
 export const CreateProjectBody = Schema.Struct({
   orgId: Schema.NonEmptyString,
@@ -50,15 +42,7 @@ export const linkSource = (projectId: string, body: typeof CreateSourceBody.Type
 export const listProjectTickets = (projectId: string) =>
   Effect.gen(function* () {
     yield* (yield* ProjectRepository).get(projectId);
-    const all = yield* (yield* TicketRepository).listByStatus([
-      "open",
-      "assigned",
-      "in_progress",
-      "blocked",
-      "completed",
-      "failed",
-      "cancelled",
-    ]);
+    const all = yield* (yield* TicketRepository).listByStatus(TICKET_STATUSES);
     return all.filter((t) => t.projectId === projectId);
   });
 

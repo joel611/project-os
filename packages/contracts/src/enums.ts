@@ -3,6 +3,16 @@ import { Schema } from "effect";
 export const ChannelType = Schema.Literals(["discord", "email", "chat"]);
 export type ChannelType = typeof ChannelType.Type;
 
+export const PROJECT_SOURCE_TYPES = [
+  "discord_channel",
+  "email_address",
+  "clickup_list",
+  "google_drive_folder",
+  "github_repo",
+] as const;
+export const ProjectSourceType = Schema.Literals(PROJECT_SOURCE_TYPES);
+export type ProjectSourceType = typeof ProjectSourceType.Type;
+
 export const TicketEventType = Schema.Literals([
   "created",
   "assigned",
