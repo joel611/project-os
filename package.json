@@ -20,7 +20,7 @@
     "test:run": "bun --bun vp test run",
     "test:coverage": "bun --bun vp test run --coverage",
     "test:integration": "bun --bun vp test run apps/e2e",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web --noEmit"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
@@ -29,6 +29,10 @@
     "@vitest/coverage-v8": "5.0.5",
     "typescript": "^5.9.3",
     "vite-plus": "1.4.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
+    "vitest": "5.0.5"
   },
   "packageManager": "bun@1.4.4"
 }

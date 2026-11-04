@@ -1,0 +1,103 @@
+import { describe, expect, it } from "vite-plus/test";
+import { ApiError, makeApi } from "./api.ts";
+
+const T = "2026-11-05T00:00:00.000Z";
+const project = {
+  id: "p1",
+  orgId: "o1",
+  name: "Acme",
+  slug: null,
+  customInstructions: "",
+  defaultResponseChannelId: null,
+  status: "active",
+  createdBy: null,
+  createdAt: T,
+  updatedAt: T,
+};
+
+const respond = (status: number, body: unknown, statusText = "") => {
+  const calls: string[] = [];
+  const fetchFn = (async (url: string) => {
+    calls.push(url);
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), {
+      status,
+      statusText,
+    });
+  }) as typeof fetch;
+  return { api: makeApi(fetchFn), calls };
+};
+
+describe("makeApi", () => {
+  it("decodes responses with the contract schemas, under /api", async () => {
+    const { api, calls } = respond(200, [project]);
+    expect(await api.projects()).toEqual([project]);
+    expect(calls).toEqual(["/api/projects"]);
+  });
+
+  it("uses the global fetch by default", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json([])) as unknown as typeof fetch;
+    try {
+      expect(await makeApi().projects()).toEqual([]);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("encodes ids into paths for every resource", async () => {
+    const { api, calls } = respond(500, { error: "Boom" });
+    const all = [
+      api.project("a/b"),
+      api.tickets("a/b"),
+      api.memory("a/b"),
+      api.ticket("t 1"),
+      api.workers(),
+    ];
+    await Promise.allSettled(all);
+    expect(calls).toEqual([
+      "/api/projects/a%2Fb",
+      "/api/projects/a%2Fb/tickets",
+      "/api/projects/a%2Fb/memory",
+      "/api/tickets/t%201",
+      "/api/workers",
+    ]);
+  });
+
+  it("decodes worker status alongside the worker", async () => {
+    const worker = {
+      id: "w1",
+      workerType: "local_claude",
+      currentTicketId: null,
+      lastSeenAt: T,
+      createdAt: T,
+      status: "online",
+    };
+    const { api } = respond(200, [worker]);
+    expect(await api.workers()).toEqual([worker]);
+  });
+
+  it("surfaces the Coordinator's tagged error", async () => {
+    const { api } = respond(404, { error: "ProjectNotFound" });
+    await expect(api.project("nope")).rejects.toEqual(new ApiError(404, "ProjectNotFound"));
+  });
+
+  it("falls back to the status text when the error body is not the Coordinator's", async () => {
+    const { api } = respond(500, "<html>oops</html>", "Internal Server Error");
+    await expect(api.projects()).rejects.toMatchObject({ code: "Internal Server Error" });
+  });
+
+  it("reads a bare gateway error as the Coordinator being unreachable", async () => {
+    const { api } = respond(502, "", "Bad Gateway");
+    await expect(api.projects()).rejects.toMatchObject({ status: 502, code: "Unreachable" });
+  });
+
+  it("keeps the Coordinator's own 502 tag", async () => {
+    const { api } = respond(502, { error: "AgentRuntimeError" });
+    await expect(api.projects()).rejects.toMatchObject({ code: "AgentRuntimeError" });
+  });
+
+  it("rejects a response that drifted from the contract", async () => {
+    const { api } = respond(200, [{ ...project, status: "bogus" }]);
+    await expect(api.projects()).rejects.toThrow();
+  });
+});

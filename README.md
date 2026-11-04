@@ -80,6 +80,8 @@ The Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so 
 
 Without Docker: `bun run --cwd apps/coordinator dev`, then `GET http://localhost:8080/health`.
 
+To watch it work, run the dashboard with `bun run --cwd apps/web dev` and open http://localhost:5173. It lists projects, their tickets with each ticket's activity log, project memory, and worker health, refreshing every few seconds. It is read-only and expects the Coordinator on `:8080` (override with `COORDINATOR_URL`).
+
 ## Development
 
 ```sh
@@ -93,6 +95,7 @@ bun run test
 - `apps/coordinator`: Elysia HTTP + MCP server; `main.bun.ts` (local) and `main.cloudflare.ts` (Workers)
 - `apps/discord-adapter`, `apps/email-adapter`: thin channel adapters
 - `apps/watcher`: host-run CLI that starts Claude Code per ticket
+- `apps/web`: read-only dashboard (Vite + React + shadcn) over the Coordinator HTTP API
 - `packages/core`: domain and ports, provider-free
 - `packages/contracts`: shared wire types
 - `packages/agent-runtime`: the Coordinator's agent loop and intent classifier
