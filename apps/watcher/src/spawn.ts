@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { WatcherConfig } from "./config.ts";
 
 export interface Spawner {
@@ -6,10 +6,13 @@ export interface Spawner {
   spawn(): Promise<number>;
 }
 
-const PROMPT_PATH = join(import.meta.dir, "..", "prompts", "session-start.md");
+const PROMPT_PATH = fileURLToPath(new URL("../prompts/session-start.md", import.meta.url));
+
+/** Name of the Coordinator in the MCP config; tool permissions are keyed on it. */
+export const MCP_SERVER_NAME = "project-os";
 
 export const mcpConfigJson = (config: WatcherConfig): string =>
-  JSON.stringify({ mcpServers: { "project-os": { type: "http", url: config.mcpUrl } } });
+  JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: { type: "http", url: config.mcpUrl } } });
 
 export const claudeArgs = (config: WatcherConfig, prompt: string): string[] => [
   "claude",
@@ -17,12 +20,20 @@ export const claudeArgs = (config: WatcherConfig, prompt: string): string[] => [
   prompt,
   "--mcp-config",
   mcpConfigJson(config),
+  // Headless `-p` cannot prompt, so pre-approve every Coordinator MCP tool (and nothing else).
+  "--allowedTools",
+  `mcp__${MCP_SERVER_NAME}__*`,
 ];
 
-export const bunSpawner = (config: WatcherConfig): Spawner => ({
+export type SpawnProcess = (
+  cmd: string[],
+  options: { cwd: string; stdout: "inherit"; stderr: "inherit" },
+) => { exited: Promise<number> };
+
+export const bunSpawner = (config: WatcherConfig, spawnProcess: SpawnProcess): Spawner => ({
   spawn: async () => {
     const prompt = `${await Bun.file(PROMPT_PATH).text()}\nYour worker_id is \`${config.workerId}\`.`;
-    const proc = Bun.spawn(claudeArgs(config, prompt), {
+    const proc = spawnProcess(claudeArgs(config, prompt), {
       cwd: config.cwd,
       stdout: "inherit",
       stderr: "inherit",

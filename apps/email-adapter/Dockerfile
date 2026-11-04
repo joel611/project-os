@@ -4,4 +4,4 @@ WORKDIR /repo
 COPY . .
 RUN bun install --frozen-lockfile --production
 WORKDIR /repo/apps/email-adapter
-CMD ["bun", "run", "src/main.ts"]
+CMD ["bun", "run", "src/main.bun.ts"]

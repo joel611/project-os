@@ -95,3 +95,37 @@ describe("watcher poll", () => {
     expect(logs.some((l) => l.includes("down"))).toBe(true);
   });
 });
+
+describe("watcher poll error reporting", () => {
+  const run = async (spawn: () => Promise<number>, callTool?: McpClient["callTool"]) => {
+    const logs: string[] = [];
+    const w = createWatcher({
+      config,
+      client: { callTool: callTool ?? (async () => ({ tickets: [{ id: "t" }] })) },
+      spawner: { spawn },
+      log: (m) => logs.push(m),
+    });
+    await w.pollOnce();
+    await new Promise((r) => setTimeout(r, 0));
+    return { w, logs };
+  };
+
+  it("logs and frees capacity when a session rejects with an Error", async () => {
+    const { w, logs } = await run(() => Promise.reject(new Error("boom")));
+    expect(logs.some((l) => l.includes("error=boom"))).toBe(true);
+    expect(w.running()).toBe(0);
+  });
+
+  it("logs a non-Error rejection", async () => {
+    const { logs } = await run(() => Promise.reject("weird"));
+    expect(logs.some((l) => l.includes("error=weird"))).toBe(true);
+  });
+
+  it("logs a non-Error poll failure", async () => {
+    const { logs } = await run(
+      async () => 0,
+      async () => Promise.reject("nope"),
+    );
+    expect(logs.some((l) => l.includes("poll failed: nope"))).toBe(true);
+  });
+});

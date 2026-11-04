@@ -6,7 +6,7 @@ type Fetcher = (req: Request) => Promise<Response>;
 export const forwardInbound = async (
   coordinatorUrl: string,
   message: InboundMessage,
-  fetcher: Fetcher = fetch,
+  fetcher: Fetcher,
 ): Promise<void> => {
   const url = `${coordinatorUrl.replace(/\/+$/, "")}/inbound`;
   const res = await fetcher(

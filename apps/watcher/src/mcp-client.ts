@@ -6,11 +6,11 @@ interface RpcResponse {
 }
 
 // Minimal MCP streamable-HTTP client: one JSON-RPC tools/call per request.
-export const httpMcpClient = (url: string): McpClient => {
+export const httpMcpClient = (url: string, fetcher: typeof fetch): McpClient => {
   let id = 0;
   return {
     callTool: async (name, args) => {
-      const res = await fetch(url, {
+      const res = await fetcher(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
