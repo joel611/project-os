@@ -23,8 +23,21 @@ const edgeOnly = [
 }));
 
 export default defineConfig({
+  staged: {
+    "*.{js,jsx,ts,tsx,json,jsonc,css,md,mdx}": "vp check --fix",
+    "*.{ts,tsx,js,jsx}": "vp test related --run --passWithNoTests",
+  },
   test: {
     include: ["apps/*/src/**/*.test.ts", "packages/*/src/**/*.test.ts", "libs/*/src/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      include: ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "libs/*/src/**/*.ts"],
+      exclude: ["**/*.test.ts", "**/main.*.ts", "**/dist/**", "**/migrations/**", "**/index.ts"],
+      reporter: ["text", "html", "json", "json-summary"],
+      reportOnFailure: true,
+      // Floor = measured baseline, rounded down. The floor only rises.
+      thresholds: { lines: 28, functions: 50, branches: 100, statements: 31 },
+    },
   },
   lint: {
     plugins: ["typescript"],
