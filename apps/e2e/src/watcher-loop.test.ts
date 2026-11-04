@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { fakeInbound } from "../../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../../discord-adapter/src/forward.ts";
-import type { WatcherConfig } from "../../../watcher/src/config.ts";
-import { httpMcpClient } from "../../../watcher/src/mcp-client.ts";
-import { createWatcher } from "../../../watcher/src/poll.ts";
-import type { Spawner } from "../../../watcher/src/spawn.ts";
+import { fakeInbound } from "../../discord-adapter/src/fake.ts";
+import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import type { WatcherConfig } from "../../watcher/src/config.ts";
+import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
+import { createWatcher } from "../../watcher/src/poll.ts";
+import type { Spawner } from "../../watcher/src/spawn.ts";
 import { type Stack, startStack } from "./stack.ts";
 
 // Watcher (real MCP client, real poll loop) against the real Coordinator /mcp.
@@ -15,7 +15,7 @@ import { type Stack, startStack } from "./stack.ts";
 const WORKER = "local-claude-1";
 const CHANNEL = "chan-1";
 const PROMPT = readFileSync(
-  new URL("../../../watcher/prompts/session-start.md", import.meta.url),
+  new URL("../../watcher/prompts/session-start.md", import.meta.url),
   "utf8",
 );
 

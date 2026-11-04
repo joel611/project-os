@@ -7,9 +7,9 @@ import type { IntentClassifier } from "@project-os/core";
 import { ensureOrg, LocalLive } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
-import { createReplyApp, type ReplyTarget } from "../../../discord-adapter/src/reply.ts";
-import { createApp } from "../app.ts";
-import type { McpRuntime } from "../mcp/server.ts";
+import { createReplyApp, type ReplyTarget } from "../../discord-adapter/src/reply.ts";
+import { createApp } from "../../coordinator/src/app.ts";
+import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
 
 // Every component wired as in main.bun.ts, each on its own localhost port.
 // Real: SQLite, Coordinator HTTP + MCP, HTTP channel gateway, Discord adapter /reply.

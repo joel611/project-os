@@ -19,7 +19,7 @@
     "test": "bun --bun vp test",
     "test:run": "bun --bun vp test run",
     "test:coverage": "bun --bun vp test run --coverage",
-    "test:integration": "bun --bun vp test run apps/coordinator/src/e2e",
+    "test:integration": "bun --bun vp test run apps/e2e",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

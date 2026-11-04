@@ -46,6 +46,17 @@
         "elysia": "^1.4.30",
       },
     },
+    "apps/e2e": {
+      "name": "@project-os/e2e",
+      "version": "0.0.0",
+      "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.32.2",
+        "@project-os/core": "workspace:*",
+        "@project-os/infra-local": "workspace:*",
+        "@project-os/testing": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
     "apps/email-adapter": {
       "name": "@project-os/email-adapter",
       "version": "0.0.0",
@@ -526,6 +537,8 @@
     "@project-os/db-sqlite": ["@project-os/db-sqlite@workspace:packages/db-sqlite"],
 
     "@project-os/discord-adapter": ["@project-os/discord-adapter@workspace:apps/discord-adapter"],
+
+    "@project-os/e2e": ["@project-os/e2e@workspace:apps/e2e"],
 
     "@project-os/email-adapter": ["@project-os/email-adapter@workspace:apps/email-adapter"],
 
