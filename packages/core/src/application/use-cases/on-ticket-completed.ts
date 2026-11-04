@@ -28,6 +28,7 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
 
     const content = yield* runtime.respond({
       sessionId: `project:${ticket.projectId}`,
+      requestId: `ticket-completed:${ticket.id}`,
       prompt: [
         `Compose a concise reply to the customer for the completed ticket "${ticket.title}".`,
         `Result: ${JSON.stringify(ticket.result)}`,

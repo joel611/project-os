@@ -93,6 +93,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       const text = yield* runtime.respond({
         sessionId: `admin:${message.channelId}`,
         prompt: message.content,
+        requestId: message.externalId,
       });
       yield* reply(text);
       return { kind: "admin_handled" } as InboundOutcome;
@@ -172,6 +173,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       case "status_question": {
         const text = yield* runtime.respond({
           sessionId: `project:${project.id}`,
+          requestId: message.externalId,
           prompt: [
             `Answer this status question from ticket state: ${message.content}`,
             ...(active.length === 0
