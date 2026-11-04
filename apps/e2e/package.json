@@ -1,0 +1,16 @@
+{
+  "name": "@project-os/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun --bun vp test run ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@project-os/core": "workspace:*",
+    "@project-os/infra-local": "workspace:*",
+    "@project-os/testing": "workspace:*",
+    "effect": "4.1.2"
+  }
+}
