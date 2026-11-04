@@ -6,6 +6,8 @@ import {
   AgentRuntimeError,
   ClassifierError,
   IntentClassifier,
+  WorkerRepository,
+  writeMemory,
 } from "@project-os/core";
 import { LocalLive, openLocalDb } from "@project-os/infra-local";
 import { classifierReturning, makeTestLayer } from "@project-os/testing";
@@ -286,6 +288,56 @@ describe("tickets", () => {
     const { app } = setup();
     const res = await call(app, "POST", "/tickets/x/status", { status: "bogus" });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("dashboard reads", () => {
+  const seeded = () => {
+    const { layer } = makeTestLayer();
+    const runtime = ManagedRuntime.make(layer);
+    disposers.push(() => runtime.dispose());
+    const app = createApp({}, { http: { run: (effect) => runtime.runPromise(effect) } });
+    return { app, runtime };
+  };
+
+  it("returns a project with its sources, and 404s for unknown projects", async () => {
+    const { app } = setup();
+    const { project, source } = await linkedProject(app);
+    const res = await call(app, "GET", `/projects/${project.id}`);
+    expect(res).toEqual({ status: 200, body: { project, sources: [source] } });
+    const missing = await call(app, "GET", "/projects/nope");
+    expect(missing).toMatchObject({ status: 404, body: { error: "ProjectNotFound" } });
+  });
+
+  it("lists a project's memory, and 404s for unknown projects", async () => {
+    const { app, runtime } = seeded();
+    const { project } = await linkedProject(app);
+    await runtime.runPromise(
+      writeMemory({ projectId: project.id, type: "note", title: "Stack", content: "Bun" }),
+    );
+    const res = await call(app, "GET", `/projects/${project.id}/memory`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject([{ projectId: project.id, title: "Stack", content: "Bun" }]);
+    const missing = await call(app, "GET", "/projects/nope/memory");
+    expect(missing).toMatchObject({ status: 404, body: { error: "ProjectNotFound" } });
+  });
+
+  it("lists workers with online/offline derived from lastSeenAt", async () => {
+    const { app, runtime } = seeded();
+    const beat = (workerId: string, at: string) =>
+      runtime.runPromise(
+        Effect.flatMap(WorkerRepository, (repo) =>
+          repo.heartbeat({ workerId, workerType: "local_claude", ticketId: null, at }),
+        ),
+      );
+    await beat("fresh", T0);
+    await beat("stale", "2026-11-03T23:00:00.000Z");
+    const res = await call(app, "GET", "/workers");
+    expect(res.status).toBe(200);
+    expect(res.body.map((w: { id: string; status: string }) => [w.id, w.status]).sort()).toEqual([
+      ["fresh", "online"],
+      ["stale", "offline"],
+    ]);
   });
 });
 
