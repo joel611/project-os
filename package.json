@@ -15,9 +15,9 @@
     "fix": "vp check --fix",
     "lint": "vp lint",
     "fmt": "vp fmt",
-    "test": "vp test",
-    "test:run": "vp test run",
-    "test:coverage": "vp test run --coverage",
+    "test": "bun --bun vp test",
+    "test:run": "bun --bun vp test run",
+    "test:coverage": "bun --bun vp test run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

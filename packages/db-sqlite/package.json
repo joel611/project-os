@@ -10,8 +10,10 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@project-os/contracts": "workspace:*",
     "@project-os/core": "workspace:*",
-    "drizzle-orm": "0.45.4"
+    "drizzle-orm": "0.45.4",
+    "effect": "4.1.2"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.11"

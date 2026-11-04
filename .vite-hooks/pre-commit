@@ -1,2 +1,2 @@
-bunx vp staged
+bunx --bun vp staged
 bun run typecheck
