@@ -5,6 +5,12 @@
 install = "bun install --frozen-lockfile"
 
 # Local config: .env is gitignored, so each worktree needs its own copy.
+# copy-ignored copies the primary worktree's .env (limited to .worktreeinclude;
+# never overwrites an existing file).
+[[pre-start]]
+copy-env = "wt step copy-ignored"
+
+# Fallback for fresh clones where the primary worktree has no .env yet.
 # `-n` never overwrites an existing .env.
 [[pre-start]]
-env = "cp -n .env.example .env"
+env-fallback = "cp -n .env.example .env"
