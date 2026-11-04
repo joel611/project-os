@@ -1,2 +1,3 @@
-// Domain module: memory. Entity, rules, and Data.TaggedError types land in #8.
-export {};
+import type { MemoryEntry, MemoryEntryType } from "@project-os/contracts";
+
+export type { MemoryEntry, MemoryEntryType };
