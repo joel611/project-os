@@ -1,13 +1,16 @@
 import { DEFAULT_WORKER_ID } from "@project-os/config";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { loadConfig } from "./config.ts";
 
 const KEYS = ["MCP_URL", "WORKER_ID", "POLL_INTERVAL_MS", "MAX_SESSIONS", "WORKER_CWD"];
 
 describe("loadConfig", () => {
-  afterEach(() => {
+  // Clear before as well as after: a local .env (auto-loaded by Bun) may set these.
+  const clearEnv = () => {
     for (const k of KEYS) delete process.env[k];
-  });
+  };
+  beforeEach(clearEnv);
+  afterEach(clearEnv);
 
   it("defaults to the shared worker id", () => {
     const c = loadConfig();
