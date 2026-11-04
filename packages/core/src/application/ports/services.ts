@@ -43,6 +43,8 @@ export class Scheduler extends Context.Service<
 export interface IntentResult {
   readonly intent: string;
   readonly confidence: number;
+  /** Only meaningful for `new_request`. Falls back to the configured default. */
+  readonly workerType?: WorkerType;
 }
 
 export class IntentClassifier extends Context.Service<

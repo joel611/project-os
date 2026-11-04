@@ -27,6 +27,12 @@ export class TicketRepository extends Context.Service<
     readonly listByStatus: (
       statuses: ReadonlyArray<TicketStatus>,
     ) => Effect.Effect<ReadonlyArray<Ticket>>;
+    /** `open → assigned`, stamping the worker. `workerId` null = any worker of that type. */
+    readonly assign: (
+      ticketId: string,
+      worker: { readonly workerType: WorkerType; readonly workerId: string | null },
+      at: string,
+    ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
     /** Atomic `assigned → in_progress`. Two concurrent claims: exactly one wins. */
     readonly claim: (
       ticketId: string,
