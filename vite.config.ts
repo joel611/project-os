@@ -44,7 +44,7 @@ export default defineConfig({
       reporter: ["text", "html", "json", "json-summary"],
       reportOnFailure: true,
       // Floor = measured baseline, rounded down. The floor only rises.
-      thresholds: { lines: 28, functions: 50, branches: 100, statements: 31 },
+      thresholds: { lines: 100, functions: 100, branches: 100, statements: 100 },
     },
   },
   lint: {

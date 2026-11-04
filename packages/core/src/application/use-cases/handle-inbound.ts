@@ -1,6 +1,6 @@
 import type { InboundMessage, ReplyInstruction, WorkerType } from "@project-os/contracts";
 import { Effect } from "effect";
-import { isTerminal, type Ticket } from "../../domain/index.ts";
+import { ACTIVE_STATUSES, type Ticket } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -45,7 +45,7 @@ export type InboundOutcome =
 
 const TITLE_MAX = 80;
 
-export const handleInbound = (message: InboundMessage, config: HandleInboundConfig = {}) =>
+export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) =>
   Effect.gen(function* () {
     const kv = yield* KeyValueStore;
     const sources = yield* ProjectSourceRepository;
@@ -85,22 +85,15 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       return { kind: "admin_forbidden" } as InboundOutcome;
     }
 
-    const sourceType = sourceTypeFor(message.channelType);
-    const source =
-      isAdminChannel || !sourceType
-        ? undefined
-        : yield* sources.findByExternal(sourceType, message.channelId);
-    if (!isAdminChannel && !source) return { kind: "unlinked" } as InboundOutcome;
-
-    const project = source ? yield* projects.get(source.projectId) : undefined;
-    const result = yield* classifier.classify({
-      content: message.content,
-      projectContext: project?.customInstructions ?? "",
-    });
-    if (result.confidence < (config.confidenceThreshold ?? 0.5)) return yield* clarify();
+    const classify = (projectContext: string) =>
+      classifier.classify({ content: message.content, projectContext });
+    const isConfident = (confidence: number) => confidence >= (config.confidenceThreshold ?? 0.5);
 
     if (isAdminChannel) {
-      if (result.intent !== "admin_command") return yield* clarify();
+      const result = yield* classify("");
+      if (!isConfident(result.confidence) || result.intent !== "admin_command") {
+        return yield* clarify();
+      }
       const text = yield* runtime.respond({
         sessionId: `admin:${message.channelId}`,
         prompt: message.content,
@@ -109,11 +102,20 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       yield* reply(text);
       return { kind: "admin_handled" } as InboundOutcome;
     }
-    if (!project) return { kind: "unlinked" } as InboundOutcome;
+
+    const sourceType = sourceTypeFor(message.channelType);
+    const source = sourceType
+      ? yield* sources.findByExternal(sourceType, message.channelId)
+      : undefined;
+    if (!source) return { kind: "unlinked" } as InboundOutcome;
+
+    const project = yield* projects.get(source.projectId);
+    const result = yield* classify(project.customInstructions);
+    if (!isConfident(result.confidence)) return yield* clarify();
 
     const at = yield* nowIso;
-    const active = (yield* tickets.listByStatus(["open", "assigned", "in_progress", "blocked"]))
-      .filter((t) => t.projectId === project.id && !isTerminal(t.status))
+    const active = (yield* tickets.listByStatus(ACTIVE_STATUSES))
+      .filter((t) => t.projectId === project.id)
       .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
 
     switch (result.intent) {
