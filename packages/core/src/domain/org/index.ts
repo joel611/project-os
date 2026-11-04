@@ -1,2 +1,5 @@
-// Domain module: org. Entity, rules, and Data.TaggedError types land in #8.
-export {};
+export interface Org {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: string;
+}

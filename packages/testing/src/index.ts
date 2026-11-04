@@ -1,5 +1,45 @@
 import { Clock } from "@project-os/core";
 import { Effect, Layer } from "effect";
+import {
+  AgentRuntimeEcho,
+  IdGeneratorSequential,
+  IntentClassifierFake,
+  KeyValueStoreInMemory,
+  makeChannelGatewayRecording,
+  MemoryRepositoryInMemory,
+  ProjectRepositoryInMemory,
+  ProjectSourceRepositoryInMemory,
+  SchedulerNoop,
+  TicketRepositoryInMemory,
+  WorkerLauncherNoop,
+  WorkerRepositoryInMemory,
+} from "./in-memory.ts";
 
-/** Fixed clock for deterministic tests. In-memory fakes for every port land in #8. */
+export * from "./in-memory.ts";
+
+/** Fixed clock for deterministic tests. */
 export const fixedClock = (date: Date) => Layer.succeed(Clock, { now: Effect.succeed(date) });
+
+/**
+ * Every port, in memory. State is fresh per Layer build.
+ * `sent` collects replies passed to `ChannelGateway.send`.
+ */
+export const makeTestLayer = (options?: { readonly now?: Date }) => {
+  const gateway = makeChannelGatewayRecording();
+  const layer = Layer.mergeAll(
+    fixedClock(options?.now ?? new Date("2026-11-04T00:00:00.000Z")),
+    TicketRepositoryInMemory,
+    ProjectRepositoryInMemory,
+    ProjectSourceRepositoryInMemory,
+    MemoryRepositoryInMemory,
+    WorkerRepositoryInMemory,
+    KeyValueStoreInMemory,
+    gateway.layer,
+    SchedulerNoop,
+    IntentClassifierFake(),
+    AgentRuntimeEcho,
+    WorkerLauncherNoop,
+    IdGeneratorSequential,
+  );
+  return { layer, sent: gateway.sent };
+};
