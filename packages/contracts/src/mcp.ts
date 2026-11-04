@@ -1,0 +1,65 @@
+import { Schema } from "effect";
+import { MemoryEntry, Ticket, TicketEvent } from "./entities.ts";
+import { Actor, MemoryEntryType, TicketEventType, WorkerType } from "./enums.ts";
+import { TicketStatus } from "./ticket-status.ts";
+
+const Id = Schema.NonEmptyString;
+
+export const TicketListAssignedInput = Schema.Struct({
+  workerId: Id,
+  workerType: Schema.optionalKey(WorkerType),
+});
+export const TicketListAssignedOutput = Schema.Struct({ tickets: Schema.Array(Ticket) });
+
+export const TicketClaimInput = Schema.Struct({ ticketId: Id, workerId: Id });
+export const TicketClaimOutput = Schema.Struct({ ticket: Ticket });
+
+export const TicketGetInput = Schema.Struct({
+  ticketId: Id,
+  eventLimit: Schema.optionalKey(Schema.Int),
+});
+export const TicketGetOutput = Schema.Struct({
+  ticket: Ticket,
+  events: Schema.Array(TicketEvent),
+});
+
+export const TicketAppendEventInput = Schema.Struct({
+  ticketId: Id,
+  type: TicketEventType,
+  actor: Actor,
+  actorId: Schema.optionalKey(Schema.String),
+  body: Schema.String,
+  payload: Schema.optionalKey(Schema.Unknown),
+});
+export const TicketAppendEventOutput = Schema.Struct({ event: TicketEvent });
+
+export const TicketUpdateStatusInput = Schema.Struct({
+  ticketId: Id,
+  status: TicketStatus,
+  error: Schema.optionalKey(Schema.String),
+});
+export const TicketUpdateStatusOutput = Schema.Struct({ ticket: Ticket });
+
+export const ProjectMemoryReadInput = Schema.Struct({
+  projectId: Id,
+  type: Schema.optionalKey(MemoryEntryType),
+  limit: Schema.optionalKey(Schema.Int),
+});
+export const ProjectMemoryReadOutput = Schema.Struct({ entries: Schema.Array(MemoryEntry) });
+
+export const ProjectMemoryWriteInput = Schema.Struct({
+  projectId: Id,
+  ticketId: Schema.optionalKey(Schema.String),
+  type: MemoryEntryType,
+  title: Schema.String,
+  content: Schema.String,
+  sourceMetadata: Schema.optionalKey(Schema.Unknown),
+});
+export const ProjectMemoryWriteOutput = Schema.Struct({ entry: MemoryEntry });
+
+export const WorkerHeartbeatInput = Schema.Struct({
+  workerId: Id,
+  workerType: WorkerType,
+  ticketId: Schema.optionalKey(Schema.String),
+});
+export const WorkerHeartbeatOutput = Schema.Struct({ lastSeenAt: Schema.String });
