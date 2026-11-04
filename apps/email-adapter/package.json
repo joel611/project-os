@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/main.bun.ts",
+    "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
     "start": "bun src/main.bun.ts"
   },
   "dependencies": {
