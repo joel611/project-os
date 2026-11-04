@@ -102,8 +102,8 @@ Thin adapters only. No business logic.
 
 Single bounded context that owns:
 
-- Pi Durable agent loop
-- Jev intent classifier
+- Pi Durable agent loop (§8.6)
+- Jev intent classifier (§8.6)
 - Project Memory data and logic
 - **Ticket lifecycle** (create, assign, follow-up, close)
 - **MCP Server** exposing tools to Workers
@@ -612,7 +612,8 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `KeyValueStore` | cache, dedupe of inbound messages, short-lived state | Workers KV | in-memory / SQLite |
 | `ChannelGateway` | send reply instruction to an adapter | HTTP / service binding | HTTP |
 | `Scheduler` | run the health sweep every minute | Cron Trigger | `setInterval` |
-| `AgentRuntime` | Pi Durable agent loop + Jev | Durable Object | in-process |
+| `IntentClassifier` | Jev intent classification (§8.6) | pi-ai `classify` → OpenRouter (or Workers AI) | pi-ai `classify` → OpenRouter |
+| `AgentRuntime` | Pi Durable conversation: reply composition, admin dialogue | Harness in a Durable Object (DO SQLite storage) | Harness in-process (SQLite file storage) |
 | `WorkerLauncher` | start a Daytona sandbox (later) | Daytona API | no-op |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
 
@@ -692,11 +693,34 @@ Enforce these with lint import rules in the Vite+ config.
 - **Conflicts with `CONTEXT.md`:** it says each domain module colocates its own Drizzle schema. Clean architecture moves the schema out of `core` into `db-sqlite`, so `core` stays provider-free. `CONTEXT.md` needs updating when we start coding. The `Db` service there becomes an infra detail behind the repository ports.
 - **HTTP framework: Elysia.** Native on Bun. On Workers it uses the experimental `CloudflareAdapter` (`elysia/adapter/cloudflare-worker`) and needs `.compile()` and `compatibility_date >= 2025-06-01`. On Workers, the static plugin, `Elysia.file`, and OpenAPI type generation don't work (no `fs`). Use Wrangler `assets` for static files.
 - **Discord adapter: long-running gateway process (Hermes model).** Hermes Agent's messaging gateway is a single background process that opens an *outbound* Discord Gateway WebSocket. It needs no public URL or inbound port, which is why it looks "webhook-free". HTTP interactions alone can't be used, because they only deliver slash commands and buttons, not ordinary channel messages. So `discord-adapter` is a standalone Bun process that holds the gateway connection and calls the coordinator over HTTP. Locally it runs in Compose. On the Cloudflare target, it either runs anywhere that allows a long-running process (a small VM, Fly, a Cloudflare Container) or lives in a Durable Object that keeps the outbound WebSocket open (that DO can't hibernate, so it's always billed). The coordinator itself stays a normal Worker either way.
-- **Agent runtime:** on Cloudflare, the Pi Durable loop maps naturally onto a Durable Object. Locally it runs in-process behind the same `AgentRuntime` port.
+- **Agent runtime:** see §8.6.
 - **Atomic claim:** `ticket_claim` is a single conditional `UPDATE … WHERE status = 'assigned'`, which works the same on D1 and bun:sqlite.
 - **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. `wrangler` handles Cloudflare dev and deploy.
 - `libs/auth` (Better Auth) is dropped for the POC since there's no auth. It comes back as an `Auth` port when Web UI auth is designed.
 - The v1.1 throwaway `Task` entity in `CONTEXT.md` is no longer needed once `ticket/` exists.
+
+### 8.6 Pi Durable + Jev
+
+**Pi Durable** ([`@earendil-works/pi-durable`](https://github.com/earendil-works/pi/tree/main/packages/durable), experimental, API changes between releases) is the Coordinator's agent loop. It is a durable harness: conversations, model turns, tool calls, and its own tasks are committed to storage before anything is shown, so a crashed process resumes where it stopped.
+
+- One Pi conversation per Project (the root conversation per project, or one per channel thread later). Inputs are submitted with `requestId = externalId`, so a re-delivered Discord message is not answered twice.
+- Pi's job in the POC is narrow: compose the curated channel reply from a finished ticket, and run the admin-channel dialogue. It does **not** execute the work; Workers do.
+- Coordinator actions are exposed to Pi as extension tools that call core use cases (`create_ticket`, `ticket_status`, `create_project`, `add_source`, …). Pi never gets channel tools; replies go out through `ChannelGateway`.
+- Storage: local target uses Pi's SQLite storage on a file next to the app database; Cloudflare uses `openDurableObjectSqliteStorage` inside a Durable Object, waking via `onWake` + alarms.
+- Models come from `@earendil-works/pi-ai` with the OpenRouter provider (`OPENROUTER_API_KEY`). The chat model id is config.
+
+**Jev** (TypeSafe's System One decision model) is the classifier. It returns a typed choice with probabilities and confidence, not free text. It is called through pi-ai's `models.classify()` on the OpenRouter provider (OpenRouter serves TypeSafe's System One protocol; it is not a chat-completions model).
+
+- Pin a version (`typesafe/jev-1.14` on OpenRouter), not `~typesafe/jev-latest`.
+- One request per inbound message, all questions evaluated together:
+  - `intent` (choice): `new_request`, `follow_up` (on an open ticket), `status_question`, `admin_command`, `chit_chat`, `none`
+  - `worker_type` (choice): `local_claude`, … (only meaningful for `new_request`)
+  - `needs_worker` (bool): does this need a Worker, or can the Coordinator answer from Project Memory
+- The option sets live in code; Jev only chooses between them. Below a confidence threshold (config, start at 0.5) the Coordinator asks a clarifying question instead of creating a ticket.
+- Keep counting, arithmetic, and date logic in code, not in Jev questions.
+- On Cloudflare, Jev is also available on Workers AI (`typesafe/jev-1.14.0`) through the same `IntentClassifier` port.
+
+Flow: inbound → `IntentClassifier` (Jev) → use case decides (create/assign ticket, append follow_up, answer status, route to admin) → on completion `AgentRuntime` (Pi) composes the reply → `ChannelGateway`.
 
 ---
 
