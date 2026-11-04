@@ -4,6 +4,48 @@
 **Previous:** v2.3 (MCP Worker interface)  
 **Last updated:** 2026-11-04
 
+## Table of Contents
+
+- [1. High-Level Architecture](#1-high-level-architecture)
+  - [Design Principles](#design-principles)
+- [2. Component Responsibilities](#2-component-responsibilities)
+  - [2.1 Channel Adapters (Ingress)](#21-channel-adapters-ingress)
+  - [2.2 Coordinator Service (Agent Loop + Project Memory + Tickets + MCP)](#22-coordinator-service-agent-loop--project-memory--tickets--mcp)
+  - [2.3 Workers](#23-workers)
+- [3. Worker Interface (MCP)](#3-worker-interface-mcp)
+  - [3.1 Auth stance](#31-auth-stance)
+  - [3.1a Assignment model: pull](#31a-assignment-model-pull)
+  - [3.2 MCP Server (owned by Coordinator)](#32-mcp-server-owned-by-coordinator)
+- [4. Core Data Model](#4-core-data-model)
+  - [Org (lightweight)](#org-lightweight)
+  - [Project](#project)
+  - [ProjectSource](#projectsource)
+  - [MemoryEntry](#memoryentry)
+  - [Ticket  (the central work item)](#ticket--the-central-work-item)
+  - [TicketEvent  (conversation + status log on the ticket)](#ticketevent--conversation--status-log-on-the-ticket)
+  - [Worker  (registry + health)](#worker--registry--health)
+  - [User](#user)
+- [5. Key Runtime Flows](#5-key-runtime-flows)
+  - [5.1 Normal Discord message → Ticket](#51-normal-discord-message--ticket)
+  - [5.2 Long-running ticket with follow-ups](#52-long-running-ticket-with-follow-ups)
+  - [5.3 Email message](#53-email-message)
+  - [5.4 Admin configuration (Discord)](#54-admin-configuration-discord)
+  - [5.5 Coordinator health checks (ticket time + worker health)](#55-coordinator-health-checks-ticket-time--worker-health)
+  - [5.6 POC deployment: local Docker Compose](#56-poc-deployment-local-docker-compose)
+- [6. API Surface](#6-api-surface)
+  - [For Web UI / Admin (HTTP)](#for-web-ui--admin-http)
+  - [For Workers (MCP only)](#for-workers-mcp-only)
+  - [Internal (used by agent loop)](#internal-used-by-agent-loop)
+- [7. Open / Deferred Items](#7-open--deferred-items)
+- [8. Monorepo Layout & Provider Architecture](#8-monorepo-layout--provider-architecture)
+  - [8.1 Targets](#81-targets)
+  - [8.2 Clean architecture: ports and adapters](#82-clean-architecture-ports-and-adapters)
+  - [8.3 Folder structure](#83-folder-structure)
+  - [8.4 Dependency rules](#84-dependency-rules)
+  - [8.5 Notes and conflicts](#85-notes-and-conflicts)
+  - [8.6 Pi Durable + Jev](#86-pi-durable--jev)
+- [9. Migration Note](#9-migration-note)
+
 ---
 
 ## 1. High-Level Architecture
