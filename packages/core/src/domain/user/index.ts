@@ -1,2 +1,12 @@
-// Domain module: user. Entity, rules, and Data.TaggedError types land in #8.
-export {};
+export type UserRole = "admin" | "member";
+
+export interface User {
+  readonly id: string;
+  readonly email: string;
+  readonly name: string;
+  readonly role: UserRole;
+  readonly orgId: string;
+  readonly createdAt: string;
+}
+
+export const isAdmin = (user: User): boolean => user.role === "admin";
