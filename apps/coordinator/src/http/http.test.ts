@@ -1,7 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IntentClassifier } from "@project-os/core";
+import {
+  AgentRuntime,
+  AgentRuntimeError,
+  ClassifierError,
+  IntentClassifier,
+} from "@project-os/core";
 import { LocalLive, openLocalDb } from "@project-os/infra-local";
 import { classifierReturning, makeTestLayer } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
@@ -156,6 +161,17 @@ describe("POST /inbound", () => {
     expect(res.body.error).toBe("SchemaError");
   });
 
+  it("502s when the intent classifier fails", async () => {
+    const { layer } = makeTestLayer();
+    const failing = Layer.succeed(IntentClassifier, {
+      classify: () => Effect.fail(new ClassifierError({ message: "down" })),
+    });
+    const app = appFor(Layer.provideMerge(failing, layer) as Layer.Layer<HttpEnv>);
+    await linkedProject(app);
+    const res = await call(app, "POST", "/inbound", inbound());
+    expect(res).toMatchObject({ status: 502, body: { error: "ClassifierError" } });
+  });
+
   it("reports unlinked channels", async () => {
     const { app } = setup();
     const res = await call(app, "POST", "/inbound", inbound());
@@ -252,6 +268,18 @@ describe("tickets", () => {
     expect(bad).toMatchObject({ status: 409, body: { error: "InvalidTransition" } });
     const missing = await call(app, "POST", "/tickets/nope/status", { status: "failed" });
     expect(missing.status).toBe(404);
+  });
+
+  it("502s when the agent runtime fails while composing the reply", async () => {
+    const { layer } = makeTestLayer({ classifier: classifierReturning("new_request") });
+    const failing = Layer.succeed(AgentRuntime, {
+      respond: () => Effect.fail(new AgentRuntimeError({ message: "down" })),
+    });
+    const app = appFor(Layer.provideMerge(failing, layer) as Layer.Layer<HttpEnv>);
+    const id = await createTicket(app);
+    await call(app, "POST", `/tickets/${id}/status`, { status: "in_progress" });
+    const res = await call(app, "POST", `/tickets/${id}/status`, { status: "completed" });
+    expect(res).toMatchObject({ status: 502, body: { error: "AgentRuntimeError" } });
   });
 
   it("rejects an unknown status with 400", async () => {
