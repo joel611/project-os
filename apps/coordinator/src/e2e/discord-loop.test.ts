@@ -1,121 +1,36 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { schema } from "@project-os/db-sqlite";
-import { LocalLive, openLocalDb } from "@project-os/infra-local";
-import { AgentRuntimeEcho, classifierReturning } from "@project-os/testing";
-import { Layer, ManagedRuntime } from "effect";
+import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fakeInbound, type FakeSpeaker } from "../../../discord-adapter/src/fake.ts";
 import { forwardInbound } from "../../../discord-adapter/src/forward.ts";
-import { createReplyApp } from "../../../discord-adapter/src/reply.ts";
-import { createApp } from "../app.ts";
-import type { McpRuntime } from "../mcp/server.ts";
+import { type Stack, startStack } from "./stack.ts";
 
 // Discord -> /inbound -> ticket -> MCP worker -> completion -> /reply, with no Discord.
-// Real: SQLite, HTTP routes, MCP server, HTTP channel gateway, adapter reply endpoint.
-// Faked: the discord.js client (replaced by fakeInbound / a recording `post`), the
-// classifier, and the agent runtime (echoes its prompt).
 
-const T0 = "2026-11-04T00:00:00.000Z";
 const WORKER = "w1";
 const CHANNEL = "chan-1";
 const speaker: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada" };
 
-interface Posted {
-  target: { channelId: string; threadId?: string };
-  content: string;
-}
-
-let dir: string;
-let adapter: { stop: () => unknown } | undefined;
-let runtime: McpRuntime | undefined;
-let mcp: Client | undefined;
-let app: ReturnType<typeof createApp>;
-let posted: Posted[];
+let stack: Stack;
+let mcp: Awaited<ReturnType<Stack["worker"]>>;
 
 const boot = async (classifier: ReturnType<typeof classifierReturning>) => {
-  dir = mkdtempSync(join(tmpdir(), "e2e-"));
-  const dbPath = join(dir, "test.sqlite");
-  const { sqlite, db } = openLocalDb(dbPath);
-  db.insert(schema.orgs).values({ id: "o1", name: "Org", createdAt: T0 }).run();
-  sqlite.close();
-
-  posted = [];
-  const adapterApp = createReplyApp(
-    async (target, content) => void posted.push({ target, content }),
-  ).listen(0);
-  adapter = adapterApp;
-
-  const rt = ManagedRuntime.make(
-    Layer.mergeAll(
-      LocalLive({
-        dbPath,
-        adapterUrls: { discord: `http://localhost:${adapterApp.server!.port}` },
-      }),
-      classifier,
-      AgentRuntimeEcho,
-    ) as Layer.Layer<any, never>,
-  ) as McpRuntime;
-  runtime = rt;
-
-  app = createApp(
-    {},
-    {
-      http: { run: (effect) => rt.runPromise(effect as any), inbound: { workerId: WORKER } },
-      mcp: rt,
-    },
-  );
-  const client = new Client({ name: "e2e-worker", version: "0" });
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
-      fetch: (url, init) => app.handle(new Request(url.toString(), init)),
-    }),
-  );
-  mcp = client;
+  stack = await startStack({ classifier, workerId: WORKER });
+  mcp = await stack.worker();
 };
 
-afterEach(async () => {
-  await mcp?.close();
-  await runtime?.dispose();
-  await adapter?.stop();
-  mcp = runtime = adapter = undefined;
-  rmSync(dir, { recursive: true, force: true });
-});
+afterEach(() => stack.stop());
 
-const json = async (method: string, path: string, body?: unknown) => {
-  const res = await app.handle(
-    new Request(`http://localhost${path}`, {
-      method,
-      ...(body === undefined
-        ? {}
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
-    }),
-  );
-  return (await res.json()) as any;
-};
-
-const linkChannel = async () => {
-  const project = await json("POST", "/projects", { orgId: "o1", name: "Acme" });
-  await json("POST", `/projects/${project.id}/sources`, {
-    type: "discord_channel",
-    externalId: CHANNEL,
-    name: "#acme",
-    isDefaultResponse: true,
-  });
-  return project.id as string;
-};
+const json = (method: string, path: string, body?: unknown) => stack.json(method, path, body);
+const linkChannel = () => stack.linkChannel(CHANNEL);
 
 const sayInDiscord = async (who: FakeSpeaker, content: string, id?: string) => {
   const inbound = fakeInbound(who, content, id ? { id } : {});
   if (!inbound) return;
-  await forwardInbound("http://localhost", inbound, (req) => app.handle(req));
+  await forwardInbound(stack.url, inbound, fetch);
 };
 
 const tool = async (name: string, args: Record<string, unknown>) =>
-  ((await mcp!.callTool({ name, arguments: args })) as { structuredContent?: any })
+  ((await mcp.callTool({ name, arguments: args })) as { structuredContent?: any })
     .structuredContent;
 
 describe("discord loop, no Discord", () => {
@@ -129,7 +44,7 @@ describe("discord loop, no Discord", () => {
       const tickets = await json("GET", `/projects/${projectId}/tickets`);
       expect(tickets).toHaveLength(1);
       expect(tickets[0]).toMatchObject({ title: "please add dark mode", workerId: WORKER });
-      expect(posted).toEqual([]);
+      expect(stack.posted).toEqual([]);
 
       const assigned = await tool("ticket_list_assigned", { workerId: WORKER });
       const ticketId = assigned.tickets[0].id as string;
@@ -144,10 +59,10 @@ describe("discord loop, no Discord", () => {
       });
       await tool("ticket_update_status", { ticketId, status: "completed" });
 
-      expect(posted).toHaveLength(1);
-      expect(posted[0]!.target).toEqual({ channelId: CHANNEL });
-      expect(posted[0]!.content).toContain("please add dark mode");
-      expect(posted[0]!.content).toContain("dark mode shipped");
+      expect(stack.posted).toHaveLength(1);
+      expect(stack.posted[0]!.target).toEqual({ channelId: CHANNEL });
+      expect(stack.posted[0]!.content).toContain("please add dark mode");
+      expect(stack.posted[0]!.content).toContain("dark mode shipped");
     });
 
     it("ignores a duplicate delivery of the same Discord message", async () => {
@@ -161,7 +76,7 @@ describe("discord loop, no Discord", () => {
       const projectId = await linkChannel();
       await sayInDiscord({ ...speaker, channelId: "other-chan" }, "hello?");
       expect(await json("GET", `/projects/${projectId}/tickets`)).toEqual([]);
-      expect(posted).toEqual([]);
+      expect(stack.posted).toEqual([]);
     });
   });
 
@@ -172,9 +87,9 @@ describe("discord loop, no Discord", () => {
       const projectId = await linkChannel();
       await sayInDiscord({ ...speaker, threadId: "th-1" }, "uhh");
 
-      expect(posted).toHaveLength(1);
-      expect(posted[0]!.target).toEqual({ channelId: CHANNEL, threadId: "th-1" });
-      expect(posted[0]!.content).toContain("didn't catch that");
+      expect(stack.posted).toHaveLength(1);
+      expect(stack.posted[0]!.target).toEqual({ channelId: CHANNEL, threadId: "th-1" });
+      expect(stack.posted[0]!.content).toContain("didn't catch that");
       expect(await json("GET", `/projects/${projectId}/tickets`)).toEqual([]);
     });
   });

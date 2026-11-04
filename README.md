@@ -103,7 +103,7 @@ bun run test
 
 ## Testing without Discord
 
-`bun run test:run` includes `apps/coordinator/src/e2e/discord-loop.test.ts`: message → ticket → MCP worker → completion → reply, with the Discord client faked.
+`bun run test:integration` runs `apps/coordinator/src/e2e/`: message → ticket → Watcher → MCP worker → completion → reply, with discord.js and the AI providers faked. `bun run test:run` includes it.
 
 To drive a running Coordinator by hand, stop the real adapter (it owns `:8081`) and run the fake in its place:
 
