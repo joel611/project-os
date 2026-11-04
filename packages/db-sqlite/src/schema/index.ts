@@ -1,2 +1,8 @@
-// Drizzle SQLite tables land in #9 (one file per table, re-exported here).
-export {};
+export * from "./org.ts";
+export * from "./user.ts";
+export * from "./project.ts";
+export * from "./project-source.ts";
+export * from "./memory-entry.ts";
+export * from "./ticket.ts";
+export * from "./ticket-event.ts";
+export * from "./worker.ts";

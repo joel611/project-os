@@ -1,5 +1,5 @@
 import type { ReplyInstruction, WorkerType } from "@project-os/contracts";
-import { Context, type Effect } from "effect";
+import { Context, Data, type Effect } from "effect";
 
 export class KeyValueStore extends Context.Service<
   KeyValueStore,
@@ -40,9 +40,23 @@ export class Scheduler extends Context.Service<
   }
 >()("@project-os/core/Scheduler") {}
 
+/** The classifier call failed (provider, auth, or malformed response). */
+export class ClassifierError extends Data.TaggedError("ClassifierError")<{
+  readonly message: string;
+}> {}
+
+/** The agent runtime could not produce an answer. */
+export class AgentRuntimeError extends Data.TaggedError("AgentRuntimeError")<{
+  readonly message: string;
+}> {}
+
 export interface IntentResult {
   readonly intent: string;
   readonly confidence: number;
+  /** Only meaningful for `new_request`. Falls back to the configured default. */
+  readonly workerType?: WorkerType;
+  /** Whether a Worker is needed, or the Coordinator can answer from Project Memory. */
+  readonly needsWorker?: boolean;
 }
 
 export class IntentClassifier extends Context.Service<
@@ -51,7 +65,7 @@ export class IntentClassifier extends Context.Service<
     readonly classify: (input: {
       readonly content: string;
       readonly projectContext: string;
-    }) => Effect.Effect<IntentResult>;
+    }) => Effect.Effect<IntentResult, ClassifierError>;
   }
 >()("@project-os/core/IntentClassifier") {}
 
@@ -62,7 +76,9 @@ export class AgentRuntime extends Context.Service<
     readonly respond: (input: {
       readonly sessionId: string;
       readonly prompt: string;
-    }) => Effect.Effect<string>;
+      /** Idempotency key: a re-delivered request is not answered twice. Use the inbound `externalId`. */
+      readonly requestId?: string;
+    }) => Effect.Effect<string, AgentRuntimeError>;
   }
 >()("@project-os/core/AgentRuntime") {}
 

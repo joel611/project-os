@@ -23,6 +23,13 @@ export class ClaimConflict extends Data.TaggedError("ClaimConflict")<{
 
 export const TERMINAL_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed", "cancelled"];
 
+export const ACTIVE_STATUSES: ReadonlyArray<TicketStatus> = [
+  "open",
+  "assigned",
+  "in_progress",
+  "blocked",
+];
+
 const TRANSITIONS: Readonly<Record<TicketStatus, ReadonlyArray<TicketStatus>>> = {
   open: ["assigned", "failed", "cancelled"],
   assigned: ["in_progress", "failed", "cancelled"],

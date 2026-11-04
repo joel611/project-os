@@ -9,15 +9,16 @@
   "type": "module",
   "scripts": {
     "dev": "vp run --parallel -r dev",
+    "seed": "bun apps/coordinator/src/main.seed.ts",
     "build": "vp run -r build",
     "prepare": "vp config",
     "check": "vp check",
     "fix": "vp check --fix",
     "lint": "vp lint",
     "fmt": "vp fmt",
-    "test": "vp test",
-    "test:run": "vp test run",
-    "test:coverage": "vp test run --coverage",
+    "test": "bun --bun vp test",
+    "test:run": "bun --bun vp test run",
+    "test:coverage": "bun --bun vp test run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
