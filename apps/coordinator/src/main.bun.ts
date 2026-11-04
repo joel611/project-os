@@ -5,7 +5,7 @@ import {
   newModels,
   openLocalStorage,
 } from "@project-os/agent-runtime";
-import { env, envNumber, healthConfig } from "@project-os/config";
+import { DEFAULT_WORKER_ID, env, envNumber, healthConfig } from "@project-os/config";
 import { DEFAULT_ORG, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
@@ -67,7 +67,7 @@ createApp(
     http: {
       run: (effect) => runtime.runPromise(effect),
       inbound: {
-        workerId: env("WORKER_ID", "local-claude-1"),
+        workerId: env("WORKER_ID", DEFAULT_WORKER_ID),
         confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
         // Admin identity (POC): only these Discord user ids may use the admin channel.
         ...(adminChannelId && { adminChannelId, adminUserIds }),

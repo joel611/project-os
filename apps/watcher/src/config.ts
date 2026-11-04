@@ -1,4 +1,4 @@
-import { env, envNumber } from "@project-os/config";
+import { DEFAULT_WORKER_ID, env, envNumber } from "@project-os/config";
 
 export interface WatcherConfig {
   readonly mcpUrl: string;
@@ -11,7 +11,7 @@ export interface WatcherConfig {
 
 export const loadConfig = (): WatcherConfig => ({
   mcpUrl: env("MCP_URL", "http://localhost:8080/mcp"),
-  workerId: env("WORKER_ID", "local-claude"),
+  workerId: env("WORKER_ID", DEFAULT_WORKER_ID),
   workerType: "local_claude",
   intervalMs: envNumber("POLL_INTERVAL_MS", 5 * 60 * 1000),
   maxSessions: envNumber("MAX_SESSIONS", 1),

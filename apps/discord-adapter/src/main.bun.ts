@@ -21,7 +21,7 @@ client.on(Events.MessageCreate, async (message) => {
   const inbound = normalizeMessage(message);
   if (!inbound) return;
   try {
-    await forwardInbound(coordinatorUrl, inbound);
+    await forwardInbound(coordinatorUrl, inbound, fetch);
   } catch (err) {
     console.error("forward to coordinator failed", err);
   }

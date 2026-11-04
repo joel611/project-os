@@ -10,8 +10,9 @@ console.log(`watcher ${config.workerId} → ${config.mcpUrl} (every ${config.int
 
 const watcher = createWatcher({
   config,
-  client: httpMcpClient(config.mcpUrl),
-  spawner: bunSpawner(config),
+  client: httpMcpClient(config.mcpUrl, fetch),
+  spawner: bunSpawner(config, Bun.spawn),
+  log: console.log,
 });
 
 await watcher.pollOnce();

@@ -9,11 +9,11 @@ export interface WatcherDeps {
   readonly config: WatcherConfig;
   readonly client: McpClient;
   readonly spawner: Spawner;
-  readonly log?: (message: string) => void;
+  readonly log: (message: string) => void;
 }
 
 // The watcher never claims tickets; the spawned Claude Code session does.
-export const createWatcher = ({ config, client, spawner, log = console.log }: WatcherDeps) => {
+export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => {
   let running = 0;
 
   const start = () => {
