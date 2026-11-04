@@ -324,6 +324,50 @@ describe("TicketRepository", () => {
     expect(out.miss._tag).toBe("TicketNotFound");
   });
 
+  it("assigns open tickets (worker-specific or any-of-type); concurrent double assign yields one winner", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(
+          ticket({ id: "t1", status: "open", workerId: null, workerType: null, assignedAt: null }),
+        );
+        yield* repo.insert(
+          ticket({ id: "t2", status: "open", workerId: null, workerType: null, assignedAt: null }),
+        );
+        const any = yield* repo.assign("t1", { workerType: "local_pi", workerId: null }, T1);
+        const exits = yield* Effect.all(
+          [
+            Effect.exit(repo.assign("t2", { workerType: "local_claude", workerId: "w1" }, T1)),
+            Effect.exit(repo.assign("t2", { workerType: "local_claude", workerId: "w2" }, T2)),
+          ],
+          { concurrency: "unbounded" },
+        );
+        return {
+          any,
+          exits,
+          t2: yield* repo.get("t2"),
+          again: yield* Effect.flip(
+            repo.assign("t1", { workerType: "local_pi", workerId: "w9" }, T2),
+          ),
+          miss: yield* Effect.flip(
+            repo.assign("nope", { workerType: "local_pi", workerId: null }, T2),
+          ),
+        };
+      }),
+    );
+    expect(out.any).toMatchObject({
+      status: "assigned",
+      assignedAt: T1,
+      workerType: "local_pi",
+      workerId: null,
+    });
+    expect(out.exits.filter(Exit.isSuccess)).toHaveLength(1);
+    expect(out.t2.status).toBe("assigned");
+    expect(out.again._tag).toBe("InvalidTransition");
+    expect(out.miss._tag).toBe("TicketNotFound");
+  });
+
   it("a concurrent status change is never overwritten: the loser re-validates", async () => {
     const { exits, final } = await run(
       Effect.gen(function* () {
