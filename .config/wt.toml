@@ -1,14 +1,14 @@
 # Worktrunk project hooks. Runs on `wt switch --create`.
 
-# Blocking: deps must exist before anything else in the new worktree.
+# Copy gitignored files listed in .worktreeinclude from the primary worktree
+# (.env, node_modules, build caches). Never overwrites existing files.
+# Runs first so the install below is a fast no-op/relink instead of a cold start.
+[[pre-start]]
+copy-ignored = "wt step copy-ignored"
+
+# Blocking: ensure deps match the lockfile (cheap after node_modules is copied).
 [[pre-start]]
 install = "bun install --frozen-lockfile"
-
-# Local config: .env is gitignored, so each worktree needs its own copy.
-# copy-ignored copies the primary worktree's .env (limited to .worktreeinclude;
-# never overwrites an existing file).
-[[pre-start]]
-copy-env = "wt step copy-ignored"
 
 # Fallback for fresh clones where the primary worktree has no .env yet.
 # `-n` never overwrites an existing .env.
