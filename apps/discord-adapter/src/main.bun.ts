@@ -7,7 +7,7 @@ import { createReplyApp } from "./reply.ts";
 // Long-running process holding an outbound Discord Gateway WebSocket (§8.5).
 // Needs the Message Content privileged intent enabled in the Discord developer portal.
 const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
-const port = envNumber("PORT", 8081);
+const port = envNumber("DISCORD_ADAPTER_PORT", 8081); // not PORT: that is the Coordinator's, shared via .env
 
 const client = new Client({
   intents: [
