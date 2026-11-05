@@ -1,0 +1,82 @@
+// Drives the running verification stack the way production actors do.
+//   bun drive.ts say "<message>" [--channel verify-chan] [--user u1] [--name Ada]
+//       A Discord user speaks: real normalizeMessage -> POST /inbound (what the Discord adapter does).
+//   bun drive.ts work "<result body>" [--memory "<fact>"]
+//       A Worker plays session-start.md over real MCP: list assigned -> claim -> read memory
+//       -> (optional memory write) -> append result -> complete. Prints the ticket id.
+// Env: COORD_PORT=18080, WORKER_ID=verify-worker.
+import { parseArgs } from "node:util";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { fakeInbound } from "../../discord-adapter/src/fake.ts";
+import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+
+const url = `http://localhost:${process.env.COORD_PORT ?? 18080}`;
+const workerId = process.env.WORKER_ID ?? "verify-worker";
+const { positionals, values } = parseArgs({
+  allowPositionals: true,
+  options: {
+    channel: { type: "string", default: "verify-chan" },
+    user: { type: "string", default: "u1" },
+    name: { type: "string", default: "Ada" },
+    memory: { type: "string" },
+  },
+});
+const [cmd, text] = positionals;
+if (!text && cmd !== "heartbeat") throw new Error('usage: drive.ts say|work "<text>" | heartbeat');
+
+if (cmd === "heartbeat") {
+  // What the Watcher does every poll: marks the worker online in GET /workers.
+  const mcp = new Client({ name: "verify-worker", version: "0" });
+  await mcp.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+  const res = (await mcp.callTool({
+    name: "worker_heartbeat",
+    arguments: { workerId, workerType: "local_claude" },
+  })) as { isError?: boolean; structuredContent?: any };
+  if (res.isError) throw new Error(`worker_heartbeat failed: ${JSON.stringify(res)}`);
+  await mcp.close();
+  console.log(`heartbeat ${workerId} lastSeenAt=${res.structuredContent.lastSeenAt}`);
+} else if (cmd === "say") {
+  const inbound = fakeInbound(
+    { channelId: values.channel!, userId: values.user!, name: values.name! },
+    text,
+  );
+  if (!inbound) throw new Error("empty message ignored");
+  await forwardInbound(url, inbound, fetch);
+  console.log(`said: ${text}`);
+} else if (cmd === "work") {
+  const mcp = new Client({ name: "verify-worker", version: "0" });
+  await mcp.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+  const tool = async (name: string, args: Record<string, unknown>) => {
+    const res = (await mcp.callTool({ name, arguments: args })) as {
+      isError?: boolean;
+      structuredContent?: any;
+    };
+    if (res.isError) throw new Error(`${name} failed: ${JSON.stringify(res)}`);
+    return res.structuredContent;
+  };
+  const { tickets } = await tool("ticket_list_assigned", { workerId });
+  if (!tickets.length) throw new Error("no assigned ticket (did `say` run? is WORKER_ID right?)");
+  const ticketId = tickets[0].id as string;
+  await tool("ticket_claim", { ticketId, workerId });
+  const { ticket } = await tool("ticket_get", { ticketId });
+  await tool("project_memory_read", { projectId: ticket.projectId });
+  if (values.memory)
+    await tool("project_memory_write", {
+      projectId: ticket.projectId,
+      ticketId,
+      type: "worker_note",
+      title: values.memory.slice(0, 40),
+      content: values.memory,
+    });
+  await tool("ticket_append_event", {
+    ticketId,
+    type: "result",
+    actor: "worker",
+    actorId: workerId,
+    body: text,
+  });
+  await tool("ticket_update_status", { ticketId, status: "completed" });
+  await mcp.close();
+  console.log(`completed ticket ${ticketId}`);
+} else throw new Error(`unknown command ${cmd}`);
