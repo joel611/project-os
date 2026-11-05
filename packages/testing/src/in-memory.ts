@@ -99,6 +99,13 @@ export const ProjectRepositoryInMemory = Layer.sync(ProjectRepository, () => {
       return p ? Effect.succeed(p) : Effect.fail(new ProjectNotFound({ projectId: id }));
     },
     list: Effect.sync(() => [...projects.values()]),
+    update: (project) =>
+      projects.has(project.id)
+        ? Effect.sync(() => {
+            projects.set(project.id, project);
+            return project;
+          })
+        : Effect.fail(new ProjectNotFound({ projectId: project.id })),
   };
 });
 

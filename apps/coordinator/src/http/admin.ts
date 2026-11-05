@@ -1,6 +1,7 @@
 import { ProjectSourceType, TICKET_STATUSES, TicketStatus } from "@project-os/contracts";
 import {
   addSource,
+  updateProject as updateProjectUseCase,
   Clock,
   createProject as createProjectUseCase,
   ProjectRepository,
@@ -17,6 +18,12 @@ export const CreateProjectBody = Schema.Struct({
   orgId: Schema.NonEmptyString,
   name: Schema.NonEmptyString,
   slug: Schema.optionalKey(Schema.String),
+  customInstructions: Schema.optionalKey(Schema.String),
+});
+
+export const UpdateProjectBody = Schema.Struct({
+  name: Schema.optionalKey(Schema.NonEmptyString),
+  slug: Schema.optionalKey(Schema.NullOr(Schema.String)),
   customInstructions: Schema.optionalKey(Schema.String),
 });
 
@@ -38,6 +45,9 @@ export const decode = <S extends Schema.Decoder<unknown>>(schema: S, body: unkno
   Schema.decodeUnknownEffect(schema)(body);
 
 export const createProject = (body: typeof CreateProjectBody.Type) => createProjectUseCase(body);
+
+export const updateProject = (projectId: string, body: typeof UpdateProjectBody.Type) =>
+  updateProjectUseCase({ projectId, ...body });
 
 export const listProjects = Effect.flatMap(ProjectRepository, (repo) => repo.list);
 

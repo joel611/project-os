@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectSettings } from "@/components/project-settings";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
 import { relativeTime, splitTickets } from "@/model";
@@ -196,6 +197,7 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
         <TabsList>
           <TabsTrigger value="tickets">Tickets {count(tickets.data?.length)}</TabsTrigger>
           <TabsTrigger value="memory">Memory {count(memory.data?.length)}</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="tickets" className="pt-2">
           {tickets.isPending ? (
@@ -214,6 +216,9 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
           ) : (
             <Memory entries={memory.data} />
           )}
+        </TabsContent>
+        <TabsContent value="settings">
+          {detail.data && <ProjectSettings detail={detail.data} />}
         </TabsContent>
       </Tabs>
     </div>
