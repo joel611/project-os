@@ -1,7 +1,8 @@
 import type { MemoryEntry, ProjectSourceType, Ticket } from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { FileText, FolderOpen, GitBranch, Hash, List, Mail, Star } from "lucide-react";
-import { ApiError, type ProjectDetail } from "@/api";
+import { api, ApiError, type ProjectDetail } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,8 +16,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
-import { useApi } from "@/hooks";
-import { formatRoute, relativeTime, splitTickets } from "@/model";
+import { relativeTime, splitTickets } from "@/model";
 
 const SOURCE_ICON: Readonly<Record<ProjectSourceType, typeof Hash>> = {
   discord_channel: Hash,
@@ -60,13 +60,17 @@ const TicketRows = ({
   projectId: string;
 }) => {
   const now = new Date();
+  const navigate = useNavigate();
   return tickets.map((t) => (
     <TableRow
       key={t.id}
       className="cursor-pointer"
-      onClick={() => {
-        window.location.hash = formatRoute({ view: "project", projectId, ticketId: t.id });
-      }}
+      onClick={() =>
+        navigate({
+          to: "/projects/$projectId/tickets/$ticketId",
+          params: { projectId, ticketId: t.id },
+        })
+      }
     >
       <TableCell className="w-36">
         <StatusBadge status={t.status} />
@@ -148,12 +152,13 @@ const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
           </div>
           <p className="text-sm whitespace-pre-wrap text-muted-foreground">{m.content}</p>
           {m.ticketId && (
-            <a
+            <Link
               className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-              href={formatRoute({ view: "project", projectId: m.projectId, ticketId: m.ticketId })}
+              to="/projects/$projectId/tickets/$ticketId"
+              params={{ projectId: m.projectId, ticketId: m.ticketId }}
             >
               from ticket
-            </a>
+            </Link>
           )}
         </li>
       ))}
@@ -162,7 +167,6 @@ const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
 };
 
 export const ProjectView = ({ projectId }: { projectId: string }) => {
-  const api = useApi();
   const detail = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.project(projectId),

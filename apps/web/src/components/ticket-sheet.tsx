@@ -10,9 +10,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/states";
 import { StatusBadge, ToneDot } from "@/components/tone";
-import { useApi } from "@/hooks";
 import { EVENT, relativeTime } from "@/model";
-import type { TicketDetail } from "@/api";
+import { api, type TicketDetail } from "@/api";
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-col gap-0.5">
@@ -86,7 +85,6 @@ export const TicketSheet = ({
   ticketId: string | null;
   onClose: () => void;
 }) => {
-  const api = useApi();
   const detail = useQuery({
     queryKey: ["ticket", ticketId],
     queryFn: () => api.ticket(ticketId!),

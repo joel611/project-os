@@ -38,6 +38,7 @@ export default defineConfig({
         "**/dist/**",
         "**/migrations/**",
         "**/index.ts",
+        "**/routeTree.gen.ts",
         // Test fakes are test infrastructure, not production code.
         "packages/testing/**",
       ],
@@ -49,7 +50,7 @@ export default defineConfig({
   },
   lint: {
     plugins: ["typescript"],
-    ignorePatterns: ["**/dist/**", "**/migrations/**"],
+    ignorePatterns: ["**/dist/**", "**/migrations/**", "**/routeTree.gen.ts"],
     overrides: [
       {
         files: ["packages/core/**", "packages/contracts/**"],
@@ -81,6 +82,13 @@ export default defineConfig({
   },
   fmt: {
     printWidth: 100,
-    ignorePatterns: ["**/migrations/**", "bun.lock", "docs/**", "CONTEXT.md", "CLAUDE.md"],
+    ignorePatterns: [
+      "**/migrations/**",
+      "**/routeTree.gen.ts",
+      "bun.lock",
+      "docs/**",
+      "CONTEXT.md",
+      "CLAUDE.md",
+    ],
   },
 });

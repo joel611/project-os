@@ -1,6 +1,6 @@
 import { TICKET_STATUSES, type Ticket } from "@project-os/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { formatRoute, parseRoute, relativeTime, splitTickets, STATUS } from "./model.ts";
+import { relativeTime, splitTickets, STATUS } from "./model.ts";
 
 const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): Ticket => ({
   id,
@@ -54,25 +54,5 @@ describe("relativeTime", () => {
     ["2026-11-03T12:00:00Z", "2d ago"],
   ])("%s → %s", (iso, expected) => {
     expect(relativeTime(iso, now)).toBe(expected);
-  });
-});
-
-describe("routes", () => {
-  it.each([
-    ["", { view: "home" }],
-    ["#/", { view: "home" }],
-    ["#/nonsense", { view: "home" }],
-    ["#/p/a%2Fb", { view: "project", projectId: "a/b", ticketId: null }],
-    ["#/p/p1/t/t%201", { view: "project", projectId: "p1", ticketId: "t 1" }],
-  ] as const)("parses %j", (hash, route) => {
-    expect(parseRoute(hash)).toEqual(route);
-  });
-
-  it.each([
-    { view: "home" },
-    { view: "project", projectId: "a/b", ticketId: null },
-    { view: "project", projectId: "p1", ticketId: "t 1" },
-  ] as const)("round-trips %j", (route) => {
-    expect(parseRoute(formatRoute(route))).toEqual(route);
   });
 });

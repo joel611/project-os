@@ -95,7 +95,7 @@ bun run test
 - `apps/coordinator`: Elysia HTTP + MCP server; `main.bun.ts` (local) and `main.cloudflare.ts` (Workers)
 - `apps/discord-adapter`, `apps/email-adapter`: thin channel adapters
 - `apps/watcher`: host-run CLI that starts Claude Code per ticket
-- `apps/web`: read-only dashboard (Vite + React + shadcn) over the Coordinator HTTP API
+- `apps/web`: read-only dashboard (TanStack Start SPA, shadcn on Base UI) over the Coordinator HTTP API; `bun run --cwd apps/web build` exports a static site
 - `packages/core`: domain and ports, provider-free
 - `packages/contracts`: shared wire types
 - `packages/agent-runtime`: the Coordinator's agent loop and intent classifier
