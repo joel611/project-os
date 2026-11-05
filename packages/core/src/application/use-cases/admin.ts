@@ -37,6 +37,24 @@ export const createProject = (input: {
     } satisfies Project);
   });
 
+export const updateProject = (input: {
+  readonly projectId: string;
+  readonly name?: string;
+  readonly slug?: string | null;
+  readonly customInstructions?: string;
+}) =>
+  Effect.gen(function* () {
+    const repo = yield* ProjectRepository;
+    const current = yield* repo.get(input.projectId);
+    return yield* repo.update({
+      ...current,
+      name: input.name ?? current.name,
+      slug: input.slug === undefined ? current.slug : input.slug,
+      customInstructions: input.customInstructions ?? current.customInstructions,
+      updatedAt: yield* nowIso,
+    });
+  });
+
 export const addSource = (input: {
   readonly projectId: string;
   readonly type: ProjectSourceType;
