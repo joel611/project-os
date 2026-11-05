@@ -13,12 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ADDABLE_SOURCES, checkLines, sourceUrl, type AddableSource } from "@/model";
-
-const PLACEHOLDER: Readonly<Record<AddableSource, string>> = {
-  github_repo: "https://github.com/owner/repo\nowner/another-repo",
-  google_drive_folder: "https://drive.google.com/drive/folders/…",
-};
+import { checkSource, detectSource, sourceUrl, type SourceInput } from "@/model";
 
 const Problems = ({ lines }: { lines: ReadonlyArray<string> }) =>
   lines.length > 0 && (
@@ -71,7 +66,7 @@ const SourceList = ({ sources }: { sources: ReadonlyArray<ProjectSource> }) =>
     </ul>
   );
 
-const AddSources = ({
+const AddSource = ({
   projectId,
   sources,
 }: {
@@ -79,95 +74,69 @@ const AddSources = ({
   sources: ReadonlyArray<ProjectSource>;
 }) => {
   const qc = useQueryClient();
-  const [type, setType] = useState<AddableSource>("github_repo");
   const [text, setText] = useState("");
-  const [problems, setProblems] = useState<ReadonlyArray<string>>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const detected = detectSource(text);
   const add = useMutation({
-    // Sequential so one rejected link does not hide the others' result.
-    mutationFn: async (inputs: ReadonlyArray<Parameters<typeof api.addSource>[1]>) => {
-      const failed: string[] = [];
-      for (const input of inputs) {
-        try {
-          await api.addSource(projectId, input);
-        } catch (e) {
-          failed.push(
-            e instanceof ApiError && e.code === "SourceAlreadyLinked"
-              ? `${input.externalId} is already linked to another project.`
-              : `${input.externalId}: ${describeError(e as Error)}`,
-          );
-        }
-      }
-      return failed;
-    },
-    onSuccess: (failed) => {
-      setProblems((p) => [...p, ...failed]);
+    mutationFn: (input: SourceInput) => api.addSource(projectId, input),
+    onSuccess: () => {
+      setText("");
       return qc.invalidateQueries({ queryKey: ["project", projectId] });
     },
+    onError: (e, input) =>
+      setProblem(
+        e instanceof ApiError && e.code === "SourceAlreadyLinked"
+          ? `${input.externalId} is already linked to another project.`
+          : describeError(e),
+      ),
   });
 
   const submit = (e: SyntheticEvent) => {
     e.preventDefault();
-    const checks = checkLines(type, text, sources);
-    const ok = checks.flatMap((c) => (c.kind === "ok" ? [c.input] : []));
-    setProblems(
-      checks.flatMap((c) =>
-        c.kind === "invalid"
-          ? [`"${c.raw}" is not a recognizable link.`]
-          : c.kind === "duplicate"
-            ? [
-                c.in === "project"
-                  ? `${c.input.externalId} is already linked to this project.`
-                  : `${c.input.externalId} appears more than once.`,
-              ]
-            : [],
-      ),
-    );
-    // Keep only what still needs fixing in the box.
-    setText(checks.flatMap((c) => (c.kind === "invalid" ? [c.raw] : [])).join("\n"));
-    if (ok.length > 0) add.mutate(ok);
+    const check = checkSource(text, sources);
+    if (check.kind === "ok") {
+      setProblem(null);
+      add.mutate(check.input);
+    } else {
+      setProblem(
+        check.kind === "duplicate"
+          ? `${check.input.externalId} is already linked to this project.`
+          : "Not a GitHub repo or Google Drive folder link.",
+      );
+    }
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium">Add sources</h2>
-      <div className="flex gap-2" role="radiogroup" aria-label="Source type">
-        {ADDABLE_SOURCES.map((t) => {
-          const { Icon, label } = SOURCE_META[t];
-          return (
-            <Button
-              key={t}
-              type="button"
-              role="radio"
-              aria-checked={type === t}
-              variant={type === t ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setType(t);
-                setProblems([]);
-              }}
-            >
-              <Icon className="size-4" />
-              {label}
-            </Button>
-          );
-        })}
-      </div>
-      <Textarea
-        aria-label={`${SOURCE_META[type].label} links, one per line`}
-        placeholder={PLACEHOLDER[type]}
-        rows={3}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          setProblems([]);
-        }}
-      />
-      <Problems lines={problems} />
-      <div>
+    <form onSubmit={submit} className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">Add source</h2>
+      <div className="flex gap-2">
+        <Input
+          aria-label="GitHub repo or Google Drive folder link"
+          placeholder="Paste a GitHub repo or Google Drive folder link"
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setProblem(null);
+          }}
+        />
         <Button type="submit" disabled={!text.trim() || add.isPending}>
           {add.isPending ? "Adding…" : "Add"}
         </Button>
       </div>
+      {detected && !problem && (
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          {(() => {
+            const { Icon, label } = SOURCE_META[detected.type];
+            return (
+              <>
+                <Icon className="size-4" />
+                {label} · {detected.externalId}
+              </>
+            );
+          })()}
+        </p>
+      )}
+      <Problems lines={problem ? [problem] : []} />
     </form>
   );
 };
@@ -252,7 +221,7 @@ export const SettingsPage = ({ projectId }: { projectId: string }) => {
           </TabsList>
           <TabsContent value="sources" className="flex flex-col gap-6 pt-2">
             <SourceList sources={detail.data.sources} />
-            <AddSources projectId={projectId} sources={detail.data.sources} />
+            <AddSource projectId={projectId} sources={detail.data.sources} />
           </TabsContent>
           <TabsContent value="general" className="pt-2">
             {/* Remount when the saved row changes so fields reset to what was saved. */}
