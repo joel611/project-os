@@ -34,7 +34,7 @@ const adminActions = makeAdminActions({
   run: runAdmin,
   orgId,
   // Admin create_project also creates the project's Discord channel (needs Manage Channels).
-  autoCreateChannel: envBool("PROJECT_CHANNEL_AUTO_CREATE", true),
+  autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
 });
 
 // Failing to open the Pi harness at startup is fatal, so build errors become defects.
