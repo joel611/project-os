@@ -235,7 +235,7 @@ describe("AgentRuntime (Pi Durable)", () => {
           spy(c);
           return fauxAssistantMessage(
             [
-              fauxToolCall("create_project", { name: "Acme" }),
+              fauxToolCall("create_project", { name: "Acme", createChannel: false }),
               fauxToolCall("add_source", {
                 projectId: "p1",
                 type: "discord_channel",
@@ -267,7 +267,7 @@ describe("AgentRuntime (Pi Durable)", () => {
       expect(admin).toBe("Done.");
       expect(project).toBe("project reply");
       expect(calls).toEqual([
-        ["create_project", { name: "Acme" }],
+        ["create_project", { name: "Acme", createChannel: false }],
         ["add_source", { projectId: "p1", type: "discord_channel", externalId: "c1" }],
         ["set_default_channel", { projectId: "p1", externalId: "c1" }],
         ["ticket_status", { ticketId: "t1" }],

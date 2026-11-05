@@ -29,11 +29,11 @@ flowchart TD
 
 ## What each component can do
 
-| Component                     | Called when                                                             | Input                        | Tools                                                                  | Output                                               |
-| ----------------------------- | ----------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------- |
-| Intent classifier             | Every non-duplicate message from a known channel (or the admin channel) | `message`, `project_context` | none                                                                   | `intent` + confidence, `worker_type`, `needs_worker` |
-| Chat LLM, `admin:{channelId}` | Admin channel, confident `admin_command`                                | raw message                  | `create_project`, `add_source`, `set_default_channel`, `ticket_status` | text, relayed as reply                               |
-| Chat LLM, `project:{id}`      | `status_question`; also the reply composed when a Ticket completes      | prompt built in code         | none                                                                   | text, relayed as reply                               |
+| Component                     | Called when                                                             | Input                        | Tools                                                                                                                                             | Output                                               |
+| ----------------------------- | ----------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Intent classifier             | Every non-duplicate message from a known channel (or the admin channel) | `message`, `project_context` | none                                                                                                                                              | `intent` + confidence, `worker_type`, `needs_worker` |
+| Chat LLM, `admin:{channelId}` | Admin channel, confident `admin_command`                                | raw message                  | `create_project` (also creates the project's Discord channel unless `createChannel: false`), `add_source`, `set_default_channel`, `ticket_status` | text, relayed as reply                               |
+| Chat LLM, `project:{id}`      | `status_question`; also the reply composed when a Ticket completes      | prompt built in code         | none                                                                                                                                              | text, relayed as reply                               |
 
 Admin tools (`packages/agent-runtime/src/admin-tools.ts`):
 

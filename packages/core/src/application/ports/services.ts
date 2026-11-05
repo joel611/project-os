@@ -1,4 +1,9 @@
-import type { ReplyInstruction, WorkerType } from "@project-os/contracts";
+import type {
+  CreateChannelInstruction,
+  CreatedChannel,
+  ReplyInstruction,
+  WorkerType,
+} from "@project-os/contracts";
 import { Context, Data, type Effect } from "effect";
 
 export class KeyValueStore extends Context.Service<
@@ -25,6 +30,10 @@ export class ChannelGateway extends Context.Service<
   {
     /** Send a reply instruction to the matching Channel Adapter. */
     readonly send: (reply: ReplyInstruction) => Effect.Effect<void>;
+    /** Ask the matching Channel Adapter to create a channel (e.g. a project's Discord channel). */
+    readonly createChannel: (
+      request: CreateChannelInstruction,
+    ) => Effect.Effect<CreatedChannel, ChannelCreateFailed>;
   }
 >()("@project-os/core/ChannelGateway") {}
 
@@ -39,6 +48,12 @@ export class Scheduler extends Context.Service<
     ) => Effect.Effect<Effect.Effect<void>>;
   }
 >()("@project-os/core/Scheduler") {}
+
+/** A Channel Adapter could not create a channel (missing permission, no adapter, ...). */
+export class ChannelCreateFailed extends Data.TaggedError("ChannelCreateFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
 
 /** The classifier call failed (provider, auth, or malformed response). */
 export class ClassifierError extends Data.TaggedError("ClassifierError")<{

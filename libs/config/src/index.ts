@@ -12,4 +12,10 @@ export const env = (key: string, fallback?: string): string => {
 export const envNumber = (key: string, fallback?: number): number =>
   Number(env(key, fallback === undefined ? undefined : String(fallback)));
 
+/** `true`/`1`/`yes`/`on` (any case) are true, anything else false; unset uses `fallback`. */
+export const envBool = (key: string, fallback: boolean): boolean => {
+  const value = process.env[key];
+  return value === undefined ? fallback : /^(true|1|yes|on)$/i.test(value.trim());
+};
+
 export * from "./health.ts";

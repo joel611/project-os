@@ -1,4 +1,10 @@
-import { addSource, createProject, ProjectRepository, TicketRepository } from "@project-os/core";
+import {
+  addSource,
+  createProject,
+  ProjectRepository,
+  ProjectSourceRepository,
+  TicketRepository,
+} from "@project-os/core";
 import type { Ticket } from "@project-os/core";
 import { makeTestLayer } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
@@ -14,12 +20,15 @@ afterEach(async () => {
 });
 
 /** One in-memory world per test; `run` and the admin actions share its state. */
-const setup = () => {
-  const runtime = ManagedRuntime.make(makeTestLayer().layer);
+const setup = (
+  options?: Parameters<typeof makeTestLayer>[0],
+  actionOptions?: { readonly autoCreateChannel?: boolean },
+) => {
+  const runtime = ManagedRuntime.make(makeTestLayer(options).layer);
   disposers.push(() => runtime.dispose());
   const run = <A>(effect: Effect.Effect<A, unknown, AdminEnv>) =>
     runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
-  return { run, actions: makeAdminActions({ run, orgId: "o1" }) };
+  return { run, actions: makeAdminActions({ run, orgId: "o1", ...actionOptions }) };
 };
 
 describe("AdminActions", () => {
@@ -36,6 +45,42 @@ describe("AdminActions", () => {
   it("createProject works without custom instructions", async () => {
     const { actions } = setup();
     expect(await actions.createProject({ name: "Plain" })).toMatch(/Plain/);
+  });
+
+  it("createProject creates the project's channel and makes it the reply channel", async () => {
+    const { run, actions } = setup();
+    expect(await actions.createProject({ name: "Acme" })).toMatch(
+      /Created project "Acme" .* Created channel #Acme \(chan-1\) as its reply channel/,
+    );
+    const sources = await run(
+      Effect.flatMap(ProjectSourceRepository, (r) => r.findByExternal("discord_channel", "chan-1")),
+    );
+    expect(sources).toMatchObject({ isDefaultResponse: true });
+  });
+
+  it("createProject with createChannel=false only creates the project", async () => {
+    const { actions } = setup();
+    expect(await actions.createProject({ name: "Acme", createChannel: false })).toMatch(
+      /^Created project "Acme" \(id [^)]+\)\.$/,
+    );
+  });
+
+  it("createProject never creates a channel when autoCreateChannel is off", async () => {
+    const { run, actions } = setup(undefined, { autoCreateChannel: false });
+    expect(await actions.createProject({ name: "Acme" })).toMatch(
+      /^Created project "Acme" \(id [^)]+\)\.$/,
+    );
+    expect(
+      await run(Effect.flatMap(ProjectSourceRepository, (r) => r.listByProject("id-1"))),
+    ).toEqual([]);
+  });
+
+  it("createProject reports a failed channel create and keeps the project", async () => {
+    const { run, actions } = setup({ failChannelCreate: "Missing Permissions" });
+    expect(await actions.createProject({ name: "Acme" })).toMatch(
+      /Created project "Acme" .* Could not create its channel \(Missing Permissions\)/,
+    );
+    expect(await run(Effect.flatMap(ProjectRepository, (r) => r.list))).toHaveLength(1);
   });
 
   it("reports failures as text, not exceptions", async () => {

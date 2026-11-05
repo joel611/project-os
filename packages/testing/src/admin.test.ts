@@ -1,6 +1,7 @@
 import {
   addSource,
   createProject,
+  createProjectWithChannel,
   handleInbound,
   ProjectSourceRepository,
   setDefaultChannel,
@@ -39,6 +40,35 @@ describe("createProject", () => {
       createProject({ orgId: "o1", name: "Acme", slug: "acme", customInstructions: "be brief" }),
     ).result;
     expect(project).toMatchObject({ slug: "acme", customInstructions: "be brief" });
+  });
+});
+
+describe("createProjectWithChannel", () => {
+  const program = Effect.gen(function* () {
+    const result = yield* createProjectWithChannel({ orgId: "o1", name: "Acme" });
+    const sources = yield* Effect.flatMap(ProjectSourceRepository, (r) =>
+      r.listByProject(result.project.id),
+    );
+    return { result, sources };
+  });
+
+  it("creates the project, its Discord channel, and links it as the default", async () => {
+    const { layer, createdChannels } = makeTestLayer();
+    const { result, sources } = await Effect.runPromise(Effect.provide(program, layer));
+    expect(createdChannels).toEqual([{ channelType: "discord", name: "Acme" }]);
+    expect(result.channelError).toBeNull();
+    expect(result.source).toMatchObject({ externalId: "chan-1", name: "#Acme" });
+    expect(sources).toMatchObject([
+      { type: "discord_channel", externalId: "chan-1", isDefaultResponse: true },
+    ]);
+  });
+
+  it("keeps the project and reports why when the channel can't be created", async () => {
+    const { layer } = makeTestLayer({ failChannelCreate: "Missing Permissions" });
+    const { result, sources } = await Effect.runPromise(Effect.provide(program, layer));
+    expect(result.project.name).toBe("Acme");
+    expect(result).toMatchObject({ source: null, channelError: "Missing Permissions" });
+    expect(sources).toEqual([]);
   });
 });
 

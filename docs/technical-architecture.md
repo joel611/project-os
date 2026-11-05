@@ -179,6 +179,7 @@ The channel (Discord / email) only sees what the Coordinator chooses to surface 
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration
 - Admin can create projects, add sources, set default channels, and ask about ticket status
+- Creating a project also creates its own Discord channel (via `ChannelGateway.createChannel` → the Discord adapter's `/channels`) and links it as the default reply channel, unless the admin asks to link an existing channel instead, or `PROJECT_CHANNEL_AUTO_CREATE=false` turns it off for the Coordinator. The bot needs **Manage Channels** in `DISCORD_GUILD_ID`; if Discord refuses, the project is still created and the admin is told why
 - Coordinator authenticates the speaker as admin and acts accordingly
 
 **Web UI**
@@ -748,7 +749,7 @@ Enforce these with lint import rules in the Vite+ config.
 
 - One Pi conversation per Project (the root conversation per project, or one per channel thread later). Inputs are submitted with `requestId = externalId`, so a re-delivered Discord message is not answered twice.
 - Pi's job in the POC is narrow: compose the curated channel reply from a finished ticket, and run the admin-channel dialogue. It does **not** execute the work; Workers do.
-- Coordinator actions are exposed to Pi as extension tools that call core use cases (`create_ticket`, `ticket_status`, `create_project`, `add_source`, …). Pi never gets channel tools; replies go out through `ChannelGateway`.
+- Coordinator actions are exposed to Pi as extension tools that call core use cases (`create_ticket`, `ticket_status`, `create_project`, `add_source`, …). Pi never gets channel tools; replies go out through `ChannelGateway`. `create_project` asking the Coordinator to create the project's channel is not a channel tool: the Coordinator still owns the adapter call, and Pi never posts.
 - Storage: local target uses Pi's SQLite storage on a file next to the app database; Cloudflare uses `openDurableObjectSqliteStorage` inside a Durable Object, waking via `onWake` + alarms.
 - Models come from `@earendil-works/pi-ai` with the OpenRouter provider (`OPENROUTER_API_KEY`). The chat model id is config.
 
