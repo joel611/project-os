@@ -7,48 +7,24 @@ Two components, two jobs:
 - **Intent classifier** (Jev, `packages/agent-runtime/src/intent-classifier.ts`): labels the message. Decides the route. Has no tools and no side effects.
 - **Chat LLM** (`AgentRuntime` on Pi Durable, `packages/agent-runtime/src/agent-runtime.ts`): writes text. Called only on two routes. Tools depend on the session type.
 
-```
-                          message.content
-                                 │
-                                 ▼
-                ┌──────────────────────────────────┐
-                │ INTENT CLASSIFIER (Jev, 1 call)  │
-                │  intent        6-way choice      │
-                │  worker_type   3-way choice      │
-                │  needs_worker  bool (unused)     │
-                │ context: project.customInstructions│
-                │          ("" in admin channel)   │
-                │ tools: none                      │
-                └────────────────┬─────────────────┘
-                                 ▼
-                  intent confidence >= 0.5 ?
-                      │ no                │ yes
-                      ▼                   ▼
-                   clarify         which channel?
-                 (fixed text,      │              │
-                  no LLM)     admin channel   project channel
-                                   │              │
-                    intent == admin_command?      ├─ new_request ───────▶ create Ticket
-                      │ no          │ yes         │                       (workerType from
-                      ▼             ▼             │                        worker_type; no LLM)
-                   clarify   ┌─────────────┐      │
-                             │ CHAT LLM    │      ├─ follow_up ─────────▶ append event to newest
-                             │ session     │      │                       active Ticket
-                             │ admin:{ch}  │      │                       (none: clarify; no LLM)
-                             │             │      │
-                             │ tools:      │      ├─ status_question ──▶ ┌─────────────────┐
-                             │  create_    │      │                      │ CHAT LLM        │
-                             │   project   │      │                      │ session         │
-                             │  add_source │      │                      │ project:{id}    │
-                             │  set_default│      │                      │                 │
-                             │   _channel  │      │                      │ prompt: question│
-                             │  ticket_    │      │                      │  + active       │
-                             │   status    │      │                      │  Tickets        │
-                             └─────────────┘      │                      │ tools: none     │
-                                                  │                      └─────────────────┘
-                                                  │
-                                                  └─ chit_chat / none / admin_command
-                                                     ──────────────────▶ clarify (no LLM)
+```mermaid
+flowchart TD
+    msg([message.content]) --> clf["<b>Intent classifier</b> (Jev, 1 call)<br/>intent: 6-way<br/>worker_type: 3-way<br/>needs_worker: bool, unused<br/>context: project.customInstructions, empty in admin channel<br/>tools: none"]
+    clf --> conf{"intent confidence >= 0.5?"}
+    conf -- no --> clarify["clarify<br/>fixed text, no LLM"]
+    conf -- yes --> chan{"which channel?"}
+
+    chan -- admin channel --> isadmin{"intent == admin_command?"}
+    isadmin -- no --> clarify
+    isadmin -- yes --> adminllm["<b>Chat LLM</b><br/>session admin:{channelId}<br/>tools: create_project, add_source,<br/>set_default_channel, ticket_status"]
+
+    chan -- project channel --> intent{"intent"}
+    intent -- new_request --> newt["create Ticket<br/>workerType from worker_type<br/>no LLM"]
+    intent -- follow_up --> fu{"active Ticket?"}
+    fu -- yes --> fuev["append follow_up event<br/>to newest active Ticket<br/>no LLM"]
+    fu -- no --> clarify
+    intent -- status_question --> statusllm["<b>Chat LLM</b><br/>session project:{id}<br/>prompt: question + active Tickets<br/>tools: none"]
+    intent -- "chit_chat / none / admin_command" --> clarify
 ```
 
 ## What each component can do
