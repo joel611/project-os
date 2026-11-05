@@ -26,6 +26,9 @@ services:
       DISCORD_ADAPTER_PORT: "8081"
       COORDINATOR_URL: http://coordinator:8080
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}
+      ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
     depends_on: [coordinator]
 
   email-adapter:

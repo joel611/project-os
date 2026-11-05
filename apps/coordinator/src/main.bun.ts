@@ -29,6 +29,14 @@ if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
 const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
   runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
 
+// Shared by the admin dialogue's tools and the admin slash commands (POST /commands).
+const adminActions = makeAdminActions({
+  run: runAdmin,
+  orgId,
+  // Admin create_project also creates the project's Discord channel (needs Manage Channels).
+  autoCreateChannel: envBool("PROJECT_CHANNEL_AUTO_CREATE", true),
+});
+
 // Failing to open the Pi harness at startup is fatal, so build errors become defects.
 const AiLive = Layer.orDie(
   Layer.mergeAll(
@@ -38,12 +46,7 @@ const AiLive = Layer.orDie(
       models,
       model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
       // `runtime` is assigned below; the actions only run once a message arrives.
-      adminActions: makeAdminActions({
-        run: runAdmin,
-        orgId,
-        // Admin create_project also creates the project's Discord channel (needs Manage Channels).
-        autoCreateChannel: envBool("PROJECT_CHANNEL_AUTO_CREATE", true),
-      }),
+      adminActions,
     }),
   ),
 );
@@ -78,6 +81,8 @@ createApp(
         // Admin identity (POC): only these Discord user ids may use the admin channel.
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },
+      // /project-create etc.: same admin channel and user list as the admin dialogue.
+      commands: { ...(adminChannelId && { adminChannelId, adminUserIds }), admin: adminActions },
     },
     mcp: runtime,
   },

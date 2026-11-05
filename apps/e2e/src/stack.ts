@@ -40,6 +40,9 @@ export interface Stack {
 }
 
 export const ORG_ID = "o1";
+/** Admin channel and the one admin allowed to run slash commands there. */
+export const ADMIN_CHANNEL = "admin-chan";
+export const ADMIN_USER = "admin-1";
 
 const isLocal = (input: string | URL | Request) => {
   const url = new URL(input instanceof Request ? input.url : input);
@@ -83,12 +86,17 @@ export const startStack = async (options: {
     ) as Layer.Layer<any, never>,
   ) as McpRuntime;
 
+  const admin = makeAdminActions({
+    run: (effect) => runtime.runPromise(effect as any),
+    orgId: ORG_ID,
+  });
   const coordinator = createApp(
     {},
     {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: { workerId: options.workerId },
+        commands: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER], admin },
       },
       mcp: runtime,
     },
@@ -112,7 +120,7 @@ export const startStack = async (options: {
     posted,
     createdChannels,
     json,
-    admin: makeAdminActions({ run: (effect) => runtime.runPromise(effect as any), orgId: ORG_ID }),
+    admin,
     linkChannel: async (channelId) => {
       const project = await json("POST", "/projects", { orgId: ORG_ID, name: "Acme" });
       await json("POST", `/projects/${project.id}/sources`, {
