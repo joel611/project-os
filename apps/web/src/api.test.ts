@@ -139,6 +139,8 @@ describe("describeError", () => {
     [new TypeError("Failed to fetch"), unreachable],
     [new ApiError(502, "Unreachable"), unreachable],
     [new ApiError(404, "TicketNotFound"), "Not found."],
+    [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
+    [new ApiError(400, "SchemaError"), "The Coordinator rejected that input."],
     [new ApiError(502, "AgentRuntimeError"), "Coordinator returned 502 (AgentRuntimeError)."],
   ])("%s → %s", (error, message) => {
     expect(describeError(error)).toBe(message);
