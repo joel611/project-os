@@ -1,6 +1,6 @@
 import type { MemoryEntry, ProjectSourceType, Ticket } from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { FileText, FolderOpen, GitBranch, Hash, List, Mail, Star } from "lucide-react";
 import { api, ApiError, type ProjectDetail } from "@/api";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
 import { relativeTime, splitTickets } from "@/model";
+import { useNow } from "@/use-now";
 
 const SOURCE_ICON: Readonly<Record<ProjectSourceType, typeof Hash>> = {
   discord_channel: Hash,
@@ -59,24 +60,21 @@ const TicketRows = ({
   tickets: ReadonlyArray<Ticket>;
   projectId: string;
 }) => {
-  const now = new Date();
-  const navigate = useNavigate();
+  const now = useNow();
   return tickets.map((t) => (
-    <TableRow
-      key={t.id}
-      className="cursor-pointer"
-      onClick={() =>
-        navigate({
-          to: "/projects/$projectId/tickets/$ticketId",
-          params: { projectId, ticketId: t.id },
-        })
-      }
-    >
+    // The title link stretches over the whole row, so the row is clickable and keyboard-reachable.
+    <TableRow key={t.id} className="relative cursor-pointer focus-within:bg-muted/50">
       <TableCell className="w-36">
         <StatusBadge status={t.status} />
       </TableCell>
       <TableCell className="max-w-0">
-        <div className="truncate font-medium">{t.title}</div>
+        <Link
+          to="/projects/$projectId/tickets/$ticketId"
+          params={{ projectId, ticketId: t.id }}
+          className="block truncate font-medium outline-none after:absolute after:inset-0 focus-visible:underline"
+        >
+          {t.title}
+        </Link>
         {t.inputSummary !== t.title && (
           <div className="truncate text-xs text-muted-foreground">{t.inputSummary}</div>
         )}
@@ -127,7 +125,7 @@ const Tickets = ({ tickets, projectId }: { tickets: ReadonlyArray<Ticket>; proje
 };
 
 const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
-  const now = new Date();
+  const now = useNow();
   if (entries.length === 0)
     return (
       <Empty
