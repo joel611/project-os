@@ -11,6 +11,7 @@ import {
   ProjectSourceRepository,
   readMemory,
   TicketRepository,
+  updateProject,
   updateStatus,
   writeMemory,
   type Project,
@@ -291,6 +292,22 @@ describe("ticket use cases", () => {
       }),
     );
     expect(value._tag).toBe("InvalidTransition");
+  });
+});
+
+describe("updateProject", () => {
+  it("patches given fields only, can clear the slug, and 404s unknown projects", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const named = yield* updateProject({ projectId: "p1", name: "New", slug: "new" });
+        const cleared = yield* updateProject({ projectId: "p1", slug: null });
+        const miss = yield* Effect.flip(updateProject({ projectId: "nope" }));
+        return { named, cleared, miss };
+      }),
+    );
+    expect(value.named).toMatchObject({ name: "New", slug: "new" });
+    expect(value.cleared).toMatchObject({ name: "New", slug: null });
+    expect(value.miss._tag).toBe("ProjectNotFound");
   });
 });
 
