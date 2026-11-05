@@ -1,6 +1,13 @@
 import { TICKET_STATUSES, type Ticket } from "@project-os/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { checkLines, parseSource, sourceUrl, relativeTime, splitTickets, STATUS } from "./model.ts";
+import {
+  checkSource,
+  detectSource,
+  relativeTime,
+  sourceUrl,
+  splitTickets,
+  STATUS,
+} from "./model.ts";
 
 const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): Ticket => ({
   id,
@@ -45,64 +52,55 @@ describe("splitTickets", () => {
   });
 });
 
-describe("parseSource", () => {
+describe("detectSource", () => {
   it.each([
-    ["https://github.com/acme/web", "acme/web"],
-    ["https://github.com/acme/web.git", "acme/web"],
-    ["https://github.com/acme/web/tree/main/src", "acme/web"],
-    ["acme/web", "acme/web"],
-  ])("normalizes github %s", (raw, id) => {
-    expect(parseSource("github_repo", raw)?.externalId).toBe(id);
+    ["https://github.com/acme/web", "github_repo", "acme/web"],
+    ["https://github.com/acme/web.git", "github_repo", "acme/web"],
+    ["https://github.com/acme/web/tree/main/src", "github_repo", "acme/web"],
+    ["acme/web", "github_repo", "acme/web"],
+    ["Acme/Web", "github_repo", "acme/web"],
+    [
+      "https://drive.google.com/drive/folders/1AbCdEfGhIjK?usp=sharing",
+      "google_drive_folder",
+      "1AbCdEfGhIjK",
+    ],
+    [
+      "https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjK",
+      "google_drive_folder",
+      "1AbCdEfGhIjK",
+    ],
+    ["drive.google.com/drive/folders/1AbCdEfGhIjK", "google_drive_folder", "1AbCdEfGhIjK"],
+    ["1AbCdEfGhIjK", "google_drive_folder", "1AbCdEfGhIjK"],
+  ])("%s -> %s", (raw, type, id) => {
+    expect(detectSource(raw)).toMatchObject({ type, externalId: id });
   });
 
-  it.each([
-    ["https://drive.google.com/drive/folders/1AbCdEfGhIjK?usp=sharing", "1AbCdEfGhIjK"],
-    ["https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjK", "1AbCdEfGhIjK"],
-    ["1AbCdEfGhIjK", "1AbCdEfGhIjK"],
-  ])("normalizes drive %s", (raw, id) => {
-    expect(parseSource("google_drive_folder", raw)?.externalId).toBe(id);
-  });
-
-  it("lowercases github ids so case variants collide", () => {
-    expect(parseSource("github_repo", "Acme/Web")?.externalId).toBe("acme/web");
-  });
-
-  it("rejects junk", () => {
-    expect(parseSource("github_repo", "not a repo")).toBeNull();
-    expect(parseSource("google_drive_folder", "short")).toBeNull();
+  it.each(["", "not a repo", "short"])("rejects %j", (raw) => {
+    expect(detectSource(raw)).toBeNull();
   });
 });
 
-describe("checkLines", () => {
+describe("checkSource", () => {
   const existing = [{ type: "github_repo", externalId: "acme/web" }];
 
-  it("accepts several repos, one per line, and skips blank lines", () => {
-    const r = checkLines("github_repo", "acme/api\n\nhttps://github.com/acme/docs", existing);
-    expect(r.map((c) => c.kind)).toEqual(["ok", "ok"]);
+  it("accepts a new source", () => {
+    expect(checkSource("acme/api", existing).kind).toBe("ok");
   });
 
   it("flags a source already on the project, case-insensitively", () => {
-    const [c] = checkLines("github_repo", "https://github.com/ACME/Web", existing);
-    expect(c).toMatchObject({ kind: "duplicate", in: "project" });
+    expect(checkSource("https://github.com/ACME/Web", existing)).toMatchObject({
+      kind: "duplicate",
+      input: { externalId: "acme/web" },
+    });
   });
 
-  it("flags a repeat within the same paste but keeps the first", () => {
-    const r = checkLines("github_repo", "acme/api\nacme/api", existing);
-    expect(r.map((c) => c.kind)).toEqual(["ok", "duplicate"]);
-    expect(r[1]).toMatchObject({ in: "paste" });
+  it("only collides within the same source type", () => {
+    const same = [{ type: "github_repo", externalId: "1AbCdEfGhIjK" }];
+    expect(checkSource("1AbCdEfGhIjK", same).kind).toBe("ok");
   });
 
-  it("only compares within the same source type", () => {
-    const r = checkLines("google_drive_folder", "acme/web1234567", existing);
-    expect(r[0]?.kind).toBe("invalid");
-    const d = checkLines("google_drive_folder", "1AbCdEfGhIjK", [
-      { type: "github_repo", externalId: "1AbCdEfGhIjK" },
-    ]);
-    expect(d[0]?.kind).toBe("ok");
-  });
-
-  it("flags junk lines", () => {
-    expect(checkLines("github_repo", "nope", [])[0]).toEqual({ kind: "invalid", raw: "nope" });
+  it("flags junk", () => {
+    expect(checkSource("nope", [])).toEqual({ kind: "invalid" });
   });
 });
 

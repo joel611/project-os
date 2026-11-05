@@ -62,61 +62,61 @@ export const relativeTime = (iso: string, now: Date): string => {
   return unit ? `${Math.floor(elapsed / unit.ms)}${unit.suffix} ago` : "just now";
 };
 
-export const ADDABLE_SOURCES = ["github_repo", "google_drive_folder"] as const;
-export type AddableSource = (typeof ADDABLE_SOURCES)[number];
-
 export interface SourceInput {
-  readonly type: AddableSource;
+  readonly type: "github_repo" | "google_drive_folder";
   readonly externalId: string;
   readonly name: string;
 }
 
 const GITHUB_REPO =
   /^(?:https?:\/\/(?:www\.)?github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#].*)?$/;
-const DRIVE_FOLDER = /^(?:https?:\/\/drive\.google\.com\/.*?\/folders\/)?([\w-]{10,})(?:[/?#].*)?$/;
+const DRIVE_FOLDER =
+  /^(?:(?:https?:\/\/)?drive\.google\.com\/.*?\/folders\/)?([\w-]{10,})(?:[/?#].*)?$/;
 
 /**
  * Turns what an operator pastes (URL or short form) into the `(type, externalId)` the Coordinator
  * keys on. GitHub names are case-insensitive, so they are lowercased to keep the key canonical.
  */
-export const parseSource = (type: AddableSource, raw: string): SourceInput | null => {
-  const text = raw.trim();
-  if (type === "github_repo") {
-    const m = GITHUB_REPO.exec(text);
-    if (!m) return null;
-    const externalId = `${m[1]}/${m[2]}`.toLowerCase();
-    return { type, externalId, name: externalId };
-  }
-  const id = DRIVE_FOLDER.exec(text)?.[1];
-  return id ? { type, externalId: id, name: `Drive folder ${id.slice(0, 8)}…` } : null;
+const parseRepo = (text: string): SourceInput | null => {
+  const m = GITHUB_REPO.exec(text);
+  if (!m) return null;
+  const externalId = `${m[1]}/${m[2]}`.toLowerCase();
+  return { type: "github_repo", externalId, name: externalId };
 };
 
-export type LineCheck =
-  | { readonly kind: "ok"; readonly input: SourceInput }
-  | { readonly kind: "invalid"; readonly raw: string }
-  | { readonly kind: "duplicate"; readonly input: SourceInput; readonly in: "project" | "paste" };
+const parseFolder = (text: string): SourceInput | null => {
+  const id = DRIVE_FOLDER.exec(text)?.[1];
+  return id
+    ? { type: "google_drive_folder", externalId: id, name: `Drive folder ${id.slice(0, 8)}…` }
+    : null;
+};
 
-/** One pasted source per line. Flags junk, sources already on the project, and repeats within the paste. */
-export const checkLines = (
-  type: AddableSource,
-  text: string,
+/**
+ * Detects the source type from what an operator pastes and normalizes it to the
+ * `(type, externalId)` the Coordinator keys on. Repo names are case-insensitive, so they are
+ * lowercased to keep the key canonical. `owner/repo` is a repo, a bare long id is a Drive folder.
+ */
+export const detectSource = (raw: string): SourceInput | null => {
+  const text = raw.trim();
+  if (text.includes("drive.google.com")) return parseFolder(text);
+  return parseRepo(text) ?? parseFolder(text);
+};
+
+export type SourceCheck =
+  | { readonly kind: "ok"; readonly input: SourceInput }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "duplicate"; readonly input: SourceInput };
+
+/** Flags junk and sources already on the project. */
+export const checkSource = (
+  raw: string,
   existing: ReadonlyArray<{ readonly type: string; readonly externalId: string }>,
-): ReadonlyArray<LineCheck> => {
-  const seen = new Set(existing.filter((s) => s.type === type).map((s) => s.externalId));
-  const pasted = new Set<string>();
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((raw): LineCheck => {
-      const input = parseSource(type, raw);
-      if (!input) return { kind: "invalid", raw };
-      if (pasted.has(input.externalId)) return { kind: "duplicate", input, in: "paste" };
-      pasted.add(input.externalId);
-      return seen.has(input.externalId)
-        ? { kind: "duplicate", input, in: "project" }
-        : { kind: "ok", input };
-    });
+): SourceCheck => {
+  const input = detectSource(raw);
+  if (!input) return { kind: "invalid" };
+  return existing.some((s) => s.type === input.type && s.externalId === input.externalId)
+    ? { kind: "duplicate", input }
+    : { kind: "ok", input };
 };
 
 /** Where a linked source lives on the web, when it has a link-out. */
