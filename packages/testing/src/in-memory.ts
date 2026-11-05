@@ -1,5 +1,6 @@
 import {
   AgentRuntime,
+  ChannelCreateFailed,
   ChannelGateway,
   claimTicket,
   IdGenerator,
@@ -24,7 +25,11 @@ import {
   type TicketEvent,
   type Worker,
 } from "@project-os/core";
-import type { MemoryEntry, ReplyInstruction } from "@project-os/contracts";
+import type {
+  CreateChannelInstruction,
+  MemoryEntry,
+  ReplyInstruction,
+} from "@project-os/contracts";
 import { Effect, Layer } from "effect";
 
 const byKey = <A>(items: Iterable<A>, key: (a: A) => string): A[] =>
@@ -208,13 +213,30 @@ export const KeyValueStoreInMemory = Layer.sync(KeyValueStore, () => {
   };
 });
 
-/** Records every reply sent. Read via `sent` from {@link ChannelGatewayRecording}. */
-export const makeChannelGatewayRecording = () => {
+/**
+ * Records every reply sent (`sent`) and channel created (`created`). Created channels get
+ * ids `chan-1`, `chan-2`, …; pass `failCreate` to make channel creation fail with that message.
+ */
+export const makeChannelGatewayRecording = (options?: { readonly failCreate?: string }) => {
   const sent: ReplyInstruction[] = [];
+  const created: CreateChannelInstruction[] = [];
   return {
     sent,
+    created,
     layer: Layer.succeed(ChannelGateway, {
       send: (reply) => Effect.sync(() => void sent.push(reply)),
+      createChannel: (request) =>
+        options?.failCreate !== undefined
+          ? Effect.fail(
+              new ChannelCreateFailed({
+                channelType: request.channelType,
+                message: options.failCreate,
+              }),
+            )
+          : Effect.sync(() => {
+              created.push(request);
+              return { channelId: `chan-${created.length}`, name: request.name };
+            }),
     }),
   };
 };

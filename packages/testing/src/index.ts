@@ -22,14 +22,19 @@ export const fixedClock = (date: Date) => Layer.succeed(Clock, { now: Effect.suc
 
 /**
  * Every port, in memory. State is fresh per Layer build.
- * `sent` collects replies passed to `ChannelGateway.send`.
+ * `sent` collects replies passed to `ChannelGateway.send`; `createdChannels` the channels
+ * `ChannelGateway.createChannel` was asked to create.
  */
 export const makeTestLayer = (options?: {
   readonly now?: Date;
   /** Replace the default classifier (always `general` @ 1.0). */
   readonly classifier?: Layer.Layer<IntentClassifier>;
+  /** Make `ChannelGateway.createChannel` fail with this message. */
+  readonly failChannelCreate?: string;
 }) => {
-  const gateway = makeChannelGatewayRecording();
+  const gateway = makeChannelGatewayRecording(
+    options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate },
+  );
   const layer = Layer.mergeAll(
     fixedClock(options?.now ?? new Date("2026-11-04T00:00:00.000Z")),
     TicketRepositoryInMemory,
@@ -45,7 +50,7 @@ export const makeTestLayer = (options?: {
     WorkerLauncherNoop,
     IdGeneratorSequential,
   );
-  return { layer, sent: gateway.sent };
+  return { layer, sent: gateway.sent, createdChannels: gateway.created };
 };
 
 /** Classifier returning a fixed intent / confidence / workerType. */

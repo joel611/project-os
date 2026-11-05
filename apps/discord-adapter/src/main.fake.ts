@@ -29,11 +29,19 @@ const speaker: FakeSpeaker = {
 };
 
 let onReply: () => void = () => {};
-createReplyApp(async (target, content) => {
-  const where = target.threadId ? `${target.channelId}/${target.threadId}` : target.channelId;
-  console.log(`\n[bot -> #${where}] ${content}`);
-  onReply();
-}).listen(port);
+let fakeChannels = 0;
+createReplyApp(
+  async (target, content) => {
+    const where = target.threadId ? `${target.channelId}/${target.threadId}` : target.channelId;
+    console.log(`\n[bot -> #${where}] ${content}`);
+    onReply();
+  },
+  async (name) => {
+    const channelId = `fake-created-${++fakeChannels}`;
+    console.log(`\n[bot created #${name} as ${channelId}]`);
+    return { channelId, name };
+  },
+).listen(port);
 
 const say = async (content: string) => {
   const inbound = fakeInbound(speaker, content);
