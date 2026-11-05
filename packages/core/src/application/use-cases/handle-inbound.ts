@@ -10,6 +10,7 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   TicketRepository,
+  WorkerLauncher,
 } from "../ports/index.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { nowIso } from "./tickets.ts";
@@ -70,6 +71,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const runtime = yield* AgentRuntime;
     const gateway = yield* ChannelGateway;
     const ids = yield* IdGenerator;
+    const launcher = yield* WorkerLauncher;
 
     const reply = (content: string): Effect.Effect<void> => {
       const instruction: ReplyInstruction = {
@@ -283,22 +285,23 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           payload: { sender: message.sender, channelType: message.channelType },
           createdAt: at,
         });
-        const assigned = yield* tickets.assign(
-          ticketId,
-          { workerType, workerId: config.workerId ?? null },
-          at,
-        );
+        // `ticket_claim` only admits the assigned worker. A Daytona session is a fresh worker
+        // per ticket, so it gets its own id and the host Watcher never sees the ticket.
+        const workerId =
+          workerType === "daytona_pi" ? `daytona-${ticketId}` : (config.workerId ?? null);
+        const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
         yield* tickets.appendEvent({
           id: yield* ids.next,
           ticketId,
           type: "assigned",
           actor: "coordinator",
           actorId: null,
-          body: `Assigned to ${config.workerId ?? workerType}`,
-          payload: { workerType, workerId: config.workerId ?? null },
+          body: `Assigned to ${workerId ?? workerType}`,
+          payload: { workerType, workerId },
           createdAt: at,
         });
         yield* openTicketThread(ticketId, at);
+        if (workerId !== null) yield* launcher.launch({ ticketId, workerType, workerId });
         return { kind: "ticket_created", ticket: assigned } as InboundOutcome;
       }
       case "follow_up": {

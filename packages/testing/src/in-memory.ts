@@ -22,7 +22,6 @@ import {
   TicketRepository,
   transitionTicket,
   UserConnections,
-  WorkerLauncher,
   WorkerNotFound,
   WorkerRepository,
   type Project,
@@ -346,10 +345,6 @@ export const IntentClassifierFake = (intent = "general") =>
 
 export const AgentRuntimeEcho = Layer.succeed(AgentRuntime, {
   respond: ({ prompt }) => Effect.succeed(prompt),
-});
-
-export const WorkerLauncherNoop = Layer.succeed(WorkerLauncher, {
-  launch: () => Effect.void,
 });
 
 /** Sequential ids: `id-1`, `id-2`, … */

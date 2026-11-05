@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type Connections, makeConnections } from "@project-os/auth";
-import { type IntentClassifier, UserConnections } from "@project-os/core";
+import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
@@ -77,6 +77,7 @@ export const startStack = async (options: {
   readonly workerId: string;
   /** Account linking on Better Auth against a fake OAuth server (Google + GitHub). */
   readonly connections?: boolean;
+  readonly workerLauncher?: typeof WorkerLauncher.Service;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -124,7 +125,11 @@ export const startStack = async (options: {
   // Later layers win: the fakes replace LocalLive's AgentRuntime placeholder.
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
-      LocalLive({ dbPath, adapterUrls: { discord: `http://localhost:${adapter.server!.port}` } }),
+      LocalLive({
+        dbPath,
+        adapterUrls: { discord: `http://localhost:${adapter.server!.port}` },
+        ...(options.workerLauncher && { workerLauncher: options.workerLauncher }),
+      }),
       options.classifier,
       AgentRuntimeEcho,
       ...(oauth ? [connectionsLayer] : []),

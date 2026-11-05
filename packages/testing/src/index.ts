@@ -1,4 +1,4 @@
-import { Clock, IntentClassifier, type WorkerType } from "@project-os/core";
+import { Clock, IntentClassifier, WorkerLauncher, type WorkerType } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import {
   AgentRuntimeEcho,
@@ -12,7 +12,6 @@ import {
   ProjectSourceRepositoryInMemory,
   SchedulerNoop,
   TicketRepositoryInMemory,
-  WorkerLauncherNoop,
   WorkerRepositoryInMemory,
 } from "./in-memory.ts";
 
@@ -26,7 +25,7 @@ export const fixedClock = (date: Date) => Layer.succeed(Clock, { now: Effect.suc
  * `sent` collects replies passed to `ChannelGateway.send`; `createdChannels` the channels
  * `ChannelGateway.createChannel` was asked to create; `createdThreads` the threads
  * `ChannelGateway.createThread` was asked to open; `reactions` the reactions
- * `ChannelGateway.react` was asked to add.
+ * `ChannelGateway.react` was asked to add; `launched` the `WorkerLauncher.launch` calls.
  */
 export const makeTestLayer = (options?: {
   readonly now?: Date;
@@ -39,6 +38,7 @@ export const makeTestLayer = (options?: {
   /** Make `ChannelGateway.react` fail with this message. */
   readonly failReact?: string;
 }) => {
+  const launched: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
   const gateway = makeChannelGatewayRecording({
     ...(options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate }),
     ...(options?.failThreadCreate === undefined ? {} : { failThread: options.failThreadCreate }),
@@ -57,7 +57,9 @@ export const makeTestLayer = (options?: {
     SchedulerNoop,
     options?.classifier ?? IntentClassifierFake(),
     AgentRuntimeEcho,
-    WorkerLauncherNoop,
+    Layer.succeed(WorkerLauncher, {
+      launch: (input) => Effect.sync(() => void launched.push(input)),
+    }),
     IdGeneratorSequential,
     connections.layer,
   );
@@ -65,6 +67,7 @@ export const makeTestLayer = (options?: {
     layer,
     sent: gateway.sent,
     createdChannels: gateway.created,
+    launched,
     /** Link a person's account, as if they had finished `/connect`. */
     link: connections.link,
     createdThreads: gateway.threads,

@@ -123,10 +123,16 @@ export class AgentRuntime extends Context.Service<
 export class WorkerLauncher extends Context.Service<
   WorkerLauncher,
   {
-    /** Start a worker for a ticket (Daytona later). No-op for pull-model local workers. */
+    /**
+     * Start a worker for a freshly assigned ticket. Returns once the launch is under way, not
+     * when the session ends; failures are the launcher's to report. No-op for pull-model local
+     * workers (the Watcher starts those).
+     */
     readonly launch: (input: {
       readonly ticketId: string;
       readonly workerType: WorkerType;
+      /** The id the ticket is assigned to; the session must claim as this worker. */
+      readonly workerId: string;
     }) => Effect.Effect<void>;
   }
 >()("@project-os/core/WorkerLauncher") {}
