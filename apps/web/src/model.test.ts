@@ -1,6 +1,6 @@
 import { TICKET_STATUSES, type Ticket } from "@project-os/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { relativeTime, splitTickets, STATUS } from "./model.ts";
+import { parseSource, relativeTime, splitTickets, STATUS } from "./model.ts";
 
 const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): Ticket => ({
   id,
@@ -42,6 +42,30 @@ describe("splitTickets", () => {
     ]);
     expect(active.map((t) => t.id)).toEqual(["new-running", "old-open"]);
     expect(done.map((t) => t.id)).toEqual(["failed", "done"]);
+  });
+});
+
+describe("parseSource", () => {
+  it.each([
+    ["https://github.com/acme/web", "acme/web"],
+    ["https://github.com/acme/web.git", "acme/web"],
+    ["https://github.com/acme/web/tree/main/src", "acme/web"],
+    ["acme/web", "acme/web"],
+  ])("normalizes github %s", (raw, id) => {
+    expect(parseSource("github_repo", raw)?.externalId).toBe(id);
+  });
+
+  it.each([
+    ["https://drive.google.com/drive/folders/1AbCdEfGhIjK?usp=sharing", "1AbCdEfGhIjK"],
+    ["https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjK", "1AbCdEfGhIjK"],
+    ["1AbCdEfGhIjK", "1AbCdEfGhIjK"],
+  ])("normalizes drive %s", (raw, id) => {
+    expect(parseSource("google_drive_folder", raw)?.externalId).toBe(id);
+  });
+
+  it("rejects junk", () => {
+    expect(parseSource("github_repo", "not a repo")).toBeNull();
+    expect(parseSource("google_drive_folder", "short")).toBeNull();
   });
 });
 

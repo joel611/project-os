@@ -105,6 +105,29 @@ describe("projects and sources", () => {
     expect(res.body.error).toBe("SchemaError");
   });
 
+  it("patches project settings and leaves omitted fields alone", async () => {
+    const { app } = setup();
+    const created = await call(app, "POST", "/projects", {
+      orgId: "o1",
+      name: "Acme",
+      customInstructions: "Be brief",
+    });
+    const res = await call(app, "PATCH", `/projects/${created.body.id}`, { name: "Acme 2" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ name: "Acme 2", customInstructions: "Be brief" });
+    const got = await call(app, "GET", `/projects/${created.body.id}`);
+    expect(got.body.project.name).toBe("Acme 2");
+  });
+
+  it("rejects an empty project name and 404s an unknown project on PATCH", async () => {
+    const { app } = setup();
+    const created = await call(app, "POST", "/projects", { orgId: "o1", name: "Acme" });
+    expect((await call(app, "PATCH", `/projects/${created.body.id}`, { name: "" })).status).toBe(
+      400,
+    );
+    expect((await call(app, "PATCH", "/projects/nope", { name: "x" })).status).toBe(404);
+  });
+
   it("links a source, optionally as the default response", async () => {
     const { app } = setup();
     const { project, source } = await linkedProject(app, { isDefaultResponse: true });

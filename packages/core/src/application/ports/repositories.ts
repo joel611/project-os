@@ -60,6 +60,8 @@ export class ProjectRepository extends Context.Service<
     readonly insert: (project: Project) => Effect.Effect<Project>;
     readonly get: (id: string) => Effect.Effect<Project, ProjectNotFound>;
     readonly list: Effect.Effect<ReadonlyArray<Project>>;
+    /** Replaces the stored row with the same id. */
+    readonly update: (project: Project) => Effect.Effect<Project, ProjectNotFound>;
   }
 >()("@project-os/core/ProjectRepository") {}
 
