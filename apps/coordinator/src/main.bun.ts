@@ -38,6 +38,8 @@ const adminActions = makeAdminActions({
   autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
 });
 
+const otel = setupTelemetry(process.env);
+
 // Failing to open the Pi harness at startup is fatal, so build errors become defects.
 const AiLive = Layer.orDie(
   Layer.mergeAll(
@@ -49,7 +51,7 @@ const AiLive = Layer.orDie(
       // `runtime` is assigned below; the actions only run once a message arrives.
       adminActions,
       // Pi Durable spans/metrics over OTLP; undefined (no-op) unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
-      telemetry: setupTelemetry(process.env),
+      telemetry: otel?.telemetry,
     }),
   ),
 );
@@ -92,4 +94,10 @@ createApp(
     mcp: runtime,
   },
 ).listen(port);
+// Flush buffered spans/metrics on `docker compose stop` / Ctrl-C.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    void (otel?.shutdown() ?? Promise.resolve()).finally(() => process.exit(0));
+  });
+}
 console.log(`coordinator listening on :${port} (MCP at /mcp)`);

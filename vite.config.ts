@@ -35,6 +35,8 @@ export default defineConfig({
       exclude: [
         "**/*.test.ts",
         "**/main.*.ts",
+        // Manual scripts, run by hand against live services.
+        "**/*.smoke.ts",
         "**/dist/**",
         "**/migrations/**",
         "**/index.ts",
