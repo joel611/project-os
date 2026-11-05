@@ -21,6 +21,7 @@
         "@opentelemetry/api": "^1.10.0",
         "@opentelemetry/exporter-metrics-otlp-http": "^0.300.0",
         "@opentelemetry/exporter-trace-otlp-http": "^0.300.0",
+        "@opentelemetry/resources": "^3.0.0",
         "@opentelemetry/sdk-metrics": "^3.0.0",
         "@opentelemetry/sdk-trace-base": "^2.12.0",
         "@project-os/agent-runtime": "workspace:*",
@@ -35,6 +36,8 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "5.20261104.1",
+        "@earendil-works/pi-ai": "1.5.0",
+        "@earendil-works/pi-durable": "1.5.0",
         "@project-os/db-sqlite": "workspace:*",
         "@project-os/testing": "workspace:*",
         "wrangler": "4.157.0",
