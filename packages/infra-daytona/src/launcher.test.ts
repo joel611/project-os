@@ -57,6 +57,13 @@ describe("daytona launcher", () => {
     expect(logs.at(-1)).toBe("daytona: daytona-t1 failed: no capacity");
   });
 
+  it("logs a non-Error rejection as text", async () => {
+    const { launcher, logs } = setup(() => Promise.reject("boom"));
+    await Effect.runPromise(launcher.launch(daytonaTicket));
+    await settle();
+    expect(logs.at(-1)).toBe("daytona: daytona-t1 failed: boom");
+  });
+
   it("logs the output tail of a non-zero exit", async () => {
     const { launcher, logs } = setup(async () => ({ exitCode: 2, output: "pi: bad model" }));
     await Effect.runPromise(launcher.launch(daytonaTicket));
