@@ -25,7 +25,7 @@ export interface AgentRuntimeOptions {
   readonly adminActions?: AdminActions;
   readonly instructions?: string;
   /** Pi telemetry sink, e.g. `makeOtelTelemetry(...)`. Omitted: no-op. */
-  readonly telemetry?: TelemetryContext;
+  readonly telemetry?: TelemetryContext | undefined;
 }
 
 /** Maps a session key (`project:<id>`, `admin:<channel>`) to its Pi conversation, durably. */
