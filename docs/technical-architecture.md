@@ -179,7 +179,7 @@ The channel (Discord / email) only sees what the Coordinator chooses to surface 
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration
 - Admin can create projects, add sources, set default channels, and ask about ticket status
-- Creating a project also creates its own Discord channel (via `ChannelGateway.createChannel` → the Discord adapter's `/channels`) and links it as the default reply channel, unless the admin asks to link an existing channel instead. The bot needs **Manage Channels** in `DISCORD_GUILD_ID`; if Discord refuses, the project is still created and the admin is told why
+- Creating a project also creates its own Discord channel (via `ChannelGateway.createChannel` → the Discord adapter's `/channels`) and links it as the default reply channel, unless the admin asks to link an existing channel instead, or `PROJECT_CHANNEL_AUTO_CREATE=false` turns it off for the Coordinator. The bot needs **Manage Channels** in `DISCORD_GUILD_ID`; if Discord refuses, the project is still created and the admin is told why
 - Coordinator authenticates the speaker as admin and acts accordingly
 
 **Web UI**

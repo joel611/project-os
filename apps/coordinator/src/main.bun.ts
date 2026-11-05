@@ -5,7 +5,7 @@ import {
   newModels,
   openLocalStorage,
 } from "@project-os/agent-runtime";
-import { DEFAULT_WORKER_ID, env, envNumber, healthConfig } from "@project-os/config";
+import { DEFAULT_WORKER_ID, env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { DEFAULT_ORG, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { type Effect, Layer, ManagedRuntime } from "effect";
@@ -38,7 +38,12 @@ const AiLive = Layer.orDie(
       models,
       model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
       // `runtime` is assigned below; the actions only run once a message arrives.
-      adminActions: makeAdminActions({ run: runAdmin, orgId }),
+      adminActions: makeAdminActions({
+        run: runAdmin,
+        orgId,
+        // Admin create_project also creates the project's Discord channel (needs Manage Channels).
+        autoCreateChannel: envBool("PROJECT_CHANNEL_AUTO_CREATE", true),
+      }),
     }),
   ),
 );

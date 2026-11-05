@@ -20,12 +20,15 @@ afterEach(async () => {
 });
 
 /** One in-memory world per test; `run` and the admin actions share its state. */
-const setup = (options?: Parameters<typeof makeTestLayer>[0]) => {
+const setup = (
+  options?: Parameters<typeof makeTestLayer>[0],
+  actionOptions?: { readonly autoCreateChannel?: boolean },
+) => {
   const runtime = ManagedRuntime.make(makeTestLayer(options).layer);
   disposers.push(() => runtime.dispose());
   const run = <A>(effect: Effect.Effect<A, unknown, AdminEnv>) =>
     runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
-  return { run, actions: makeAdminActions({ run, orgId: "o1" }) };
+  return { run, actions: makeAdminActions({ run, orgId: "o1", ...actionOptions }) };
 };
 
 describe("AdminActions", () => {
@@ -60,6 +63,16 @@ describe("AdminActions", () => {
     expect(await actions.createProject({ name: "Acme", createChannel: false })).toMatch(
       /^Created project "Acme" \(id [^)]+\)\.$/,
     );
+  });
+
+  it("createProject never creates a channel when autoCreateChannel is off", async () => {
+    const { run, actions } = setup(undefined, { autoCreateChannel: false });
+    expect(await actions.createProject({ name: "Acme" })).toMatch(
+      /^Created project "Acme" \(id [^)]+\)\.$/,
+    );
+    expect(
+      await run(Effect.flatMap(ProjectSourceRepository, (r) => r.listByProject("id-1"))),
+    ).toEqual([]);
   });
 
   it("createProject reports a failed channel create and keeps the project", async () => {

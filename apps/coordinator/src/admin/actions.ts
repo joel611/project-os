@@ -43,6 +43,11 @@ export const makeAdminActions = (deps: {
   readonly run: <A>(effect: Effect.Effect<A, unknown, AdminEnv>) => Promise<A>;
   /** Org that new projects belong to (POC: one org). */
   readonly orgId: string;
+  /**
+   * Whether `create_project` also creates the project's Discord channel (default true).
+   * When false, projects are created alone and channels are linked with set_default_channel.
+   */
+  readonly autoCreateChannel?: boolean;
 }): AdminActions => ({
   createProject: ({ name, customInstructions, createChannel }) => {
     const input = {
@@ -52,7 +57,7 @@ export const makeAdminActions = (deps: {
     };
     const created = (p: { readonly name: string; readonly id: string }) =>
       `Created project "${p.name}" (id ${p.id}).`;
-    if (createChannel === false) {
+    if (createChannel === false || deps.autoCreateChannel === false) {
       return deps.run(asText(createProject(input).pipe(Effect.map(created))));
     }
     return deps.run(
