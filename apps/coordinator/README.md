@@ -6,7 +6,7 @@ The single service that owns intent classification, Project Memory, the Ticket l
 
 Entry point: `POST /inbound` (`src/http/routes.ts`) → `handleInbound` (`packages/core/src/application/use-cases/handle-inbound.ts`).
 
-See [DECISION_TREE.md](./DECISION_TREE.md) for the full diagram: inbound gateway on the left, Coordinator decisions in the centre, Worker on the right.
+See [DECISION_TREE.md](./DECISION_TREE.md) for the classifier and LLM decision tree, and the tools each can use.
 
 ## Decisions
 
