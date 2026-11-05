@@ -233,6 +233,7 @@ export const seedQaData = (projectId: string) =>
         q.status === "completed" || q.status === "failed" || q.status === "cancelled";
       const started = q.status === "open" || q.status === "assigned" ? null : iso(q.ageMinutes, 2);
       const last = iso(q.ageMinutes, q.events.length);
+      const workerId = q.worker?.id ?? null;
       yield* tickets.insert({
         id,
         projectId,
@@ -242,7 +243,7 @@ export const seedQaData = (projectId: string) =>
         inputSummary: q.summary,
         priority: q.priority,
         workerType: q.worker?.type ?? null,
-        workerId: q.worker?.id ?? null,
+        workerId,
         result: q.result ?? null,
         error: q.error ?? null,
         createdAt: iso(q.ageMinutes),
@@ -259,7 +260,7 @@ export const seedQaData = (projectId: string) =>
           ticketId: id,
           type: e.type,
           actor: e.actor,
-          actorId: e.actor === "worker" ? (q.worker?.id ?? null) : null,
+          actorId: e.actor === "worker" ? workerId : null,
           body: e.body,
           payload: null,
           createdAt: iso(q.ageMinutes, offset++),
@@ -274,7 +275,7 @@ export const seedQaData = (projectId: string) =>
       yield* memory.insert({
         id: yield* ids.next,
         projectId,
-        ticketId: m.ticket === undefined ? null : (ticketIds[m.ticket] ?? null),
+        ticketId: m.ticket === undefined ? null : (ticketIds[m.ticket] as string),
         type: m.type,
         title: m.title,
         content: m.content,
