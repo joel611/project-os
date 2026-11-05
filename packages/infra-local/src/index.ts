@@ -24,6 +24,8 @@ export interface LocalConfig {
   readonly dbPath: string;
   /** Base URL per Channel Adapter (its `/reply` endpoint host). */
   readonly adapterUrls: Partial<Record<ChannelType, string>>;
+  /** Starts workers for assigned tickets. Default: none (the host Watcher pulls local work). */
+  readonly workerLauncher?: typeof WorkerLauncher.Service;
 }
 
 const IdGeneratorUuid = Layer.succeed(IdGenerator, {
@@ -34,7 +36,7 @@ const KeyValueStoreMemory = Layer.sync(KeyValueStore, () => makeMemoryKeyValueSt
 
 const SchedulerTimer = Layer.succeed(Scheduler, makeTimerScheduler());
 
-const WorkerLauncherNoop = Layer.succeed(WorkerLauncher, { launch: () => Effect.void });
+const noopLauncher: typeof WorkerLauncher.Service = { launch: () => Effect.void };
 
 /** Placeholder until the agent-runtime ticket (#14) supplies the in-process implementation. */
 const AgentRuntimePending = Layer.succeed(AgentRuntime, {
@@ -64,6 +66,6 @@ export const LocalLive = (config: LocalConfig) =>
       makeHttpChannelGateway({ adapterUrls: config.adapterUrls, fetch }),
     ),
     AgentRuntimePending,
-    WorkerLauncherNoop,
+    Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
   );
