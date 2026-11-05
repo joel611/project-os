@@ -10,6 +10,7 @@ import {
   Harness,
   type Storage,
 } from "@earendil-works/pi-durable";
+import type { TelemetryContext } from "@earendil-works/pi-telemetry";
 import { AgentRuntime, AgentRuntimeError } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { type AdminActions, makeAdminExtension } from "./admin-tools.ts";
@@ -23,6 +24,8 @@ export interface AgentRuntimeOptions {
   /** Coordinator actions exposed as tools to `admin:*` sessions. */
   readonly adminActions?: AdminActions;
   readonly instructions?: string;
+  /** Pi telemetry sink, e.g. `makeOtelTelemetry(...)`. Omitted: no-op. */
+  readonly telemetry?: TelemetryContext;
 }
 
 /** Maps a session key (`project:<id>`, `admin:<channel>`) to its Pi conversation, durably. */
@@ -61,7 +64,11 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
           try: async () => {
             const h = await Harness.open(
               options.storage,
-              { models: options.models, registry },
+              {
+                models: options.models,
+                registry,
+                ...(options.telemetry ? { telemetry: options.telemetry } : {}),
+              },
               context,
             );
             h.resume();
