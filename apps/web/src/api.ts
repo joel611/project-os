@@ -76,3 +76,5 @@ export const makeApi = (fetchFn: typeof fetch = fetch) => {
 };
 
 export type Api = ReturnType<typeof makeApi>;
+
+export const api = makeApi();

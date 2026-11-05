@@ -61,25 +61,3 @@ export const relativeTime = (iso: string, now: Date): string => {
   const unit = UNITS.find((u) => elapsed >= u.ms);
   return unit ? `${Math.floor(elapsed / unit.ms)}${unit.suffix} ago` : "just now";
 };
-
-export type Route =
-  | { readonly view: "home" }
-  | { readonly view: "project"; readonly projectId: string; readonly ticketId: string | null };
-
-const PROJECT = /^#\/p\/([^/]+)(?:\/t\/([^/]+))?$/;
-
-export const parseRoute = (hash: string): Route => {
-  const match = PROJECT.exec(hash);
-  if (!match) return { view: "home" };
-  return {
-    view: "project",
-    projectId: decodeURIComponent(match[1]!),
-    ticketId: match[2] ? decodeURIComponent(match[2]) : null,
-  };
-};
-
-export const formatRoute = (route: Route): string => {
-  if (route.view === "home") return "#/";
-  const project = `#/p/${encodeURIComponent(route.projectId)}`;
-  return route.ticketId ? `${project}/t/${encodeURIComponent(route.ticketId)}` : project;
-};
