@@ -4,6 +4,8 @@ import {
   addSource,
   CHANNEL_SOURCE_TYPES,
   createProject,
+  createProjectWithChannel,
+  type ChannelGateway,
   getTicket,
   setDefaultChannel,
   type Clock,
@@ -16,6 +18,7 @@ import { Effect } from "effect";
 
 /** Ports the admin actions need from the provider Layer. */
 export type AdminEnv =
+  | ChannelGateway
   | Clock
   | IdGenerator
   | ProjectRepository
@@ -41,16 +44,31 @@ export const makeAdminActions = (deps: {
   /** Org that new projects belong to (POC: one org). */
   readonly orgId: string;
 }): AdminActions => ({
-  createProject: ({ name, customInstructions }) =>
-    deps.run(
+  createProject: ({ name, customInstructions, createChannel }) => {
+    const input = {
+      orgId: deps.orgId,
+      name,
+      ...(customInstructions === undefined ? {} : { customInstructions }),
+    };
+    const created = (p: { readonly name: string; readonly id: string }) =>
+      `Created project "${p.name}" (id ${p.id}).`;
+    if (createChannel === false) {
+      return deps.run(asText(createProject(input).pipe(Effect.map(created))));
+    }
+    return deps.run(
       asText(
-        createProject({
-          orgId: deps.orgId,
-          name,
-          ...(customInstructions === undefined ? {} : { customInstructions }),
-        }).pipe(Effect.map((p) => `Created project "${p.name}" (id ${p.id}).`)),
+        createProjectWithChannel(input).pipe(
+          Effect.map(({ project, source, channelError }) =>
+            source
+              ? `${created(project)} Created channel ${source.name} (${source.externalId}) ` +
+                `as its reply channel.`
+              : `${created(project)} Could not create its channel (${channelError}); ` +
+                `link an existing one with set_default_channel.`,
+          ),
+        ),
       ),
-    ),
+    );
+  },
   addSource: ({ projectId, type, externalId }) => {
     const sourceType = SOURCE_TYPES[type];
     if (!sourceType) {

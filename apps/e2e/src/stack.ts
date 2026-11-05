@@ -9,6 +9,7 @@ import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
 import { createReplyApp, type ReplyTarget } from "../../discord-adapter/src/reply.ts";
 import { createApp } from "../../coordinator/src/app.ts";
+import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
 
 // Every component wired as in main.bun.ts, each on its own localhost port.
@@ -26,7 +27,11 @@ export interface Stack {
   readonly url: string;
   /** Messages the Discord adapter was told to post. */
   readonly posted: Posted[];
+  /** Channels the Discord adapter was told to create (ids `discord-new-1`, …). */
+  readonly createdChannels: string[];
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
+  /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
+  readonly admin: ReturnType<typeof makeAdminActions>;
   /** Creates a project and links `channelId` as its default response channel. */
   readonly linkChannel: (channelId: string) => Promise<string>;
   /** Connects an MCP client the way Claude Code does (SDK streamable HTTP). */
@@ -56,8 +61,17 @@ export const startStack = async (options: {
   ensureOrg(dbPath, { id: ORG_ID, name: "Org" });
 
   const posted: Posted[] = [];
+  const createdChannels: string[] = [];
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
+    async (name) => {
+      createdChannels.push(name);
+      // Discord lowercases and hyphenates text channel names.
+      return {
+        channelId: `discord-new-${createdChannels.length}`,
+        name: name.toLowerCase().replace(/\s+/g, "-"),
+      };
+    },
   ).listen(0);
 
   // Later layers win: the fakes replace LocalLive's AgentRuntime placeholder.
@@ -96,7 +110,9 @@ export const startStack = async (options: {
   return {
     url,
     posted,
+    createdChannels,
     json,
+    admin: makeAdminActions({ run: (effect) => runtime.runPromise(effect as any), orgId: ORG_ID }),
     linkChannel: async (channelId) => {
       const project = await json("POST", "/projects", { orgId: ORG_ID, name: "Acme" });
       await json("POST", `/projects/${project.id}/sources`, {

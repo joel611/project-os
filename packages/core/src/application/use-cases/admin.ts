@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import {
   SourceAlreadyLinked,
   type Project,
@@ -6,7 +6,13 @@ import {
   type ProjectSourceType,
   type SourceDirection,
 } from "../../domain/index.ts";
-import { IdGenerator, ProjectRepository, ProjectSourceRepository } from "../ports/index.ts";
+import {
+  ChannelGateway,
+  IdGenerator,
+  ProjectRepository,
+  ProjectSourceRepository,
+} from "../ports/index.ts";
+import { CHANNEL_SOURCE_TYPES } from "./channels.ts";
 import { nowIso } from "./tickets.ts";
 
 export const createProject = (input: {
@@ -97,4 +103,33 @@ export const setDefaultChannel = (input: {
       );
     }
     return yield* sources.setDefaultResponse(input.projectId, existing.id);
+  });
+
+/**
+ * Creates a Project and, through the Discord adapter, a new channel for it, linked as the
+ * project's default reply channel. The project is kept when the channel can't be created:
+ * the result then carries `channelError` so the admin can link an existing channel instead.
+ */
+export const createProjectWithChannel = (input: {
+  readonly orgId: string;
+  readonly name: string;
+  readonly slug?: string;
+  readonly customInstructions?: string;
+}) =>
+  Effect.gen(function* () {
+    const project = yield* createProject(input);
+    const created = yield* Effect.result(
+      (yield* ChannelGateway).createChannel({ channelType: "discord", name: input.name }),
+    );
+    if (Result.isFailure(created)) {
+      return { project, source: null, channelError: created.failure.message } as const;
+    }
+    const source = yield* addSource({
+      projectId: project.id,
+      type: CHANNEL_SOURCE_TYPES.discord,
+      externalId: created.success.channelId,
+      name: `#${created.success.name}`,
+      isDefaultResponse: true,
+    });
+    return { project, source, channelError: null } as const;
   });
