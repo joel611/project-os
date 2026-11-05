@@ -1,7 +1,7 @@
-import type { MemoryEntry, ProjectSourceType, Ticket } from "@project-os/contracts";
+import type { MemoryEntry, Ticket } from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { FileText, FolderOpen, GitBranch, Hash, List, Mail, Star } from "lucide-react";
+import { FileText, Settings, Star } from "lucide-react";
 import { api, ApiError, type ProjectDetail } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,32 +14,32 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ProjectSettings } from "@/components/project-settings";
+import { SOURCE_META } from "@/components/source";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
 import { relativeTime, splitTickets } from "@/model";
 import { useNow } from "@/use-now";
-
-const SOURCE_ICON: Readonly<Record<ProjectSourceType, typeof Hash>> = {
-  discord_channel: Hash,
-  email_address: Mail,
-  clickup_list: List,
-  google_drive_folder: FolderOpen,
-  github_repo: GitBranch,
-};
 
 const Header = ({ project, sources }: ProjectDetail) => (
   <header className="flex flex-col gap-2">
     <div className="flex items-baseline gap-2">
       <h1 className="text-xl font-semibold tracking-tight">{project.name}</h1>
       {project.slug && <span className="text-sm text-muted-foreground">{project.slug}</span>}
+      <Link
+        to="/projects/$projectId/settings"
+        params={{ projectId: project.id }}
+        className="ml-auto inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <Settings className="size-4" />
+        Settings
+      </Link>
     </div>
     {project.customInstructions && (
       <p className="max-w-2xl text-sm text-muted-foreground">{project.customInstructions}</p>
     )}
     <div className="flex flex-wrap gap-1.5">
       {sources.map((s) => {
-        const Icon = SOURCE_ICON[s.type];
+        const { Icon } = SOURCE_META[s.type];
         return (
           <Badge key={s.id} variant="outline" className="gap-1 font-normal">
             <Icon className="size-3" />
@@ -197,7 +197,6 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
         <TabsList>
           <TabsTrigger value="tickets">Tickets {count(tickets.data?.length)}</TabsTrigger>
           <TabsTrigger value="memory">Memory {count(memory.data?.length)}</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="tickets" className="pt-2">
           {tickets.isPending ? (
@@ -216,9 +215,6 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
           ) : (
             <Memory entries={memory.data} />
           )}
-        </TabsContent>
-        <TabsContent value="settings">
-          {detail.data && <ProjectSettings detail={detail.data} />}
         </TabsContent>
       </Tabs>
     </div>
