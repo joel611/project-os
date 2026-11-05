@@ -51,5 +51,6 @@ Admin tools (`packages/agent-runtime/src/admin-tools.ts`):
 - Project sessions have no tools. The status answer is built only from the ticket list put in the prompt, not from Project Memory.
 - No LLM session has channel tools. Replies leave through `ChannelGateway`, never through Pi.
 - Sessions are durable: one Pi conversation per session key, de-duplicated by `requestId` (the inbound `externalId`), so a re-delivered message is not answered twice.
+- `/project-create` (Discord slash command, `POST /commands`) bypasses both AI calls: it runs the admin `create_project` action directly, under the same admin channel and admin list checks.
 - `needs_worker` is classified but nothing reads it yet.
 - Classifier failure raises `ClassifierError`; chat failure raises `AgentRuntimeError`.

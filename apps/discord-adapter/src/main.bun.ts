@@ -1,5 +1,13 @@
 import { env, envNumber } from "@project-os/config";
-import { ChannelType, Client, Events, GatewayIntentBits } from "discord.js";
+import {
+  type ApplicationCommandDataResolvable,
+  ChannelType,
+  Client,
+  Events,
+  GatewayIntentBits,
+  MessageFlags,
+} from "discord.js";
+import { answerCommand, COMMAND_DEFINITIONS, normalizeCommand } from "./commands.ts";
 import { forwardInbound } from "./forward.ts";
 import { normalizeMessage } from "./normalize.ts";
 import { createReplyApp } from "./reply.ts";
@@ -7,6 +15,7 @@ import { createReplyApp } from "./reply.ts";
 // Long-running process holding an outbound Discord Gateway WebSocket (§8.5).
 // Needs the Message Content privileged intent enabled in the Discord developer portal, and the
 // Manage Channels permission in DISCORD_GUILD_ID so new projects get their own channel.
+// Invite the bot with the `applications.commands` scope so it can register /project-create.
 const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
 const port = envNumber("DISCORD_ADAPTER_PORT", 8081); // not PORT: that is the Coordinator's, shared via .env
 
@@ -31,6 +40,48 @@ client.on(Events.MessageCreate, async (message) => {
 // Server where project channels are created, and the category they go under (optional).
 const guildId = process.env.DISCORD_GUILD_ID;
 const categoryId = process.env.DISCORD_PROJECT_CATEGORY_ID;
+// Only a hint for whether to answer privately; the Coordinator enforces the admin channel.
+const adminChannelId = process.env.ADMIN_CHANNEL_ID || undefined;
+
+// Slash commands (/project-create). Registered on DISCORD_GUILD_ID so they appear at once;
+// without it they're registered globally, which Discord can take up to an hour to show.
+client.once(Events.ClientReady, async (ready) => {
+  const commands = COMMAND_DEFINITIONS as unknown as ApplicationCommandDataResolvable[];
+  try {
+    const target = guildId
+      ? (await ready.guilds.fetch(guildId)).commands
+      : ready.application.commands;
+    await target.set(commands);
+    console.log(`registered slash commands ${guildId ? `in guild ${guildId}` : "globally"}`);
+  } catch (err) {
+    console.error("slash command registration failed", err);
+  }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  const command = normalizeCommand(interaction);
+  if (!command) return;
+  try {
+    await answerCommand(
+      command,
+      {
+        defer: async (ephemeral) =>
+          void (await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : {})),
+        edit: async (content) => void (await interaction.editReply(content)),
+        remove: () => interaction.deleteReply(),
+        followUp: async (content, ephemeral) =>
+          void (await interaction.followUp({
+            content,
+            ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
+          })),
+      },
+      { coordinatorUrl, ...(adminChannelId && { adminChannelId }), fetcher: fetch },
+    );
+  } catch (err) {
+    console.error(`/${interaction.commandName} failed`, err);
+  }
+});
 
 createReplyApp(
   async ({ channelId, threadId }, content) => {

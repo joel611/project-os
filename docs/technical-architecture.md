@@ -180,6 +180,7 @@ The channel (Discord / email) only sees what the Coordinator chooses to surface 
 - Dedicated Discord channel for configuration
 - Admin can create projects, add sources, set default channels, and ask about ticket status
 - Creating a project also creates its own Discord channel (via `ChannelGateway.createChannel` → the Discord adapter's `/channels`) and links it as the default reply channel, unless the admin asks to link an existing channel instead, or `PROJECT_CHANNEL_AUTO_CREATE=false` turns it off for the Coordinator. The bot needs **Manage Channels** in `DISCORD_GUILD_ID`; if Discord refuses, the project is still created and the admin is told why
+- `/project-create name:<name> [instructions:<text>]` is a Discord slash command for the same action without the LLM. The Discord adapter registers it (on `DISCORD_GUILD_ID`, else globally) and forwards each use as a `SlashCommand` to the Coordinator's `POST /commands`, which runs the admin `create_project` action. The Coordinator only runs it in `ADMIN_CHANNEL_ID` for `ADMIN_USER_IDS`; elsewhere the reply is private (ephemeral) and nothing is created. Discord can't scope a bot's command to one channel, so the command is visible everywhere and refused outside the admin channel
 - Coordinator authenticates the speaker as admin and acts accordingly
 
 **Web UI**

@@ -1,5 +1,5 @@
 import { healthConfig } from "@project-os/config";
-import { InboundMessage } from "@project-os/contracts";
+import { InboundMessage, SlashCommand } from "@project-os/contracts";
 import {
   getTicket,
   handleInbound,
@@ -16,7 +16,7 @@ import {
   type TicketRepository,
   type WorkerRepository,
 } from "@project-os/core";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
 import {
   changeStatus,
@@ -32,9 +32,12 @@ import {
   listWorkers,
   UpdateStatusBody,
 } from "./admin.ts";
+import { type CommandsConfig, runCommand } from "./commands.ts";
 import { toResult, type HttpResult } from "./result.ts";
 
-export type { HandleInboundConfig };
+const decodeCommand = Schema.decodeUnknownOption(SlashCommand);
+
+export type { CommandsConfig, HandleInboundConfig };
 
 /** Ports the HTTP routes need from the provider Layer. */
 export type HttpEnv =
@@ -56,6 +59,8 @@ export interface HttpDeps {
   readonly inbound?: HandleInboundConfig;
   /** Worker `lastSeenAt` older than this reads as offline in `GET /workers`. Default: env. */
   readonly workerStaleMs?: number;
+  /** Slash commands from Channel Adapters (`POST /commands`). Omitted: every command 501s. */
+  readonly commands?: CommandsConfig;
 }
 
 /** Ingress + minimal admin API (docs/technical-architecture.md §6). Transport only. */
@@ -63,6 +68,7 @@ export const httpRoutes = ({
   run,
   inbound = {},
   workerStaleMs = healthConfig().workerStaleMs,
+  commands,
 }: HttpDeps) => {
   const reply = async (
     set: { status?: number | string },
@@ -84,6 +90,18 @@ export const httpRoutes = ({
         ),
       ),
     )
+    .post("/commands", async ({ body, set }) => {
+      const parsed = decodeCommand(body);
+      if (parsed._tag === "None") {
+        set.status = 400;
+        return { error: "invalid slash command" };
+      }
+      if (!commands) {
+        set.status = 501;
+        return { error: "slash commands are not configured" };
+      }
+      return runCommand(parsed.value, commands);
+    })
     .get("/projects", ({ set }) => reply(set, toResult(listProjects)))
     .post("/projects", ({ body, set }) =>
       reply(

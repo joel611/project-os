@@ -38,3 +38,30 @@ export const CreatedChannel = Schema.Struct({
   name: Schema.String,
 });
 export type CreatedChannel = typeof CreatedChannel.Type;
+
+/** Slash commands a Channel Adapter registers and forwards to the Coordinator's `/commands`. */
+export const SLASH_COMMANDS = ["project-create"] as const;
+export const SlashCommandName = Schema.Literals(SLASH_COMMANDS);
+export type SlashCommandName = typeof SlashCommandName.Type;
+
+/** A slash command someone ran, normalized by its Channel Adapter. */
+export const SlashCommand = Schema.Struct({
+  channelType: ChannelType,
+  command: SlashCommandName,
+  /** Platform id of this invocation (Discord interaction id). */
+  externalId: Schema.String,
+  channelId: Schema.String,
+  threadId: Schema.optionalKey(Schema.String),
+  sender: Schema.Struct({ id: Schema.String, name: Schema.optionalKey(Schema.String) }),
+  /** The command's string options, by name. */
+  options: Schema.Record(Schema.String, Schema.String),
+});
+export type SlashCommand = typeof SlashCommand.Type;
+
+/** The Coordinator's answer to a slash command; the adapter shows it to whoever ran it. */
+export const CommandReply = Schema.Struct({
+  content: Schema.String,
+  /** True when only the person who ran the command should see it (e.g. a refusal). */
+  ephemeral: Schema.Boolean,
+});
+export type CommandReply = typeof CommandReply.Type;
