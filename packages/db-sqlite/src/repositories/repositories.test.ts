@@ -142,6 +142,21 @@ describe("ProjectRepository", () => {
     expect(all).toHaveLength(1);
     expect(miss._tag).toBe("ProjectNotFound");
   });
+
+  it("updates a project and reports not found", async () => {
+    const { updated, miss } = await run(
+      Effect.gen(function* () {
+        const repo = yield* ProjectRepository;
+        yield* repo.insert(project());
+        return {
+          updated: yield* repo.update(project({ name: "Renamed" })),
+          miss: yield* Effect.flip(repo.update(project({ id: "nope" }))),
+        };
+      }),
+    );
+    expect(updated.name).toBe("Renamed");
+    expect(miss._tag).toBe("ProjectNotFound");
+  });
 });
 
 describe("ProjectSourceRepository", () => {
