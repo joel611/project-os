@@ -19,7 +19,7 @@ const edgeOnly = [
   "@project-os/infra-cloudflare",
 ].map((name) => ({
   name,
-  message: "adapters and the watcher may only use contracts + libs/config.",
+  message: "adapters, the watcher, and the web UI may only use contracts + libs/config.",
 }));
 
 export default defineConfig({
@@ -38,6 +38,7 @@ export default defineConfig({
         "**/dist/**",
         "**/migrations/**",
         "**/index.ts",
+        "**/routeTree.gen.ts",
         // Test fakes are test infrastructure, not production code.
         "packages/testing/**",
       ],
@@ -49,7 +50,7 @@ export default defineConfig({
   },
   lint: {
     plugins: ["typescript"],
-    ignorePatterns: ["**/dist/**", "**/migrations/**"],
+    ignorePatterns: ["**/dist/**", "**/migrations/**", "**/routeTree.gen.ts"],
     overrides: [
       {
         files: ["packages/core/**", "packages/contracts/**"],
@@ -69,13 +70,25 @@ export default defineConfig({
         },
       },
       {
-        files: ["apps/discord-adapter/**", "apps/email-adapter/**", "apps/watcher/**"],
+        files: [
+          "apps/discord-adapter/**",
+          "apps/email-adapter/**",
+          "apps/watcher/**",
+          "apps/web/**",
+        ],
         rules: { "no-restricted-imports": ["error", { paths: edgeOnly }] },
       },
     ],
   },
   fmt: {
     printWidth: 100,
-    ignorePatterns: ["**/migrations/**", "bun.lock", "docs/**", "CONTEXT.md", "CLAUDE.md"],
+    ignorePatterns: [
+      "**/migrations/**",
+      "**/routeTree.gen.ts",
+      "bun.lock",
+      "docs/**",
+      "CONTEXT.md",
+      "CLAUDE.md",
+    ],
   },
 });
