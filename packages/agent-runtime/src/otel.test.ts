@@ -82,6 +82,38 @@ describe("makeOtelTelemetry", () => {
     expect(linked?.links[0]?.context.spanId).toBe(otherSpan?.spanContext().spanId);
   });
 
+  it("covers link variants, bare error status, non-Error throws, and foreign contexts", async () => {
+    const { exporter, telemetry } = setupOtel();
+    const foreign = { startSpan: () => Promise.resolve() } as never;
+    let other: Parameters<Parameters<typeof telemetry.startSpan>[1]>[0] | undefined;
+    await telemetry.startSpan({ name: "other" }, (s) => {
+      other = s;
+    });
+    await telemetry.startSpan(
+      {
+        name: "links",
+        links: [{ context: other as never, attributes: { why: "x" } }, { context: foreign }],
+      },
+      (s) => {
+        s.addLink({ context: other as never, attributes: { late: true } });
+        s.addLink({ context: foreign });
+        s.setStatus({ status: "error" });
+      },
+    );
+    await expect(
+      telemetry.startSpan({ name: "str" }, () => {
+        throw "plain";
+      }),
+    ).rejects.toBe("plain");
+
+    const spans = exporter.getFinishedSpans();
+    const links = spans.find((s) => s.name === "links");
+    expect(links?.links).toHaveLength(2);
+    expect(links?.status).toEqual({ code: 2 });
+    expect(spans.find((s) => s.name === "str")?.status.message).toBe("Error: plain");
+    telemetry.metrics?.histogram("h2").record(1, undefined, other);
+  });
+
   it("round-trips a trace through propagation carriers", async () => {
     const { exporter, telemetry } = setupOtel();
     const { propagation } = telemetry;
