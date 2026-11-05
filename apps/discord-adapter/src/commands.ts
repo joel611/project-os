@@ -1,0 +1,122 @@
+import { Schema } from "effect";
+import { CommandReply, type SlashCommand, type SlashCommandName } from "@project-os/contracts";
+
+type Fetcher = (req: Request) => Promise<Response>;
+
+/**
+ * Slash commands this adapter registers with Discord (application command JSON, type 1 =
+ * chat input, option type 3 = string). Discord can't limit a bot's command to one channel,
+ * so the Coordinator refuses it outside the admin channel.
+ */
+export const COMMAND_DEFINITIONS = [
+  {
+    name: "project-create",
+    description: "Create a project and its Discord channel (admin channel only)",
+    type: 1,
+    dm_permission: false,
+    options: [
+      { name: "name", description: "Project name", type: 3, required: true, max_length: 100 },
+      {
+        name: "instructions",
+        description: "Custom instructions for the project's agents",
+        type: 3,
+        required: false,
+      },
+    ],
+  },
+] as const;
+// Every registered command must be one the Coordinator knows.
+COMMAND_DEFINITIONS satisfies ReadonlyArray<{ readonly name: SlashCommandName }>;
+
+const NAMES: ReadonlySet<string> = new Set(COMMAND_DEFINITIONS.map((c) => c.name));
+
+/** Structural subset of a discord.js `ChatInputCommandInteraction`, so tests need no Discord. */
+export interface DiscordCommandLike {
+  id: string;
+  commandName: string;
+  channelId: string;
+  channel: { isThread(): boolean; parentId?: string | null } | null;
+  user: { id: string; username: string };
+  /** A `GuildMember` (has `displayName`) or, for uncached guilds, a raw API member. */
+  member?: object | null;
+  options: { data: ReadonlyArray<{ name: string; value?: string | number | boolean }> };
+}
+
+const displayName = (member: object | null | undefined): string | undefined =>
+  member && "displayName" in member && typeof member.displayName === "string"
+    ? member.displayName
+    : undefined;
+
+/** Normalizes one of our commands; returns null for commands this adapter doesn't own. */
+export const normalizeCommand = (i: DiscordCommandLike): SlashCommand | null => {
+  if (!NAMES.has(i.commandName)) return null;
+  const inThread = i.channel?.isThread() ?? false;
+  const options: Record<string, string> = {};
+  for (const o of i.options.data) if (o.value !== undefined) options[o.name] = String(o.value);
+  return {
+    channelType: "discord",
+    command: i.commandName as SlashCommandName,
+    externalId: i.id,
+    channelId: inThread ? (i.channel?.parentId ?? i.channelId) : i.channelId,
+    ...(inThread ? { threadId: i.channelId } : {}),
+    sender: { id: i.user.id, name: displayName(i.member) ?? i.user.username },
+    options,
+  };
+};
+
+const decodeReply = Schema.decodeUnknownSync(CommandReply);
+
+/** POSTs a command to the Coordinator's /commands and returns what to show the user. */
+export const forwardCommand = async (
+  coordinatorUrl: string,
+  command: SlashCommand,
+  fetcher: Fetcher,
+): Promise<CommandReply> => {
+  const url = `${coordinatorUrl.replace(/\/+$/, "")}/commands`;
+  const res = await fetcher(
+    new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+    }),
+  );
+  if (!res.ok) throw new Error(`Coordinator /commands responded ${res.status}`);
+  return decodeReply(await res.json());
+};
+
+/** The calls `answerCommand` makes on a deferred interaction. */
+export interface InteractionReplier {
+  /** Acknowledges within Discord's 3 s limit; `ephemeral` hides the answer from others. */
+  defer(ephemeral: boolean): Promise<void>;
+  edit(content: string): Promise<void>;
+  /** Removes the deferred reply (used to turn a public answer into a private one). */
+  remove(): Promise<void>;
+  followUp(content: string, ephemeral: boolean): Promise<void>;
+}
+
+/**
+ * Defers, forwards, then answers. Outside `adminChannelId` it defers privately, since the
+ * Coordinator will refuse; in the admin channel a refusal still ends up private.
+ */
+export const answerCommand = async (
+  command: SlashCommand,
+  replier: InteractionReplier,
+  deps: { readonly coordinatorUrl: string; readonly adminChannelId?: string; fetcher: Fetcher },
+): Promise<void> => {
+  const deferredPrivately =
+    deps.adminChannelId === undefined || command.channelId !== deps.adminChannelId;
+  await replier.defer(deferredPrivately);
+  let reply: CommandReply;
+  try {
+    reply = await forwardCommand(deps.coordinatorUrl, command, deps.fetcher);
+  } catch (err) {
+    console.error("forward command to coordinator failed", err);
+    reply = { content: "Something went wrong reaching the Coordinator.", ephemeral: true };
+  }
+  if (reply.ephemeral && !deferredPrivately) {
+    await replier.remove();
+    await replier.followUp(reply.content, true);
+    return;
+  }
+  await replier.edit(reply.content);
+};

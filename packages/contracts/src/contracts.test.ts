@@ -74,6 +74,19 @@ const cases: ReadonlyArray<readonly [string, Schema.Top, unknown]> = [
     },
   ],
   [
+    "SlashCommand",
+    C.SlashCommand,
+    {
+      channelType: "discord",
+      command: "project-create",
+      externalId: "i1",
+      channelId: "admin",
+      sender: { id: "u1", name: "Joel" },
+      options: { name: "Acme", instructions: "be brief" },
+    },
+  ],
+  ["CommandReply", C.CommandReply, { content: "ok", ephemeral: false }],
+  [
     "ReplyInstruction",
     C.ReplyInstruction,
     { channelType: "discord", channelId: "c1", threadId: "th1", content: "done" },
