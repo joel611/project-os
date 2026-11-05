@@ -16,4 +16,10 @@ export const makeProjectRepository = (db: SqliteDb): Impl => ({
       ),
     ),
   list: q(() => db.select().from(projects)),
+  update: (project: Project) =>
+    q(() => db.update(projects).set(project).where(eq(projects.id, project.id)).returning()).pipe(
+      Effect.flatMap(([row]) =>
+        row ? Effect.succeed(row) : Effect.fail(new ProjectNotFound({ projectId: project.id })),
+      ),
+    ),
 });

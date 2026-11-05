@@ -30,6 +30,8 @@ import {
   listProjects,
   listProjectTickets,
   listWorkers,
+  UpdateProjectBody,
+  updateProject,
   UpdateStatusBody,
 } from "./admin.ts";
 import { toResult, type HttpResult } from "./result.ts";
@@ -92,6 +94,16 @@ export const httpRoutes = ({
       ),
     )
     .get("/projects/:id", ({ params, set }) => reply(set, toResult(getProject(params.id))))
+    .patch("/projects/:id", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(UpdateProjectBody, body).pipe(
+            Effect.flatMap((patch) => updateProject(params.id, patch)),
+          ),
+        ),
+      ),
+    )
     .get("/projects/:id/memory", ({ params, set }) =>
       reply(set, toResult(listProjectMemory(params.id))),
     )
