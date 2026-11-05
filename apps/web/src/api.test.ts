@@ -63,6 +63,36 @@ describe("makeApi", () => {
     ]);
   });
 
+  it("PATCHes project settings and POSTs sources as JSON", async () => {
+    const seen: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const source = {
+      id: "s1",
+      projectId: "p1",
+      type: "github_repo",
+      externalId: "acme/web",
+      name: "acme/web",
+      direction: "both",
+      isDefaultResponse: false,
+      config: null,
+      status: "active",
+      connectedBy: null,
+      createdAt: T,
+      updatedAt: T,
+    };
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      seen.push({ url, init });
+      return Response.json(init?.method === "PATCH" ? project : source, { status: 200 });
+    }) as typeof fetch;
+    const api = makeApi(fetchFn);
+    await api.updateProject("p1", { name: "Acme" });
+    await api.addSource("p1", { type: "github_repo", externalId: "acme/web", name: "acme/web" });
+    expect(seen.map((s) => [s.url, s.init?.method])).toEqual([
+      ["/api/projects/p1", "PATCH"],
+      ["/api/projects/p1/sources", "POST"],
+    ]);
+    expect(JSON.parse(String(seen[0]?.init?.body))).toEqual({ name: "Acme" });
+  });
+
   it("decodes worker status alongside the worker", async () => {
     const worker = {
       id: "w1",
@@ -109,6 +139,8 @@ describe("describeError", () => {
     [new TypeError("Failed to fetch"), unreachable],
     [new ApiError(502, "Unreachable"), unreachable],
     [new ApiError(404, "TicketNotFound"), "Not found."],
+    [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
+    [new ApiError(400, "SchemaError"), "The Coordinator rejected that input."],
     [new ApiError(502, "AgentRuntimeError"), "Coordinator returned 502 (AgentRuntimeError)."],
   ])("%s → %s", (error, message) => {
     expect(describeError(error)).toBe(message);

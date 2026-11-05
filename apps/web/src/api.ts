@@ -8,6 +8,7 @@ import {
   WorkerStatus,
 } from "@project-os/contracts";
 import { Schema } from "effect";
+import type { SourceInput } from "@/model";
 
 const WorkerView = Schema.Struct({ ...Worker.fields, status: WorkerStatus });
 export type WorkerView = typeof WorkerView.Type;
@@ -17,6 +18,11 @@ export type ProjectDetail = typeof ProjectDetail.Type;
 
 const TicketDetail = Schema.Struct({ ticket: Ticket, events: Schema.Array(TicketEvent) });
 export type TicketDetail = typeof TicketDetail.Type;
+
+export interface ProjectPatch {
+  readonly name?: string;
+  readonly customInstructions?: string;
+}
 
 /** A Coordinator error response: HTTP status plus its tagged error name. */
 export class ApiError extends Error {
@@ -51,17 +57,31 @@ export const describeError = (error: Error): string => {
     return `Unexpected response from the Coordinator: ${error.message}`;
   if (error.code === "Unreachable") return UNREACHABLE;
   if (error.status === 404) return "Not found.";
+  if (error.code === "SourceAlreadyLinked") return "That source is already linked to a project.";
+  if (error.status === 400) return "The Coordinator rejected that input.";
   return `Coordinator returned ${error.status} (${error.code}).`;
 };
 
 /** Typed client for the Coordinator read API. Responses are decoded with the contract schemas. */
 export const makeApi = (fetchFn: typeof fetch = fetch) => {
-  const get = async <S extends Schema.Decoder<unknown>>(path: string, schema: S) => {
-    const res = await fetchFn(`/api${path}`);
+  const send = async <S extends Schema.Decoder<unknown>>(
+    path: string,
+    schema: S,
+    init?: { readonly method: "POST" | "PATCH"; readonly json: unknown },
+  ) => {
+    const res = await fetchFn(
+      `/api${path}`,
+      init && {
+        method: init.method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(init.json),
+      },
+    );
     const body: unknown = await res.json().catch(() => null);
     if (!res.ok) throw new ApiError(res.status, errorCode(body, res));
     return Schema.decodeUnknownSync(schema)(body);
   };
+  const get = <S extends Schema.Decoder<unknown>>(path: string, schema: S) => send(path, schema);
   const id = encodeURIComponent;
 
   return {
@@ -72,6 +92,10 @@ export const makeApi = (fetchFn: typeof fetch = fetch) => {
       get(`/projects/${id(projectId)}/memory`, Schema.Array(MemoryEntry)),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
     workers: () => get("/workers", Schema.Array(WorkerView)),
+    updateProject: (projectId: string, patch: ProjectPatch) =>
+      send(`/projects/${id(projectId)}`, Project, { method: "PATCH", json: patch }),
+    addSource: (projectId: string, source: SourceInput) =>
+      send(`/projects/${id(projectId)}/sources`, ProjectSource, { method: "POST", json: source }),
   };
 };
 
