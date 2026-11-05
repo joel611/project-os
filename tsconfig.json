@@ -1,5 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "include": ["apps/*/src", "packages/*/src", "libs/*/src", "vite.config.ts"],
-  "exclude": ["apps/coordinator/src/main.cloudflare.ts", "packages/infra-cloudflare/src"]
+  "exclude": [
+    "apps/coordinator/src/main.cloudflare.ts",
+    "packages/infra-cloudflare/src",
+    "apps/web/src"
+  ]
 }

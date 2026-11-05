@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { Actor, MemoryEntryType, TicketEventType, WorkerType } from "./enums.ts";
+import { Actor, MemoryEntryType, ProjectSourceType, TicketEventType, WorkerType } from "./enums.ts";
 import { TicketStatus } from "./ticket-status.ts";
 
 const Json = Schema.Unknown;
@@ -51,3 +51,49 @@ export const MemoryEntry = Schema.Struct({
   createdAt: Timestamp,
 });
 export type MemoryEntry = typeof MemoryEntry.Type;
+
+export const Project = Schema.Struct({
+  id: Id,
+  orgId: Id,
+  name: Schema.String,
+  slug: Schema.NullOr(Schema.String),
+  customInstructions: Schema.String,
+  /** FK to a ProjectSource (usually Discord). */
+  defaultResponseChannelId: Schema.NullOr(Schema.String),
+  status: Schema.Literals(["active", "archived", "deleted"]),
+  createdBy: Schema.NullOr(Schema.String),
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+});
+export type Project = typeof Project.Type;
+
+export const SourceDirection = Schema.Literals(["inbound", "outbound", "both"]);
+export type SourceDirection = typeof SourceDirection.Type;
+
+export const ProjectSource = Schema.Struct({
+  id: Id,
+  projectId: Id,
+  type: ProjectSourceType,
+  externalId: Schema.String,
+  name: Schema.String,
+  direction: SourceDirection,
+  isDefaultResponse: Schema.Boolean,
+  config: Json,
+  status: Schema.Literals(["active", "disabled"]),
+  connectedBy: Schema.NullOr(Schema.String),
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+});
+export type ProjectSource = typeof ProjectSource.Type;
+
+export const Worker = Schema.Struct({
+  id: Id,
+  workerType: WorkerType,
+  currentTicketId: Schema.NullOr(Schema.String),
+  lastSeenAt: Timestamp,
+  createdAt: Timestamp,
+});
+export type Worker = typeof Worker.Type;
+
+export const WorkerStatus = Schema.Literals(["online", "offline"]);
+export type WorkerStatus = typeof WorkerStatus.Type;

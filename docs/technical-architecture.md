@@ -562,6 +562,7 @@ host (outside Compose)
 - `POST /projects/:id/memory`
 - `GET /projects/:id/tickets`
 - `GET /tickets/:id` (+ events)
+- `GET /workers` (online/offline derived from `lastSeenAt`)
 - Settings endpoints as needed
 
 ### For Workers (MCP only)
