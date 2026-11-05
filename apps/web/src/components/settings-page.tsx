@@ -57,7 +57,7 @@ const SourceRow = ({ source }: { source: ProjectSource }) => {
 
 const SourceList = ({ sources }: { sources: ReadonlyArray<ProjectSource> }) =>
   sources.length === 0 ? (
-    <Empty title="No sources yet" hint="Link a repo or Drive folder below." />
+    <Empty title="No sources yet" hint="Link a repo or Drive folder above." />
   ) : (
     <ul className="flex flex-col divide-y rounded-lg border">
       {sources.map((s) => (
@@ -220,8 +220,8 @@ export const SettingsPage = ({ projectId }: { projectId: string }) => {
             <TabsTrigger value="general">General</TabsTrigger>
           </TabsList>
           <TabsContent value="sources" className="flex flex-col gap-6 pt-2">
-            <SourceList sources={detail.data.sources} />
             <AddSource projectId={projectId} sources={detail.data.sources} />
+            <SourceList sources={detail.data.sources} />
           </TabsContent>
           <TabsContent value="general" className="pt-2">
             {/* Remount when the saved row changes so fields reset to what was saved. */}
