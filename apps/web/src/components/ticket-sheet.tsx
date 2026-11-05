@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/states";
 import { StatusBadge, ToneDot } from "@/components/tone";
 import { EVENT, relativeTime } from "@/model";
+import { useNow } from "@/use-now";
 import { api, type TicketDetail } from "@/api";
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -20,17 +21,10 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
   </div>
 );
 
-const Json = ({ value }: { value: unknown }) =>
-  value === null || value === undefined ? null : (
-    <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-      {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-    </pre>
-  );
-
 const when = (iso: string | null, now: Date) => (iso ? relativeTime(iso, now) : null);
 
 const Body = ({ ticket, events }: TicketDetail) => {
-  const now = new Date();
+  const now = useNow();
   return (
     <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-6">
       <dl className="grid grid-cols-2 gap-3">
@@ -52,7 +46,11 @@ const Body = ({ ticket, events }: TicketDetail) => {
       {ticket.result !== null && (
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Result</h3>
-          <Json value={ticket.result} />
+          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+            {typeof ticket.result === "string"
+              ? ticket.result
+              : JSON.stringify(ticket.result, null, 2)}
+          </pre>
         </section>
       )}
       <Separator />
@@ -92,7 +90,8 @@ export const TicketSheet = ({
   });
 
   return (
-    <Sheet open={ticketId !== null} onOpenChange={(open) => !open && onClose()}>
+    // No trigger opens the sheet (the URL does), so any requested change is a close.
+    <Sheet open={ticketId !== null} onOpenChange={onClose}>
       <SheetContent className="w-full gap-0 sm:max-w-xl">
         <SheetHeader>
           {detail.data ? (

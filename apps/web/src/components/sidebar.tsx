@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { FolderKanban } from "lucide-react";
 import { api } from "@/api";
 import { relativeTime } from "@/model";
+import { useNow } from "@/use-now";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToneDot } from "@/components/tone";
 import { QueryError } from "@/components/states";
@@ -46,7 +47,7 @@ const Projects = () => {
 
 const Workers = () => {
   const workers = useQuery({ queryKey: ["workers"], queryFn: api.workers });
-  const now = new Date();
+  const now = useNow();
 
   if (workers.isPending) return <Skeleton className="mx-2 h-8" />;
   if (workers.isError) return <QueryError error={workers.error} />;
