@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/main.bun.ts"
+  },
   "scripts": {
-    "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
-    "start": "bun src/main.bun.ts",
+    "standalone": "bun src/main.standalone.ts",
     "fake": "bun --env-file=../../.env src/main.fake.ts"
   },
   "dependencies": {
