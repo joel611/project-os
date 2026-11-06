@@ -3,10 +3,22 @@ import { CommandReply, type SlashCommand, type SlashCommandName } from "@project
 
 type Fetcher = (req: Request) => Promise<Response>;
 
+const PROVIDER_OPTION = {
+  name: "provider",
+  description: "Which account",
+  type: 3,
+  required: true,
+  choices: [
+    { name: "Google (Drive)", value: "google" },
+    { name: "GitHub", value: "github" },
+  ],
+} as const;
+
 /**
  * Slash commands this adapter registers with Discord (application command JSON, type 1 =
  * chat input, option type 3 = string). Discord can't limit a bot's command to one channel,
- * so the Coordinator refuses it outside the admin channel.
+ * so the Coordinator refuses admin commands outside the admin channel. Account commands
+ * (/connect, /disconnect, /connections) work anywhere, DMs included.
  */
 export const COMMAND_DEFINITIONS = [
   {
@@ -23,6 +35,27 @@ export const COMMAND_DEFINITIONS = [
         required: false,
       },
     ],
+  },
+  {
+    name: "connect",
+    description: "Link your Google or GitHub account so I work with your own access",
+    type: 1,
+    dm_permission: true,
+    options: [PROVIDER_OPTION],
+  },
+  {
+    name: "disconnect",
+    description: "Unlink your Google or GitHub account",
+    type: 1,
+    dm_permission: true,
+    options: [PROVIDER_OPTION],
+  },
+  {
+    name: "connections",
+    description: "Show which of your accounts are linked",
+    type: 1,
+    dm_permission: true,
+    options: [],
   },
 ] as const;
 // Every registered command must be one the Coordinator knows.
