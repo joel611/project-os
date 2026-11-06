@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 import { answerCommand, COMMAND_DEFINITIONS, normalizeCommand } from "./commands.ts";
 import { forwardInbound } from "./forward.ts";
+import { isAllowedMember, NOT_A_MEMBER_MESSAGE, parseRoleIds } from "./members.ts";
 import { normalizeMessage } from "./normalize.ts";
 import { createReplyApp } from "./reply.ts";
 
@@ -28,7 +29,12 @@ const client = new Client({
   ],
 });
 
+// Optional: only people holding one of these roles can trigger the bot. Unset = everyone.
+const memberRoleIds = parseRoleIds(process.env.DISCORD_MEMBER_ROLE_IDS);
+
 client.on(Events.MessageCreate, async (message) => {
+  // Silent, like a missing @mention: people without a member role can talk among themselves.
+  if (!message.author.bot && !isAllowedMember(message.member, memberRoleIds)) return;
   // The bot's own id, so the Coordinator can ignore project channel chatter that isn't for it.
   const inbound = normalizeMessage(message, client.user?.id);
   if (!inbound) return;
@@ -65,6 +71,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const command = normalizeCommand(interaction);
   if (!command) return;
   try {
+    if (!isAllowedMember(interaction.member, memberRoleIds)) {
+      await interaction.reply({ content: NOT_A_MEMBER_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
     await answerCommand(
       command,
       {
