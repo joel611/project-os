@@ -23,7 +23,9 @@ import {
   type PromptAnswerConfig,
   type ProjectRepository,
   type ProjectSourceRepository,
+  type Sidekick,
   type TicketRepository,
+  type UserConnections,
   type WorkerLauncher,
   type WorkerRepository,
 } from "@project-os/core";
@@ -65,7 +67,9 @@ export type HttpEnv =
   | MemoryRepository
   | ProjectRepository
   | ProjectSourceRepository
+  | Sidekick
   | TicketRepository
+  | UserConnections
   | WorkerLauncher
   | WorkerRepository;
 

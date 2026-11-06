@@ -25,6 +25,9 @@ _Avoid_: task, job.
 **Worker**: an agent session that works exactly one Ticket through MCP tools and never talks to channels. Pulls work: on session start it lists Tickets assigned to it and claims one.
 _Avoid_: agent (alone), runner.
 
+**Sidekick**: the Coordinator's in-process helper for tool-only requests: listing Google Drive files, or reading a GitHub repo's status, history, pipelines or releases. Read-only, with no shell and no checkout, and it acts with the requester's own token. A Ticket it answers is assigned to worker id `sidekick` and finishes in the same request. Anything that needs the whole repo pulled, tests run, or a script run goes to a Worker instead.
+_Avoid_: bot, helper agent, Worker (it never pulls or claims through MCP).
+
 **Claim**: the atomic `assigned → in_progress` transition a Worker makes on a Ticket. Two Workers can never claim the same Ticket.
 
 **Watcher**: a host-run program that polls the Coordinator every 5 minutes for assigned, unclaimed Tickets and starts a local Claude Code Worker session for each.

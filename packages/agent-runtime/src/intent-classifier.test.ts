@@ -48,12 +48,12 @@ describe("catalog", () => {
 });
 
 describe("makeIntentClassifier", () => {
-  it("sends one request with intent, worker_type, needs_worker and returns choices + confidence", async () => {
+  it("sends one request with intent, worker_type, executor and returns choices + confidence", async () => {
     const s = scripted({
       answers: {
         intent: choice("new_request", 0.9),
         worker_type: choice("local_claude", 0.8),
-        needs_worker: { type: "bool", probability: 0.95 },
+        executor: choice("sidekick", 0.95),
       },
     });
     const result = await call(makeIntentClassifier(s));
@@ -62,11 +62,11 @@ describe("makeIntentClassifier", () => {
       intent: "new_request",
       confidence: 0.9,
       workerType: "local_claude",
-      needsWorker: true,
+      executor: "sidekick",
     });
     expect(s.requests).toHaveLength(1);
     const [req] = s.requests;
-    expect(Object.keys(req!.questions)).toEqual(["intent", "worker_type", "needs_worker"]);
+    expect(Object.keys(req!.questions)).toEqual(["intent", "worker_type", "executor"]);
     expect(Object.keys((req!.questions.intent as { criteria: object }).criteria)).toEqual([
       "new_request",
       "follow_up",
@@ -83,13 +83,12 @@ describe("makeIntentClassifier", () => {
       answers: {
         intent: choice("status_question", 0.7),
         worker_type: choice("local_pi", 0.6),
-        needs_worker: { type: "bool", probability: 0.1 },
+        executor: choice("sidekick", 0.9),
       },
     });
     expect(await call(makeIntentClassifier(s))).toEqual({
       intent: "status_question",
       confidence: 0.7,
-      needsWorker: false,
     });
   });
 
@@ -99,7 +98,23 @@ describe("makeIntentClassifier", () => {
     });
     const result = await call(makeIntentClassifier(s));
     expect(result.workerType).toBeUndefined();
-    expect(result.needsWorker).toBeUndefined();
+    expect(result.executor).toBeUndefined();
+  });
+
+  it("describes the executor choice by what the job needs", async () => {
+    const s = scripted({ answers: { intent: choice("new_request", 0.9) } });
+    await call(makeIntentClassifier(s));
+    const executor = s.requests[0]!.questions.executor as { criteria: Record<string, string> };
+    expect(Object.keys(executor.criteria)).toEqual(["worker", "sidekick"]);
+    expect(executor.criteria.worker).toMatch(/repository.*tests.*script/);
+    expect(executor.criteria.sidekick).toMatch(/Drive.*GitHub/);
+  });
+
+  it("sends a doubtful or unknown executor to a Worker by leaving it unset", async () => {
+    for (const executor of [choice("sidekick", 0.4), choice("bogus", 0.99)]) {
+      const s = scripted({ answers: { intent: choice("new_request", 0.9), executor } });
+      expect((await call(makeIntentClassifier(s))).executor).toBeUndefined();
+    }
   });
 
   it("maps stopReason error to ClassifierError", async () => {

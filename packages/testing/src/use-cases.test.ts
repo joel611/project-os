@@ -19,6 +19,7 @@ import {
   writeMemory,
   type Project,
   type ProjectSource,
+  sidekickFailedMessage,
   THREAD_OPENED_MESSAGE,
   TICKET_CLOSED_MESSAGE,
   type Ticket,
@@ -102,8 +103,10 @@ const setup = Effect.gen(function* () {
 const run = <A, E>(
   eff: Effect.Effect<A, E, any>,
   options?: Parameters<typeof makeTestLayer>[0],
+  before?: (t: ReturnType<typeof makeTestLayer>) => void,
 ) => {
   const t = makeTestLayer(options);
+  before?.(t);
   return Effect.runPromise(
     Effect.gen(function* () {
       yield* setup;
@@ -115,6 +118,7 @@ const run = <A, E>(
     threads: t.createdThreads,
     reactions: t.reactions,
     launched: t.launched,
+    sidekick: t.sidekickCalls,
   }));
 };
 
@@ -497,6 +501,145 @@ describe("handleInbound ticket threads", () => {
       inbound("follow_up"),
     );
     expect(value.kind).toBe("clarification_sent");
+  });
+});
+
+describe("handleInbound Sidekick", () => {
+  const toSidekick = (intent = "new_request") => ({
+    classifier: classifierReturning(intent, 1, "local_claude", "sidekick"),
+  });
+  const create = Effect.gen(function* () {
+    const out = yield* handleInbound(msg({ content: "list my drive" }), config);
+    if (out.kind !== "ticket_created") throw new Error(out.kind);
+    const got = yield* getTicket({ ticketId: out.ticket.id });
+    return { ...got, assignedToWorker: yield* listAssigned({ workerId: "w1" }) };
+  });
+
+  it("answers a tool-only request in the ticket thread and completes the ticket", async () => {
+    const { value, sent, sidekick } = await run(create, toSidekick());
+
+    expect(value.ticket).toMatchObject({
+      status: "completed",
+      workerType: "sidekick",
+      workerId: "sidekick",
+    });
+    expect(value.events.map((e) => e.type)).toEqual(["created", "assigned", "result"]);
+    expect(value.events.at(-1)?.body).toBe("sidekick: list my drive");
+    expect(sent.map((r) => [r.threadId, r.content])).toEqual([
+      ["thread-1", THREAD_OPENED_MESSAGE],
+      ["thread-1", "sidekick: list my drive"],
+    ]);
+    expect(sidekick).toMatchObject([{ ticketId: value.ticket.id, requestId: "m1" }]);
+  });
+
+  it("leaves nothing for a Worker to pull", async () => {
+    const { value } = await run(create, toSidekick());
+    expect(value.assignedToWorker).toEqual([]);
+  });
+
+  it("sends a request without an executor, or for a Worker, to the Worker", async () => {
+    for (const classifier of [
+      classifierReturning("new_request", 1, "local_pi"),
+      classifierReturning("new_request", 1, "local_pi", "worker"),
+    ]) {
+      const { value, sidekick } = await run(create, { classifier });
+      expect(value.ticket).toMatchObject({ status: "assigned", workerId: "w1" });
+      expect(value.assignedToWorker).toHaveLength(1);
+      expect(sidekick).toEqual([]);
+    }
+  });
+
+  it("fails the ticket and says so when the Sidekick can't answer", async () => {
+    const { value, sent } = await run(create, { ...toSidekick(), failSidekick: "model down" });
+
+    expect(value.ticket).toMatchObject({ status: "failed", error: "model down" });
+    expect(value.events.map((e) => e.type)).toEqual(["created", "assigned", "error"]);
+    expect(sent.at(-1)).toMatchObject({
+      threadId: "thread-1",
+      content: sidekickFailedMessage("model down"),
+    });
+  });
+
+  it("tells the thread when a follow-up can't be answered", async () => {
+    const { sent } = await run(
+      Effect.gen(function* () {
+        yield* handleInbound(msg(), config);
+        yield* handleInbound(msg({ externalId: "m2", threadId: "thread-1" }), config);
+      }),
+      { ...toSidekick(), failSidekick: "model down" },
+    );
+    expect(sent.at(-1)?.content).toBe(sidekickFailedMessage("model down"));
+  });
+
+  it("answers an email request in the channel, since email has no threads", async () => {
+    const { sent } = await run(
+      Effect.gen(function* () {
+        yield* (yield* ProjectSourceRepository).insert(
+          source({ id: "s2", type: "email_address", externalId: "a@b.c" }),
+        );
+        return yield* handleInbound(
+          msg({ channelType: "email", channelId: "a@b.c", content: "list my drive" }),
+          config,
+        );
+      }),
+      toSidekick(),
+    );
+    expect(sent).toMatchObject([{ channelType: "email", channelId: "a@b.c" }]);
+    expect(sent[0]?.threadId).toBeUndefined();
+  });
+
+  it("keeps talking to the Sidekick in the thread of a finished Sidekick ticket", async () => {
+    const { value, sent, sidekick } = await run(
+      Effect.gen(function* () {
+        const first = yield* handleInbound(msg({ content: "list my drive" }), config);
+        if (first.kind !== "ticket_created") throw new Error(first.kind);
+        const second = yield* handleInbound(
+          msg({ externalId: "m2", threadId: "thread-1", content: "and in the shared folder?" }),
+          config,
+        );
+        return { second, got: yield* getTicket({ ticketId: first.ticket.id }) };
+      }),
+      toSidekick(),
+    );
+
+    expect(value.second).toEqual({ kind: "sidekick_answered", ticketId: value.got.ticket.id });
+    expect(value.got.ticket.status).toBe("completed");
+    expect(value.got.events.map((e) => e.type)).toEqual([
+      "created",
+      "assigned",
+      "result",
+      "follow_up",
+    ]);
+    expect(sidekick.map((c) => [c.prompt, c.requestId])).toEqual([
+      ["list my drive", "m1"],
+      ["and in the shared folder?", "m2"],
+    ]);
+    expect(sent.at(-1)).toMatchObject({
+      threadId: "thread-1",
+      content: "sidekick: and in the shared folder?",
+    });
+    expect(sent.map((r) => r.content)).not.toContain(TICKET_CLOSED_MESSAGE);
+  });
+
+  it("acts as whoever wrote the latest message", async () => {
+    const { sidekick, sent } = await run(
+      Effect.gen(function* () {
+        yield* handleInbound(msg({ sender: { id: "u1" } }), config);
+        yield* handleInbound(
+          msg({ externalId: "m2", threadId: "thread-1", sender: { id: "u2" }, content: "more" }),
+          config,
+        );
+      }),
+      { ...toSidekick(), sidekickProbe: "github" },
+      (t) => t.link({ channelType: "discord", id: "u1" }, "github", "tok-u1"),
+    );
+
+    expect(sidekick.map((c) => c.token)).toEqual([
+      { ok: true, accessToken: "tok-u1" },
+      { ok: false, message: "not linked" },
+    ]);
+    // The unlinked person is asked to /connect, in the project channel.
+    expect(sent.at(-2)?.content).toContain("/connect provider:github");
   });
 });
 

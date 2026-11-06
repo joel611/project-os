@@ -6,11 +6,19 @@ import type {
   ClassifierResult,
 } from "@earendil-works/pi-ai";
 import { WorkerType } from "@project-os/contracts";
-import { ClassifierError, IntentClassifier, type IntentResult } from "@project-os/core";
+import {
+  ClassifierError,
+  type Executor,
+  IntentClassifier,
+  type IntentResult,
+} from "@project-os/core";
 import { Effect, Layer, Schema } from "effect";
 
 /** Pinned, not `~typesafe/jev-latest` (docs/technical-architecture.md §8.6). */
 export const JEV_MODEL_ID = "typesafe/jev-1.14";
+
+/** Below this the executor answer is dropped and the request goes to a Worker. */
+const SIDEKICK_MIN_CONFIDENCE = 0.7;
 
 /** The slice of pi-ai `Models` the classifier needs. */
 export interface ClassifyClient {
@@ -29,10 +37,17 @@ const INTENTS = {
   none: "None of the above",
 } as const;
 
-const WORKER_TYPES: Record<WorkerType, string> = {
+const WORKER_TYPES: Record<Exclude<WorkerType, "sidekick">, string> = {
   local_claude: "A local Claude Code session on the developer's machine",
   local_pi: "A local Pi coding agent session",
   daytona_pi: "A Pi agent in a Daytona sandbox",
+};
+
+const EXECUTORS: Record<Executor, string> = {
+  worker:
+    "Needs the whole repository pulled, tests run, or a script run. Also any request that changes code or files, or that is unclear",
+  sidekick:
+    "Only needs read-only tool calls: listing Google Drive files, or reading a GitHub repo's status, commit history, pipelines or releases",
 };
 
 const QUESTIONS: ClassifierContext["questions"] = {
@@ -46,13 +61,15 @@ const QUESTIONS: ClassifierContext["questions"] = {
     instructions: "Which kind of Worker suits this request? Only meaningful for new requests.",
     criteria: WORKER_TYPES,
   },
-  needs_worker: {
-    type: "bool",
+  executor: {
+    type: "choice",
     instructions:
-      "Does answering need a Worker, or can the Coordinator answer from Project Memory?",
-    criteria: { true: "A Worker must do work", false: "Answerable from Project Memory" },
+      "Who does this request? A Worker works in a checkout of the repo. The Sidekick only calls read-only Drive and GitHub tools. Only meaningful for new requests.",
+    criteria: EXECUTORS,
   },
 };
+
+const isExecutor = (value: string): value is Executor => value in EXECUTORS;
 
 const isWorkerType = Schema.is(WorkerType);
 
@@ -63,14 +80,20 @@ const toResult = (result: ClassifierResult): IntentResult => {
   const intent = choiceOf(result.answers.intent);
   if (!intent) throw new ClassifierError({ message: "classifier returned no `intent` answer" });
   const worker = choiceOf(result.answers.worker_type);
-  const needs = result.answers.needs_worker;
+  const executor = choiceOf(result.answers.executor);
   return {
     intent: intent.choice,
     confidence: intent.confidence,
     ...(intent.choice === "new_request" && worker && isWorkerType(worker.choice)
       ? { workerType: worker.choice }
       : {}),
-    ...(needs?.type === "bool" ? { needsWorker: needs.probability >= 0.5 } : {}),
+    // A Sidekick answer must be sure of itself: a doubtful one goes to a Worker, which can do both.
+    ...(intent.choice === "new_request" &&
+    executor &&
+    isExecutor(executor.choice) &&
+    executor.confidence >= SIDEKICK_MIN_CONFIDENCE
+      ? { executor: executor.choice }
+      : {}),
   };
 };
 

@@ -28,7 +28,9 @@ export type TicketEventType = typeof TicketEventType.Type;
 export const Actor = Schema.Literals(["coordinator", "worker", "system"]);
 export type Actor = typeof Actor.Type;
 
-export const WorkerType = Schema.Literals(["daytona_pi", "local_claude", "local_pi"]);
+/** `sidekick`: the Coordinator's in-process tool-only helper, not a pull-model Worker. */
+export const WORKER_TYPES = ["daytona_pi", "local_claude", "local_pi", "sidekick"] as const;
+export const WorkerType = Schema.Literals(WORKER_TYPES);
 export type WorkerType = typeof WorkerType.Type;
 
 export const MemoryEntryType = Schema.Literals([
