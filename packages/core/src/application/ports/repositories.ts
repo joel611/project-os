@@ -14,6 +14,7 @@ import type {
   TicketEvent,
   TicketNotFound,
   TicketStatus,
+  TicketThread,
 } from "../../domain/ticket/index.ts";
 import type { Worker, WorkerNotFound, WorkerType } from "../../domain/worker/index.ts";
 
@@ -51,6 +52,15 @@ export class TicketRepository extends Context.Service<
       ticketId: string,
       limit?: number,
     ) => Effect.Effect<ReadonlyArray<TicketEvent>, TicketNotFound>;
+    /** Records the channel thread a ticket's conversation lives in (one per ticket). */
+    readonly linkThread: (thread: TicketThread) => Effect.Effect<TicketThread, TicketNotFound>;
+    /** The ticket's thread, if it has one. */
+    readonly findThread: (ticketId: string) => Effect.Effect<TicketThread | undefined>;
+    /** Thread → ticket lookup. `undefined` when the thread is not a ticket's. */
+    readonly findByThread: (
+      channelType: TicketThread["channelType"],
+      threadId: string,
+    ) => Effect.Effect<TicketThread | undefined>;
   }
 >()("@project-os/core/TicketRepository") {}
 

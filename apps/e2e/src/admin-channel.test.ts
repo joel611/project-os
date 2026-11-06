@@ -37,7 +37,9 @@ describe("admin create_project creates the project's Discord channel", () => {
       name: "ticket_update_status",
       arguments: { ticketId, status: "completed" },
     });
-    expect(stack.posted.map((p) => p.target)).toEqual([{ channelId: "discord-new-1" }]);
+    // Thread-opened note, then the result, both in the ticket's thread in the new channel.
+    const thread = { channelId: "discord-new-1", threadId: "discord-thread-1" };
+    expect(stack.posted.map((p) => p.target)).toEqual([thread, thread]);
   });
 
   it("only creates the project when told to link an existing channel", async () => {
