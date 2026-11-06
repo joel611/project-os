@@ -83,6 +83,13 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
           return limit === undefined ? all : all.slice(-limit);
         }),
       ),
+    listEventsSince: (since, limit) =>
+      Effect.sync(() =>
+        byKey(
+          [...events.values()].flat().filter((e) => e.createdAt >= since),
+          (e) => e.createdAt,
+        ).slice(-limit),
+      ),
   };
 });
 
