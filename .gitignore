@@ -8,3 +8,4 @@ dist/
 *.sqlite-*
 .env
 coverage/
+.alchemy/
