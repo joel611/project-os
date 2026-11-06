@@ -7,3 +7,4 @@ export * from "./heartbeat.ts";
 export * from "./memory.ts";
 export * from "./on-ticket-completed.ts";
 export * from "./tickets.ts";
+export * from "./connections.ts";

@@ -1,9 +1,11 @@
 import { type ChannelType } from "@project-os/contracts";
 import {
   AgentRuntime,
+  ConnectionsUnavailable,
   IdGenerator,
   KeyValueStore,
   Scheduler,
+  UserConnections,
   WorkerLauncher,
 } from "@project-os/core";
 import { ChannelGateway } from "@project-os/core";
@@ -39,6 +41,16 @@ const AgentRuntimePending = Layer.succeed(AgentRuntime, {
   respond: () => Effect.die(new Error("AgentRuntime not wired yet (see #14)")),
 });
 
+/** Placeholder until an entry file supplies account linking (`@project-os/auth`). */
+const notConfigured = () =>
+  Effect.fail(new ConnectionsUnavailable({ message: "Account linking is not configured." }));
+export const UserConnectionsUnavailable = Layer.succeed(UserConnections, {
+  connectUrl: notConfigured,
+  list: () => Effect.succeed([]),
+  disconnect: () => Effect.succeed(false),
+  accessToken: notConfigured,
+});
+
 /** Every core port for the local target (Bun + bun:sqlite), except IntentClassifier. */
 export const LocalLive = (config: LocalConfig) =>
   Layer.mergeAll(
@@ -53,4 +65,5 @@ export const LocalLive = (config: LocalConfig) =>
     ),
     AgentRuntimePending,
     WorkerLauncherNoop,
+    UserConnectionsUnavailable,
   );

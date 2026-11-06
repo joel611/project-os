@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
 
@@ -7,6 +8,8 @@ export interface AppDeps {
   readonly http?: HttpDeps;
   /** MCP server (#12). Omitted: `/mcp` is not mounted. */
   readonly mcp?: McpRuntime;
+  /** Account linking (`/connect/*`, `/api/auth/*`). Omitted: not mounted. */
+  readonly connect?: ConnectDeps;
 }
 
 /**
@@ -20,5 +23,6 @@ export const createApp = (
 ) => {
   const app = new Elysia(options).get("/health", () => ({ status: "ok", service: "coordinator" }));
   const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
-  return deps.mcp ? withHttp.use(mcpRoutes(deps.mcp)) : withHttp;
+  const withConnect = deps.connect ? withHttp.use(connectRoutes(deps.connect)) : withHttp;
+  return deps.mcp ? withConnect.use(mcpRoutes(deps.mcp)) : withConnect;
 };

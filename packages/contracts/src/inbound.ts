@@ -63,7 +63,7 @@ export const CreatedThread = Schema.Struct({ threadId: Schema.String });
 export type CreatedThread = typeof CreatedThread.Type;
 
 /** Slash commands a Channel Adapter registers and forwards to the Coordinator's `/commands`. */
-export const SLASH_COMMANDS = ["project-create"] as const;
+export const SLASH_COMMANDS = ["project-create", "connect", "disconnect", "connections"] as const;
 export const SlashCommandName = Schema.Literals(SLASH_COMMANDS);
 export type SlashCommandName = typeof SlashCommandName.Type;
 
