@@ -17,7 +17,20 @@ services:
       INTENT_CONFIDENCE_THRESHOLD: ${INTENT_CONFIDENCE_THRESHOLD:-0.5}
       ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
+      # Pi Durable traces + metrics -> the lgtm service (Grafana at http://localhost:3000).
+      # Forced, like the data paths: a host .env value (localhost:4318) would point at the container itself.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
     volumes: ["coordinator-data:/data"]
+    depends_on: [lgtm]
+
+  # Grafana + Tempo + Loki + Prometheus + OTel collector in one container (dev only).
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000" # Grafana UI (admin / admin)
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes: ["lgtm-data:/data"]
 
   discord-adapter:
     build: { context: ., dockerfile: apps/discord-adapter/Dockerfile }
@@ -39,3 +52,4 @@ services:
 
 volumes:
   coordinator-data:
+  lgtm-data:

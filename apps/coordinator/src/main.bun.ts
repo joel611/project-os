@@ -12,6 +12,7 @@ import { type Effect, Layer, ManagedRuntime } from "effect";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp } from "./app.ts";
 import { startHealthSweep } from "./health/start.ts";
+import { setupTelemetry } from "./telemetry.ts";
 
 // Local target: Bun + infra-local + Pi/Jev agent runtime (docs/technical-architecture.md §8).
 const port = envNumber("PORT", 8080);
@@ -37,6 +38,8 @@ const adminActions = makeAdminActions({
   autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
 });
 
+const otel = setupTelemetry(process.env);
+
 // Failing to open the Pi harness at startup is fatal, so build errors become defects.
 const AiLive = Layer.orDie(
   Layer.mergeAll(
@@ -47,6 +50,8 @@ const AiLive = Layer.orDie(
       model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
       // `runtime` is assigned below; the actions only run once a message arrives.
       adminActions,
+      // Pi Durable spans/metrics over OTLP; undefined (no-op) unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
+      telemetry: otel?.telemetry,
     }),
   ),
 );
@@ -89,4 +94,10 @@ createApp(
     mcp: runtime,
   },
 ).listen(port);
+// Flush buffered spans/metrics on `docker compose stop` / Ctrl-C.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    void (otel?.shutdown() ?? Promise.resolve()).finally(() => process.exit(0));
+  });
+}
 console.log(`coordinator listening on :${port} (MCP at /mcp)`);
