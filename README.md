@@ -90,6 +90,22 @@ bun run typecheck
 bun run test
 ```
 
+## Hosting cost
+
+Estimated at about **$5–7 a month** on Cloudflare (Workers Paid plan, prices as of 2026-11). The usage figures are guesses for a small team, not measurements.
+
+| Part              | Cost / month | Why                                                                                                                                                                                                                                                   |
+| ----------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workers Paid plan | $5 flat      | Covers the Coordinator, the dashboard, D1, KV and Cron. Cron every minute plus the Watcher polling every 5 minutes is about 52k requests, against 10M included. Static assets are free. D1 includes 25B rows read and 50M rows written.               |
+| Discord adapter   | ~$1.70       | Needs an always-on process. As a `lite` Cloudflare Container (256 MiB), memory is about $1.40 and disk about $0.30, and CPU stays inside the included minutes. A small VM elsewhere costs a few dollars, and running it on your own machine costs $0. |
+| Watcher           | $0           | Runs on the machine that hosts Claude Code.                                                                                                                                                                                                           |
+
+The Workers free plan ($0) could work, but it caps CPU at 10 ms per request, which Elysia plus MCP will likely exceed sometimes, and it has no Containers.
+
+LLM usage through OpenRouter is the real variable cost. It grows with message volume and is not included above.
+
+Sources: [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [Containers pricing](https://developers.cloudflare.com/containers/platform/pricing/). Deployment steps are in [docs/deployment.md](docs/deployment.md).
+
 ## Layout
 
 - `apps/coordinator`: Elysia HTTP + MCP server; `main.bun.ts` (local) and `main.cloudflare.ts` (Workers)
@@ -103,6 +119,7 @@ bun run test
 - `packages/infra-local`, `packages/infra-cloudflare`: provider Layers
 - `packages/testing`: in-memory fakes
 - `libs/config`: env parsing
+- `alchemy.run.ts`: Cloudflare deployment (Workers, D1, KV, secrets, dashboard); see [docs/deployment.md](docs/deployment.md)
 
 ## Testing without Discord
 

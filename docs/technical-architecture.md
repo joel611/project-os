@@ -711,14 +711,13 @@ project-os/
 │  │  │  ├─ app.ts                     # builds the Elysia app from a provider Layer
 │  │  │  ├─ main.cloudflare.ts         # Elysia + CloudflareAdapter, .compile(); scheduled handler, DO export
 │  │  │  └─ main.bun.ts                # Bun.serve + setInterval sweep
-│  │  ├─ wrangler.jsonc                # D1, KV, DO, cron bindings
 │  │  └─ Dockerfile                    # local target (oven/bun)
 │  ├─ discord-adapter/
 │  ├─ email-adapter/                   # stub for POC
 │  ├─ watcher/                         # host-run Bun CLI
 │  │  ├─ src/{config,poll,spawn,main}.ts
 │  │  └─ prompts/session-start.md
-│  └─ web/                             # Web UI (later)
+│  └─ web/                             # Web UI; worker.ts proxies /api/* on Cloudflare
 │
 ├─ packages/
 │  ├─ core/                            # domain + application, provider-free
@@ -750,7 +749,7 @@ project-os/
 │  └─ config/                          # env parsing per target
 │
 ├─ docker-compose.yml                  # local target
-├─ package.json · bun.lock · vite.config.ts · tsconfig.base.json
+├─ package.json · bun.lock · vite.config.ts · tsconfig.base.json · alchemy.run.ts (Cloudflare IaC)
 ├─ docs/ · CONTEXT.md
 ```
 
@@ -773,11 +772,11 @@ Enforce these with lint import rules in the Vite+ config.
 ### 8.5 Notes and conflicts
 
 - **Conflicts with `CONTEXT.md`:** it says each domain module colocates its own Drizzle schema. Clean architecture moves the schema out of `core` into `db-sqlite`, so `core` stays provider-free. `CONTEXT.md` needs updating when we start coding. The `Db` service there becomes an infra detail behind the repository ports.
-- **HTTP framework: Elysia.** Native on Bun. On Workers it uses the experimental `CloudflareAdapter` (`elysia/adapter/cloudflare-worker`) and needs `.compile()` and `compatibility_date >= 2025-06-01`. On Workers, the static plugin, `Elysia.file`, and OpenAPI type generation don't work (no `fs`). Use Wrangler `assets` for static files.
+- **HTTP framework: Elysia.** Native on Bun. On Workers it uses the experimental `CloudflareAdapter` (`elysia/adapter/cloudflare-worker`) and needs `.compile()` and `compatibility_date >= 2025-06-01`. On Workers, the static plugin, `Elysia.file`, and OpenAPI type generation don't work (no `fs`). Serve static files with Workers static assets (the dashboard does, see `alchemy.run.ts`).
 - **Discord adapter: long-running gateway process (Hermes model).** Hermes Agent's messaging gateway is a single background process that opens an *outbound* Discord Gateway WebSocket. It needs no public URL or inbound port, which is why it looks "webhook-free". HTTP interactions alone can't be used, because they only deliver slash commands and buttons, not ordinary channel messages. So `discord-adapter` is a standalone Bun process that holds the gateway connection and calls the coordinator over HTTP. Locally it runs in Compose. On the Cloudflare target, it either runs anywhere that allows a long-running process (a small VM, Fly, a Cloudflare Container) or lives in a Durable Object that keeps the outbound WebSocket open (that DO can't hibernate, so it's always billed). The coordinator itself stays a normal Worker either way.
 - **Agent runtime:** see §8.6.
 - **Atomic claim:** `ticket_claim` is a single conditional `UPDATE … WHERE status = 'assigned'`, which works the same on D1 and bun:sqlite.
-- **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. `wrangler` handles Cloudflare dev and deploy.
+- **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. Alchemy v2 (`alchemy.run.ts`, an Effect program) declares the Cloudflare resources and handles Cloudflare dev and deploy; see `docs/deployment.md`.
 - `libs/auth` (Better Auth) is dropped for the POC since there's no auth. It comes back as an `Auth` port when Web UI auth is designed.
 - The v1.1 throwaway `Task` entity in `CONTEXT.md` is no longer needed once `ticket/` exists.
 
