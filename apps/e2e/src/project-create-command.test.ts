@@ -1,8 +1,8 @@
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { forwardCommand } from "../../discord-adapter/src/commands.ts";
-import { fakeCommand, fakeInbound } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
+import { fakeCommand, fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 import { ADMIN_CHANNEL, ADMIN_USER, type Stack, startStack } from "./stack.ts";
 
 // /project-create in Discord -> adapter normalizes + forwards -> Coordinator /commands ->

@@ -8,8 +8,8 @@
 import { parseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { fakeInbound } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 
 const url = `http://localhost:${process.env.COORD_PORT ?? 18080}`;
 const workerId = process.env.WORKER_ID ?? "verify-worker";

@@ -31,6 +31,7 @@
         "@opentelemetry/sdk-trace-base": "^2.12.0",
         "@project-os/agent-runtime": "workspace:*",
         "@project-os/auth": "workspace:*",
+        "@project-os/channel-discord": "workspace:*",
         "@project-os/config": "workspace:*",
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
@@ -49,15 +50,12 @@
         "@project-os/testing": "workspace:*",
       },
     },
-    "apps/discord-adapter": {
-      "name": "@project-os/discord-adapter",
+    "apps/discord-gateway": {
+      "name": "@project-os/discord-gateway",
       "version": "0.0.0",
       "dependencies": {
+        "@project-os/channel-discord": "workspace:*",
         "@project-os/config": "workspace:*",
-        "@project-os/contracts": "workspace:*",
-        "discord.js": "^14.28.1",
-        "effect": "4.1.2",
-        "elysia": "^1.4.30",
       },
     },
     "apps/e2e": {
@@ -71,14 +69,6 @@
         "@project-os/infra-local": "workspace:*",
         "@project-os/testing": "workspace:*",
         "effect": "4.1.2",
-      },
-    },
-    "apps/email-adapter": {
-      "name": "@project-os/email-adapter",
-      "version": "0.0.0",
-      "dependencies": {
-        "@project-os/config": "workspace:*",
-        "@project-os/contracts": "workspace:*",
       },
     },
     "apps/watcher": {
@@ -156,6 +146,25 @@
         "better-auth": "1.7.15",
         "drizzle-orm": "0.45.4",
         "effect": "4.1.2",
+      },
+    },
+    "packages/channel-discord": {
+      "name": "@project-os/channel-discord",
+      "version": "0.0.0",
+      "dependencies": {
+        "@project-os/config": "workspace:*",
+        "@project-os/contracts": "workspace:*",
+        "discord.js": "^14.28.1",
+        "effect": "4.1.2",
+        "elysia": "^1.4.30",
+      },
+    },
+    "packages/channel-email": {
+      "name": "@project-os/channel-email",
+      "version": "0.0.0",
+      "dependencies": {
+        "@project-os/config": "workspace:*",
+        "@project-os/contracts": "workspace:*",
       },
     },
     "packages/contracts": {
@@ -817,6 +826,10 @@
 
     "@project-os/auth": ["@project-os/auth@workspace:packages/auth"],
 
+    "@project-os/channel-discord": ["@project-os/channel-discord@workspace:packages/channel-discord"],
+
+    "@project-os/channel-email": ["@project-os/channel-email@workspace:packages/channel-email"],
+
     "@project-os/config": ["@project-os/config@workspace:libs/config"],
 
     "@project-os/contracts": ["@project-os/contracts@workspace:packages/contracts"],
@@ -827,11 +840,9 @@
 
     "@project-os/db-sqlite": ["@project-os/db-sqlite@workspace:packages/db-sqlite"],
 
-    "@project-os/discord-adapter": ["@project-os/discord-adapter@workspace:apps/discord-adapter"],
+    "@project-os/discord-gateway": ["@project-os/discord-gateway@workspace:apps/discord-gateway"],
 
     "@project-os/e2e": ["@project-os/e2e@workspace:apps/e2e"],
-
-    "@project-os/email-adapter": ["@project-os/email-adapter@workspace:apps/email-adapter"],
 
     "@project-os/infra-cloudflare": ["@project-os/infra-cloudflare@workspace:packages/infra-cloudflare"],
 

@@ -12,6 +12,7 @@ import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import type { WorkerType } from "@project-os/contracts";
 import { type Effect, Layer, ManagedRuntime } from "effect";
+import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp } from "./app.ts";
 import { startHealthSweep } from "./health/start.ts";
@@ -101,12 +102,35 @@ const workerLauncher = daytonaApiKey
     })
   : undefined;
 
+// Discord runs inside this process when a bot token is set. Its reply endpoint binds loopback on
+// a free port: it can post as the bot, so it must not sit on the public port. DISCORD_SPLIT_GATEWAY_URL
+// points at a separate apps/discord-gateway instead (Cloudflare, or the fake in TESTING.md) and wins.
+const remoteGatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
+const discordToken = process.env.DISCORD_BOT_TOKEN;
+const discord =
+  discordToken && !remoteGatewayUrl
+    ? createDiscord({
+        token: discordToken,
+        coordinatorUrl: `http://localhost:${port}`,
+        replyPort: 0,
+        replyHost: "127.0.0.1",
+      })
+    : undefined;
+if (discordToken && remoteGatewayUrl) {
+  console.log(
+    `DISCORD_BOT_TOKEN ignored: DISCORD_SPLIT_GATEWAY_URL is set, replies go to ${remoteGatewayUrl}`,
+  );
+} else if (!discordToken && !remoteGatewayUrl) {
+  // Env is read once at startup, so adding the token needs a restart.
+  console.log("Discord off: set DISCORD_BOT_TOKEN and restart the Coordinator to enable it");
+}
+
 // Later layers win: AiLive and connections replace LocalLive's placeholders.
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     LocalLive({
       dbPath,
-      adapterUrls: { discord: env("DISCORD_ADAPTER_URL", "http://localhost:8081") },
+      adapterUrls: { discord: discord?.replyUrl ?? remoteGatewayUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
     }),
     AiLive,
@@ -161,6 +185,11 @@ createApp(
     ...(connections && { connect: connections }),
   },
 ).listen(port);
+// After listen: the first message POSTs to /inbound on this very server. A failed login (bad
+// token, missing intent) leaves the Coordinator, MCP and Watchers up; only Discord is down.
+discord?.login().catch((err) => {
+  console.error("Discord login failed; the Coordinator keeps running without Discord", err);
+});
 // Flush buffered spans/metrics on `docker compose stop` / Ctrl-C.
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {

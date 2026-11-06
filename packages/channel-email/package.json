@@ -1,5 +1,5 @@
 {
-  "name": "@project-os/email-adapter",
+  "name": "@project-os/channel-email",
   "version": "0.0.0",
   "private": true,
   "type": "module",

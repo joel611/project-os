@@ -35,7 +35,7 @@ The full story and design rationale: [docs/why.md](docs/why.md).
 ```sh
 bun install
 cp .env.example .env                 # Discord bot + OPENROUTER_API_KEY + ADMIN_*
-docker compose up --build            # coordinator :8080 + discord-adapter + Grafana :3000
+docker compose up --build            # coordinator :8080 (runs the Discord bot too) + Grafana :3000
 
 # one-time seed (replace with your Discord channel ID)
 docker compose exec -e SEED_DISCORD_CHANNEL_ID=<channel-id> coordinator bun run seed
@@ -116,7 +116,7 @@ The next related question already benefits from the updated Project Memory.
 ## Self-hosting & Deployment
 
 **Local (recommended for development)**  
-`docker compose up --build` — Coordinator + Discord adapter + observability stack.
+`docker compose up --build` — Coordinator (with the Discord bot) + observability stack.
 
 **Cloudflare target**  
 The same core runs on Cloudflare Workers + D1 + KV.  
@@ -136,11 +136,12 @@ Steps and cost breakdown: [docs/deployment.md](docs/deployment.md).
 ```
 apps/
   coordinator/          # Tower — Elysia HTTP + MCP, agent loop (main.bun.ts local, main.cloudflare.ts Workers)
-  discord-adapter/      # Thin inbound/outbound
-  email-adapter/        # Stub
+  discord-gateway/      # Split mode only: runs channel-discord as its own process
   watcher/              # Host-run Claude Code launcher
   web/                  # Read-only dashboard (TanStack Start SPA; `build` exports a static site)
 packages/
+  channel-discord/      # Discord bot, hosted by the Coordinator
+  channel-email/        # Stub
   core/                 # Domain + ports (provider-free)
   agent-runtime/        # Intent classifier + agent loop
   db-sqlite/            # Drizzle schema (SQLite / D1)

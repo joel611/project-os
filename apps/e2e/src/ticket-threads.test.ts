@@ -1,8 +1,8 @@
 import { IntentClassifier, THREAD_OPENED_MESSAGE, TICKET_CLOSED_MESSAGE } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { fakeInbound, type FakeSpeaker } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { fakeInbound, type FakeSpeaker } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 import { type Stack, startStack } from "./stack.ts";
 
 // A new request opens a Discord thread on its message; everything said in that thread

@@ -9,8 +9,8 @@ import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@pr
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
-import type { ActionRow } from "../../discord-adapter/src/prompts.ts";
-import { createReplyApp, type ReplyTarget } from "../../discord-adapter/src/reply.ts";
+import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
+import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";

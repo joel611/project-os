@@ -8,7 +8,13 @@ services:
       PORT: "8080"
       DATABASE_PATH: /data/project-os.sqlite
       PI_STORAGE_PATH: /data/pi-durable.sqlite
-      DISCORD_ADAPTER_URL: http://discord-adapter:8081
+      # Discord runs inside the Coordinator when the token is set. For the split layout
+      # (`--profile split`), set DISCORD_SPLIT_GATEWAY_URL=http://discord-gateway:8081 and the token is ignored here.
+      DISCORD_SPLIT_GATEWAY_URL: ${DISCORD_SPLIT_GATEWAY_URL:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}
+      DISCORD_MEMBER_ROLE_IDS: ${DISCORD_MEMBER_ROLE_IDS:-}
       WORKER_ID: ${WORKER_ID:-local-claude-1}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       CHAT_MODEL_PROVIDER: ${CHAT_MODEL_PROVIDER:-openrouter}
@@ -41,11 +47,14 @@ services:
       - "4318:4318" # OTLP HTTP
     volumes: ["lgtm-data:/data"]
 
-  discord-adapter:
-    build: { context: ., dockerfile: apps/discord-adapter/Dockerfile }
+  # Optional split layout: Discord in its own container, for a Coordinator that can't host it
+  # or to scale them apart. `docker compose --profile split up`, with DISCORD_SPLIT_GATEWAY_URL set.
+  discord-gateway:
+    profiles: ["split"]
+    build: { context: ., dockerfile: apps/discord-gateway/Dockerfile }
     expose: ["8081"]
     environment:
-      DISCORD_ADAPTER_PORT: "8081"
+      DISCORD_SPLIT_GATEWAY_PORT: "8081"
       COORDINATOR_URL: http://coordinator:8080
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
@@ -53,12 +62,6 @@ services:
       ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
       DISCORD_MEMBER_ROLE_IDS: ${DISCORD_MEMBER_ROLE_IDS:-}
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
-    depends_on: [coordinator]
-
-  email-adapter:
-    build: { context: ., dockerfile: apps/email-adapter/Dockerfile }
-    environment:
-      COORDINATOR_URL: http://coordinator:8080
     depends_on: [coordinator]
 
 volumes:
