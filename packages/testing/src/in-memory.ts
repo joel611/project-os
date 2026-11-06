@@ -7,6 +7,8 @@ import {
   IntentClassifier,
   KeyValueStore,
   MemoryRepository,
+  NotConnected,
+  type Person,
   ProjectNotFound,
   ProjectRepository,
   ProjectSourceRepository,
@@ -16,6 +18,7 @@ import {
   TicketNotFound,
   TicketRepository,
   transitionTicket,
+  UserConnections,
   WorkerLauncher,
   WorkerNotFound,
   WorkerRepository,
@@ -25,10 +28,12 @@ import {
   type TicketEvent,
   type Worker,
 } from "@project-os/core";
-import type {
-  CreateChannelInstruction,
-  MemoryEntry,
-  ReplyInstruction,
+import {
+  type ConnectionProvider,
+  CONNECTION_PROVIDERS,
+  type CreateChannelInstruction,
+  type MemoryEntry,
+  type ReplyInstruction,
 } from "@project-os/contracts";
 import { Effect, Layer } from "effect";
 
@@ -271,3 +276,31 @@ export const IdGeneratorSequential = Layer.sync(IdGenerator, () => {
   let n = 0;
   return { next: Effect.sync(() => `id-${++n}`) };
 });
+
+/** Account links held in memory: `link` stands in for a person finishing `/connect`. */
+export const makeUserConnectionsInMemory = () => {
+  const tokens = new Map<string, string>();
+  const key = (p: Person, provider: ConnectionProvider) => `${p.channelType}:${p.id}:${provider}`;
+  const layer = Layer.succeed(UserConnections, {
+    connectUrl: (p, provider) => Effect.succeed(`http://connect.test/${provider}/${p.id}`),
+    list: (p) =>
+      Effect.succeed(
+        CONNECTION_PROVIDERS.filter((provider) => tokens.has(key(p, provider))).map((provider) => ({
+          provider,
+          accountId: `acct-${p.id}`,
+        })),
+      ),
+    disconnect: (p, provider) => Effect.succeed(tokens.delete(key(p, provider))),
+    accessToken: (p, provider) => {
+      const token = tokens.get(key(p, provider));
+      return token
+        ? Effect.succeed({ accessToken: token, expiresAt: null, scopes: [] })
+        : Effect.fail(new NotConnected({ provider, personId: p.id, message: "not linked" }));
+    },
+  });
+  return {
+    layer,
+    link: (p: Person, provider: ConnectionProvider, token: string) =>
+      void tokens.set(key(p, provider), token),
+  };
+};

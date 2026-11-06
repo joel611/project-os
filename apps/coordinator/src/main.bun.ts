@@ -7,7 +7,8 @@ import {
 } from "@project-os/agent-runtime";
 import { DEFAULT_WORKER_ID, env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
-import { DEFAULT_ORG, ensureOrg, LocalLive } from "@project-os/infra-local";
+import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
+import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp } from "./app.ts";
@@ -19,6 +20,27 @@ const dbPath = dataPath("project-os.sqlite", process.env.DATABASE_PATH ?? proces
 
 // Projects reference an org (FK), and nothing else creates one.
 const orgId = ensureOrg(dbPath, DEFAULT_ORG);
+
+// Account linking (Better Auth): people link Google / GitHub with /connect, and Workers use
+// that person's own token. Off unless a secret and at least one OAuth client are set.
+const oauthClient = (prefix: string): OAuthClientConfig | undefined => {
+  const clientId = process.env[`${prefix}_CLIENT_ID`];
+  const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
+  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
+};
+const google = oauthClient("GOOGLE");
+const github = oauthClient("GITHUB");
+const authSecret = process.env.BETTER_AUTH_SECRET;
+const connections =
+  authSecret && (google || github)
+    ? makeConnections({
+        db: openLocalDb(dbPath).db,
+        baseURL: env("PUBLIC_URL", `http://localhost:${port}`),
+        secret: authSecret,
+        ...(google && { google }),
+        ...(github && { github }),
+      })
+    : undefined;
 
 const models = newModels();
 const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
@@ -51,7 +73,7 @@ const AiLive = Layer.orDie(
   ),
 );
 
-// AiLive goes last so it replaces LocalLive's AgentRuntime placeholder.
+// Later layers win: AiLive and connections replace LocalLive's placeholders.
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     LocalLive({
@@ -59,6 +81,7 @@ const runtime = ManagedRuntime.make(
       adapterUrls: { discord: env("DISCORD_ADAPTER_URL", "http://localhost:8081") },
     }),
     AiLive,
+    ...(connections ? [connections.layer] : []),
   ),
 );
 
@@ -82,9 +105,15 @@ createApp(
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },
       // /project-create etc.: same admin channel and user list as the admin dialogue.
-      commands: { ...(adminChannelId && { adminChannelId, adminUserIds }), admin: adminActions },
+      commands: {
+        ...(adminChannelId && { adminChannelId, adminUserIds }),
+        admin: adminActions,
+        connections: (effect) => runtime.runPromise(effect),
+      },
     },
     mcp: runtime,
+    ...(connections && { connect: connections }),
   },
 ).listen(port);
 console.log(`coordinator listening on :${port} (MCP at /mcp)`);
+if (!connections) console.log("account linking off: set BETTER_AUTH_SECRET and an OAuth client");

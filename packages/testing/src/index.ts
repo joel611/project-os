@@ -6,6 +6,7 @@ import {
   IntentClassifierFake,
   KeyValueStoreInMemory,
   makeChannelGatewayRecording,
+  makeUserConnectionsInMemory,
   MemoryRepositoryInMemory,
   ProjectRepositoryInMemory,
   ProjectSourceRepositoryInMemory,
@@ -35,6 +36,7 @@ export const makeTestLayer = (options?: {
   const gateway = makeChannelGatewayRecording(
     options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate },
   );
+  const connections = makeUserConnectionsInMemory();
   const layer = Layer.mergeAll(
     fixedClock(options?.now ?? new Date("2026-11-04T00:00:00.000Z")),
     TicketRepositoryInMemory,
@@ -49,8 +51,15 @@ export const makeTestLayer = (options?: {
     AgentRuntimeEcho,
     WorkerLauncherNoop,
     IdGeneratorSequential,
+    connections.layer,
   );
-  return { layer, sent: gateway.sent, createdChannels: gateway.created };
+  return {
+    layer,
+    sent: gateway.sent,
+    createdChannels: gateway.created,
+    /** Link a person's account, as if they had finished `/connect`. */
+    link: connections.link,
+  };
 };
 
 /** Classifier returning a fixed intent / confidence / workerType. */

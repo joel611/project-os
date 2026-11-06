@@ -31,8 +31,19 @@ const command: SlashCommand = {
 
 describe("COMMAND_DEFINITIONS", () => {
   it("defines /project-create with a required name", () => {
-    expect(COMMAND_DEFINITIONS.map((c) => c.name)).toEqual(["project-create"]);
+    expect(COMMAND_DEFINITIONS.map((c) => c.name)).toEqual([
+      "project-create",
+      "connect",
+      "disconnect",
+      "connections",
+    ]);
     expect(COMMAND_DEFINITIONS[0].options[0]).toMatchObject({ name: "name", required: true });
+  });
+
+  it("offers google and github as the only /connect providers", () => {
+    const connect = COMMAND_DEFINITIONS.find((c) => c.name === "connect")!;
+    expect(connect.options[0]).toMatchObject({ name: "provider", required: true });
+    expect(connect.options[0]!.choices.map((c) => c.value)).toEqual(["google", "github"]);
   });
 });
 
