@@ -23,8 +23,13 @@ afterEach(() => stack.stop());
 const json = (method: string, path: string, body?: unknown) => stack.json(method, path, body);
 const linkChannel = () => stack.linkChannel(CHANNEL);
 
-const sayInDiscord = async (who: FakeSpeaker, content: string, id?: string) => {
-  const inbound = fakeInbound(who, content, id ? { id } : {});
+const sayInDiscord = async (
+  who: FakeSpeaker,
+  content: string,
+  id?: string,
+  options: { mention?: boolean } = {},
+) => {
+  const inbound = fakeInbound(who, content, { ...(id && { id }), ...options });
   if (!inbound) return;
   await forwardInbound(stack.url, inbound, fetch);
 };
@@ -69,6 +74,21 @@ describe("discord loop, no Discord", () => {
       const projectId = await linkChannel();
       await sayInDiscord(speaker, "build it", "dup-1");
       await sayInDiscord(speaker, "build it", "dup-1");
+      expect(await json("GET", `/projects/${projectId}/tickets`)).toHaveLength(1);
+    });
+
+    it("ignores a project channel message that doesn't @mention the bot", async () => {
+      const projectId = await linkChannel();
+      await sayInDiscord(speaker, "chatting among ourselves", undefined, { mention: false });
+      expect(await json("GET", `/projects/${projectId}/tickets`)).toEqual([]);
+      expect(stack.posted).toEqual([]);
+    });
+
+    it("takes a message in a thread without a mention", async () => {
+      const projectId = await linkChannel();
+      await sayInDiscord({ ...speaker, threadId: "th-1" }, "and dark mode", undefined, {
+        mention: false,
+      });
       expect(await json("GET", `/projects/${projectId}/tickets`)).toHaveLength(1);
     });
 

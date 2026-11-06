@@ -12,6 +12,11 @@ export const InboundMessage = Schema.Struct({
     email: Schema.optionalKey(Schema.String),
   }),
   content: Schema.String,
+  /**
+   * True when the message @mentions the bot. Set by adapters that know it (Discord); the
+   * Coordinator only acts on top-level project channel messages that mention the bot.
+   */
+  mentionsBot: Schema.optionalKey(Schema.Boolean),
   raw: Schema.Unknown,
   receivedAt: Schema.String,
 });
