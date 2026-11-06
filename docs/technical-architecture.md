@@ -569,7 +569,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 /connect provider:google           (Discord, any channel or DM; ephemeral reply)
   → Coordinator: auth user for (discord, user id), one-time link, 10 min
   → browser: GET /connect/:token   → session for that user → Better Auth link-social
-  → provider consent               → GET /api/auth/oauth2/callback/google
+  → provider consent               → GET /api/auth/callback/google
   → Better Auth stores the account (tokens encrypted)  → /connect/done
 ```
 
