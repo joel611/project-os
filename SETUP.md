@@ -55,19 +55,20 @@ The invite needs two **scopes**:
 
 And these **bot permissions**:
 
-| Permission               | Used for                                                                          |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| View Channels            | See project channels and the admin channel                                        |
-| Send Messages            | Post replies in channels                                                          |
-| Read Message History     | Fetch the message a ticket thread is started from                                 |
-| Manage Channels          | Create a channel for each new project (`/project-create`, admin `create project`) |
-| Create Public Threads    | Open a thread for each new ticket                                                 |
-| Send Messages in Threads | Post ticket updates and the final answer inside that thread                       |
+| Permission               | Used for                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| View Channels            | See project channels and the admin channel                                                                            |
+| Send Messages            | Post replies in channels                                                                                              |
+| Read Message History     | Fetch the message a ticket thread is started from                                                                     |
+| Manage Channels          | Create a channel for each new project (`/project-create`, admin `create project`)                                     |
+| Create Public Threads    | Open a thread for each new ticket                                                                                     |
+| Send Messages in Threads | Post ticket updates and the final answer inside that thread                                                           |
+| Add Reactions            | React 👀 on a message the bot accepted (from [PR #53](https://github.com/joel611/project-os/pull/53), not merged yet) |
 
-Together these are permissions integer `309237713936`. Open this URL with your Application ID filled in, pick your server, and authorize:
+Together these are permissions integer `309237714000`. Open this URL with your Application ID filled in, pick your server, and authorize:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=309237713936
+https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=309237714000
 ```
 
 You can also build the same link in the portal under **OAuth2 → URL Generator** (or **Installation → Guild Install**) by ticking the scopes and permissions above.
