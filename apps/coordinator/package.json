@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
     "start": "bun src/main.bun.ts",
-    "seed": "bun src/main.seed.ts",
-    "dev:cf": "wrangler dev"
+    "seed": "bun src/main.seed.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -24,7 +23,6 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261104.1",
     "@project-os/db-sqlite": "workspace:*",
-    "@project-os/testing": "workspace:*",
-    "wrangler": "4.157.0"
+    "@project-os/testing": "workspace:*"
   }
 }
