@@ -23,7 +23,8 @@ export const fixedClock = (date: Date) => Layer.succeed(Clock, { now: Effect.suc
 /**
  * Every port, in memory. State is fresh per Layer build.
  * `sent` collects replies passed to `ChannelGateway.send`; `createdChannels` the channels
- * `ChannelGateway.createChannel` was asked to create.
+ * `ChannelGateway.createChannel` was asked to create; `createdThreads` the threads
+ * `ChannelGateway.createThread` was asked to open.
  */
 export const makeTestLayer = (options?: {
   readonly now?: Date;
@@ -31,10 +32,13 @@ export const makeTestLayer = (options?: {
   readonly classifier?: Layer.Layer<IntentClassifier>;
   /** Make `ChannelGateway.createChannel` fail with this message. */
   readonly failChannelCreate?: string;
+  /** Make `ChannelGateway.createThread` fail with this message. */
+  readonly failThreadCreate?: string;
 }) => {
-  const gateway = makeChannelGatewayRecording(
-    options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate },
-  );
+  const gateway = makeChannelGatewayRecording({
+    ...(options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate }),
+    ...(options?.failThreadCreate === undefined ? {} : { failThread: options.failThreadCreate }),
+  });
   const layer = Layer.mergeAll(
     fixedClock(options?.now ?? new Date("2026-11-04T00:00:00.000Z")),
     TicketRepositoryInMemory,
@@ -50,7 +54,12 @@ export const makeTestLayer = (options?: {
     WorkerLauncherNoop,
     IdGeneratorSequential,
   );
-  return { layer, sent: gateway.sent, createdChannels: gateway.created };
+  return {
+    layer,
+    sent: gateway.sent,
+    createdChannels: gateway.created,
+    createdThreads: gateway.threads,
+  };
 };
 
 /** Classifier returning a fixed intent / confidence / workerType. */

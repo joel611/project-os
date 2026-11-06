@@ -15,3 +15,6 @@ export const sourceTypeFor = (channel: ChannelType): ProjectSourceType | undefin
 
 export const channelTypeFor = (source: ProjectSourceType): ChannelType | undefined =>
   SOURCE_CHANNEL_TYPES[source];
+
+/** Channels whose adapter can open a thread on a message, so each Ticket gets its own. */
+export const supportsThreads = (channel: ChannelType): boolean => channel === "discord";
