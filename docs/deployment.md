@@ -11,6 +11,23 @@
 
 Cloud resource names get the stage, for example `project-os-prod-db`, so stages never share data.
 
+## Deployment layouts
+
+Discord needs an outbound Gateway WebSocket that stays open for as long as the bot is online. A Cloudflare Worker is a short-lived request handler and cannot hold that socket. That one constraint is why there are two layouts. Everything else about the Coordinator is the same in both.
+
+| | Single process (default) | Split (Cloudflare) |
+| --- | --- | --- |
+| Infrastructure | One Bun process: local, Docker Compose, or a VM or container you run | Coordinator on Cloudflare Workers, Discord in a separate long-lived Bun process |
+| Where Discord runs | Inside the Coordinator (`packages/channel-discord`, started by `main.bun.ts`) | `bun run --cwd packages/channel-discord standalone`, or its `Dockerfile`, on a VM, Fly, or a container |
+| Discord settings | `DISCORD_BOT_TOKEN` on the Coordinator | `DISCORD_BOT_TOKEN`, `COORDINATOR_URL`, `DISCORD_ADAPTER_PORT` on the Discord process, and `DISCORD_ADAPTER_URL` on the Coordinator |
+| Reply endpoint | Loopback, on a free port | The Discord process listens on `0.0.0.0:DISCORD_ADAPTER_PORT` |
+
+**Single process.** The Coordinator starts Discord after it begins listening. The reply endpoint binds `127.0.0.1` because it can post as the bot. Without `DISCORD_BOT_TOKEN`, Discord is skipped and the Coordinator logs that it is off. Add the token and restart. A failed login is logged and the Coordinator keeps running without Discord.
+
+**Split.** Setting `DISCORD_ADAPTER_URL` on the Coordinator turns the in-process bot off, even if `DISCORD_BOT_TOKEN` is also set, and sends replies to that URL. The Discord process forwards messages, slash commands and button clicks to `COORDINATOR_URL`. To self-host the split in containers, set `DISCORD_ADAPTER_URL=http://discord:8081` in `.env` and run `docker compose --profile split up`.
+
+The split reply endpoint has no authentication. Keep it on a private network or behind a firewall, and never publish its port. Today `main.cloudflare.ts` serves only `/health` (see Known gaps), so the Cloudflare half of the split is not usable end to end yet.
+
 ## First-time setup
 
 1. Log in once: `bunx alchemy profile edit --add Cloudflare` (OAuth or an API token). In CI, set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` instead.
@@ -40,7 +57,7 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 
 ## Not on Workers
 
-- **Discord:** a Bun Coordinator runs the bot in its own process. A Worker can't hold the long-running gateway WebSocket, so Discord runs elsewhere (a VM, Fly, or a Cloudflare Container later) with `bun run --cwd packages/channel-discord standalone`, pointed at the Coordinator with `COORDINATOR_URL`. Set `DISCORD_ADAPTER_URL` so the Coordinator can reach its `/reply` endpoint. If the Coordinator has `DISCORD_ADAPTER_URL`, it ignores `DISCORD_BOT_TOKEN`.
+- **Discord:** a Worker can't hold the gateway WebSocket, so Discord runs in a separate process. See [Deployment layouts](#deployment-layouts).
 - **Watcher:** runs on the machine that hosts Claude Code, with `MCP_URL=<coordinatorUrl>/mcp`.
 
 ## Known gaps
