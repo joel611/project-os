@@ -14,7 +14,8 @@ import {
 } from "../ports/index.ts";
 import { onlinePersonalWorker } from "./personal-workers.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
-import { nowIso } from "./tickets.ts";
+import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
+import { nowIso, updateStatus } from "./tickets.ts";
 
 export interface HandleInboundConfig {
   /** Discord channel id of the dedicated admin channel. */
@@ -55,6 +56,7 @@ export type InboundOutcome =
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
   | { readonly kind: "ticket_closed"; readonly ticketId: string }
   | { readonly kind: "status_answered" }
+  | { readonly kind: "sidekick_answered"; readonly ticketId: string }
   | { readonly kind: "admin_handled" }
   | { readonly kind: "admin_forbidden" }
   | { readonly kind: "clarification_sent" };
@@ -68,6 +70,9 @@ export const THREAD_OPENED_MESSAGE =
   "I opened a ticket for this. Keep the conversation for it in this thread.";
 export const TICKET_CLOSED_MESSAGE =
   "This ticket is finished. Post in the channel to start something new.";
+
+export const sidekickFailedMessage = (reason: string) =>
+  `Sorry, I couldn't look that up: ${reason}`;
 
 export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) =>
   Effect.gen(function* () {
@@ -101,7 +106,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
      */
     const openTicketThread = (ticketId: string, at: string) =>
       Effect.gen(function* () {
-        if (!supportsThreads(message.channelType)) return;
+        if (!supportsThreads(message.channelType)) return undefined;
         const threadId =
           message.threadId ??
           (yield* gateway
@@ -120,7 +125,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
                 ),
               ),
             ));
-        if (threadId === undefined) return;
+        if (threadId === undefined) return undefined;
         yield* tickets.linkThread({
           ticketId,
           channelType: message.channelType,
@@ -134,6 +139,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           threadId,
           content: THREAD_OPENED_MESSAGE,
         });
+        return threadId;
       });
 
     /**
@@ -156,6 +162,16 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
               ),
             )
         : Effect.void;
+
+    const replyIn = (threadId: string | undefined, content: string) =>
+      threadId === undefined
+        ? reply(content)
+        : gateway.send({
+            channelType: message.channelType,
+            channelId: message.channelId,
+            threadId,
+            content,
+          });
 
     const fresh = yield* kv.setIfAbsent(
       `inbound:${message.channelType}:${message.externalId}`,
@@ -210,6 +226,14 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const project = yield* projects.get(source.projectId);
     const at = yield* nowIso;
 
+    const sidekickAnswer = (ticketId: string, prompt: string) =>
+      askSidekick({ ticketId, prompt, requestId: message.externalId }).pipe(
+        Effect.map((text) => ({ ok: true as const, text })),
+        Effect.catchTag("SidekickError", (e) =>
+          Effect.succeed({ ok: false as const, text: e.message }),
+        ),
+      );
+
     const addFollowUp = (ticketId: string) =>
       Effect.gen(function* () {
         yield* tickets.appendEvent({
@@ -233,6 +257,14 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         : yield* tickets.findByThread(message.channelType, message.threadId);
     const threadTicket = thread && (yield* tickets.get(thread.ticketId));
     if (threadTicket && threadTicket.projectId === project.id) {
+      // A Sidekick ticket is finished the moment it is answered, so its thread keeps talking
+      // to the same Sidekick conversation instead of hitting the closed-ticket reply.
+      if (threadTicket.workerType === "sidekick") {
+        yield* addFollowUp(threadTicket.id);
+        const answered = yield* sidekickAnswer(threadTicket.id, message.content);
+        yield* reply(answered.ok ? answered.text : sidekickFailedMessage(answered.text));
+        return { kind: "sidekick_answered", ticketId: threadTicket.id } as InboundOutcome;
+      }
       const result = yield* classify(project.customInstructions);
       if (isConfident(result.confidence) && result.intent === "status_question") {
         const text = yield* runtime.respond({
@@ -300,6 +332,57 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           payload: { sender: message.sender, channelType: message.channelType },
           createdAt: at,
         });
+        if (result.executor === "sidekick") {
+          // Tool-only: assign and claim at once under the Sidekick's own id, answer in the
+          // ticket's thread, and finish. Everything else waits for a pull-model Worker.
+          yield* tickets.assign(
+            ticketId,
+            { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
+            at,
+          );
+          yield* tickets.appendEvent({
+            id: yield* ids.next,
+            ticketId,
+            type: "assigned",
+            actor: "coordinator",
+            actorId: null,
+            body: "Assigned to the Sidekick",
+            payload: { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
+            createdAt: at,
+          });
+          // Just assigned to this id in this turn, so a conflict is a bug, not a state to report.
+          yield* Effect.orDie(tickets.claim(ticketId, SIDEKICK_WORKER_ID, at));
+          const threadId = yield* openTicketThread(ticketId, at);
+          const answered = yield* sidekickAnswer(ticketId, message.content);
+          if (answered.ok) {
+            yield* tickets.appendEvent({
+              id: yield* ids.next,
+              ticketId,
+              type: "result",
+              actor: "worker",
+              actorId: SIDEKICK_WORKER_ID,
+              body: answered.text,
+              payload: null,
+              createdAt: at,
+            });
+            yield* updateStatus({ ticketId, status: "completed" });
+            yield* replyIn(threadId, answered.text);
+          } else {
+            yield* tickets.appendEvent({
+              id: yield* ids.next,
+              ticketId,
+              type: "error",
+              actor: "worker",
+              actorId: SIDEKICK_WORKER_ID,
+              body: answered.text,
+              payload: null,
+              createdAt: at,
+            });
+            yield* updateStatus({ ticketId, status: "failed", error: answered.text });
+            yield* replyIn(threadId, sidekickFailedMessage(answered.text));
+          }
+          return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
+        }
         // `ticket_claim` only admits the assigned worker. A Daytona session is a fresh worker
         // per ticket, so it gets its own id and the host Watcher never sees the ticket.
         const workerId = personal

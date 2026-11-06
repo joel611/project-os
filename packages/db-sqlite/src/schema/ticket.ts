@@ -1,4 +1,4 @@
-import { TICKET_STATUSES } from "@project-os/contracts";
+import { TICKET_STATUSES, WORKER_TYPES } from "@project-os/contracts";
 import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { projects } from "./project.ts";
 
@@ -16,7 +16,7 @@ export const tickets = sqliteTable(
     intent: text("intent"),
     inputSummary: text("input_summary").notNull(),
     priority: text("priority"),
-    workerType: text("worker_type", { enum: ["daytona_pi", "local_claude", "local_pi"] }),
+    workerType: text("worker_type", { enum: WORKER_TYPES }),
     workerId: text("worker_id"),
     result: text("result", { mode: "json" }),
     error: text("error"),

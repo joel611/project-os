@@ -16,6 +16,9 @@ import {
   Scheduler,
   SourceAliasTaken,
   SourceAlreadyLinked,
+  Sidekick,
+  SidekickError,
+  type SidekickToken,
   SourceNotFound,
   PromptSendFailed,
   ThreadCreateFailed,
@@ -400,6 +403,41 @@ export const IntentClassifierFake = (intent = "general") =>
 export const AgentRuntimeEcho = Layer.succeed(AgentRuntime, {
   respond: ({ prompt }) => Effect.succeed(prompt),
 });
+
+export interface SidekickCall {
+  readonly ticketId: string;
+  readonly prompt: string;
+  readonly requestId: string | undefined;
+  /** What the token lookup for the probed provider returned this turn. Unset: not probed. */
+  readonly token: SidekickToken | undefined;
+}
+
+/**
+ * Sidekick that answers `sidekick: <prompt>` and records each turn. With `probe` it asks for
+ * that provider's token during the turn, as a tool would. `fail` makes every turn fail with
+ * that message.
+ */
+export const makeSidekickRecording = (options?: {
+  readonly fail?: string;
+  readonly probe?: ConnectionProvider;
+}) => {
+  const calls: SidekickCall[] = [];
+  const layer = Layer.succeed(Sidekick, {
+    answer: (input) =>
+      options?.fail === undefined
+        ? Effect.promise(async () => {
+            calls.push({
+              ticketId: input.ticketId,
+              prompt: input.prompt,
+              requestId: input.requestId,
+              token: options?.probe ? await input.token(options.probe) : undefined,
+            });
+            return `sidekick: ${input.prompt}`;
+          })
+        : Effect.fail(new SidekickError({ message: options.fail })),
+  });
+  return { layer, calls };
+};
 
 /** Sequential ids: `id-1`, `id-2`, … */
 export const IdGeneratorSequential = Layer.sync(IdGenerator, () => {

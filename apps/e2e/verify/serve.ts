@@ -6,7 +6,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { ensureOrg, LocalLive } from "@project-os/infra-local";
-import { AgentRuntimeEcho, classifierReturning } from "@project-os/testing";
+import { AgentRuntimeEcho, classifierReturning, makeSidekickRecording } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
 import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
 import { createApp } from "../../coordinator/src/app.ts";
@@ -31,6 +31,7 @@ const runtime = ManagedRuntime.make(
     LocalLive({ dbPath, adapterUrls: { discord: `http://localhost:${adapterPort}` } }),
     classifierReturning("new_request"),
     AgentRuntimeEcho,
+    makeSidekickRecording().layer,
   ) as Layer.Layer<any, never>,
 );
 
