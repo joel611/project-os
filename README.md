@@ -21,7 +21,7 @@ project-os sits in the middle like a control tower:
 
 - **Questions land once** — PMs and clients ask in Discord/email. No more "quick ping" tax on senior engineers.
 - **Context stays project-scoped** — Every channel maps to exactly one Project. Memory, sources, and instructions never leak.
-- **Work becomes tickets** — The tower opens a Ticket, assigns it, and tracks every status update. Channels mod only see the final clearance.
+- **Work becomes tickets** — The tower opens a Ticket, assigns it, and tracks every status update. Channels only see the final clearance.
 - **Workers pull, never get pushed** — Local Claude Code (or cloud sandboxes) claim tickets atomically. Two agents never collide.
 - **Only the tower talks outside** — Adapters are thin. Workers speak only MCP. The surface that can say the wrong thing to a customer is tiny and centralized.
 - **Memory compounds** — Every resolved ticket can update Project Memory. The next similar question is faster and cheaper.
