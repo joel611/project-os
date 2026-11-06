@@ -182,8 +182,11 @@ createApp(
     ...(connections && { connect: connections }),
   },
 ).listen(port);
-// After listen: the first message POSTs to /inbound on this very server.
-await discord?.login();
+// After listen: the first message POSTs to /inbound on this very server. A failed login (bad
+// token, missing intent) leaves the Coordinator, MCP and Watchers up; only Discord is down.
+discord?.login().catch((err) => {
+  console.error("Discord login failed; the Coordinator keeps running without Discord", err);
+});
 // Flush buffered spans/metrics on `docker compose stop` / Ctrl-C.
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {

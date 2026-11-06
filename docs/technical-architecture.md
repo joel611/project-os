@@ -575,7 +575,7 @@ docker compose
   ├─ coordinator      Coordinator Service + MCP server + Web UI API
   ├─ db               database for Project Memory, Tickets, Workers
   ├─ channel-discord  Discord bot (outbound connection to Discord), hosted inside coordinator on Bun
-  ├─ email-adapter    optional / stub for POC (e.g. local SMTP catcher)
+  ├─ channel-email    optional / stub for POC (e.g. local SMTP catcher)
 
 host (outside Compose)
   └─ watcher          Local Watcher + Claude Code, using the host's
@@ -762,7 +762,7 @@ project-os/
 │  │  │  ├─ main.cloudflare.ts         # Elysia + CloudflareAdapter, .compile(); scheduled handler, DO export
 │  │  │  └─ main.bun.ts                # Bun.serve + setInterval sweep
 │  │  └─ Dockerfile                    # local target (oven/bun)
-│  ├─ email-adapter/                   # stub for POC
+│  ├─ channel-email/                   # stub for POC
 │  ├─ watcher/                         # host-run Bun CLI
 │  │  ├─ src/{config,poll,spawn,main}.ts
 │  │  └─ prompts/session-start.md

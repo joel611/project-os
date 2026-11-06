@@ -136,11 +136,11 @@ Steps and cost breakdown: [docs/deployment.md](docs/deployment.md).
 ```
 apps/
   coordinator/          # Tower — Elysia HTTP + MCP, agent loop (main.bun.ts local, main.cloudflare.ts Workers)
-  discord-adapter/      # Thin inbound/outbound
-  email-adapter/        # Stub
   watcher/              # Host-run Claude Code launcher
   web/                  # Read-only dashboard (TanStack Start SPA; `build` exports a static site)
 packages/
+  channel-discord/      # Discord bot, hosted by the Coordinator
+  channel-email/        # Stub
   core/                 # Domain + ports (provider-free)
   agent-runtime/        # Intent classifier + agent loop
   db-sqlite/            # Drizzle schema (SQLite / D1)

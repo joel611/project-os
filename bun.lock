@@ -63,14 +63,6 @@
         "effect": "4.1.2",
       },
     },
-    "apps/email-adapter": {
-      "name": "@project-os/email-adapter",
-      "version": "0.0.0",
-      "dependencies": {
-        "@project-os/config": "workspace:*",
-        "@project-os/contracts": "workspace:*",
-      },
-    },
     "apps/watcher": {
       "name": "@project-os/watcher",
       "version": "0.0.0",
@@ -157,6 +149,14 @@
         "discord.js": "^14.28.1",
         "effect": "4.1.2",
         "elysia": "^1.4.30",
+      },
+    },
+    "packages/channel-email": {
+      "name": "@project-os/channel-email",
+      "version": "0.0.0",
+      "dependencies": {
+        "@project-os/config": "workspace:*",
+        "@project-os/contracts": "workspace:*",
       },
     },
     "packages/contracts": {
@@ -820,6 +820,8 @@
 
     "@project-os/channel-discord": ["@project-os/channel-discord@workspace:packages/channel-discord"],
 
+    "@project-os/channel-email": ["@project-os/channel-email@workspace:packages/channel-email"],
+
     "@project-os/config": ["@project-os/config@workspace:libs/config"],
 
     "@project-os/contracts": ["@project-os/contracts@workspace:packages/contracts"],
@@ -831,8 +833,6 @@
     "@project-os/db-sqlite": ["@project-os/db-sqlite@workspace:packages/db-sqlite"],
 
     "@project-os/e2e": ["@project-os/e2e@workspace:apps/e2e"],
-
-    "@project-os/email-adapter": ["@project-os/email-adapter@workspace:apps/email-adapter"],
 
     "@project-os/infra-cloudflare": ["@project-os/infra-cloudflare@workspace:packages/infra-cloudflare"],
 
