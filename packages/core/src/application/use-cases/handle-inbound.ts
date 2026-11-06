@@ -178,7 +178,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           actor: "coordinator",
           actorId: message.sender.id,
           body: message.content,
-          payload: { sender: message.sender },
+          payload: { sender: message.sender, channelType: message.channelType },
           createdAt: at,
         });
         return { kind: "follow_up_added", ticketId: target.id } as InboundOutcome;

@@ -12,6 +12,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@project-os/agent-runtime": "workspace:*",
+    "@project-os/auth": "workspace:*",
     "@project-os/config": "workspace:*",
     "@project-os/contracts": "workspace:*",
     "@project-os/core": "workspace:*",

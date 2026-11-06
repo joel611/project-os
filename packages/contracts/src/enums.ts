@@ -40,3 +40,8 @@ export const MemoryEntryType = Schema.Literals([
   "note",
 ]);
 export type MemoryEntryType = typeof MemoryEntryType.Type;
+
+/** Third-party accounts a person can link so Workers act with that person's own access. */
+export const CONNECTION_PROVIDERS = ["google", "github"] as const;
+export const ConnectionProvider = Schema.Literals(CONNECTION_PROVIDERS);
+export type ConnectionProvider = typeof ConnectionProvider.Type;

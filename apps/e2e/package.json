@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@project-os/auth": "workspace:*",
     "@project-os/core": "workspace:*",
     "@project-os/infra-local": "workspace:*",
     "@project-os/testing": "workspace:*",

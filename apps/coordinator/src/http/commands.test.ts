@@ -122,3 +122,61 @@ describe("POST /commands", () => {
     expect((await post(appWith(), command())).status).toBe(501);
   });
 });
+
+describe("runCommand account commands", () => {
+  const setup = () => {
+    const test = makeTestLayer();
+    const runtime = ManagedRuntime.make(test.layer);
+    const { config } = recording({
+      connections: (effect) => runtime.runPromise(effect),
+    });
+    return { test, runtime, config };
+  };
+  const account = (name: "connect" | "disconnect" | "connections", provider?: string) =>
+    command({
+      command: name,
+      channelId: "general",
+      sender: { id: "u9", name: "Ada" },
+      options: provider === undefined ? {} : { provider },
+    });
+
+  it("answers /connect privately with a link, in any channel", async () => {
+    const { runtime, config } = setup();
+    const reply = await runCommand(account("connect", "google"), config);
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.content).toContain("http://connect.test/google/u9");
+    await runtime.dispose();
+  });
+
+  it("rejects an unknown provider", async () => {
+    const { runtime, config } = setup();
+    const reply = await runCommand(account("connect", "dropbox"), config);
+    expect(reply).toEqual({
+      content: "Usage: /connect provider:<google|github>",
+      ephemeral: true,
+    });
+    await runtime.dispose();
+  });
+
+  it("lists and removes links", async () => {
+    const { test, runtime, config } = setup();
+    expect((await runCommand(account("connections"), config)).content).toContain("haven't linked");
+    test.link({ channelType: "discord", id: "u9" }, "github", "tok");
+    expect((await runCommand(account("connections"), config)).content).toContain("Linked: GitHub");
+    expect((await runCommand(account("disconnect", "github"), config)).content).toBe(
+      "Disconnected GitHub.",
+    );
+    expect((await runCommand(account("disconnect", "github"), config)).content).toBe(
+      "You had no GitHub account linked.",
+    );
+    await runtime.dispose();
+  });
+
+  it("refuses when account linking is not configured", async () => {
+    const { config } = recording();
+    expect(await runCommand(account("connect", "google"), config)).toEqual({
+      content: "Account linking is not configured here.",
+      ephemeral: true,
+    });
+  });
+});

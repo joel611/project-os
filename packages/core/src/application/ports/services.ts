@@ -1,4 +1,6 @@
 import type {
+  ChannelType,
+  ConnectionProvider,
   CreateChannelInstruction,
   CreatedChannel,
   ReplyInstruction,
@@ -114,3 +116,57 @@ export class IdGenerator extends Context.Service<
     readonly next: Effect.Effect<string>;
   }
 >()("@project-os/core/IdGenerator") {}
+
+/** Someone who wrote to the Coordinator, identified by their channel's own user id. */
+export interface Person {
+  readonly channelType: ChannelType;
+  readonly id: string;
+  readonly name?: string;
+}
+
+/** A person's access token for a linked provider, refreshed if it was about to expire. */
+export interface UserAccessToken {
+  readonly accessToken: string;
+  readonly expiresAt: string | null;
+  readonly scopes: ReadonlyArray<string>;
+}
+
+export interface LinkedAccount {
+  readonly provider: ConnectionProvider;
+  /** The provider's account id. */
+  readonly accountId: string;
+}
+
+/**
+ * Per-person links to third-party accounts (Google, GitHub). Workers act with the token of
+ * the person who asked, so the provider's own permissions decide what they can reach.
+ */
+export class UserConnections extends Context.Service<
+  UserConnections,
+  {
+    /** A short-lived, one-time URL that links `provider` to `person` when opened. */
+    readonly connectUrl: (
+      person: Person,
+      provider: ConnectionProvider,
+    ) => Effect.Effect<string, ConnectionsUnavailable>;
+    readonly list: (person: Person) => Effect.Effect<ReadonlyArray<LinkedAccount>>;
+    /** Removes the link. Returns false if there was none. */
+    readonly disconnect: (person: Person, provider: ConnectionProvider) => Effect.Effect<boolean>;
+    readonly accessToken: (
+      person: Person,
+      provider: ConnectionProvider,
+    ) => Effect.Effect<UserAccessToken, NotConnected | ConnectionsUnavailable>;
+  }
+>()("@project-os/core/UserConnections") {}
+
+/** The person has not linked `provider`, or the link was revoked and needs redoing. */
+export class NotConnected extends Data.TaggedError("NotConnected")<{
+  readonly provider: ConnectionProvider;
+  readonly personId: string;
+  readonly message: string;
+}> {}
+
+/** Account linking is not configured here (no secret, or no client for the provider). */
+export class ConnectionsUnavailable extends Data.TaggedError("ConnectionsUnavailable")<{
+  readonly message: string;
+}> {}
