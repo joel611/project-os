@@ -55,7 +55,10 @@ export const toFailure = (error: unknown): ToolFailure => {
   if (Schema.isSchemaError(error)) return { _tag: "InvalidInput", message: error.message };
   if (typeof error === "object" && error !== null && "_tag" in error) {
     const { _tag, ...rest } = error as { _tag: string };
-    return { ...rest, _tag, message: `${_tag}: ${JSON.stringify(rest)}` };
+    // Errors with their own message (e.g. NotConnected) tell the Worker what to do next.
+    const own = (error as { message?: unknown }).message;
+    const detail = typeof own === "string" && own !== "" ? ` ${own}` : "";
+    return { ...rest, _tag, message: `${_tag}: ${JSON.stringify(rest)}${detail}` };
   }
   return { _tag: "Error", message: String(error) };
 };

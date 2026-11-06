@@ -119,6 +119,39 @@ describe("per-person account linking", () => {
     ]);
   });
 
+  it("gives up and asks to reconnect when the refresh token is refused", async () => {
+    stack.oauth!.expiresIn = 1;
+    stack.oauth!.failRefresh = true;
+    await connect(ada, "google");
+    const ticketId = await say(ada, "summarize the Q3 planning doc");
+    const res = await userToken(ticketId, "google");
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text, res.content[0]!.text).toContain("expired or was revoked");
+  });
+
+  it("hands out a token that never expires with no expiry", async () => {
+    stack.oauth!.expiresIn = 0;
+    await connect(ada, "github");
+    const ticketId = await say(ada, "triage the open issues");
+    expect((await userToken(ticketId, "github")).structuredContent).toMatchObject({
+      accessToken: "at-github-1",
+      expiresAt: null,
+    });
+  });
+
+  it("shows an error page when the provider won't say who the account is", async () => {
+    stack.oauth!.failUserInfo = true;
+    const { page } = await connect(ada, "github");
+    expect(page.status).toBe(400);
+    expect(page.body).toContain("Linking your GitHub account failed");
+    expect((await slash(ada, "connections")).content).toContain("haven't linked");
+  });
+
+  it("serves a generic done page", async () => {
+    const res = await fetch(`${stack.url}/connect/done`);
+    expect(await res.text()).toContain("Your account connected");
+  });
+
   it("a connect link works once", async () => {
     const { link } = await connect(ada, "google");
     const again = await browse(link);

@@ -1,6 +1,7 @@
 import type { SlashCommand } from "@project-os/contracts";
 import { makeTestLayer } from "@project-os/testing";
-import { ManagedRuntime } from "effect";
+import { ConnectionsUnavailable, UserConnections } from "@project-os/core";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createApp } from "../app.ts";
 import { type CommandsConfig, runCommand } from "./commands.ts";
@@ -169,6 +170,33 @@ describe("runCommand account commands", () => {
     expect((await runCommand(account("disconnect", "github"), config)).content).toBe(
       "You had no GitHub account linked.",
     );
+    await runtime.dispose();
+  });
+
+  it("works for a sender with no display name", async () => {
+    const { runtime, config } = setup();
+    const reply = await runCommand(
+      command({ command: "connect", sender: { id: "u7" }, options: { provider: "github" } }),
+      config,
+    );
+    expect(reply.content).toContain("http://connect.test/github/u7");
+    await runtime.dispose();
+  });
+
+  it("says so when the provider has no OAuth client", async () => {
+    const runtime = ManagedRuntime.make(
+      Layer.succeed(UserConnections, {
+        connectUrl: () => Effect.fail(new ConnectionsUnavailable({ message: "no client" })),
+        list: () => Effect.succeed([]),
+        disconnect: () => Effect.succeed(false),
+        accessToken: () => Effect.fail(new ConnectionsUnavailable({ message: "no client" })),
+      }),
+    );
+    const { config } = recording({ connections: (effect) => runtime.runPromise(effect) });
+    expect(await runCommand(account("connect", "github"), config)).toEqual({
+      content: "GitHub linking is not configured here.",
+      ephemeral: true,
+    });
     await runtime.dispose();
   });
 
