@@ -58,4 +58,37 @@ describe("normalizeMessage", () => {
   it("ignores empty messages", () => {
     expect(normalizeMessage({ ...base, content: "  " })).toBeNull();
   });
+
+  it("leaves mentionsBot unset when the bot id is unknown", () => {
+    expect(normalizeMessage(base)).not.toHaveProperty("mentionsBot");
+  });
+
+  it("flags and strips a mention of the bot", () => {
+    const out = normalizeMessage(
+      {
+        ...base,
+        content: "<@!b1> please add <@u2>'s idea <@b1>",
+        mentions: { users: { has: (id) => id === "b1" || id === "u2" } },
+      },
+      "b1",
+    );
+    expect(out).toMatchObject({ mentionsBot: true, content: "please add <@u2>'s idea" });
+    expect(() => Schema.decodeUnknownSync(InboundMessage)(out)).not.toThrow();
+  });
+
+  it("counts a reply-ping as a mention even without mention text", () => {
+    const out = normalizeMessage(
+      { ...base, mentions: { users: { has: (id) => id === "b1" } } },
+      "b1",
+    );
+    expect(out).toMatchObject({ mentionsBot: true, content: "hello" });
+  });
+
+  it("is not a mention when only someone else is mentioned", () => {
+    const out = normalizeMessage(
+      { ...base, content: "hey <@u2>", mentions: { users: { has: (id) => id === "u2" } } },
+      "b1",
+    );
+    expect(out).toMatchObject({ mentionsBot: false, content: "hey <@u2>" });
+  });
 });
