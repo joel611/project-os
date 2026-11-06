@@ -1,4 +1,5 @@
 import {
+  ActivityFeed,
   MemoryEntry,
   Project,
   ProjectSource,
@@ -92,6 +93,8 @@ export const makeApi = (fetchFn: typeof fetch = fetch) => {
       get(`/projects/${id(projectId)}/memory`, Schema.Array(MemoryEntry)),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
     workers: () => get("/workers", Schema.Array(WorkerView)),
+    activity: (since: string | null) =>
+      get(since === null ? "/activity" : `/activity?since=${id(since)}`, ActivityFeed),
     updateProject: (projectId: string, patch: ProjectPatch) =>
       send(`/projects/${id(projectId)}`, Project, { method: "PATCH", json: patch }),
     addSource: (projectId: string, source: SourceInput) =>

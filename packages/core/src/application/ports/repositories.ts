@@ -61,6 +61,11 @@ export class TicketRepository extends Context.Service<
       channelType: TicketThread["channelType"],
       threadId: string,
     ) => Effect.Effect<TicketThread | undefined>;
+    /** Events on every ticket with `createdAt >= since`: the newest `limit`, oldest first. */
+    readonly listEventsSince: (
+      since: string,
+      limit: number,
+    ) => Effect.Effect<ReadonlyArray<TicketEvent>>;
   }
 >()("@project-os/core/TicketRepository") {}
 
