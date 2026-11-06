@@ -18,7 +18,8 @@ const PROVIDER_OPTION = {
  * Slash commands this adapter registers with Discord (application command JSON, type 1 =
  * chat input, option type 3 = string). Discord can't limit a bot's command to one channel,
  * so the Coordinator refuses admin commands outside the admin channel. Account commands
- * (/connect, /disconnect, /connections) work anywhere, DMs included.
+ * (/connect, /disconnect, /connections) work in any server channel. The bot only works in
+ * the server, so no command is offered in DMs.
  */
 export const COMMAND_DEFINITIONS = [
   {
@@ -40,21 +41,21 @@ export const COMMAND_DEFINITIONS = [
     name: "connect",
     description: "Link your Google or GitHub account so I work with your own access",
     type: 1,
-    dm_permission: true,
+    dm_permission: false,
     options: [PROVIDER_OPTION],
   },
   {
     name: "disconnect",
     description: "Unlink your Google or GitHub account",
     type: 1,
-    dm_permission: true,
+    dm_permission: false,
     options: [PROVIDER_OPTION],
   },
   {
     name: "connections",
     description: "Show which of your accounts are linked",
     type: 1,
-    dm_permission: true,
+    dm_permission: false,
     options: [],
   },
 ] as const;
