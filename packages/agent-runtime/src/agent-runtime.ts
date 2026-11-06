@@ -33,8 +33,6 @@ export interface AgentRuntimeOptions {
   readonly instructions?: string;
   /** Where the Sidekick's tools call. Default: the real GitHub and Google Drive APIs. */
   readonly sidekickEndpoints?: SidekickEndpoints;
-  /** `fetch` for the Sidekick's tools. Default: global `fetch`. */
-  readonly sidekickFetch?: typeof fetch;
   /** Pi telemetry sink, e.g. `makeOtelTelemetry(...)`. Omitted: no-op. */
   readonly telemetry?: TelemetryContext | undefined;
 }
@@ -73,8 +71,7 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
       const tokenSources = new Map<string, TokenSource>();
       const sidekickExtension = makeSidekickExtension({
         endpoints: options.sidekickEndpoints ?? SIDEKICK_ENDPOINTS,
-        tokenSource: (conversationId) => tokenSources.get(conversationId),
-        ...(options.sidekickFetch ? { fetch: options.sidekickFetch } : {}),
+        tokenSource: (conversationId) => (provider) => tokenSources.get(conversationId)!(provider),
       });
       registry.install(sidekickExtension);
       registry.install(admin);
@@ -192,8 +189,7 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
                   },
                   input.token,
                 ),
-              catch: (e) =>
-                new SidekickError({ message: e instanceof Error ? e.message : String(e) }),
+              catch: (e) => new SidekickError({ message: fail(e).message }),
             }),
         }),
       );
