@@ -136,6 +136,7 @@ Steps and cost breakdown: [docs/deployment.md](docs/deployment.md).
 ```
 apps/
   coordinator/          # Tower — Elysia HTTP + MCP, agent loop (main.bun.ts local, main.cloudflare.ts Workers)
+  discord-gateway/      # Split mode only: runs channel-discord as its own process
   watcher/              # Host-run Claude Code launcher
   web/                  # Read-only dashboard (TanStack Start SPA; `build` exports a static site)
 packages/
