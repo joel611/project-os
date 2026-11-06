@@ -16,6 +16,8 @@ const { values } = parseArgs({
     name: { type: "string", default: "Fake User" },
     say: { type: "string" },
     wait: { type: "string", default: "60" },
+    // Send without @mentioning the bot (the Coordinator ignores these at channel top level).
+    "no-mention": { type: "boolean", default: false },
   },
 });
 
@@ -30,6 +32,7 @@ const speaker: FakeSpeaker = {
 
 let onReply: () => void = () => {};
 let fakeChannels = 0;
+let fakeThreads = 0;
 createReplyApp(
   async (target, content) => {
     const where = target.threadId ? `${target.channelId}/${target.threadId}` : target.channelId;
@@ -41,10 +44,17 @@ createReplyApp(
     console.log(`\n[bot created #${name} as ${channelId}]`);
     return { channelId, name };
   },
+  async ({ channelId, messageId, name }) => {
+    const threadId = `fake-thread-${++fakeThreads}`;
+    console.log(`\n[bot opened thread "${name}" on ${channelId}/${messageId} as ${threadId}]`);
+    // Keep talking in the new thread, as a person would after clicking into it.
+    speaker.threadId = threadId;
+    return { threadId };
+  },
 ).listen(port);
 
 const say = async (content: string) => {
-  const inbound = fakeInbound(speaker, content);
+  const inbound = fakeInbound(speaker, content, { mention: !values["no-mention"] });
   if (!inbound) return console.log("(ignored: empty message)");
   await forwardInbound(coordinatorUrl, inbound, fetch);
 };

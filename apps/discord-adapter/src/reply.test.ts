@@ -113,3 +113,64 @@ describe("channels endpoint", () => {
     expect(await res.json()).toEqual({ error: "discord channel create failed" });
   });
 });
+
+const thread = (app: ReturnType<typeof createReplyApp>, body: unknown) =>
+  app.handle(
+    new Request("http://localhost/threads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+
+describe("threads endpoint", () => {
+  const request = { channelType: "discord", channelId: "c1", messageId: "m1", name: "Fix it" };
+  const noChannel = async () => ({ channelId: "x", name: "x" });
+
+  it("opens a thread on the message and returns its id", async () => {
+    const calls: unknown[] = [];
+    const app = createReplyApp(
+      async () => {},
+      noChannel,
+      async (input) => {
+        calls.push(input);
+        return { threadId: "th-1" };
+      },
+    );
+    const res = await thread(app, request);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ threadId: "th-1" });
+    expect(calls).toEqual([{ channelId: "c1", messageId: "m1", name: "Fix it" }]);
+  });
+
+  it("rejects invalid bodies and non-discord channel types", async () => {
+    const app = createReplyApp(
+      async () => {},
+      noChannel,
+      async () => ({ threadId: "x" }),
+    );
+    expect((await thread(app, { nope: 1 })).status).toBe(400);
+    expect((await thread(app, { ...request, channelType: "email" })).status).toBe(400);
+  });
+
+  it("answers 501 when the adapter can't open threads", async () => {
+    const app = createReplyApp(async () => {});
+    expect((await thread(app, request)).status).toBe(501);
+  });
+
+  it("returns 502 with Discord's error, or a generic one for non-Error failures", async () => {
+    const failing = (err: unknown) =>
+      createReplyApp(
+        async () => {},
+        noChannel,
+        async () => {
+          throw err;
+        },
+      );
+    const res = await thread(failing(new Error("Missing Permissions")), request);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Missing Permissions" });
+    const generic = await thread(failing("x"), request);
+    expect(await generic.json()).toEqual({ error: "discord thread create failed" });
+  });
+});

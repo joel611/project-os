@@ -32,6 +32,7 @@
   - [5.4 Admin configuration (Discord)](#54-admin-configuration-discord)
   - [5.5 Coordinator health checks (ticket time + worker health)](#55-coordinator-health-checks-ticket-time--worker-health)
   - [5.6 POC deployment: local Docker Compose](#56-poc-deployment-local-docker-compose)
+  - [5.7 Per-person Google and GitHub access](#57-per-person-google-and-github-access)
 - [6. API Surface](#6-api-surface)
   - [For Web UI / Admin (HTTP)](#for-web-ui--admin-http)
   - [For Workers (MCP only)](#for-workers-mcp-only)
@@ -176,6 +177,14 @@ Single bounded context that owns:
 
 The channel (Discord / email) only sees what the Coordinator chooses to surface — just like a customer only sees curated updates from a PM, not internal ticket chatter.
 
+**Project channels need an @mention.** In a project's Discord channel, the Coordinator only acts on top-level messages that @mention the bot (a reply to the bot's message counts); other messages are left alone so people can talk among themselves. The adapter sets `InboundMessage.mentionsBot` and strips the mention from the content. Messages inside a thread are handled without a mention, since a thread is already a conversation with the bot, and the admin channel is unchanged. `DISCORD_REQUIRE_MENTION=false` turns the rule off.
+
+**Ticket threads (Discord)**
+- A new ticket gets its own thread: the Coordinator asks the Discord adapter to open one on the message that created it (`ChannelGateway.createThread` → the adapter's `/threads`), records it in `ticket_threads`, and posts a short note there. A new request already made inside a thread uses that thread instead.
+- Everything said in a ticket's thread is a `follow_up` on that ticket, whatever the classifier says, except a confident `status_question`, which is answered about that ticket alone. Once the ticket is finished, the thread says so and points back to the channel.
+- The completion reply goes to the ticket's thread; tickets without one still reply in the project's default response source.
+- The bot needs **Create Public Threads** and **Send Messages in Threads**. If Discord refuses, the ticket is created anyway, without a thread.
+
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration
 - Admin can create projects, add sources, set default channels, and ask about ticket status
@@ -255,6 +264,9 @@ Workers talk to Project Memory and Tickets **only** through MCP tools. No direct
 - `worker_heartbeat` — Worker (watcher or session) reports it is alive: `worker_id`, `worker_type`, current `ticket_id` if any
 - `ticket_append_event` — status_update | comment | result | error | …
 - `ticket_update_status` — open | assigned | in_progress | blocked | completed | failed | cancelled
+
+**Account tools**
+- `user_token` — OAuth access token (`google` | `github`) of the person behind the ticket's latest message (§5.7)
 
 **Memory tools**
 - `project_memory_read` — read project memory / context (pass project_id)
@@ -549,6 +561,26 @@ host (outside Compose)
 - The watcher runs on the host (decided), so Claude Code uses the host's existing login and local repos. It reaches MCP through the coordinator's published port.
 - Daytona Workers are out of scope for the first local test; `local_claude` via the watcher is the first Worker type.
 
+### 5.7 Per-person Google and GitHub access
+
+Workers read Drive and GitHub with the token of the person who asked, never a shared bot credential, so Google's and GitHub's own permissions decide what a Worker can reach. Account linking runs on [Better Auth](https://www.better-auth.com) (`packages/auth`), behind the `UserConnections` port.
+
+```text
+/connect provider:google           (Discord, any channel or DM; ephemeral reply)
+  → Coordinator: auth user for (discord, user id), one-time link, 10 min
+  → browser: GET /connect/:token   → session for that user → Better Auth link-social
+  → provider consent               → GET /api/auth/callback/google
+  → Better Auth stores the account (tokens encrypted)  → /connect/done
+```
+
+- **Whose token.** `user_token(ticket_id, provider)` resolves the sender of the ticket's latest `created` or `follow_up` event. A follow-up from someone else switches to their own token (Joel, 2026-11-06).
+- **Passed to Workers.** The tool returns the access token itself, so `gh`, `git` and the Drive API work directly (Joel, 2026-11-06). Workers must not store or print it.
+- **Not linked.** The tool fails `NotConnected` and the Coordinator asks the person in the project channel to `/connect` (once a day per ticket); the Worker sets the ticket `blocked`.
+- **Refresh.** Better Auth refreshes an access token that has under 5 s left before returning it. A failed refresh reads as `NotConnected` (link again).
+- **Storage.** Better Auth's `auth_users` / `auth_accounts` / `auth_sessions` / `auth_verifications` tables, tokens encrypted with `BETTER_AUTH_SECRET`. An auth user is one channel identity; its email is a placeholder (`discord-<id>@people.project-os.invalid`).
+- **Providers.** Google: OAuth web client, `drive.readonly`, offline access. In Testing mode, refresh tokens last 7 days, so people re-link weekly until the app is verified (accepted, Joel, 2026-11-06). GitHub: a GitHub App's user tokens (8 h, refreshable), limited to repos the app is installed on and the person can access.
+- **Commands.** `/connect`, `/disconnect`, `/connections`.
+
 ---
 
 ## 6. API Surface
@@ -565,6 +597,7 @@ host (outside Compose)
 - `GET /projects/:id/tickets`
 - `GET /tickets/:id` (+ events)
 - `GET /workers` (online/offline derived from `lastSeenAt`)
+- `GET /activity?since=` (tickets changed and events appended since a time, plus workers; polled by the dashboard's live system map)
 - Settings endpoints as needed
 
 ### For Workers (MCP only)
@@ -580,6 +613,7 @@ host (outside Compose)
 | `project_memory_read` | Read project memory / context |
 | `project_memory_write` | Write MemoryEntry (optionally linked to ticket) |
 | `project_memory_search` | Optional, later |
+| `user_token` | The latest message author's own Google / GitHub token (§5.7) |
 
 No auth on MCP (sandbox). Ticket-scoped tokens deferred.
 
@@ -600,7 +634,7 @@ No auth on MCP (sandbox). Ticket-scoped tokens deferred.
 - Auth for Web UI and admin Discord actions
 - Per-ticket scoped Worker auth tokens (deferred; sandbox assumed, no auth concern)
 - Detailed JSON schemas for TicketEvent.payload and Ticket.result
-- ClickUp / Drive / GitHub source connectors (shape ready in ProjectSource)
+- ClickUp source connector (shape ready in ProjectSource); Drive and GitHub are reached with each person's own token (§5.7)
 - Multi-org / multi-tenant hardening
 - Observability and audit log
 - How Workers get the MCP endpoint + `worker_id` config in Daytona vs local agents
@@ -660,6 +694,7 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `IntentClassifier` | Jev intent classification (§8.6) | pi-ai `classify` → OpenRouter (or Workers AI) | pi-ai `classify` → OpenRouter |
 | `AgentRuntime` | Pi Durable conversation: reply composition, admin dialogue | Harness in a Durable Object (DO SQLite storage) | Harness in-process (SQLite file storage) |
 | `WorkerLauncher` | start a Daytona sandbox (later) | Daytona API | no-op |
+| `UserConnections` | per-person Google / GitHub links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
 
 Repository ports are defined per aggregate rather than as a generic `Db`, so a non-SQL provider can implement them too.
@@ -707,6 +742,7 @@ project-os/
 │  │  └─ migrations/
 │  ├─ infra-cloudflare/                # Layer: D1 db, KV, Cron, DO AgentRuntime
 │  ├─ infra-local/                     # Layer: bun:sqlite db, memory KV, timer
+│  ├─ auth/                            # Better Auth: UserConnections Layer, /connect
 │  └─ testing/                         # in-memory fakes of every port
 │
 ├─ libs/
@@ -726,6 +762,7 @@ project-os/
 | `packages/core` | `packages/contracts`, `effect` only. **No** Drizzle, Cloudflare, Bun, or Elysia imports |
 | `packages/db-sqlite` | `core` (ports), `drizzle-orm` |
 | `packages/infra-*` | `core`, `db-sqlite`, its provider SDK |
+| `packages/auth` | `core`, `contracts`, `db-sqlite`, `better-auth` |
 | `packages/testing` | `core` |
 | `apps/coordinator` | everything above; picks one `infra-*` per entry file |
 | `apps/*-adapter`, `apps/watcher` | `contracts`, `libs/config` only |
