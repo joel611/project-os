@@ -18,6 +18,8 @@ _Avoid_: bot, integration (alone).
 **Ticket**: the internal work item the Coordinator creates for each piece of work. All status, follow-ups, and results live on it as TicketEvents. Channels only see what the Coordinator chooses to surface.
 _Avoid_: task, job.
 
+**Ticket thread**: the channel thread a Ticket's conversation lives in (one each way). On Discord the Coordinator opens it on the message that created the Ticket; everything said there belongs to that Ticket.
+
 **TicketEvent**: one entry in a Ticket's activity log (created, assigned, status_update, comment, follow_up, result, error, system).
 
 **Worker**: an agent session that works exactly one Ticket through MCP tools and never talks to channels. Pulls work: on session start it lists Tickets assigned to it and claims one.
@@ -26,6 +28,9 @@ _Avoid_: agent (alone), runner.
 **Claim**: the atomic `assigned → in_progress` transition a Worker makes on a Ticket. Two Workers can never claim the same Ticket.
 
 **Watcher**: a host-run program that polls the Coordinator every 5 minutes for assigned, unclaimed Tickets and starts a local Claude Code Worker session for each.
+
+**Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.
+_Avoid_: integration, OAuth app.
 
 **Port**: an interface in `packages/core/src/application/ports`, declared as an Effect `Context.Service` (e.g. `TicketRepository`, `KeyValueStore`, `Scheduler`). Core code depends only on ports.
 

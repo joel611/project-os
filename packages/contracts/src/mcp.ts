@@ -1,6 +1,13 @@
 import { Schema } from "effect";
 import { MemoryEntry, Ticket, TicketEvent } from "./entities.ts";
-import { Actor, MemoryEntryType, TicketEventType, WorkerType } from "./enums.ts";
+import {
+  Actor,
+  ChannelType,
+  ConnectionProvider,
+  MemoryEntryType,
+  TicketEventType,
+  WorkerType,
+} from "./enums.ts";
 import { TicketStatus } from "./ticket-status.ts";
 
 const Id = Schema.NonEmptyString;
@@ -63,3 +70,17 @@ export const WorkerHeartbeatInput = Schema.Struct({
   ticketId: Schema.optionalKey(Schema.String),
 });
 export const WorkerHeartbeatOutput = Schema.Struct({ lastSeenAt: Schema.String });
+
+export const UserTokenInput = Schema.Struct({ ticketId: Id, provider: ConnectionProvider });
+export const UserTokenOutput = Schema.Struct({
+  accessToken: Schema.String,
+  /** ISO time the token stops working, when the provider says. */
+  expiresAt: Schema.NullOr(Schema.String),
+  scopes: Schema.Array(Schema.String),
+  /** Whose token this is: the person behind the ticket's latest message. */
+  person: Schema.Struct({
+    channelType: ChannelType,
+    id: Schema.String,
+    name: Schema.NullOr(Schema.String),
+  }),
+});

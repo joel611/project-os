@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { FolderKanban } from "lucide-react";
+import { FolderKanban, Network } from "lucide-react";
 import { api } from "@/api";
 import { relativeTime } from "@/model";
 import { useNow } from "@/use-now";
@@ -83,6 +83,15 @@ export const Sidebar = () => (
   <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/30 p-3">
     <Link to="/" className="px-2 pt-1 text-sm font-semibold tracking-tight">
       project-os
+    </Link>
+    <Link
+      to="/"
+      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+      activeProps={{ className: "bg-muted font-medium" }}
+      activeOptions={{ exact: true }}
+    >
+      <Network className="size-4 text-muted-foreground" />
+      System map
     </Link>
     <section>
       <SectionTitle>Projects</SectionTitle>

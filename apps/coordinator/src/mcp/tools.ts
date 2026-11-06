@@ -8,12 +8,15 @@ import {
   getTicket,
   heartbeat,
   IdGenerator,
+  KeyValueStore,
   listAssigned,
   MemoryRepository,
   ProjectSourceRepository,
   readMemory,
   TicketRepository,
   updateStatusAndNotify,
+  UserConnections,
+  userTokenForTicket,
   WorkerRepository,
   writeMemory,
 } from "@project-os/core";
@@ -25,9 +28,11 @@ export type McpServices =
   | ChannelGateway
   | Clock
   | IdGenerator
+  | KeyValueStore
   | MemoryRepository
   | ProjectSourceRepository
   | TicketRepository
+  | UserConnections
   | WorkerRepository;
 
 export interface ToolFailure {
@@ -50,7 +55,10 @@ export const toFailure = (error: unknown): ToolFailure => {
   if (Schema.isSchemaError(error)) return { _tag: "InvalidInput", message: error.message };
   if (typeof error === "object" && error !== null && "_tag" in error) {
     const { _tag, ...rest } = error as { _tag: string };
-    return { ...rest, _tag, message: `${_tag}: ${JSON.stringify(rest)}` };
+    // Errors with their own message (e.g. NotConnected) tell the Worker what to do next.
+    const own = (error as { message?: unknown }).message;
+    const detail = typeof own === "string" && own !== "" ? ` ${own}` : "";
+    return { ...rest, _tag, message: `${_tag}: ${JSON.stringify(rest)}${detail}` };
   }
   return { _tag: "Error", message: String(error) };
 };
@@ -125,6 +133,17 @@ export const makeTools = (): readonly McpTool<McpServices>[] => [
     input: C.ProjectMemoryWriteInput,
     output: C.ProjectMemoryWriteOutput,
     run: (i) => Effect.map(writeMemory(i), (entry) => ({ entry })),
+  }),
+  define({
+    name: "user_token",
+    description:
+      "Get an OAuth access token (google or github) for the person behind this ticket's latest message, " +
+      "so you read Drive or GitHub with their own permissions. Use it as a Bearer token (GH_TOKEN for gh/git). " +
+      "Fails with NotConnected if they haven't linked that account: the Coordinator has already asked them to " +
+      "run /connect, so set the ticket to blocked and stop. Never store or print the token.",
+    input: C.UserTokenInput,
+    output: C.UserTokenOutput,
+    run: userTokenForTicket,
   }),
   define({
     name: "worker_heartbeat",

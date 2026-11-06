@@ -10,8 +10,9 @@ import { channelTypeFor } from "./channels.ts";
 import { updateStatus } from "./tickets.ts";
 
 /**
- * Composes the curated reply via `AgentRuntime` and sends it to the project's default
- * response source. Returns false (nothing sent) if the project has no usable default.
+ * Composes the curated reply via `AgentRuntime` and sends it to the ticket's thread, or to the
+ * project's default response source when it has none. Returns false (nothing sent) if neither
+ * exists.
  */
 export const onTicketCompleted = (input: { readonly ticketId: string }) =>
   Effect.gen(function* () {
@@ -22,11 +23,18 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
 
     const ticket = yield* tickets.get(input.ticketId);
     const events = yield* tickets.listEvents(ticket.id);
+    // The ticket's own thread if it has one, else the project's default response source.
+    const thread = yield* tickets.findThread(ticket.id);
     const target = (yield* sources.listByProject(ticket.projectId)).find(
       (s) => s.isDefaultResponse && s.status === "active",
     );
     const channelType = target && channelTypeFor(target.type);
-    if (!target || !channelType) return false;
+    const destination = thread
+      ? { channelType: thread.channelType, channelId: thread.channelId, threadId: thread.threadId }
+      : target && channelType
+        ? { channelType, channelId: target.externalId }
+        : undefined;
+    if (!destination) return false;
 
     const content = yield* runtime.respond({
       sessionId: `project:${ticket.projectId}`,
@@ -37,7 +45,7 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
         ...events.map((e) => `[${e.type}] ${e.body}`),
       ].join("\n"),
     });
-    yield* gateway.send({ channelType, channelId: target.externalId, content });
+    yield* gateway.send({ ...destination, content });
     return true;
   });
 

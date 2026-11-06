@@ -7,9 +7,9 @@ import {
   type TicketStatus,
   type TicketRepository,
 } from "@project-os/core";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { ticketEvents, tickets } from "../schema/index.ts";
+import { ticketEvents, tickets, ticketThreads } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
 
 type Impl = (typeof TicketRepository)["Service"];
@@ -153,5 +153,32 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
         // Newest-N selected above; return chronological like the in-memory fake.
         Effect.map((rows) => rows.reverse()),
       ),
+    linkThread: (thread) =>
+      find(thread.ticketId).pipe(
+        Effect.andThen(q(() => db.insert(ticketThreads).values(thread))),
+        Effect.as(thread),
+      ),
+    findThread: (ticketId) =>
+      q(() => db.select().from(ticketThreads).where(eq(ticketThreads.ticketId, ticketId))).pipe(
+        Effect.map(([row]) => row),
+      ),
+    findByThread: (channelType, threadId) =>
+      q(() =>
+        db
+          .select()
+          .from(ticketThreads)
+          .where(
+            and(eq(ticketThreads.channelType, channelType), eq(ticketThreads.threadId, threadId)),
+          ),
+      ).pipe(Effect.map(([row]) => row)),
+    listEventsSince: (since, limit) =>
+      q(() =>
+        db
+          .select()
+          .from(ticketEvents)
+          .where(gte(ticketEvents.createdAt, since))
+          .orderBy(desc(ticketEvents.createdAt), desc(sql`rowid`))
+          .limit(limit),
+      ).pipe(Effect.map((rows) => rows.reverse())),
   };
 };
