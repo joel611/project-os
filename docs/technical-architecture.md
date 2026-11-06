@@ -565,6 +565,7 @@ host (outside Compose)
 - `GET /projects/:id/tickets`
 - `GET /tickets/:id` (+ events)
 - `GET /workers` (online/offline derived from `lastSeenAt`)
+- `GET /activity?since=` (tickets changed and events appended since a time, plus workers; polled by the dashboard's live system map)
 - Settings endpoints as needed
 
 ### For Workers (MCP only)
