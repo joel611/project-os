@@ -65,7 +65,7 @@ The full product vision is in [`docs/product-brief.md`](docs/product-brief.md): 
 
 ```sh
 bun install
-cp .env.example .env                 # fill in DISCORD_BOT_TOKEN, OPENROUTER_API_KEY, ADMIN_*
+cp .env.example .env                 # fill in per SETUP.md: Discord bot, OPENROUTER_API_KEY, ADMIN_*
 docker compose up --build            # coordinator (:8080) + discord-adapter (+ email stub) + lgtm (Grafana :3000, admin/admin)
 
 # one-time: create the default org, a project, and its default Discord channel
