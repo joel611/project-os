@@ -3,13 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import { QueryError } from "@/components/states";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { relativeTime } from "@/model";
-import { useNow } from "@/use-now";
 import {
   applyFeed,
   channelsOf,
   emptyModel,
-  identityOf,
   ticketLabel,
   workerKey,
   workerSlots,
@@ -20,6 +17,7 @@ import { layout as makeLayout, nodeId, type Layout } from "./iso.ts";
 import { usePlayer, type Player } from "./player.ts";
 import type { WorkerView } from "./scene.tsx";
 import { SchematicScene } from "./schematic-scene.tsx";
+import { EventLogCard, TicketsCard } from "./activity-panels.tsx";
 
 type MapStyle = "schematic" | "isometric";
 const STYLE_KEY = "system-map-style";
@@ -94,7 +92,6 @@ export const SystemMap = () => {
     reducedMotion,
   );
   const { model, error } = useActivity(player);
-  const clock = useNow();
   const [style, setStyle] = useMapStyle();
 
   const tickets = [...model.tickets.values()];
@@ -156,42 +153,10 @@ export const SystemMap = () => {
           its first heartbeat.
         </p>
       )}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Recent activity</h2>
-        {model.recent.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing in the last 15 minutes.</p>
-        ) : (
-          <ul className="flex flex-col divide-y rounded-lg border text-sm">
-            {model.recent.map((e) => {
-              const t = model.tickets.get(e.ticketId);
-              const who = t?.origin ? identityOf(t.origin) : null;
-              return (
-                <li key={e.id} className="flex items-center gap-3 px-3 py-2">
-                  <span className="w-16 shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {relativeTime(e.createdAt, clock)}
-                  </span>
-                  <span className="w-24 shrink-0 font-mono text-xs">{e.type}</span>
-                  {who && (
-                    <span
-                      className="grid size-5 shrink-0 place-items-center rounded-full text-[9px] font-semibold text-white"
-                      style={{ background: who.color }}
-                      title={who.name}
-                    >
-                      {who.initials}
-                    </span>
-                  )}
-                  <span className="min-w-0 truncate">
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {ticketLabel(e.ticketId)}
-                    </span>{" "}
-                    {e.body || t?.title}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <div className="map-lower">
+        <TicketsCard tickets={tickets} statusOf={shownStatus} />
+        <EventLogCard lines={model.log} />
+      </div>
     </div>
   );
 };

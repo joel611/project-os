@@ -8,6 +8,7 @@ import type {
   TicketStatus,
 } from "@project-os/contracts";
 import { nodeId, type WorkerSlot } from "./iso.ts";
+import { eventLines, newestFirst, transitionLines, type LogLine } from "./log.ts";
 
 /** A person on a packet: initials on a coloured disc, with a channel badge. */
 export interface Identity {
@@ -65,8 +66,8 @@ export interface MapModel {
   readonly tickets: ReadonlyMap<string, ActivityTicket>;
   readonly workers: ReadonlyArray<ActivityWorker>;
   readonly seenEvents: ReadonlySet<string>;
-  /** Newest first, for the activity list beside the map. */
-  readonly recent: ReadonlyArray<TicketEvent>;
+  /** Newest first, for the event log under the map. */
+  readonly log: ReadonlyArray<LogLine>;
   readonly since: string | null;
 }
 
@@ -74,11 +75,11 @@ export const emptyModel: MapModel = {
   tickets: new Map(),
   workers: [],
   seenEvents: new Set(),
-  recent: [],
+  log: [],
   since: null,
 };
 
-const RECENT_MAX = 30;
+const LOG_MAX = 60;
 
 const ACTIVE: ReadonlyArray<TicketStatus> = ["open", "assigned", "in_progress", "blocked"];
 
@@ -250,17 +251,19 @@ export const applyFeed = (
   for (const e of fresh) byTicket.set(e.ticketId, [...(byTicket.get(e.ticketId) ?? []), e]);
 
   const changed = [...feed.tickets].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+  for (const t of feed.tickets) tickets.set(t.id, t);
+  const lines: LogLine[] = fresh.flatMap((e) => eventLines(e, tickets.get(e.ticketId)));
   for (const t of changed) {
     const before = model.tickets.get(t.id);
-    tickets.set(t.id, t);
+    lines.push(...transitionLines(t, before?.status));
     if (baseline) continue;
     if (before && before.updatedAt === t.updatedAt && !byTicket.has(t.id)) continue;
     const steps = storyOf(t, before?.status, byTicket.get(t.id) ?? []);
     if (steps.length > 0) stories.push({ ticketId: t.id, steps });
   }
-  const recent = [...fresh].reverse().concat(model.recent).slice(0, RECENT_MAX);
+  const log = newestFirst(lines).concat(model.log).slice(0, LOG_MAX);
   return {
-    model: { tickets, workers: feed.workers, seenEvents, recent, since: feed.now },
+    model: { tickets, workers: feed.workers, seenEvents, log, since: feed.now },
     stories,
   };
 };
