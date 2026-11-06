@@ -120,6 +120,9 @@ if (discordToken && remoteAdapterUrl) {
   console.log(
     `DISCORD_BOT_TOKEN ignored: DISCORD_ADAPTER_URL is set, replies go to ${remoteAdapterUrl}`,
   );
+} else if (!discordToken && !remoteAdapterUrl) {
+  // Env is read once at startup, so adding the token needs a restart.
+  console.log("Discord off: set DISCORD_BOT_TOKEN and restart the Coordinator to enable it");
 }
 
 // Later layers win: AiLive and connections replace LocalLive's placeholders.
