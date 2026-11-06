@@ -107,4 +107,43 @@ describe("HTTP ChannelGateway", () => {
       ).toMatchObject({ message: "Adapter returned an invalid channel" });
     });
   });
+
+  describe("createThread", () => {
+    const request = {
+      channelType: "discord",
+      channelId: "c1",
+      messageId: "m1",
+      name: "Fix it",
+    } as const;
+
+    it("POSTs to the adapter's /threads endpoint and returns the thread", async () => {
+      const calls: Array<{ url: string; body: unknown }> = [];
+      const gateway = makeHttpChannelGateway({
+        adapterUrls: { discord: "http://discord:3001/" },
+        fetch: async (url, init) => {
+          calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+          return Response.json({ threadId: "th9" });
+        },
+      });
+      expect(await Effect.runPromise(gateway.createThread(request))).toEqual({ threadId: "th9" });
+      expect(calls).toEqual([{ url: "http://discord:3001/threads", body: request }]);
+    });
+
+    it("fails with ThreadCreateFailed on an adapter error or a malformed response", async () => {
+      const failure = async (fetch: () => Promise<Response>) => {
+        const gateway = makeHttpChannelGateway({ adapterUrls: { discord: "http://d" }, fetch });
+        const exit = await Effect.runPromiseExit(gateway.createThread(request));
+        if (!Exit.isFailure(exit)) throw new Error("expected failure");
+        const error = Cause.findErrorOption(exit.cause);
+        if (error._tag === "None") throw new Error("expected a typed failure, got a defect");
+        return error.value;
+      };
+      expect(
+        await failure(async () => Response.json({ error: "Missing Permissions" }, { status: 502 })),
+      ).toMatchObject({ _tag: "ThreadCreateFailed", channelType: "discord" });
+      expect(await failure(async () => Response.json({ nope: 1 }))).toMatchObject({
+        message: "Adapter returned an invalid thread",
+      });
+    });
+  });
 });

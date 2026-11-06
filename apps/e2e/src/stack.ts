@@ -24,6 +24,12 @@ export interface Posted {
   readonly content: string;
 }
 
+export interface CreatedThreadCall {
+  readonly channelId: string;
+  readonly messageId: string;
+  readonly name: string;
+}
+
 export interface Stack {
   /** Coordinator base URL, e.g. `http://localhost:54321`. */
   readonly url: string;
@@ -31,6 +37,8 @@ export interface Stack {
   readonly posted: Posted[];
   /** Channels the Discord adapter was told to create (ids `discord-new-1`, …). */
   readonly createdChannels: string[];
+  /** Threads the Discord adapter was told to open (ids `discord-thread-1`, …). */
+  readonly createdThreads: CreatedThreadCall[];
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
   readonly admin: ReturnType<typeof makeAdminActions>;
@@ -73,6 +81,7 @@ export const startStack = async (options: {
 
   const posted: Posted[] = [];
   const createdChannels: string[] = [];
+  const createdThreads: CreatedThreadCall[] = [];
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
     async (name) => {
@@ -82,6 +91,10 @@ export const startStack = async (options: {
         channelId: `discord-new-${createdChannels.length}`,
         name: name.toLowerCase().replace(/\s+/g, "-"),
       };
+    },
+    async (input) => {
+      createdThreads.push(input);
+      return { threadId: `discord-thread-${createdThreads.length}` };
     },
   ).listen(0);
 
@@ -116,7 +129,7 @@ export const startStack = async (options: {
     {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
-        inbound: { workerId: options.workerId },
+        inbound: { workerId: options.workerId, requireMention: true },
         commands: {
           adminChannelId: ADMIN_CHANNEL,
           adminUserIds: [ADMIN_USER],
@@ -161,6 +174,7 @@ export const startStack = async (options: {
     url,
     posted,
     createdChannels,
+    createdThreads,
     dbPath,
     ...(oauth && { oauth }),
     json,

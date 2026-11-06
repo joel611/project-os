@@ -6,4 +6,5 @@ export * from "./memory-entry.ts";
 export * from "./ticket.ts";
 export * from "./ticket-event.ts";
 export * from "./worker.ts";
+export * from "./ticket-thread.ts";
 export * from "./auth.ts";

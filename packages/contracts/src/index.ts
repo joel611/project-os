@@ -4,3 +4,4 @@ export * from "./enums.ts";
 export * from "./entities.ts";
 export * from "./inbound.ts";
 export * from "./mcp.ts";
+export * from "./activity.ts";

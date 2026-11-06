@@ -16,6 +16,8 @@ import {
   writeMemory,
   type Project,
   type ProjectSource,
+  THREAD_OPENED_MESSAGE,
+  TICKET_CLOSED_MESSAGE,
   type Ticket,
 } from "@project-os/core";
 import type { InboundMessage } from "@project-os/contracts";
@@ -102,7 +104,7 @@ const run = <A, E>(
       yield* setup;
       return yield* eff;
     }).pipe(Effect.provide(t.layer)) as Effect.Effect<A, E>,
-  ).then((value) => ({ value, sent: t.sent }));
+  ).then((value) => ({ value, sent: t.sent, threads: t.createdThreads }));
 };
 
 const inbound = (intent: string, confidence = 1) => ({
@@ -221,6 +223,42 @@ describe("handleInbound", () => {
     expect(other.value.kind).toBe("clarification_sent");
   });
 
+  describe("with requireMention", () => {
+    const strict = { ...config, requireMention: true };
+
+    it("ignores a top-level project channel message that doesn't mention the bot", async () => {
+      for (const over of [{}, { mentionsBot: false }]) {
+        const { value, sent } = await run(handleInbound(msg(over), strict), inbound("new_request"));
+        expect(value.kind).toBe("not_mentioned");
+        expect(sent).toEqual([]);
+      }
+    });
+
+    it("handles a message that mentions the bot", async () => {
+      const { value } = await run(
+        handleInbound(msg({ mentionsBot: true }), strict),
+        inbound("new_request"),
+      );
+      expect(value.kind).toBe("ticket_created");
+    });
+
+    it("handles a thread message without a mention", async () => {
+      const { value } = await run(
+        handleInbound(msg({ threadId: "th1" }), strict),
+        inbound("new_request"),
+      );
+      expect(value.kind).toBe("ticket_created");
+    });
+
+    it("still handles the admin channel without a mention", async () => {
+      const { value } = await run(
+        handleInbound(msg({ channelId: ADMIN }), strict),
+        inbound("admin_command"),
+      );
+      expect(value.kind).toBe("admin_handled");
+    });
+  });
+
   it("messages from a channel type with no source mapping are unlinked", async () => {
     const { value } = await run(
       handleInbound(msg({ channelType: "chat" }), config),
@@ -251,6 +289,138 @@ describe("handleInbound", () => {
 
   it("intent none asks a clarifying question", async () => {
     const { value } = await run(handleInbound(msg(), config), inbound("none"));
+    expect(value.kind).toBe("clarification_sent");
+  });
+});
+
+describe("handleInbound ticket threads", () => {
+  const linkT1 = Effect.gen(function* () {
+    const repo = yield* TicketRepository;
+    yield* repo.insert(ticket());
+    yield* repo.linkThread({
+      ticketId: "t1",
+      channelType: "discord",
+      channelId: "chan-1",
+      threadId: "th1",
+      createdAt: T0,
+    });
+  });
+
+  it("new_request opens a thread on the message, links it, and says so there", async () => {
+    const { value, sent, threads } = await run(
+      Effect.gen(function* () {
+        const out = yield* handleInbound(msg(), config);
+        if (out.kind !== "ticket_created") throw new Error(out.kind);
+        return yield* (yield* TicketRepository).findThread(out.ticket.id);
+      }),
+      inbound("new_request"),
+    );
+    expect(threads).toEqual([
+      { channelType: "discord", channelId: "chan-1", messageId: "m1", name: "please fix login" },
+    ]);
+    expect(value).toMatchObject({ channelId: "chan-1", threadId: "thread-1" });
+    expect(sent).toEqual([
+      {
+        channelType: "discord",
+        channelId: "chan-1",
+        threadId: "thread-1",
+        content: THREAD_OPENED_MESSAGE,
+      },
+    ]);
+  });
+
+  it("new_request still creates the ticket when the thread can't be opened", async () => {
+    const { value, sent } = await run(
+      Effect.gen(function* () {
+        const out = yield* handleInbound(msg(), config);
+        if (out.kind !== "ticket_created") throw new Error(out.kind);
+        return yield* (yield* TicketRepository).findThread(out.ticket.id);
+      }),
+      { ...inbound("new_request"), failThreadCreate: "Missing Permissions" },
+    );
+    expect(value).toBeUndefined();
+    expect(sent).toEqual([]);
+  });
+
+  it("new_request from a channel without threads (email) opens none", async () => {
+    const { value, threads } = await run(
+      Effect.gen(function* () {
+        yield* (yield* ProjectSourceRepository).insert(
+          source({
+            id: "s2",
+            type: "email_address",
+            externalId: "a@b.c",
+            isDefaultResponse: false,
+          }),
+        );
+        return yield* handleInbound(msg({ channelType: "email", channelId: "a@b.c" }), config);
+      }),
+      inbound("new_request"),
+    );
+    expect(value.kind).toBe("ticket_created");
+    expect(threads).toEqual([]);
+  });
+
+  it("a message in a ticket's thread is a follow-up on that ticket, whatever its intent", async () => {
+    const { value, sent } = await run(
+      Effect.gen(function* () {
+        yield* linkT1;
+        return yield* handleInbound(msg({ threadId: "th1" }), config);
+      }),
+      inbound("new_request", 0.1),
+    );
+    expect(value).toEqual({ kind: "follow_up_added", ticketId: "t1" });
+    expect(sent).toEqual([]);
+  });
+
+  it("a status question in a ticket's thread is answered about that ticket", async () => {
+    const { value, sent } = await run(
+      Effect.gen(function* () {
+        yield* linkT1;
+        yield* (yield* TicketRepository).insert(ticket({ id: "t2", title: "Other work" }));
+        return yield* handleInbound(msg({ threadId: "th1" }), config);
+      }),
+      inbound("status_question"),
+    );
+    expect(value.kind).toBe("status_answered");
+    expect(sent[0]).toMatchObject({ threadId: "th1" });
+    expect(sent[0]!.content).toContain("Fix login [assigned]");
+    expect(sent[0]!.content).not.toContain("Other work");
+  });
+
+  it("a message in a finished ticket's thread says so and adds nothing", async () => {
+    const { value, sent } = await run(
+      Effect.gen(function* () {
+        yield* linkT1;
+        yield* (yield* TicketRepository).updateStatus("t1", "cancelled", T0);
+        const out = yield* handleInbound(msg({ threadId: "th1" }), config);
+        const { events } = yield* getTicket({ ticketId: "t1" });
+        return { out, types: events.map((e) => e.type) };
+      }),
+      inbound("follow_up"),
+    );
+    expect(value.out).toEqual({ kind: "ticket_closed", ticketId: "t1" });
+    expect(value.types).toEqual([]);
+    expect(sent.map((s) => s.content)).toEqual([TICKET_CLOSED_MESSAGE]);
+  });
+
+  it("a thread linked to another project's ticket is treated as an ordinary thread", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        yield* (yield* ProjectRepository).insert({ ...project, id: "p2" });
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ id: "x1", projectId: "p2" }));
+        yield* repo.linkThread({
+          ticketId: "x1",
+          channelType: "discord",
+          channelId: "elsewhere",
+          threadId: "th1",
+          createdAt: T0,
+        });
+        return yield* handleInbound(msg({ threadId: "th1" }), config);
+      }),
+      inbound("follow_up"),
+    );
     expect(value.kind).toBe("clarification_sent");
   });
 });
@@ -389,6 +559,25 @@ describe("onTicketCompleted", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ channelType: "discord", channelId: "chan-1" });
     expect(sent[0]!.content).toContain("done");
+  });
+
+  it("sends the composed reply to the ticket's thread when it has one", async () => {
+    const { sent } = await run(
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ status: "completed", result: "done" }));
+        yield* repo.linkThread({
+          ticketId: "t1",
+          channelType: "discord",
+          channelId: "chan-1",
+          threadId: "th1",
+          createdAt: T0,
+        });
+        return yield* onTicketCompleted({ ticketId: "t1" });
+      }),
+    );
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ channelType: "discord", channelId: "chan-1", threadId: "th1" });
   });
 
   it("sends nothing when no default response source exists", async () => {
