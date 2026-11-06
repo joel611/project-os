@@ -109,7 +109,13 @@ const run = <A, E>(
       yield* setup;
       return yield* eff;
     }).pipe(Effect.provide(t.layer)) as Effect.Effect<A, E>,
-  ).then((value) => ({ value, sent: t.sent, threads: t.createdThreads, reactions: t.reactions }));
+  ).then((value) => ({
+    value,
+    sent: t.sent,
+    threads: t.createdThreads,
+    reactions: t.reactions,
+    launched: t.launched,
+  }));
 };
 
 const inbound = (intent: string, confidence = 1) => ({
@@ -134,6 +140,21 @@ describe("handleInbound", () => {
       projectId: "p1",
     });
     expect(value.events.map((e) => e.type)).toEqual(["created", "assigned"]);
+  });
+
+  it("new_request for a daytona_pi worker gets its own worker id and a launch", async () => {
+    const { value, launched } = await run(
+      Effect.gen(function* () {
+        const out = yield* handleInbound(msg(), config);
+        if (out.kind !== "ticket_created") throw new Error(out.kind);
+        return out.ticket;
+      }),
+      { classifier: classifierReturning("new_request", 1, "daytona_pi") },
+    );
+    expect(value).toMatchObject({ workerType: "daytona_pi", workerId: `daytona-${value.id}` });
+    expect(launched).toEqual([
+      { ticketId: value.id, workerType: "daytona_pi", workerId: `daytona-${value.id}` },
+    ]);
   });
 
   it("dedupes by externalId", async () => {

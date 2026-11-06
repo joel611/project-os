@@ -15,6 +15,7 @@ import {
   type ProjectRepository,
   type ProjectSourceRepository,
   type TicketRepository,
+  type WorkerLauncher,
   type WorkerRepository,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
@@ -56,6 +57,7 @@ export type HttpEnv =
   | ProjectRepository
   | ProjectSourceRepository
   | TicketRepository
+  | WorkerLauncher
   | WorkerRepository;
 
 export interface HttpDeps {

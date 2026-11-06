@@ -235,6 +235,13 @@ A small program Joel runs on his own machine. It joins the network, polls for wo
 
 Daytona Workers don't need a watcher: the Coordinator starts a sandbox when it assigns a `daytona_pi` ticket, and the sandbox runs the same session-start instruction.
 
+How it works (`packages/infra-daytona`, enabled by `DAYTONA_API_KEY`):
+
+- A `daytona_pi` ticket is assigned to its own worker id, `daytona-<ticketId>`, so the host Watcher (which polls as `WORKER_ID`) never sees it and `ticket_claim` admits only that sandbox.
+- `handleInbound` calls `WorkerLauncher.launch` after assigning. The launcher creates an ephemeral sandbox, installs Pi (`@earendil-works/pi-coding-agent`), writes `~/.pi/agent/mcp.json` pointing at the Coordinator, and runs `pi --print` with the session-start prompt plus the worker id. Pi speaks streamable-HTTP MCP natively, so no bridge is needed. The sandbox is deleted when the session ends.
+- The sandbox is in the cloud, so the MCP endpoint must be public: `DAYTONA_MCP_URL` (a tunnel to the Coordinator's `/mcp`), never `MCP_URL`. The LLM key is `OPENROUTER_API_KEY`, passed as sandbox env.
+- Launch failures are logged, not raised. The ticket stays `assigned`, and the health sweep flags it as unpicked.
+
 **Workers can (via MCP tools only):**
 - Read the assigned Ticket + its events
 - Append TicketEvents (status, comment, result, …)
@@ -566,7 +573,7 @@ host (outside Compose)
 ```
 
 - The watcher runs on the host (decided), so Claude Code uses the host's existing login and local repos. It reaches MCP through the coordinator's published port.
-- Daytona Workers are out of scope for the first local test; `local_claude` via the watcher is the first Worker type.
+- `local_claude` via the watcher is the first Worker type; `daytona_pi` is opt-in via `DAYTONA_API_KEY` (see the Daytona Workers note above).
 
 ### 5.7 Per-person Google and GitHub access
 
@@ -645,7 +652,6 @@ No auth on MCP (sandbox). Ticket-scoped tokens deferred.
 - ClickUp source connector (shape ready in ProjectSource); Drive and GitHub are reached with each person's own token (§5.7)
 - Multi-org / multi-tenant hardening
 - Observability and audit log
-- How Workers get the MCP endpoint + `worker_id` config in Daytona vs local agents
 - Exact health thresholds and retry limit
 - Network setup beyond the local Compose POC (VPN / tunnel / public MCP URL)
 - How a Worker notices Coordinator follow-ups while busy (re-read `ticket_get` between steps)
@@ -701,7 +707,7 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `Scheduler` | run the health sweep every minute | Cron Trigger | `setInterval` |
 | `IntentClassifier` | Jev intent classification (§8.6) | pi-ai `classify` → OpenRouter (or Workers AI) | pi-ai `classify` → OpenRouter |
 | `AgentRuntime` | Pi Durable conversation: reply composition, admin dialogue | Harness in a Durable Object (DO SQLite storage) | Harness in-process (SQLite file storage) |
-| `WorkerLauncher` | start a Daytona sandbox (later) | Daytona API | no-op |
+| `WorkerLauncher` | start a Daytona sandbox for `daytona_pi` tickets | Daytona API | Daytona API when `DAYTONA_API_KEY` is set, else no-op |
 | `UserConnections` | per-person Google / GitHub links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
 

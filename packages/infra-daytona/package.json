@@ -1,0 +1,14 @@
+{
+  "name": "@project-os/infra-daytona",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@daytona/sdk": "0.230.0",
+    "@project-os/core": "workspace:*",
+    "effect": "4.1.2"
+  }
+}
