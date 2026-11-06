@@ -36,8 +36,23 @@ describe("COMMAND_DEFINITIONS", () => {
       "connect",
       "disconnect",
       "connections",
+      "register-worker",
+      "workers",
+      "unregister-worker",
     ]);
     expect(COMMAND_DEFINITIONS[0].options[0]).toMatchObject({ name: "name", required: true });
+  });
+
+  it("defines the personal worker commands, server-only", () => {
+    const byName = (n: string) => COMMAND_DEFINITIONS.find((c) => c.name === n)!;
+    expect(byName("register-worker").options[0]).toMatchObject({ name: "name", required: false });
+    expect(byName("unregister-worker").options[0]).toMatchObject({
+      name: "worker",
+      required: true,
+    });
+    for (const n of ["register-worker", "workers", "unregister-worker"]) {
+      expect(byName(n).dm_permission).toBe(false);
+    }
   });
 
   it("offers google and github as the only /connect providers", () => {

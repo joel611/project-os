@@ -111,6 +111,14 @@ export type ProjectSource = typeof ProjectSource.Type;
 export const Worker = Schema.Struct({
   id: Id,
   workerType: WorkerType,
+  /**
+   * Personal workers (a device someone registered with /register-worker) serve only their
+   * owner's tickets. Null on shared workers (the shared Watcher, Daytona sessions).
+   */
+  ownerChannelType: Schema.NullOr(ChannelType),
+  ownerId: Schema.NullOr(Schema.String),
+  /** Label the owner gave the device (defaults to its hostname). */
+  name: Schema.NullOr(Schema.String),
   currentTicketId: Schema.NullOr(Schema.String),
   lastSeenAt: Timestamp,
   createdAt: Timestamp,

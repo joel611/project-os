@@ -10,6 +10,7 @@ import { dataPath } from "@project-os/config/data";
 import { daytonaSandboxRunner, makeDaytonaLauncher } from "@project-os/infra-daytona";
 import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
+import type { WorkerType } from "@project-os/contracts";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp } from "./app.ts";
@@ -131,6 +132,12 @@ createApp(
         confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
         // Top-level project channel messages must @mention the bot; threads and admin don't.
         requireMention: envBool("DISCORD_REQUIRE_MENTION", true),
+        // Personal workers count as online within the health sweep's window.
+        workerStaleMs: healthConfig().workerStaleMs,
+        // Tickets from someone without an online personal worker go to the shared worker:
+        // Daytona when it's configured, else the shared Watcher (WORKER_ID).
+        defaultWorkerType: (process.env.DEFAULT_WORKER_TYPE ??
+          (daytonaApiKey ? "daytona_pi" : "local_claude")) as WorkerType,
         // Admin identity (POC): only these Discord user ids may use the admin channel.
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },
@@ -139,6 +146,15 @@ createApp(
         ...(adminChannelId && { adminChannelId, adminUserIds }),
         admin: adminActions,
         connections: (effect) => runtime.runPromise(effect),
+        // /register-worker: the Watcher on a person's computer registers and polls at PUBLIC_URL.
+        workers: {
+          run: (effect) => runtime.runPromise(effect),
+          publicUrl: env("PUBLIC_URL", `http://localhost:${port}`),
+          ...(process.env.WATCHER_INSTALL_COMMAND && {
+            installCommand: process.env.WATCHER_INSTALL_COMMAND,
+          }),
+          staleMs: healthConfig().workerStaleMs,
+        },
       },
     },
     mcp: runtime,

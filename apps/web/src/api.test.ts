@@ -108,6 +108,9 @@ describe("makeApi", () => {
     const worker = {
       id: "w1",
       workerType: "local_claude",
+      ownerChannelType: null,
+      ownerId: null,
+      name: null,
       currentTicketId: null,
       lastSeenAt: T,
       createdAt: T,

@@ -64,6 +64,9 @@ const feed = (
     {
       id: "w1",
       workerType: "local_claude",
+      ownerChannelType: null,
+      ownerId: null,
+      name: null,
       currentTicketId: null,
       lastSeenAt: T(0),
       createdAt: T(0),
@@ -293,6 +296,9 @@ describe("labels and identity", () => {
     const w = (id: string) => ({
       id,
       workerType: "daytona_pi" as const,
+      ownerChannelType: null,
+      ownerId: null,
+      name: null,
       currentTicketId: null,
       lastSeenAt: T(0),
       createdAt: T(0),

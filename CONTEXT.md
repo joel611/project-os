@@ -29,6 +29,9 @@ _Avoid_: agent (alone), runner.
 
 **Watcher**: a host-run program that polls the Coordinator every 5 minutes for assigned, unclaimed Tickets and starts a local Claude Code Worker session for each.
 
+**Personal Worker**: a person's own computer, registered with `/register-worker`, running the Watcher. It gets only the Tickets that person starts, and only while it is online; otherwise their Tickets go to the shared Worker (Daytona). Authenticates to MCP with a Bearer secret.
+_Avoid_: private worker, device worker.
+
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.
 _Avoid_: integration, OAuth app.
 

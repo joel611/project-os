@@ -15,6 +15,7 @@ const STATUS = {
   SourceAliasTaken: 409,
   InvalidSourceAlias: 400,
   InvalidTransition: 409,
+  RegistrationInvalid: 401,
   AgentRuntimeError: 502,
   ClassifierError: 502,
 } as const;

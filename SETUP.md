@@ -10,6 +10,7 @@ You need three things working, in this order:
 | [2. Google Drive](#2-google-drive-oauth-client)  | Each person links their own Google account, so Workers read Drive with that person's access       | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
 | [3. GitHub](#3-github-app)                       | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
 | [4. Account linking](#4-turn-on-account-linking) | Turns on `/connect` for steps 2 and 3                                                             | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                           |
+| [5. Personal workers](#5-personal-workers)       | People run `/register-worker` to use their own computer as their Worker; others get Daytona       | Optional          | `PUBLIC_URL`, `DAYTONA_API_KEY`, `DEFAULT_WORKER_TYPE`, `WATCHER_INSTALL_COMMAND`                            |
 
 Start with:
 
@@ -48,10 +49,10 @@ The adapter connects with these gateway intents (`apps/discord-adapter/src/main.
 
 The invite needs two **scopes**:
 
-| Scope                   | Why                                                                                |
-| ----------------------- | ---------------------------------------------------------------------------------- |
-| `bot`                   | Adds the bot user to the server                                                    |
-| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections` |
+| Scope                   | Why                                                                                                                                      |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `bot`                   | Adds the bot user to the server                                                                                                          |
+| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections`, `/register-worker`, `/workers`, `/unregister-worker` |
 
 And these **bot permissions**:
 
@@ -97,7 +98,7 @@ From [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet): t
 
 ### 1.4 Check it
 
-Start the stack (see [5. Run it](#5-run-it)), then:
+Start the stack (see [6. Run it](#6-run-it)), then:
 
 1. The adapter logs `registered slash commands in guild <id>`.
 2. In the admin channel, run `/project-create name:Demo`. A new `#demo` channel appears.
@@ -228,19 +229,54 @@ How a person links an account:
 
 ---
 
-## 5. Run it
+## 5. Personal workers
+
+A developer can use their own computer as their Worker. It works only on the tickets they start; anyone without one, and they too while it's offline, gets the shared Worker.
+
+Coordinator `.env`:
+
+```sh
+# Where people's computers reach the Coordinator (the Watcher registers and polls here).
+# Same value as step 4; must be reachable from their machines, so a tunnel or public host.
+PUBLIC_URL=https://coordinator.example.com
+
+# The shared Worker for everyone else. With DAYTONA_API_KEY set this defaults to daytona_pi;
+# set local_claude to keep using the shared Watcher (WORKER_ID) instead.
+DEFAULT_WORKER_TYPE=daytona_pi
+
+# Optional: how people install the Watcher. Default: bun install -g @project-os/watcher
+# The package isn't on npm yet, so until it is, point this at something that installs it.
+WATCHER_INSTALL_COMMAND=
+```
+
+Then, for each person:
+
+1. Run `/register-worker` in any server channel (optionally `name:my-laptop`). The reply is private.
+2. Paste the command it shows on the computer that should do the work. It needs Bun and the `claude` CLI signed in. The code works once, for 10 minutes.
+3. The Watcher saves its credentials in `~/.config/project-os/watcher.json` and keeps running. Start it again later with `project-os-watcher`.
+4. `/workers` lists your computers and whether they're online. `/unregister-worker worker:<name>` removes one.
+
+A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (15 minutes by default; it checks in every 5).
+
+---
+
+## 6. Run it
 
 ```sh
 docker compose up --build            # Coordinator :8080, Discord adapter, email stub, Grafana :3000
 
-# Watcher, on the host. It needs the `claude` CLI installed and signed in.
+# Shared Watcher, on the host (only if you don't use Daytona or personal workers).
+# It needs the `claude` CLI installed and signed in.
 set -a; . ./.env; set +a
 bun apps/watcher/src/main.bun.ts
+
+# Or register this computer as your personal worker (code from /register-worker):
+bun apps/watcher/src/main.bun.ts register <code> --server http://localhost:8080
 ```
 
 Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model. See the README for running without Docker and for the dashboard.
 
-## 6. Cloudflare (pending)
+## 7. Cloudflare (pending)
 
 Deploying to Cloudflare with Alchemy is in [PR #42](https://github.com/joel611/project-os/pull/42), which is **not merged yet**. Once it is, the same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. The Discord adapter keeps running as its own process, because it holds a gateway WebSocket. Steps will be in `docs/deployment.md` from that PR.
 
@@ -254,6 +290,9 @@ Deploying to Cloudflare with Alchemy is in [PR #42](https://github.com/joel611/p
 | `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                   |
 | Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                          |
 | `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                       |
+| `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                               |
+| Your tickets still go to Daytona after registering          | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                 |
+| Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                       |
 | Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |
 | Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                  |
 | GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                         |

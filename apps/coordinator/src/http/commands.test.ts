@@ -1,6 +1,6 @@
 import type { SlashCommand } from "@project-os/contracts";
 import { makeTestLayer } from "@project-os/testing";
-import { ConnectionsUnavailable, UserConnections } from "@project-os/core";
+import { ConnectionsUnavailable, UserConnections, WorkerRepository } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createApp } from "../app.ts";
@@ -204,6 +204,89 @@ describe("runCommand account commands", () => {
     const { config } = recording();
     expect(await runCommand(account("connect", "google"), config)).toEqual({
       content: "Account linking is not configured here.",
+      ephemeral: true,
+    });
+  });
+});
+
+describe("runCommand personal workers", () => {
+  const workersConfig = () => {
+    const runtime = ManagedRuntime.make(makeTestLayer().layer);
+    const { config } = recording({
+      workers: {
+        run: (effect) => runtime.runPromise(effect),
+        publicUrl: "https://coord.example.com/",
+        staleMs: 15 * 60_000,
+      },
+    });
+    return config;
+  };
+  const worker = (name: "register-worker" | "workers" | "unregister-worker", options = {}) =>
+    command({ command: name, channelId: "general", options });
+
+  it("/register-worker answers privately with a one-line install + register command", async () => {
+    const reply = await runCommand(
+      worker("register-worker", { name: "my laptop" }),
+      workersConfig(),
+    );
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.content).toMatch(
+      /bun install -g @project-os\/watcher && project-os-watcher register [\w-]+ --server https:\/\/coord\.example\.com --name 'my laptop'/,
+    );
+    expect(reply.content).toContain("10 minutes");
+    expect(reply.content).toContain("shared cloud worker");
+  });
+
+  it("/workers lists the person's devices; /unregister-worker removes one", async () => {
+    const config = workersConfig();
+    expect((await runCommand(worker("workers"), config)).content).toContain(
+      "no registered workers",
+    );
+
+    const registered = await runCommand(worker("register-worker"), config);
+    const token = registered.content.match(/register ([\w-]+) --server/)![1]!;
+    const { redeemWorkerRegistration } = await import("@project-os/core");
+    await config.workers!.run(
+      Effect.orDie(redeemWorkerRegistration({ token, hostname: "ada-mbp" })),
+    );
+
+    const listed = await runCommand(worker("workers"), config);
+    expect(listed).toMatchObject({ ephemeral: true });
+    expect(listed.content).toContain("**ada-mbp**");
+    expect(listed.content).toContain("offline, last seen never");
+
+    // Seen once, a while ago (the test clock is 2026-11-04T00:00Z).
+    await config.workers!.run(
+      Effect.gen(function* () {
+        const repo = yield* WorkerRepository;
+        const [w] = yield* repo.list;
+        yield* repo.heartbeat({
+          workerId: w!.id,
+          workerType: "local_claude",
+          ticketId: null,
+          at: "2026-11-03T20:15:00.000Z",
+        });
+      }),
+    );
+    expect((await runCommand(worker("workers"), config)).content).toContain(
+      "offline, last seen 2026-11-03 20:15 UTC",
+    );
+
+    expect(
+      (await runCommand(worker("unregister-worker", { worker: "nope" }), config)).content,
+    ).toContain('no worker called "nope"');
+    expect(
+      (await runCommand(worker("unregister-worker", { worker: "ada-mbp" }), config)).content,
+    ).toContain("Removed ada-mbp");
+    expect((await runCommand(worker("unregister-worker", { worker: " " }), config)).content).toBe(
+      "Usage: /unregister-worker worker:<name or id>",
+    );
+  });
+
+  it("refuses when personal workers are not configured", async () => {
+    const { config } = recording();
+    expect(await runCommand(worker("register-worker"), config)).toEqual({
+      content: "Personal workers are not configured here.",
       ephemeral: true,
     });
   });
