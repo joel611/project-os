@@ -1,6 +1,11 @@
 import { Effect, Result } from "effect";
 import {
+  aliasFrom,
+  InvalidSourceAlias,
+  normalizeAlias,
   SourceAlreadyLinked,
+  sourceUrl,
+  uniqueAlias,
   type Project,
   type ProjectSource,
   type ProjectSourceType,
@@ -55,11 +60,47 @@ export const updateProject = (input: {
     });
   });
 
+/** Validates and normalizes a caller's alias (see `normalizeAlias`). */
+const checkAlias = (raw: string) => {
+  const alias = normalizeAlias(raw);
+  return alias === null
+    ? Effect.fail(
+        new InvalidSourceAlias({
+          alias: raw,
+          message:
+            "An alias is lowercase letters and digits joined by '-' or '_', at most 40 characters.",
+        }),
+      )
+    : Effect.succeed(alias);
+};
+
+/** Alias for a source nobody named: what kind of source it is. */
+const TYPE_ALIAS: Record<ProjectSourceType, string> = {
+  discord_channel: "discord",
+  email_address: "email",
+  clickup_list: "clickup",
+  google_drive_folder: "drive",
+  github_repo: "repo",
+};
+
+const blankToNull = (text: string | null | undefined) => {
+  const trimmed = text?.trim();
+  return trimmed ? trimmed : null;
+};
+
+/**
+ * Links a source to a project. `alias` names what the source is for and must be unique in the
+ * project; people and the admin dialogue always give one. When it is left out (channels the
+ * Coordinator links itself) it is derived from `name` (or the type, when the name is just the
+ * id), with a `-2`… suffix if that is taken.
+ */
 export const addSource = (input: {
   readonly projectId: string;
   readonly type: ProjectSourceType;
   readonly externalId: string;
   readonly name: string;
+  readonly alias?: string | undefined;
+  readonly description?: string | null | undefined;
   readonly direction?: SourceDirection;
   readonly isDefaultResponse?: boolean;
   readonly config?: unknown;
@@ -67,6 +108,16 @@ export const addSource = (input: {
   Effect.gen(function* () {
     yield* (yield* ProjectRepository).get(input.projectId);
     const sources = yield* ProjectSourceRepository;
+    const alias =
+      input.alias === undefined
+        ? uniqueAlias(
+            // A name that is just the id (e.g. a raw channel id) says nothing: use the type.
+            input.name === input.externalId
+              ? TYPE_ALIAS[input.type]
+              : aliasFrom(input.name, TYPE_ALIAS[input.type]),
+            new Set((yield* sources.listByProject(input.projectId)).map((s) => s.alias)),
+          )
+        : yield* checkAlias(input.alias);
     const at = yield* nowIso;
     const inserted = yield* sources.insert({
       id: yield* (yield* IdGenerator).next,
@@ -74,6 +125,8 @@ export const addSource = (input: {
       type: input.type,
       externalId: input.externalId,
       name: input.name,
+      alias,
+      description: blankToNull(input.description),
       direction: input.direction ?? "both",
       isDefaultResponse: false,
       config: input.config ?? null,
@@ -86,6 +139,42 @@ export const addSource = (input: {
     return input.isDefaultResponse === true
       ? yield* sources.setDefaultResponse(input.projectId, inserted.id)
       : inserted;
+  });
+
+/**
+ * A project's active sources as Workers see them: alias and description first, so a Worker
+ * told "the design docs" can find the Drive folder or repo they mean.
+ */
+export const listProjectSources = (input: { readonly projectId: string }) =>
+  Effect.gen(function* () {
+    yield* (yield* ProjectRepository).get(input.projectId);
+    const sources = yield* (yield* ProjectSourceRepository).listByProject(input.projectId);
+    return sources
+      .filter((s) => s.status === "active")
+      .map((s) => ({
+        alias: s.alias,
+        description: s.description,
+        type: s.type,
+        externalId: s.externalId,
+        name: s.name,
+        url: sourceUrl(s),
+      }));
+  });
+
+/** Renames a source's alias and/or changes its description (`null` or blank clears it). */
+export const updateSource = (input: {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly alias?: string | undefined;
+  readonly description?: string | null | undefined;
+}) =>
+  Effect.gen(function* () {
+    const alias = input.alias === undefined ? undefined : yield* checkAlias(input.alias);
+    return yield* (yield* ProjectSourceRepository).update(input.projectId, input.sourceId, {
+      ...(alias === undefined ? {} : { alias }),
+      ...(input.description === undefined ? {} : { description: blankToNull(input.description) }),
+      updatedAt: yield* nowIso,
+    });
   });
 
 /**

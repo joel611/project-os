@@ -1,4 +1,7 @@
 import { Database } from "bun:sqlite";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { MemoryEntry } from "@project-os/contracts";
 import {
   MemoryRepository,
@@ -65,6 +68,8 @@ const source = (over: Partial<ProjectSource> = {}): ProjectSource => ({
   type: "discord_channel",
   externalId: "chan-1",
   name: "#general",
+  alias: `src-${over.id ?? "s1"}`,
+  description: null,
   direction: "both",
   isDefaultResponse: false,
   config: { a: 1 },
@@ -215,6 +220,50 @@ describe("ProjectSourceRepository", () => {
     expect(Exit.isFailure(dbError)).toBe(true);
   });
 
+  it("keeps aliases unique per project, not across projects", async () => {
+    const { taken, elsewhere } = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        yield* (yield* ProjectRepository).insert(project({ id: "p2" }));
+        const repo = yield* ProjectSourceRepository;
+        yield* repo.insert(source({ alias: "docs" }));
+        const taken = yield* Effect.flip(
+          repo.insert(source({ id: "s2", externalId: "chan-2", alias: "docs" })),
+        );
+        const elsewhere = yield* repo.insert(
+          source({ id: "s3", projectId: "p2", externalId: "chan-3", alias: "docs" }),
+        );
+        return { taken, elsewhere };
+      }),
+    );
+    expect(taken).toMatchObject({ _tag: "SourceAliasTaken", projectId: "p1", alias: "docs" });
+    expect(elsewhere.alias).toBe("docs");
+  });
+
+  it("updates alias and description, refusing a taken alias or a foreign source", async () => {
+    const { renamed, cleared, taken, foreign } = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* ProjectSourceRepository;
+        yield* repo.insert(source({ alias: "chat" }));
+        yield* repo.insert(source({ id: "s2", externalId: "chan-2", alias: "docs" }));
+        const renamed = yield* repo.update("p1", "s1", {
+          alias: "team",
+          description: "daily chatter",
+          updatedAt: T1,
+        });
+        const cleared = yield* repo.update("p1", "s1", { description: null, updatedAt: T2 });
+        const taken = yield* Effect.flip(repo.update("p1", "s1", { alias: "docs", updatedAt: T2 }));
+        const foreign = yield* Effect.flip(repo.update("p2", "s1", { updatedAt: T2 }));
+        return { renamed, cleared, taken, foreign };
+      }),
+    );
+    expect(renamed).toMatchObject({ alias: "team", description: "daily chatter", updatedAt: T1 });
+    expect(cleared).toMatchObject({ alias: "team", description: null, updatedAt: T2 });
+    expect(taken._tag).toBe("SourceAliasTaken");
+    expect(foreign._tag).toBe("SourceNotFound");
+  });
+
   it("rejects setDefaultResponse for unknown or foreign source", async () => {
     const err = await run(
       Effect.gen(function* () {
@@ -225,6 +274,62 @@ describe("ProjectSourceRepository", () => {
       }),
     );
     expect(err._tag).toBe("SourceNotFound");
+  });
+});
+
+describe("migration 0003 (source alias)", () => {
+  it("backfills an alias for existing sources, unique within each project", () => {
+    // Apply migrations up to 0002 only, add sources the old way, then apply the rest.
+    const all = new URL("../../migrations", import.meta.url).pathname;
+    const before = mkdtempSync(join(tmpdir(), "migrations-"));
+    for (const f of ["0000_init.sql", "0001_ticket_threads.sql", "0002_auth.sql"]) {
+      copyFileSync(join(all, f), join(before, f));
+    }
+    mkdirSync(join(before, "meta"));
+    const journal = JSON.parse(readFileSync(join(all, "meta/_journal.json"), "utf8"));
+    journal.entries = journal.entries.filter((e: { idx: number }) => e.idx <= 2);
+    writeFileSync(join(before, "meta/_journal.json"), JSON.stringify(journal));
+
+    const sqlite = new Database(":memory:");
+    const db = drizzle(sqlite, { schema });
+    migrate(db, { migrationsFolder: before });
+    sqlite.run(`INSERT INTO orgs (id, name, created_at) VALUES ('o1', 'Org', '${T0}')`);
+    for (const p of ["p1", "p2"]) {
+      sqlite.run(
+        `INSERT INTO projects (id, org_id, name, custom_instructions, status, created_at, updated_at)
+         VALUES ('${p}', 'o1', '${p}', '', 'active', '${T0}', '${T0}')`,
+      );
+    }
+    const rows: Array<[string, string, string, string, string, string]> = [
+      // id, project, type, external id, name, created at
+      ["s1", "p1", "discord_channel", "111", "#Design Team", T0],
+      ["s2", "p1", "discord_channel", "222", "222", T0],
+      ["s3", "p1", "github_repo", "acme/web.app", "acme/web.app", T0],
+      ["s4", "p1", "google_drive_folder", "1AbCdEfGhIjK", "Drive folder 1AbCdEfG…", T0],
+      ["s5", "p1", "google_drive_folder", "2AbCdEfGhIjK", "Drive folder 2AbCdEfG…", T1],
+      ["s6", "p2", "google_drive_folder", "3AbCdEfGhIjK", "Drive folder 3AbCdEfG…", T0],
+    ];
+    for (const [id, projectId, type, externalId, name, at] of rows) {
+      sqlite.run(
+        `INSERT INTO project_sources (id, project_id, type, external_id, name, direction,
+           is_default_response, status, created_at, updated_at)
+         VALUES ('${id}', '${projectId}', '${type}', '${externalId}', '${name}', 'both', 0,
+           'active', '${at}', '${at}')`,
+      );
+    }
+
+    migrate(db, { migrationsFolder: all });
+    const aliases = sqlite
+      .query("SELECT id, alias, description FROM project_sources ORDER BY id")
+      .all();
+    expect(aliases).toEqual([
+      { id: "s1", alias: "design-team", description: null },
+      { id: "s2", alias: "discord", description: null },
+      { id: "s3", alias: "web-app", description: null },
+      { id: "s4", alias: "drive", description: null },
+      { id: "s5", alias: "drive-s5", description: null },
+      { id: "s6", alias: "drive", description: null },
+    ]);
   });
 });
 

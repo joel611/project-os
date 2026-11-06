@@ -12,6 +12,8 @@ const STATUS = {
   ProjectNotFound: 404,
   SourceNotFound: 404,
   SourceAlreadyLinked: 409,
+  SourceAliasTaken: 409,
+  InvalidSourceAlias: 400,
   InvalidTransition: 409,
   AgentRuntimeError: 502,
   ClassifierError: 502,

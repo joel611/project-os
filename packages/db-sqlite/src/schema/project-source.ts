@@ -15,6 +15,9 @@ export const projectSources = sqliteTable(
     }).notNull(),
     externalId: text("external_id").notNull(),
     name: text("name").notNull(),
+    /** Unique within the project; see migration 0003 for how pre-existing rows were named. */
+    alias: text("alias").notNull(),
+    description: text("description"),
     direction: text("direction", { enum: ["inbound", "outbound", "both"] }).notNull(),
     isDefaultResponse: integer("is_default_response", { mode: "boolean" }).notNull(),
     config: text("config", { mode: "json" }),
@@ -25,6 +28,7 @@ export const projectSources = sqliteTable(
   },
   (t) => [
     uniqueIndex("project_sources_type_external_id_uq").on(t.type, t.externalId),
+    uniqueIndex("project_sources_project_alias_uq").on(t.projectId, t.alias),
     // At most one default-response source per project.
     uniqueIndex("project_sources_one_default_per_project")
       .on(t.projectId)

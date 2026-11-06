@@ -80,6 +80,8 @@ const run = async (
         type: "discord_channel",
         externalId: "chan-1",
         name: "#acme",
+        alias: "acme",
+        description: null,
         direction: "both",
         isDefaultResponse: options.replyChannel ?? true,
         config: {},

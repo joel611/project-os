@@ -7,6 +7,7 @@ import {
   sourceUrl,
   splitTickets,
   STATUS,
+  suggestAlias,
 } from "./model.ts";
 
 const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): Ticket => ({
@@ -81,29 +82,61 @@ describe("detectSource", () => {
 });
 
 describe("checkSource", () => {
-  const existing = [{ type: "github_repo", externalId: "acme/web" }];
+  const existing = [{ type: "github_repo", externalId: "acme/web", alias: "web" }];
+  const check = (link: string, alias = "api", description?: string) =>
+    checkSource({ link, alias, ...(description === undefined ? {} : { description }) }, existing);
 
-  it("accepts a new source", () => {
-    expect(checkSource("acme/api", existing).kind).toBe("ok");
+  it("accepts a new source with its normalized alias and trimmed description", () => {
+    expect(check("acme/api", " Design Docs ", "  specs  ")).toEqual({
+      kind: "ok",
+      input: {
+        type: "github_repo",
+        externalId: "acme/api",
+        name: "acme/api",
+        alias: "design-docs",
+        description: "specs",
+      },
+    });
+  });
+
+  it("drops a blank description", () => {
+    expect(check("acme/api", "api", "   ")).toMatchObject({ kind: "ok", input: { alias: "api" } });
+    const result = check("acme/api", "api", "   ");
+    expect(result.kind === "ok" && "description" in result.input).toBe(false);
   });
 
   it("flags a source already on the project, case-insensitively", () => {
-    expect(checkSource("https://github.com/ACME/Web", existing)).toMatchObject({
+    expect(check("https://github.com/ACME/Web")).toMatchObject({
       kind: "duplicate",
       input: { externalId: "acme/web" },
     });
   });
 
   it("only collides within the same source type", () => {
-    const same = [{ type: "github_repo", externalId: "1AbCdEfGhIjK" }];
-    expect(checkSource("1AbCdEfGhIjK", same).kind).toBe("ok");
+    const same = [{ type: "github_repo", externalId: "1AbCdEfGhIjK", alias: "x" }];
+    expect(checkSource({ link: "1AbCdEfGhIjK", alias: "drive" }, same).kind).toBe("ok");
   });
 
-  it("flags junk", () => {
-    expect(checkSource("nope", [])).toEqual({ kind: "invalid" });
+  it.each(["", "a--b", "-a", "a b!", "x".repeat(41)])("rejects alias %j", (alias) => {
+    expect(check("acme/api", alias).kind).toBe("bad_alias");
+  });
+
+  it("rejects a link that is neither a repo nor a Drive folder", () => {
+    expect(check("not a link").kind).toBe("invalid");
+  });
+
+  it("rejects an alias another source in the project uses", () => {
+    expect(check("acme/api", "WEB")).toEqual({ kind: "alias_taken", alias: "web" });
   });
 });
 
+describe("suggestAlias", () => {
+  it("names a repo after itself and leaves a Drive folder for the operator", () => {
+    expect(suggestAlias(detectSource("https://github.com/acme/Web.App"))).toBe("web-app");
+    expect(suggestAlias(detectSource("1AbCdEfGhIjK"))).toBe("");
+    expect(suggestAlias(null)).toBe("");
+  });
+});
 describe("sourceUrl", () => {
   it.each([
     [{ type: "github_repo", externalId: "a/b" }, "https://github.com/a/b"],

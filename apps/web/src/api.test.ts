@@ -71,6 +71,8 @@ describe("makeApi", () => {
       type: "github_repo",
       externalId: "acme/web",
       name: "acme/web",
+      alias: "web",
+      description: null,
       direction: "both",
       isDefaultResponse: false,
       config: null,
@@ -81,15 +83,24 @@ describe("makeApi", () => {
     };
     const fetchFn = (async (url: string, init?: RequestInit) => {
       seen.push({ url, init });
-      return Response.json(init?.method === "PATCH" ? project : source, { status: 200 });
+      const isProject = init?.method === "PATCH" && !url.includes("/sources/");
+      return Response.json(isProject ? project : source, { status: 200 });
     }) as typeof fetch;
     const api = makeApi(fetchFn);
     await api.updateProject("p1", { name: "Acme" });
-    await api.addSource("p1", { type: "github_repo", externalId: "acme/web", name: "acme/web" });
+    await api.addSource("p1", {
+      type: "github_repo",
+      externalId: "acme/web",
+      name: "acme/web",
+      alias: "web",
+    });
+    await api.updateSource("p1", "s1", { description: "the marketing site" });
     expect(seen.map((s) => [s.url, s.init?.method])).toEqual([
       ["/api/projects/p1", "PATCH"],
       ["/api/projects/p1/sources", "POST"],
+      ["/api/projects/p1/sources/s1", "PATCH"],
     ]);
+    expect(JSON.parse(String(seen[2]?.init?.body))).toEqual({ description: "the marketing site" });
     expect(JSON.parse(String(seen[0]?.init?.body))).toEqual({ name: "Acme" });
   });
 
