@@ -29,7 +29,8 @@ const client = new Client({
 });
 
 client.on(Events.MessageCreate, async (message) => {
-  const inbound = normalizeMessage(message);
+  // The bot's own id, so the Coordinator can ignore project channel chatter that isn't for it.
+  const inbound = normalizeMessage(message, client.user?.id);
   if (!inbound) return;
   try {
     await forwardInbound(coordinatorUrl, inbound, fetch);

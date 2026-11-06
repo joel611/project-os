@@ -16,6 +16,8 @@ const { values } = parseArgs({
     name: { type: "string", default: "Fake User" },
     say: { type: "string" },
     wait: { type: "string", default: "60" },
+    // Send without @mentioning the bot (the Coordinator ignores these at channel top level).
+    "no-mention": { type: "boolean", default: false },
   },
 });
 
@@ -52,7 +54,7 @@ createReplyApp(
 ).listen(port);
 
 const say = async (content: string) => {
-  const inbound = fakeInbound(speaker, content);
+  const inbound = fakeInbound(speaker, content, { mention: !values["no-mention"] });
   if (!inbound) return console.log("(ignored: empty message)");
   await forwardInbound(coordinatorUrl, inbound, fetch);
 };

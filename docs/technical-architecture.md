@@ -176,6 +176,8 @@ Single bounded context that owns:
 
 The channel (Discord / email) only sees what the Coordinator chooses to surface — just like a customer only sees curated updates from a PM, not internal ticket chatter.
 
+**Project channels need an @mention.** In a project's Discord channel, the Coordinator only acts on top-level messages that @mention the bot (a reply to the bot's message counts); other messages are left alone so people can talk among themselves. The adapter sets `InboundMessage.mentionsBot` and strips the mention from the content. Messages inside a thread are handled without a mention, since a thread is already a conversation with the bot, and the admin channel is unchanged. `DISCORD_REQUIRE_MENTION=false` turns the rule off.
+
 **Ticket threads (Discord)**
 - A new ticket gets its own thread: the Coordinator asks the Discord adapter to open one on the message that created it (`ChannelGateway.createThread` → the adapter's `/threads`), records it in `ticket_threads`, and posts a short note there. A new request already made inside a thread uses that thread instead.
 - Everything said in a ticket's thread is a `follow_up` on that ticket, whatever the classifier says, except a confident `status_question`, which is answered about that ticket alone. Once the ticket is finished, the thread says so and points back to the channel.
