@@ -35,9 +35,9 @@ export const senderOf = (event: TicketEvent): Person | undefined => {
   };
 };
 
-/** Discord pings by `<@id>`; elsewhere fall back to the name. */
+/** Discord pings by `<@id>`; elsewhere the id is the address (e.g. an email). */
 const mention = (person: Person) =>
-  person.channelType === "discord" ? `<@${person.id}>` : (person.name ?? "there");
+  person.channelType === "discord" ? `<@${person.id}>` : person.id;
 
 const EVENT_SCAN = 500;
 
@@ -69,10 +69,8 @@ export const userTokenForTicket = (input: {
     const token = yield* connections
       .accessToken(person, input.provider)
       .pipe(
-        Effect.tapError((error) =>
-          error._tag === "NotConnected"
-            ? askToConnect(ticket.id, ticket.projectId, ticket.title, person, input.provider)
-            : Effect.void,
+        Effect.tapErrorTag("NotConnected", () =>
+          askToConnect(ticket.id, ticket.projectId, ticket.title, person, input.provider),
         ),
       );
     return { ...token, person: { ...person, name: person.name ?? null } };
