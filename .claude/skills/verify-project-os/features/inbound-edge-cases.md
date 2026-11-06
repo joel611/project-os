@@ -12,7 +12,7 @@ Discord retries a delivery, or a user speaks in an unrelated channel.
 ## Driving it with the harness
 
 - Unlinked: `bun verify/drive.ts say "hello?" --channel other-chan` → `GET /projects/<id>/tickets` unchanged, `posted.jsonl` unchanged.
-- Duplicate: `drive.ts` generates a fresh message id every time, so it cannot send one. POST the same JSON body twice to `/inbound` with curl (body shape: output of `fakeInbound` in `apps/discord-adapter/src/fake.ts`); expect one ticket.
+- Duplicate: `drive.ts` generates a fresh message id every time, so it cannot send one. POST the same JSON body twice to `/inbound` with curl (body shape: output of `fakeInbound` in `packages/channel-discord/src/fake.ts`); expect one ticket.
 
 Proves it: ticket count and reply count unchanged.
 

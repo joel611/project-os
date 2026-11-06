@@ -19,7 +19,7 @@ bun install
 cp .env.example .env
 ```
 
-Every value below goes into `.env`. Docker Compose reads it for the Coordinator and the Discord adapter, and the Watcher reads it from your shell.
+Every value below goes into `.env`. Docker Compose reads it for the Coordinator, which runs the Discord bot in the same process, and the Watcher reads it from your shell.
 
 Workers never use a shared Google or GitHub credential. They call the `user_token` MCP tool, which returns the token of the person who asked, so Google's and GitHub's own permissions decide what a Worker can reach.
 
@@ -37,7 +37,7 @@ Workers never use a shared Google or GitHub credential. They call the `user_toke
    3. Leave **Presence Intent** and **Server Members Intent** off. They aren't used.
    4. Optional: turn off **Public Bot** so only you can add it to servers.
 
-The adapter connects with these gateway intents (`apps/discord-adapter/src/main.bun.ts`):
+The bot connects with these gateway intents (`packages/channel-discord/src/main.bun.ts`):
 
 | Intent           | Privileged                     | Why                                             |
 | ---------------- | ------------------------------ | ----------------------------------------------- |
@@ -263,7 +263,7 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 ## 6. Run it
 
 ```sh
-docker compose up --build            # Coordinator :8080, Discord adapter, email stub, Grafana :3000
+docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
 
 # Shared Watcher, on the host (only if you don't use Daytona or personal workers).
 # It needs the `claude` CLI installed and signed in.
@@ -280,7 +280,7 @@ The dashboard is read-only and expects the Coordinator on `:8080` (override with
 
 ## 7. Cloudflare
 
-Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. The Discord adapter keeps running as its own process, because it holds a gateway WebSocket.
+Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `docs/deployment.md`).
 
 ## Troubleshooting
 

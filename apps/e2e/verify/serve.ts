@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { ensureOrg, LocalLive } from "@project-os/infra-local";
 import { AgentRuntimeEcho, classifierReturning } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
-import { createReplyApp } from "../../discord-adapter/src/reply.ts";
+import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 
 const dataDir = process.env.DATA_DIR;

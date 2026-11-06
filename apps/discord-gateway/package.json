@@ -1,0 +1,13 @@
+{
+  "name": "@project-os/discord-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/main.bun.ts"
+  },
+  "dependencies": {
+    "@project-os/channel-discord": "workspace:*",
+    "@project-os/config": "workspace:*"
+  }
+}

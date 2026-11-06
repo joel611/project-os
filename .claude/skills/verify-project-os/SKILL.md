@@ -1,6 +1,6 @@
 ---
 name: verify-project-os
-description: Launch and drive project-os (Coordinator HTTP+MCP, Discord→Ticket→Worker→reply loop, read-only web dashboard) locally and capture proof. Use to verify any change to apps/coordinator, discord-adapter, watcher, web, or packages/*, beyond `bun run test:integration`.
+description: Launch and drive project-os (Coordinator HTTP+MCP, Discord→Ticket→Worker→reply loop, read-only web dashboard) locally and capture proof. Use to verify any change to apps/coordinator, channel-discord, watcher, web, or packages/*, beyond `bun run test:integration`.
 ---
 
 # verify-project-os

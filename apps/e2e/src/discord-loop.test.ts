@@ -1,7 +1,7 @@
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { fakeInbound, type FakeSpeaker } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { fakeInbound, type FakeSpeaker } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 import { type Stack, startStack } from "./stack.ts";
 
 // Discord -> /inbound -> ticket -> MCP worker -> completion -> /reply, with no Discord.

@@ -47,9 +47,9 @@ const vars = {
 
 /** Plain vars with no default: bound only when set. */
 const optionalVars = [
-  // Where the Coordinator POSTs replies. The Discord adapter is a long-running gateway
-  // process, so it runs off Workers (docs/technical-architecture.md §8).
-  "DISCORD_ADAPTER_URL",
+  // Where the Coordinator POSTs replies. Discord is a long-running gateway process, so on
+  // Workers it runs off-platform (apps/discord-gateway, docs/technical-architecture.md §8).
+  "DISCORD_SPLIT_GATEWAY_URL",
   "ADMIN_CHANNEL_ID",
   "ADMIN_USER_IDS",
   // Account linking (Better Auth, PR #41): connect links and OAuth callbacks.

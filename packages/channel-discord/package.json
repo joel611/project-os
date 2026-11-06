@@ -1,11 +1,12 @@
 {
-  "name": "@project-os/discord-adapter",
+  "name": "@project-os/channel-discord",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/main.bun.ts"
+  },
   "scripts": {
-    "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
-    "start": "bun src/main.bun.ts",
     "fake": "bun --env-file=../../.env src/main.fake.ts"
   },
   "dependencies": {
