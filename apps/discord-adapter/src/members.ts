@@ -1,11 +1,11 @@
 /**
  * Member role gate (DISCORD_MEMBER_ROLE_IDS): when set, only people holding at least one of
- * these Discord roles can trigger the bot. Everyone else is ignored before anything reaches
+ * these Discord roles, or listed in ADMIN_USER_IDS, can trigger the bot. Everyone else is ignored before anything reaches
  * the Coordinator. Unset (or empty) means no gate.
  */
 
-/** Parses a comma-separated role id list; `undefined` when unset or empty, i.e. no gate. */
-export const parseRoleIds = (raw: string | undefined): ReadonlySet<string> | undefined => {
+/** Parses a comma-separated id list; `undefined` when unset or empty (for roles: no gate). */
+export const parseIds = (raw: string | undefined): ReadonlySet<string> | undefined => {
   const ids = (raw ?? "")
     .split(",")
     .map((id) => id.trim())
@@ -29,12 +29,19 @@ export const memberRoleIds = (member: unknown): ReadonlyArray<string> => {
   return [];
 };
 
-/** True when there's no gate, or the member holds at least one allowed role. */
-export const isAllowedMember = (
-  member: unknown,
-  allowedRoleIds: ReadonlySet<string> | undefined,
-): boolean =>
-  allowedRoleIds === undefined || memberRoleIds(member).some((id) => allowedRoleIds.has(id));
+export interface MemberGate {
+  /** Roles that may trigger the bot; `undefined` means no gate. */
+  readonly roleIds: ReadonlySet<string> | undefined;
+  /** ADMIN_USER_IDS: admins always pass, whatever roles they hold. */
+  readonly adminUserIds?: ReadonlySet<string> | undefined;
+}
+
+/** True when there's no gate, the user is an admin, or the member holds an allowed role. */
+export const isAllowedMember = (userId: string, member: unknown, gate: MemberGate): boolean => {
+  const { roleIds, adminUserIds } = gate;
+  if (roleIds === undefined || adminUserIds?.has(userId)) return true;
+  return memberRoleIds(member).some((id) => roleIds.has(id));
+};
 
 export const NOT_A_MEMBER_MESSAGE = "Sorry, you need a member role to use this bot.";
 

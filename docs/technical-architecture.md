@@ -179,7 +179,7 @@ The channel (Discord / email) only sees what the Coordinator chooses to surface 
 
 **Project channels need an @mention.** In a project's Discord channel, the Coordinator only acts on top-level messages that @mention the bot (a reply to the bot's message counts); other messages are left alone so people can talk among themselves. The adapter sets `InboundMessage.mentionsBot` and strips the mention from the content. Messages inside a thread are handled without a mention, since a thread is already a conversation with the bot, and the admin channel is unchanged. `DISCORD_REQUIRE_MENTION=false` turns the rule off.
 
-**Optional member roles.** With `DISCORD_MEMBER_ROLE_IDS` set (comma-separated role ids), the Discord adapter drops messages from people who hold none of those roles before they reach the Coordinator, and answers their slash commands with a private refusal. Unset means everyone in the server can trigger the bot.
+**Optional member roles.** With `DISCORD_MEMBER_ROLE_IDS` set (comma-separated role ids), the Discord adapter drops messages from people who hold none of those roles before they reach the Coordinator, and answers their slash commands with a private refusal. People in `ADMIN_USER_IDS` always pass, whatever roles they hold. Unset means everyone in the server can trigger the bot.
 
 **Server chat only.** The bot ignores DMs: the adapter drops DM messages, slash commands are registered without DM permission, and a DM interaction that still arrives gets a private "server only" reply.
 
