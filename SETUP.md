@@ -263,7 +263,7 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 ## 6. Run it
 
 ```sh
-docker compose up --build            # Coordinator :8080 (with the Discord bot), email stub, Grafana :3000
+docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
 
 # Shared Watcher, on the host (only if you don't use Daytona or personal workers).
 # It needs the `claude` CLI installed and signed in.

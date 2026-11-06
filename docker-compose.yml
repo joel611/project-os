@@ -45,12 +45,6 @@ services:
       - "4318:4318" # OTLP HTTP
     volumes: ["lgtm-data:/data"]
 
-  channel-email:
-    build: { context: ., dockerfile: packages/channel-email/Dockerfile }
-    environment:
-      COORDINATOR_URL: http://coordinator:8080
-    depends_on: [coordinator]
-
 volumes:
   coordinator-data:
   lgtm-data:
