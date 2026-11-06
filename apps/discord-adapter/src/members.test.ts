@@ -34,6 +34,8 @@ describe("memberRoleIds", () => {
     expect(memberRoleIds(null)).toEqual([]);
     expect(memberRoleIds(undefined)).toEqual([]);
     expect(memberRoleIds({ displayName: "Joel" })).toEqual([]);
+    expect(memberRoleIds({ roles: null })).toEqual([]);
+    expect(memberRoleIds({ roles: { cache: "not a map" } })).toEqual([]);
   });
 });
 
