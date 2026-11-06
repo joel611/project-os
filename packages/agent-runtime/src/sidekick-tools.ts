@@ -18,9 +18,8 @@ export type TokenSource = (provider: ConnectionProvider) => Promise<SidekickToke
 
 export interface SidekickToolsOptions {
   readonly endpoints: SidekickEndpoints;
-  /** The token source of the turn this conversation is on, if one is running. */
-  readonly tokenSource: (conversationId: string) => TokenSource | undefined;
-  readonly fetch?: typeof fetch;
+  /** The token source of the turn this conversation is on. Throws if no turn is running. */
+  readonly tokenSource: (conversationId: string) => TokenSource;
 }
 
 /** Keeps a big listing from flooding the model's context. */
@@ -46,19 +45,15 @@ export const SIDEKICK_INSTRUCTIONS = [
  * the provider's permissions apply. All of them only read.
  */
 export const makeSidekickExtension = (options: SidekickToolsOptions) => {
-  const doFetch = options.fetch ?? fetch;
-
   const call = async (
     conversationId: string,
     provider: ConnectionProvider,
     url: string,
     headers: Record<string, string>,
   ): Promise<string> => {
-    const source = options.tokenSource(conversationId);
-    if (!source) return "No account is available for this conversation.";
-    const token = await source(provider);
+    const token = await options.tokenSource(conversationId)(provider);
     if (!token.ok) return `Not connected: ${token.message}`;
-    const res = await doFetch(url, {
+    const res = await fetch(url, {
       headers: { ...headers, authorization: `Bearer ${token.accessToken}` },
     });
     const body = await res.text();

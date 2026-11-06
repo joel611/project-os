@@ -560,6 +560,17 @@ describe("handleInbound Sidekick", () => {
     });
   });
 
+  it("tells the thread when a follow-up can't be answered", async () => {
+    const { sent } = await run(
+      Effect.gen(function* () {
+        yield* handleInbound(msg(), config);
+        yield* handleInbound(msg({ externalId: "m2", threadId: "thread-1" }), config);
+      }),
+      { ...toSidekick(), failSidekick: "model down" },
+    );
+    expect(sent.at(-1)?.content).toBe(sidekickFailedMessage("model down"));
+  });
+
   it("answers an email request in the channel, since email has no threads", async () => {
     const { sent } = await run(
       Effect.gen(function* () {

@@ -7,7 +7,7 @@ import {
   type Message,
 } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable";
-import { Sidekick, type SidekickToken } from "@project-os/core";
+import { Sidekick, SidekickError, type SidekickToken } from "@project-os/core";
 import { Context, Effect, Layer } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeAgentRuntime } from "./index.ts";
@@ -39,6 +39,7 @@ const fakeApis = () => {
       if (url.pathname.startsWith("/drive/files")) {
         return Response.json({ files: [{ id: "f1", name: "Roadmap" }] });
       }
+      if (url.pathname === "/repos/acme/web/commits") return new Response("x".repeat(9_000));
       if (url.pathname === "/repos/acme/web/releases") {
         return Response.json([{ tag_name: "v1.2.0", published_at: "2026-11-01T00:00:00Z" }]);
       }
@@ -103,7 +104,8 @@ describe("Sidekick (Pi Durable)", () => {
       faux,
       [
         fauxToolCall("github_get", { path: "/repos/acme/web/releases" }),
-        fauxToolCall("drive_list", { nameContains: "Road'map" }),
+        fauxToolCall("drive_list", { folderId: "dir1", nameContains: "Road'map" }),
+        fauxToolCall("drive_list", {}),
       ],
       (r) => (results = r),
       "Latest release is v1.2.0.",
@@ -124,14 +126,14 @@ describe("Sidekick (Pi Durable)", () => {
     );
 
     expect(text).toBe("Latest release is v1.2.0.");
-    expect(asked.sort()).toEqual(["github", "google"]);
+    expect(asked.sort()).toEqual(["github", "google", "google"]);
     expect(seen.find((s) => s.path === "/repos/acme/web/releases")?.authorization).toBe(
       "Bearer tok-github",
     );
-    const drive = seen.find((s) => s.path.startsWith("/drive/files"));
+    const drive = seen.find((s) => s.path.includes("dir1"));
     expect(drive?.authorization).toBe("Bearer tok-google");
     expect(new URL(`http://x${drive!.path}`).searchParams.get("q")).toBe(
-      "trashed = false and name contains 'Road\\'map'",
+      "trashed = false and 'dir1' in parents and name contains 'Road\\'map'",
     );
     expect(results.some((r) => r.includes("v1.2.0"))).toBe(true);
     expect(results.some((r) => r.includes("Roadmap"))).toBe(true);
@@ -224,6 +226,38 @@ describe("Sidekick (Pi Durable)", () => {
     expect(transcripts[0]).toContain("first");
     expect(transcripts[1]).toContain("first");
     expect(transcripts[1]).toContain("second");
+  });
+
+  it("cuts a huge response short and says how big it was", async () => {
+    const { faux, models, model } = setup();
+    let results: string[] = [];
+    script(
+      faux,
+      [fauxToolCall("github_get", { path: "/repos/acme/web/commits" })],
+      (r) => (results = r),
+      "lots",
+    );
+
+    await withSidekick(
+      { storage: new MemoryStorage(), models, model, sidekickEndpoints: fakeApis() },
+      (sidekick) => sidekick.answer({ ticketId: "t1", prompt: "x", token: async () => ok("tok") }),
+    );
+
+    expect(results[0]).toContain("[truncated, 9000 characters in all]");
+    expect(results[0]!.length).toBeLessThan(8_100);
+  });
+
+  it("fails with SidekickError when the model can't answer", async () => {
+    const { faux, models, model } = setup();
+    faux.setResponses([]);
+
+    const err = await withSidekick(
+      { storage: new MemoryStorage(), models, model, sidekickEndpoints: fakeApis() },
+      (sidekick) =>
+        Effect.flip(sidekick.answer({ ticketId: "t1", prompt: "x", token: async () => ok("t") })),
+    );
+
+    expect(err).toBeInstanceOf(SidekickError);
   });
 
   it("does not answer a re-delivered request twice", async () => {

@@ -43,6 +43,8 @@ export default defineConfig({
         "**/routeTree.gen.ts",
         // Test fakes are test infrastructure, not production code.
         "packages/testing/**",
+        // Browser stand-in for the e2e suites.
+        "apps/e2e/src/browse.ts",
       ],
       reporter: ["text", "html", "json", "json-summary"],
       reportOnFailure: true,
