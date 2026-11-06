@@ -236,6 +236,7 @@ export const MemoryRepositoryInMemory = Layer.sync(MemoryRepository, () => {
 
 export const WorkerRepositoryInMemory = Layer.sync(WorkerRepository, () => {
   const workers = new Map<string, Worker>();
+  const secrets = new Map<string, string>(); // secretHash → worker id
   return {
     heartbeat: ({ workerId, workerType, ticketId, at }) =>
       Effect.sync(() => {
@@ -243,6 +244,9 @@ export const WorkerRepositoryInMemory = Layer.sync(WorkerRepository, () => {
         const next: Worker = {
           id: workerId,
           workerType,
+          ownerChannelType: prev?.ownerChannelType ?? null,
+          ownerId: prev?.ownerId ?? null,
+          name: prev?.name ?? null,
           currentTicketId: ticketId,
           lastSeenAt: at,
           createdAt: prev?.createdAt ?? at,
@@ -255,6 +259,38 @@ export const WorkerRepositoryInMemory = Layer.sync(WorkerRepository, () => {
       return w ? Effect.succeed(w) : Effect.fail(new WorkerNotFound({ workerId: id }));
     },
     list: Effect.sync(() => [...workers.values()]),
+    register: ({ id, workerType, owner, name, secretHash, at }) =>
+      Effect.sync(() => {
+        const worker: Worker = {
+          id,
+          workerType,
+          ownerChannelType: owner.channelType,
+          ownerId: owner.id,
+          name,
+          currentTicketId: null,
+          lastSeenAt: new Date(0).toISOString(),
+          createdAt: at,
+        };
+        workers.set(id, worker);
+        secrets.set(secretHash, id);
+        return worker;
+      }),
+    findBySecretHash: (secretHash) =>
+      Effect.sync(() => {
+        const id = secrets.get(secretHash);
+        return id === undefined ? undefined : workers.get(id);
+      }),
+    listByOwner: (channelType, ownerId) =>
+      Effect.sync(() =>
+        [...workers.values()].filter(
+          (w) => w.ownerChannelType === channelType && w.ownerId === ownerId,
+        ),
+      ),
+    remove: (id) =>
+      Effect.sync(() => {
+        for (const [hash, wid] of secrets) if (wid === id) secrets.delete(hash);
+        return workers.delete(id);
+      }),
   };
 });
 

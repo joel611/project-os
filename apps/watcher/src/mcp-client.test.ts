@@ -25,6 +25,18 @@ describe("httpMcpClient", () => {
     expect(req?.body.id).toBe(2);
   });
 
+  it("sends a personal worker's secret as a Bearer token", async () => {
+    let headers: Headers | undefined;
+    const fetcher = (async (_url: string, init: RequestInit) => {
+      headers = new Headers(init.headers);
+      return new Response(JSON.stringify(text("1")));
+    }) as unknown as typeof fetch;
+    await httpMcpClient("u", fetcher, "s3cret").callTool("t", {});
+    expect(headers?.get("authorization")).toBe("Bearer s3cret");
+    await httpMcpClient("u", fetcher).callTool("t", {});
+    expect(headers?.get("authorization")).toBeNull();
+  });
+
   it("throws on HTTP errors", async () => {
     await expect(httpMcpClient("u", json({}, 500)).callTool("t", {})).rejects.toThrow(/HTTP 500/);
   });

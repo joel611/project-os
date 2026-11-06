@@ -1,6 +1,6 @@
 import type { InboundMessage, ReplyInstruction, WorkerType } from "@project-os/contracts";
 import { Effect } from "effect";
-import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
+import { ACTIVE_STATUSES, isTerminal, type Ticket, workerLabel } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -12,6 +12,7 @@ import {
   TicketRepository,
   WorkerLauncher,
 } from "../ports/index.ts";
+import { onlinePersonalWorker } from "./personal-workers.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { nowIso } from "./tickets.ts";
 
@@ -37,7 +38,14 @@ export interface HandleInboundConfig {
    * in a thread, and in the admin channel, are handled either way.
    */
   readonly requireMention?: boolean;
+  /**
+   * A personal worker (registered with /register-worker) counts as online if it heartbeat
+   * within this window; only then does it get its owner's new tickets. Default 15 minutes.
+   */
+  readonly workerStaleMs?: number;
 }
+
+const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
 
 export type InboundOutcome =
   | { readonly kind: "duplicate" }
@@ -254,7 +262,14 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
 
     switch (result.intent) {
       case "new_request": {
-        const workerType = result.workerType ?? config.defaultWorkerType ?? "local_claude";
+        // The requester's own online device takes the ticket. Otherwise it goes to a shared
+        // worker: the classifier's pick or the default (Daytona, when configured).
+        const personal = yield* onlinePersonalWorker(
+          { channelType: message.channelType, id: message.sender.id },
+          config.workerStaleMs ?? DEFAULT_WORKER_STALE_MS,
+        );
+        const workerType =
+          personal?.workerType ?? result.workerType ?? config.defaultWorkerType ?? "local_claude";
         const ticketId = yield* ids.next;
         yield* tickets.insert({
           id: ticketId,
@@ -287,8 +302,11 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         });
         // `ticket_claim` only admits the assigned worker. A Daytona session is a fresh worker
         // per ticket, so it gets its own id and the host Watcher never sees the ticket.
-        const workerId =
-          workerType === "daytona_pi" ? `daytona-${ticketId}` : (config.workerId ?? null);
+        const workerId = personal
+          ? personal.id
+          : workerType === "daytona_pi"
+            ? `daytona-${ticketId}`
+            : (config.workerId ?? null);
         const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
         yield* tickets.appendEvent({
           id: yield* ids.next,
@@ -296,8 +314,10 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           type: "assigned",
           actor: "coordinator",
           actorId: null,
-          body: `Assigned to ${workerId ?? workerType}`,
-          payload: { workerType, workerId },
+          body: personal
+            ? `Assigned to the requester's own worker ${workerLabel(personal)}`
+            : `Assigned to ${workerId ?? workerType}`,
+          payload: { workerType, workerId, personal: personal !== undefined },
           createdAt: at,
         });
         yield* openTicketThread(ticketId, at);

@@ -1,4 +1,4 @@
-import type { MemoryEntry, MemoryEntryType } from "@project-os/contracts";
+import type { ChannelType, MemoryEntry, MemoryEntryType } from "@project-os/contracts";
 import { Context, type Effect } from "effect";
 import type { Project, ProjectNotFound } from "../../domain/project/index.ts";
 import type {
@@ -144,5 +144,23 @@ export class WorkerRepository extends Context.Service<
     }) => Effect.Effect<Worker>;
     readonly get: (id: string) => Effect.Effect<Worker, WorkerNotFound>;
     readonly list: Effect.Effect<ReadonlyArray<Worker>>;
+    /** Creates a personal worker owned by one person, authenticated by `secretHash`. */
+    readonly register: (input: {
+      readonly id: string;
+      readonly workerType: WorkerType;
+      readonly owner: { readonly channelType: ChannelType; readonly id: string };
+      readonly name: string;
+      readonly secretHash: string;
+      readonly at: string;
+    }) => Effect.Effect<Worker>;
+    /** The personal worker whose secret hashes to `secretHash`, if any. */
+    readonly findBySecretHash: (secretHash: string) => Effect.Effect<Worker | undefined>;
+    /** Personal workers this person registered. */
+    readonly listByOwner: (
+      channelType: ChannelType,
+      ownerId: string,
+    ) => Effect.Effect<ReadonlyArray<Worker>>;
+    /** Deletes the worker (its secret stops working). Returns false if there was none. */
+    readonly remove: (id: string) => Effect.Effect<boolean>;
   }
 >()("@project-os/core/WorkerRepository") {}

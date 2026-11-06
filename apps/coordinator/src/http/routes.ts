@@ -1,10 +1,17 @@
 import { healthConfig } from "@project-os/config";
-import { InboundMessage, PromptAnswer, SlashCommand } from "@project-os/contracts";
+import {
+  InboundMessage,
+  PromptAnswer,
+  SlashCommand,
+  WorkerRegisterRequest,
+} from "@project-os/contracts";
 import {
   answerPrompt,
   getTicket,
   handleInbound,
   readActivity,
+  redeemWorkerRegistration,
+  workerLabel,
   type AgentRuntime,
   type ChannelGateway,
   type Clock,
@@ -172,6 +179,24 @@ export const httpRoutes = ({
         reply(set, toResult(listProjectTickets(params.id))),
       )
       .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
+      // A Watcher trading its /register-worker code for device credentials. The code is the
+      // only proof: it is bound to whoever ran the command, short-lived, and works once.
+      .post("/workers/register", ({ body, set }) =>
+        reply(
+          set,
+          toResult(
+            decode(WorkerRegisterRequest, body).pipe(
+              Effect.flatMap(redeemWorkerRegistration),
+              Effect.map(({ worker, secret }) => ({
+                workerId: worker.id,
+                name: workerLabel(worker),
+                secret,
+              })),
+            ),
+            201,
+          ),
+        ),
+      )
       .get("/activity", ({ query, set }) => {
         const since = typeof query.since === "string" ? query.since : undefined;
         if (since !== undefined && Number.isNaN(Date.parse(since))) {
