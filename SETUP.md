@@ -90,9 +90,9 @@ Two behaviour switches, both on by default:
 - `DISCORD_REQUIRE_MENTION=true`: in project channels, the bot only answers top-level messages that @mention it. Messages inside ticket threads and the admin channel don't need a mention. Set `false` to answer every message.
 - `DISCORD_PROJECT_CHANNEL_AUTO_CREATE=true`: creating a project also creates its channel.
 
-Optional, from [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet):
+From [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet): the bot only works in server channels. It ignores DMs, and every slash command, `/connect` included, is unavailable in DMs. It also adds one optional setting:
 
-- `DISCORD_MEMBER_ROLE_IDS`: comma-separated role ids (right-click a role → Copy Role ID). When set, only people holding one of those roles can trigger the bot. Others' messages are ignored silently, and their slash commands get a private refusal. DMs carry no roles, so `/connect` and the other commands then only work inside the server. People in `ADMIN_USER_IDS` are not exempt, so give them a role too. Unset means everyone can use the bot.
+- `DISCORD_MEMBER_ROLE_IDS`: comma-separated role ids (right-click a role → Copy Role ID). When set, only people holding one of those roles can trigger the bot. Others' messages are ignored silently, and their slash commands get a private refusal. People in `ADMIN_USER_IDS` are not exempt, so give them a role too. Unset means everyone can use the bot.
 
 ### 1.4 Check it
 
@@ -221,7 +221,7 @@ PUBLIC_URL=http://localhost:8080
 
 How a person links an account:
 
-1. Run `/connect provider:Google` (or GitHub) anywhere the bot is, DMs included. The reply is private.
+1. Run `/connect provider:Google` (or GitHub) in any server channel the bot can see. The reply is private.
 2. Open the one-time link (it works once, for 10 minutes) and approve on Google or GitHub.
 3. The browser lands on "account connected". `/connections` shows what's linked, and `/disconnect` unlinks.
 
