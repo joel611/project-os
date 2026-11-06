@@ -103,9 +103,14 @@ export interface IntentResult {
   readonly confidence: number;
   /** Only meaningful for `new_request`. Falls back to the configured default. */
   readonly workerType?: WorkerType;
-  /** Whether a Worker is needed, or the Coordinator can answer from Project Memory. */
-  readonly needsWorker?: boolean;
+  /**
+   * Who does a new request. `worker`: it needs the repo checked out, tests run, or a script
+   * run. `sidekick`: read-only lookups through Google Drive or GitHub tools. Unset: `worker`.
+   */
+  readonly executor?: Executor;
 }
+
+export type Executor = "worker" | "sidekick";
 
 export class IntentClassifier extends Context.Service<
   IntentClassifier,
@@ -129,6 +134,35 @@ export class AgentRuntime extends Context.Service<
     }) => Effect.Effect<string, AgentRuntimeError>;
   }
 >()("@project-os/core/AgentRuntime") {}
+
+export class SidekickError extends Data.TaggedError("SidekickError")<{
+  readonly message: string;
+}> {}
+
+/** An access token for the person a Sidekick answers, or the reason there is none. */
+export type SidekickToken =
+  | { readonly ok: true; readonly accessToken: string }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * The Sidekick sits next to the Coordinator and answers tool-only requests (list a Drive
+ * folder, read a repo's status, history, pipelines or releases) with read-only Drive and
+ * GitHub tools, acting with the requester's own token. It has no shell and no checkout.
+ */
+export class Sidekick extends Context.Service<
+  Sidekick,
+  {
+    /** One turn of the ticket's Sidekick conversation. */
+    readonly answer: (input: {
+      readonly ticketId: string;
+      readonly prompt: string;
+      /** Idempotency key: a re-delivered request is not answered twice. Use the inbound `externalId`. */
+      readonly requestId?: string;
+      /** The requester's token for `provider`. Called only when a tool needs it. */
+      readonly token: (provider: ConnectionProvider) => Promise<SidekickToken>;
+    }) => Effect.Effect<string, SidekickError>;
+  }
+>()("@project-os/core/Sidekick") {}
 
 export class WorkerLauncher extends Context.Service<
   WorkerLauncher,

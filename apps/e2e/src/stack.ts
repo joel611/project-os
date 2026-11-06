@@ -7,7 +7,7 @@ import { type Connections, makeConnections } from "@project-os/auth";
 import type { WorkerType } from "@project-os/core";
 import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
-import { AgentRuntimeEcho } from "@project-os/testing";
+import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
@@ -66,6 +66,8 @@ export interface Stack {
   readonly admin: ReturnType<typeof makeAdminActions>;
   /** Creates a project and links `channelId` as its default response channel. */
   readonly linkChannel: (channelId: string) => Promise<string>;
+  /** Turns the faked Sidekick took, with the requester's GitHub token as a tool would see it. */
+  readonly sidekickCalls: SidekickCall[];
   /** The SQLite file every component shares. */
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
@@ -146,7 +148,9 @@ export const startStack = async (options: {
     accessToken: (person, provider) => lazy().service.accessToken(person, provider),
   });
 
-  // Later layers win: the fakes replace LocalLive's AgentRuntime placeholder.
+  const sidekick = makeSidekickRecording({ probe: "github" });
+
+  // Later layers win: the fakes replace LocalLive's AgentRuntime and Sidekick placeholders.
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
       LocalLive({
@@ -156,6 +160,7 @@ export const startStack = async (options: {
       }),
       options.classifier,
       AgentRuntimeEcho,
+      sidekick.layer,
       ...(oauth ? [connectionsLayer] : []),
     ) as Layer.Layer<any, never>,
   ) as McpRuntime;
@@ -230,6 +235,7 @@ export const startStack = async (options: {
     createdThreads,
     reactions,
     prompts,
+    sidekickCalls: sidekick.calls,
     dbPath,
     ...(oauth && { oauth }),
     json,

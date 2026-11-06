@@ -1,4 +1,11 @@
-import { Clock, IntentClassifier, WorkerLauncher, type WorkerType } from "@project-os/core";
+import type { ConnectionProvider } from "@project-os/contracts";
+import {
+  Clock,
+  type Executor,
+  IntentClassifier,
+  WorkerLauncher,
+  type WorkerType,
+} from "@project-os/core";
 import { Effect, Layer } from "effect";
 import {
   AgentRuntimeEcho,
@@ -6,6 +13,7 @@ import {
   IntentClassifierFake,
   KeyValueStoreInMemory,
   makeChannelGatewayRecording,
+  makeSidekickRecording,
   makeUserConnectionsInMemory,
   MemoryRepositoryInMemory,
   ProjectRepositoryInMemory,
@@ -39,8 +47,16 @@ export const makeTestLayer = (options?: {
   readonly failReact?: string;
   /** Make `ChannelGateway.ask` fail with this message. */
   readonly failPrompt?: string;
+  /** Make every Sidekick turn fail with this message. */
+  readonly failSidekick?: string;
+  /** Have each Sidekick turn ask for this provider's token, as one of its tools would. */
+  readonly sidekickProbe?: ConnectionProvider;
 }) => {
   const launched: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
+  const sidekick = makeSidekickRecording({
+    ...(options?.failSidekick === undefined ? {} : { fail: options.failSidekick }),
+    ...(options?.sidekickProbe === undefined ? {} : { probe: options.sidekickProbe }),
+  });
   const gateway = makeChannelGatewayRecording({
     ...(options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate }),
     ...(options?.failThreadCreate === undefined ? {} : { failThread: options.failThreadCreate }),
@@ -63,11 +79,14 @@ export const makeTestLayer = (options?: {
     Layer.succeed(WorkerLauncher, {
       launch: (input) => Effect.sync(() => void launched.push(input)),
     }),
+    sidekick.layer,
     IdGeneratorSequential,
     connections.layer,
   );
   return {
     layer,
+    /** Turns the Sidekick took. */
+    sidekickCalls: sidekick.calls,
     sent: gateway.sent,
     createdChannels: gateway.created,
     launched,
@@ -80,12 +99,19 @@ export const makeTestLayer = (options?: {
   };
 };
 
-/** Classifier returning a fixed intent / confidence / workerType. */
+/** Classifier returning a fixed intent / confidence / workerType / executor. */
 export const classifierReturning = (
   intent: string,
   confidence = 1,
   workerType?: WorkerType,
+  executor?: Executor,
 ): Layer.Layer<IntentClassifier> =>
   Layer.succeed(IntentClassifier, {
-    classify: () => Effect.succeed({ intent, confidence, ...(workerType ? { workerType } : {}) }),
+    classify: () =>
+      Effect.succeed({
+        intent,
+        confidence,
+        ...(workerType ? { workerType } : {}),
+        ...(executor ? { executor } : {}),
+      }),
   });

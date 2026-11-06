@@ -743,6 +743,7 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `Scheduler` | run the health sweep every minute | Cron Trigger | `setInterval` |
 | `IntentClassifier` | Jev intent classification (§8.6) | pi-ai `classify` → OpenRouter (or Workers AI) | pi-ai `classify` → OpenRouter |
 | `AgentRuntime` | Pi Durable conversation: reply composition, admin dialogue | Harness in a Durable Object (DO SQLite storage) | Harness in-process (SQLite file storage) |
+| `Sidekick` | tool-only turns on a ticket: read-only Drive and GitHub tools, acting as the requester (§8.6) | Same Harness as `AgentRuntime` | Same Harness as `AgentRuntime` |
 | `WorkerLauncher` | start a Daytona sandbox for `daytona_pi` tickets | Daytona API | Daytona API when `DAYTONA_API_KEY` is set, else no-op |
 | `UserConnections` | per-person Google / GitHub links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
@@ -847,10 +848,17 @@ Enforce these with lint import rules in the Vite+ config.
 - One request per inbound message, all questions evaluated together:
   - `intent` (choice): `new_request`, `follow_up` (on an open ticket), `status_question`, `admin_command`, `chit_chat`, `none`
   - `worker_type` (choice): `local_claude`, … (only meaningful for `new_request`)
-  - `needs_worker` (bool): does this need a Worker, or can the Coordinator answer from Project Memory
+  - `executor` (choice): `worker` (needs the whole repo pulled, tests run, or a script run; also anything that changes code, or is unclear) or `sidekick` (read-only tool calls: list Google Drive files, read a GitHub repo's status, history, pipelines or releases). Only meaningful for `new_request`. Below 0.7 confidence it counts as `worker`, because a Worker can do both.
 - The option sets live in code; Jev only chooses between them. Below a confidence threshold (config, start at 0.5) the Coordinator asks a clarifying question instead of creating a ticket.
 - Keep counting, arithmetic, and date logic in code, not in Jev questions.
 - On Cloudflare, Jev is also available on Workers AI (`typesafe/jev-1.14.0`) through the same `IntentClassifier` port.
+
+**Sidekick.** A `new_request` whose `executor` is `sidekick` never reaches a Worker. The Coordinator still creates the Ticket (so the event log and web UI show it) and assigns it to worker id `sidekick`, which the Watcher never lists. It then runs one Pi conversation, `sidekick:<ticketId>`, on the same Harness as `AgentRuntime`, and finishes the ticket in the same request: `result` event, `completed`, answer posted in the ticket's thread.
+
+- Tools are read-only: `drive_list`, and `github_get` limited to `GET /repos/`, `/orgs/`, `/users/` and `/search/`. There is no shell and no checkout.
+- Every call uses the token of whoever wrote the ticket's latest message (the same lookup as `user_token`), so the provider's own permissions apply. If they have not linked the account, the tool says so and the Coordinator asks them to `/connect`.
+- A message in a finished Sidekick ticket's thread goes back to the same conversation as a follow-up, not to the closed-ticket reply.
+- A request the Sidekick cannot do (it needs the repo, tests or a script) gets a plain answer saying so; it is not handed to a Worker automatically.
 
 Flow: inbound → `IntentClassifier` (Jev) → use case decides (create/assign ticket, append follow_up, answer status, route to admin) → on completion `AgentRuntime` (Pi) composes the reply → `ChannelGateway`.
 

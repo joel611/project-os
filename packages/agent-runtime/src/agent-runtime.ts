@@ -11,9 +11,16 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable";
 import type { TelemetryContext } from "@earendil-works/pi-telemetry";
-import { AgentRuntime, AgentRuntimeError } from "@project-os/core";
-import { Effect, Layer } from "effect";
+import { AgentRuntime, AgentRuntimeError, Sidekick, SidekickError } from "@project-os/core";
+import { Context, Effect, Layer } from "effect";
 import { type AdminActions, makeAdminExtension } from "./admin-tools.ts";
+import {
+  makeSidekickExtension,
+  SIDEKICK_ENDPOINTS,
+  SIDEKICK_INSTRUCTIONS,
+  type SidekickEndpoints,
+  type TokenSource,
+} from "./sidekick-tools.ts";
 
 export interface AgentRuntimeOptions {
   /** Pi storage. One process owns it at a time; the Harness is opened once per Coordinator. */
@@ -24,6 +31,8 @@ export interface AgentRuntimeOptions {
   /** Coordinator actions exposed as tools to `admin:*` sessions. */
   readonly adminActions?: AdminActions;
   readonly instructions?: string;
+  /** Where the Sidekick's tools call. Default: the real GitHub and Google Drive APIs. */
+  readonly sidekickEndpoints?: SidekickEndpoints;
   /** Pi telemetry sink, e.g. `makeOtelTelemetry(...)`. Omitted: no-op. */
   readonly telemetry?: TelemetryContext | undefined;
 }
@@ -41,15 +50,16 @@ const fail = (e: unknown) =>
   new AgentRuntimeError({ message: e instanceof Error ? e.message : String(e) });
 
 const ADMIN_PREFIX = "admin:";
+const SIDEKICK_PREFIX = "sidekick:";
 
 /**
- * Pi Durable behind the `AgentRuntime` port. One conversation per session key, submissions
- * keyed by `requestId`, resumed on open. Admin sessions get the Coordinator action tools;
- * project sessions get none (replies leave through `ChannelGateway`, never through Pi).
+ * Pi Durable behind the `AgentRuntime` and `Sidekick` ports, on one Harness. One conversation
+ * per session key, submissions keyed by `requestId`, resumed on open. Admin sessions get the
+ * Coordinator action tools, `sidekick:<ticketId>` sessions the read-only Drive and GitHub
+ * tools; project sessions get none (replies leave through `ChannelGateway`, never through Pi).
  */
 export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
-  Layer.effect(
-    AgentRuntime,
+  Layer.effectContext(
     Effect.gen(function* () {
       const admin = defineExtension({ name: "project-os-none" });
       const registry = createRegistry();
@@ -57,6 +67,13 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
         ? makeAdminExtension(options.adminActions)
         : undefined;
       if (adminExtension) registry.install(adminExtension);
+      // Token sources of the Sidekick turns running now, by Pi conversation.
+      const tokenSources = new Map<string, TokenSource>();
+      const sidekickExtension = makeSidekickExtension({
+        endpoints: options.sidekickEndpoints ?? SIDEKICK_ENDPOINTS,
+        tokenSource: (conversationId) => (provider) => tokenSources.get(conversationId)!(provider),
+      });
+      registry.install(sidekickExtension);
       registry.install(admin);
 
       const harness = yield* Effect.acquireRelease(
@@ -79,11 +96,21 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
         (h) => Effect.promise(() => h.close(context)),
       );
 
-      const agentFor = (key: string) => ({
-        model: options.model,
-        extensions: key.startsWith(ADMIN_PREFIX) && adminExtension ? [adminExtension] : [admin],
-        ...(options.instructions === undefined ? {} : { instructions: options.instructions }),
-      });
+      const agentFor = (key: string) => {
+        const extensions = key.startsWith(SIDEKICK_PREFIX)
+          ? [sidekickExtension]
+          : key.startsWith(ADMIN_PREFIX) && adminExtension
+            ? [adminExtension]
+            : [admin];
+        const instructions = key.startsWith(SIDEKICK_PREFIX)
+          ? SIDEKICK_INSTRUCTIONS
+          : options.instructions;
+        return {
+          model: options.model,
+          extensions,
+          ...(instructions === undefined ? {} : { instructions }),
+        };
+      };
 
       // Serialise lookups so two first messages for one session do not create two conversations.
       const inflight = new Map<string, Promise<Conversation>>();
@@ -111,33 +138,60 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
         });
       };
 
-      const respond = async (input: {
-        readonly sessionId: string;
-        readonly prompt: string;
-        readonly requestId?: string;
-      }): Promise<string> => {
+      const respond = async (
+        input: {
+          readonly sessionId: string;
+          readonly prompt: string;
+          readonly requestId?: string;
+        },
+        tokens?: TokenSource,
+      ): Promise<string> => {
         const conversation = await conversationFor(input.sessionId);
-        const submission = await conversation.submit(
-          {
-            type: "input",
-            content: input.prompt,
-            ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
-          },
-          context,
-        );
-        const settled = await submission.wait(context);
-        if (settled.status !== "done" || settled.type !== "input") {
-          throw new Error(`no answer (${settled.status})`);
+        const conversationKey = String(conversation.id);
+        if (tokens) tokenSources.set(conversationKey, tokens);
+        try {
+          const submission = await conversation.submit(
+            {
+              type: "input",
+              content: input.prompt,
+              ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
+            },
+            context,
+          );
+          const settled = await submission.wait(context);
+          if (settled.status !== "done" || settled.type !== "input") {
+            throw new Error(`no answer (${settled.status})`);
+          }
+          const answer = await conversation.commit(
+            (tx) => tx.entry(AssistantEntry, settled.answer),
+            context,
+          );
+          // A `done` input always has its assistant answer entry.
+          const message = answer?.model?.[0] as AssistantMessage;
+          return message.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+        } finally {
+          if (tokens) tokenSources.delete(conversationKey);
         }
-        const answer = await conversation.commit(
-          (tx) => tx.entry(AssistantEntry, settled.answer),
-          context,
-        );
-        // A `done` input always has its assistant answer entry.
-        const message = answer?.model?.[0] as AssistantMessage;
-        return message.content.map((c) => (c.type === "text" ? c.text : "")).join("");
       };
 
-      return { respond: (input) => Effect.tryPromise({ try: () => respond(input), catch: fail }) };
+      return Context.make(AgentRuntime, {
+        respond: (input) => Effect.tryPromise({ try: () => respond(input), catch: fail }),
+      }).pipe(
+        Context.add(Sidekick, {
+          answer: (input) =>
+            Effect.tryPromise({
+              try: () =>
+                respond(
+                  {
+                    sessionId: `${SIDEKICK_PREFIX}${input.ticketId}`,
+                    prompt: input.prompt,
+                    ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
+                  },
+                  input.token,
+                ),
+              catch: (e) => new SidekickError({ message: fail(e).message }),
+            }),
+        }),
+      );
     }),
   );
