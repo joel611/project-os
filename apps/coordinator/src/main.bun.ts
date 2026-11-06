@@ -78,6 +78,8 @@ createApp(
       inbound: {
         workerId: env("WORKER_ID", DEFAULT_WORKER_ID),
         confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
+        // Top-level project channel messages must @mention the bot; threads and admin don't.
+        requireMention: envBool("DISCORD_REQUIRE_MENTION", true),
         // Admin identity (POC): only these Discord user ids may use the admin channel.
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },

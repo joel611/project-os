@@ -108,7 +108,7 @@ export const startStack = async (options: {
     {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
-        inbound: { workerId: options.workerId },
+        inbound: { workerId: options.workerId, requireMention: true },
         commands: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER], admin },
       },
       mcp: runtime,

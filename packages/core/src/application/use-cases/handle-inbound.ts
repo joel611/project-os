@@ -31,11 +31,17 @@ export interface HandleInboundConfig {
    */
   readonly workerId?: string;
   readonly dedupeTtlSeconds?: number;
+  /**
+   * Ignore top-level Discord project channel messages that don't @mention the bot. Messages
+   * in a thread, and in the admin channel, are handled either way.
+   */
+  readonly requireMention?: boolean;
 }
 
 export type InboundOutcome =
   | { readonly kind: "duplicate" }
   | { readonly kind: "unlinked" }
+  | { readonly kind: "not_mentioned" }
   | { readonly kind: "ticket_created"; readonly ticket: Ticket }
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
   | { readonly kind: "ticket_closed"; readonly ticketId: string }
@@ -148,6 +154,15 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       });
       yield* reply(text);
       return { kind: "admin_handled" } as InboundOutcome;
+    }
+
+    if (
+      config.requireMention &&
+      message.channelType === "discord" &&
+      message.threadId === undefined &&
+      message.mentionsBot !== true
+    ) {
+      return { kind: "not_mentioned" } as InboundOutcome;
     }
 
     const sourceType = sourceTypeFor(message.channelType);

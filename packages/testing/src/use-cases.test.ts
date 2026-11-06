@@ -223,6 +223,42 @@ describe("handleInbound", () => {
     expect(other.value.kind).toBe("clarification_sent");
   });
 
+  describe("with requireMention", () => {
+    const strict = { ...config, requireMention: true };
+
+    it("ignores a top-level project channel message that doesn't mention the bot", async () => {
+      for (const over of [{}, { mentionsBot: false }]) {
+        const { value, sent } = await run(handleInbound(msg(over), strict), inbound("new_request"));
+        expect(value.kind).toBe("not_mentioned");
+        expect(sent).toEqual([]);
+      }
+    });
+
+    it("handles a message that mentions the bot", async () => {
+      const { value } = await run(
+        handleInbound(msg({ mentionsBot: true }), strict),
+        inbound("new_request"),
+      );
+      expect(value.kind).toBe("ticket_created");
+    });
+
+    it("handles a thread message without a mention", async () => {
+      const { value } = await run(
+        handleInbound(msg({ threadId: "th1" }), strict),
+        inbound("new_request"),
+      );
+      expect(value.kind).toBe("ticket_created");
+    });
+
+    it("still handles the admin channel without a mention", async () => {
+      const { value } = await run(
+        handleInbound(msg({ channelId: ADMIN }), strict),
+        inbound("admin_command"),
+      );
+      expect(value.kind).toBe("admin_handled");
+    });
+  });
+
   it("messages from a channel type with no source mapping are unlinked", async () => {
     const { value } = await run(
       handleInbound(msg({ channelType: "chat" }), config),
