@@ -40,7 +40,7 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 
 ## Not on Workers
 
-- **Discord adapter:** it holds a long-running gateway WebSocket, so it runs elsewhere (a VM, Fly, or a Cloudflare Container later) and is pointed at the Coordinator with `COORDINATOR_URL`. Set `DISCORD_ADAPTER_URL` so the Coordinator can reach its `/reply` endpoint.
+- **Discord:** a Bun Coordinator runs the bot in its own process. A Worker can't hold the long-running gateway WebSocket, so Discord runs elsewhere (a VM, Fly, or a Cloudflare Container later) with `bun run --cwd packages/channel-discord standalone`, pointed at the Coordinator with `COORDINATOR_URL`. Set `DISCORD_ADAPTER_URL` so the Coordinator can reach its `/reply` endpoint. If the Coordinator has `DISCORD_ADAPTER_URL`, it ignores `DISCORD_BOT_TOKEN`.
 - **Watcher:** runs on the machine that hosts Claude Code, with `MCP_URL=<coordinatorUrl>/mcp`.
 
 ## Known gaps
