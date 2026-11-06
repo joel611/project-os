@@ -79,6 +79,7 @@ describe("discord loop, no Discord", () => {
       await sayInDiscord(speaker, "build it", "dup-1");
       await sayInDiscord(speaker, "build it", "dup-1");
       expect(await json("GET", `/projects/${projectId}/tickets`)).toHaveLength(1);
+      expect(stack.reactions).toEqual([{ channelId: CHANNEL, messageId: "dup-1", emoji: "👀" }]);
     });
 
     it("ignores a project channel message that doesn't @mention the bot", async () => {
@@ -86,14 +87,19 @@ describe("discord loop, no Discord", () => {
       await sayInDiscord(speaker, "chatting among ourselves", undefined, { mention: false });
       expect(await json("GET", `/projects/${projectId}/tickets`)).toEqual([]);
       expect(stack.posted).toEqual([]);
+      expect(stack.reactions).toEqual([]);
     });
 
     it("takes a message in a thread without a mention", async () => {
       const projectId = await linkChannel();
-      await sayInDiscord({ ...speaker, threadId: "th-1" }, "and dark mode", undefined, {
+      await sayInDiscord({ ...speaker, threadId: "th-1" }, "and dark mode", "in-thread", {
         mention: false,
       });
       expect(await json("GET", `/projects/${projectId}/tickets`)).toHaveLength(1);
+      // The reaction goes on the message inside its thread.
+      expect(stack.reactions).toEqual([
+        { channelId: CHANNEL, threadId: "th-1", messageId: "in-thread", emoji: "👀" },
+      ]);
     });
 
     it("creates nothing for an unlinked channel", async () => {
@@ -101,6 +107,7 @@ describe("discord loop, no Discord", () => {
       await sayInDiscord({ ...speaker, channelId: "other-chan" }, "hello?");
       expect(await json("GET", `/projects/${projectId}/tickets`)).toEqual([]);
       expect(stack.posted).toEqual([]);
+      expect(stack.reactions).toEqual([]);
     });
   });
 
