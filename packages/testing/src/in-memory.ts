@@ -12,7 +12,9 @@ import {
   ProjectNotFound,
   ProjectRepository,
   ProjectSourceRepository,
+  ReactionFailed,
   Scheduler,
+  SourceAliasTaken,
   SourceAlreadyLinked,
   SourceNotFound,
   PromptSendFailed,
@@ -21,7 +23,6 @@ import {
   TicketRepository,
   transitionTicket,
   UserConnections,
-  WorkerLauncher,
   WorkerNotFound,
   WorkerRepository,
   type Project,
@@ -38,6 +39,7 @@ import {
   type CreateThreadInstruction,
   type PromptInstruction,
   type MemoryEntry,
+  type ReactInstruction,
   type ReplyInstruction,
 } from "@project-os/contracts";
 import { Effect, Layer } from "effect";
@@ -145,7 +147,7 @@ export const ProjectSourceRepositoryInMemory = Layer.sync(ProjectSourceRepositor
     [...sources.values()].find((s) => s.type === type && s.externalId === externalId);
   return {
     insert: (source) =>
-      Effect.suspend(() => {
+      Effect.suspend((): Effect.Effect<ProjectSource, SourceAlreadyLinked | SourceAliasTaken> => {
         const existing = find(source.type, source.externalId);
         if (existing) {
           return Effect.fail(
@@ -156,8 +158,36 @@ export const ProjectSourceRepositoryInMemory = Layer.sync(ProjectSourceRepositor
             }),
           );
         }
+        if (
+          [...sources.values()].some(
+            (s) => s.projectId === source.projectId && s.alias === source.alias,
+          )
+        ) {
+          return Effect.fail(
+            new SourceAliasTaken({ projectId: source.projectId, alias: source.alias }),
+          );
+        }
         sources.set(source.id, source);
         return Effect.succeed(source);
+      }),
+    update: (projectId, sourceId, patch) =>
+      Effect.suspend((): Effect.Effect<ProjectSource, SourceNotFound | SourceAliasTaken> => {
+        const target = sources.get(sourceId);
+        if (!target || target.projectId !== projectId) {
+          return Effect.fail(new SourceNotFound({ sourceId }));
+        }
+        const { alias } = patch;
+        if (
+          alias !== undefined &&
+          [...sources.values()].some(
+            (s) => s.projectId === projectId && s.alias === alias && s.id !== sourceId,
+          )
+        ) {
+          return Effect.fail(new SourceAliasTaken({ projectId, alias }));
+        }
+        const updated = { ...target, ...patch };
+        sources.set(sourceId, updated);
+        return Effect.succeed(updated);
       }),
     findByExternal: (type, externalId) => Effect.sync(() => find(type, externalId)),
     listByProject: (projectId) =>
@@ -251,26 +281,35 @@ export const KeyValueStoreInMemory = Layer.sync(KeyValueStore, () => {
 });
 
 /**
- * Records every reply sent (`sent`), channel created (`created`), thread opened (`threads`) and
- * prompt posted (`prompts`, message ids `prompt-msg-1`, …).
+ * Records every reply sent (`sent`), channel created (`created`), thread opened (`threads`),
+ * reaction (`reactions`) and prompt posted (`prompts`, message ids `prompt-msg-1`, …).
  * Created channels get ids `chan-1`, …, threads `thread-1`, …; pass `failCreate` /
  * `failThread` to make channel / thread creation fail with that message.
  */
 export const makeChannelGatewayRecording = (options?: {
   readonly failCreate?: string;
   readonly failThread?: string;
+  readonly failReact?: string;
   readonly failPrompt?: string;
 }) => {
   const sent: ReplyInstruction[] = [];
   const created: CreateChannelInstruction[] = [];
   const threads: CreateThreadInstruction[] = [];
+  const reactions: ReactInstruction[] = [];
   const prompts: PromptInstruction[] = [];
   return {
     sent,
     created,
     threads,
+    reactions,
     prompts,
     layer: Layer.succeed(ChannelGateway, {
+      react: (request) =>
+        options?.failReact !== undefined
+          ? Effect.fail(
+              new ReactionFailed({ channelType: request.channelType, message: options.failReact }),
+            )
+          : Effect.sync(() => void reactions.push(request)),
       ask: (request) =>
         options?.failPrompt !== undefined
           ? Effect.fail(
@@ -324,10 +363,6 @@ export const IntentClassifierFake = (intent = "general") =>
 
 export const AgentRuntimeEcho = Layer.succeed(AgentRuntime, {
   respond: ({ prompt }) => Effect.succeed(prompt),
-});
-
-export const WorkerLauncherNoop = Layer.succeed(WorkerLauncher, {
-  launch: () => Effect.void,
 });
 
 /** Sequential ids: `id-1`, `id-2`, … */

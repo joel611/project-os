@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import {
   CreateChannelInstruction,
   CreateThreadInstruction,
+  ReactInstruction,
   PromptInstruction,
   ReplyInstruction,
 } from "@project-os/contracts";
@@ -21,6 +22,13 @@ export type CreateDiscordThread = (input: {
   messageId: string;
   name: string;
 }) => Promise<{ threadId: string }>;
+/** Adds a reaction to a message; `threadId` is set when the message is inside a thread. */
+export type ReactInDiscord = (input: {
+  channelId: string;
+  threadId?: string;
+  messageId: string;
+  emoji: string;
+}) => Promise<void>;
 /** Posts a message with components (a prompt's buttons); resolves to the message's id. */
 export type PostDiscordPrompt = (
   target: ReplyTarget,
@@ -30,21 +38,48 @@ export type PostDiscordPrompt = (
 const decode = Schema.decodeUnknownOption(ReplyInstruction);
 const decodeCreate = Schema.decodeUnknownOption(CreateChannelInstruction);
 const decodeThread = Schema.decodeUnknownOption(CreateThreadInstruction);
+const decodeReact = Schema.decodeUnknownOption(ReactInstruction);
+
 const decodePrompt = Schema.decodeUnknownOption(PromptInstruction);
 
 /**
  * Coordinator-facing endpoints: `/reply` posts a message, `/channels` creates a channel,
- * `/threads` opens a thread on a message, `/prompts` posts a question with buttons. All execute
- * Coordinator instructions; no decisions are made here. Without `createChannel` /
- * `createThread` / `postPrompt`, that endpoint answers 501.
+ * `/threads` opens a thread on a message, `/reactions` reacts to one, `/prompts` posts a
+ * question with buttons. All execute Coordinator instructions; no decisions are made here.
+ * Without `createChannel` / `createThread` / `react` / `postPrompt`, that endpoint answers 501.
  */
 export const createReplyApp = (
   post: PostToDiscord,
   createChannel?: CreateDiscordChannel,
   createThread?: CreateDiscordThread,
+  react?: ReactInDiscord,
   postPrompt?: PostDiscordPrompt,
 ) =>
   new Elysia()
+    .post("/reactions", async ({ body, set }) => {
+      const parsed = decodeReact(body);
+      if (parsed._tag === "None" || parsed.value.channelType !== "discord") {
+        set.status = 400;
+        return { error: "invalid reaction instruction" };
+      }
+      if (!react) {
+        set.status = 501;
+        return { error: "this adapter can't react to messages" };
+      }
+      const { channelId, threadId, messageId, emoji } = parsed.value;
+      try {
+        await react({
+          channelId,
+          ...(threadId === undefined ? {} : { threadId }),
+          messageId,
+          emoji,
+        });
+        return { ok: true };
+      } catch (err) {
+        set.status = 502;
+        return { error: err instanceof Error ? err.message : "discord reaction failed" };
+      }
+    })
     .post("/prompts", async ({ body, set }) => {
       const parsed = decodePrompt(body);
       if (parsed._tag === "None" || parsed.value.channelType !== "discord") {

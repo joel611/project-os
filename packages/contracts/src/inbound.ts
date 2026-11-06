@@ -62,6 +62,21 @@ export type CreateThreadInstruction = typeof CreateThreadInstruction.Type;
 export const CreatedThread = Schema.Struct({ threadId: Schema.String });
 export type CreatedThread = typeof CreatedThread.Type;
 
+/**
+ * Asks a Channel Adapter to react to a message, e.g. 👀 to show the Coordinator took it in.
+ * `threadId` is set when the message was posted inside a thread.
+ */
+export const ReactInstruction = Schema.Struct({
+  channelType: ChannelType,
+  channelId: Schema.String,
+  threadId: Schema.optional(Schema.String),
+  /** Platform id of the message to react to (the inbound `externalId`). */
+  messageId: Schema.String,
+  /** Unicode emoji. */
+  emoji: Schema.String,
+});
+export type ReactInstruction = typeof ReactInstruction.Type;
+
 /** Slash commands a Channel Adapter registers and forwards to the Coordinator's `/commands`. */
 export const SLASH_COMMANDS = ["project-create", "connect", "disconnect", "connections"] as const;
 export const SlashCommandName = Schema.Literals(SLASH_COMMANDS);

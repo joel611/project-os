@@ -66,6 +66,8 @@ const setup = (withSource: boolean) =>
       type: "discord_channel",
       externalId: "chan-1",
       name: "#general",
+      alias: "src-s1",
+      description: null,
       direction: "both",
       isDefaultResponse: true,
       config: {},

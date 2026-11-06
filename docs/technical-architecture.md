@@ -179,11 +179,16 @@ The channel (Discord / email) only sees what the Coordinator chooses to surface 
 
 **Project channels need an @mention.** In a project's Discord channel, the Coordinator only acts on top-level messages that @mention the bot (a reply to the bot's message counts); other messages are left alone so people can talk among themselves. The adapter sets `InboundMessage.mentionsBot` and strips the mention from the content. Messages inside a thread are handled without a mention, since a thread is already a conversation with the bot, and the admin channel is unchanged. `DISCORD_REQUIRE_MENTION=false` turns the rule off.
 
+**Optional member roles.** With `DISCORD_MEMBER_ROLE_IDS` set (comma-separated role ids), the Discord adapter drops messages from people who hold none of those roles before they reach the Coordinator, and answers their slash commands with a private refusal. People in `ADMIN_USER_IDS` always pass, whatever roles they hold. Unset means everyone in the server can trigger the bot.
+
+**Server chat only.** The bot ignores DMs: the adapter drops DM messages, slash commands are registered without DM permission, and a DM interaction that still arrives gets a private "server only" reply.
+
 **Ticket threads (Discord)**
 - A new ticket gets its own thread: the Coordinator asks the Discord adapter to open one on the message that created it (`ChannelGateway.createThread` → the adapter's `/threads`), records it in `ticket_threads`, and posts a short note there. A new request already made inside a thread uses that thread instead.
 - Everything said in a ticket's thread is a `follow_up` on that ticket, whatever the classifier says, except a confident `status_question`, which is answered about that ticket alone. Once the ticket is finished, the thread says so and points back to the channel.
 - The completion reply goes to the ticket's thread; tickets without one still reply in the project's default response source.
 - The bot needs **Create Public Threads** and **Send Messages in Threads**. If Discord refuses, the ticket is created anyway, without a thread.
+- Once a message passes the gates (dedupe, admin list, @mention, linked channel), the Coordinator asks the adapter to react 👀 on it (`ChannelGateway.react` → the adapter's `/reactions`) before classifying, so the sender knows it was received. Filtered messages get no reaction. The bot needs **Add Reactions**; if Discord refuses, handling carries on.
 
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration
@@ -229,6 +234,13 @@ A small program Joel runs on his own machine. It joins the network, polls for wo
 - The watcher has no channel access and no business logic. It only detects work and starts sessions.
 
 Daytona Workers don't need a watcher: the Coordinator starts a sandbox when it assigns a `daytona_pi` ticket, and the sandbox runs the same session-start instruction.
+
+How it works (`packages/infra-daytona`, enabled by `DAYTONA_API_KEY`):
+
+- A `daytona_pi` ticket is assigned to its own worker id, `daytona-<ticketId>`, so the host Watcher (which polls as `WORKER_ID`) never sees it and `ticket_claim` admits only that sandbox.
+- `handleInbound` calls `WorkerLauncher.launch` after assigning. The launcher creates an ephemeral sandbox, installs Pi (`@earendil-works/pi-coding-agent`), writes `~/.pi/agent/mcp.json` pointing at the Coordinator, and runs `pi --print` with the session-start prompt plus the worker id. Pi speaks streamable-HTTP MCP natively, so no bridge is needed. The sandbox is deleted when the session ends.
+- The sandbox is in the cloud, so the MCP endpoint must be public: `DAYTONA_MCP_URL` (a tunnel to the Coordinator's `/mcp`), never `MCP_URL`. The LLM key is `OPENROUTER_API_KEY`, passed as sandbox env.
+- Launch failures are logged, not raised. The ticket stays `assigned`, and the health sweep flags it as unpicked.
 
 **Workers can (via MCP tools only):**
 - Read the assigned Ticket + its events
@@ -322,6 +334,8 @@ ProjectSource
                           // Drive folder id, repo full name, etc.
 
   name                    // display name
+  alias                   // what it is for (e.g. design-docs); unique per project
+  description             // optional extra context for agents and people
   direction               // inbound | outbound | both
 
   is_default_response     // boolean – at most one true per project
@@ -561,14 +575,14 @@ host (outside Compose)
 ```
 
 - The watcher runs on the host (decided), so Claude Code uses the host's existing login and local repos. It reaches MCP through the coordinator's published port.
-- Daytona Workers are out of scope for the first local test; `local_claude` via the watcher is the first Worker type.
+- `local_claude` via the watcher is the first Worker type; `daytona_pi` is opt-in via `DAYTONA_API_KEY` (see the Daytona Workers note above).
 
 ### 5.7 Per-person Google and GitHub access
 
 Workers read Drive and GitHub with the token of the person who asked, never a shared bot credential, so Google's and GitHub's own permissions decide what a Worker can reach. Account linking runs on [Better Auth](https://www.better-auth.com) (`packages/auth`), behind the `UserConnections` port.
 
 ```text
-/connect provider:google           (Discord, any channel or DM; ephemeral reply)
+/connect provider:google           (Discord, any server channel; ephemeral reply)
   → Coordinator: auth user for (discord, user id), one-time link, 10 min
   → browser: GET /connect/:token   → session for that user → Better Auth link-social
   → provider consent               → GET /api/auth/callback/google
@@ -615,6 +629,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 | `ticket_ask` | Ask for approval or a multiple choice pick (Discord buttons) |
 | `ticket_get_prompt` | Read the answer to a `ticket_ask` |
 | `project_memory_read` | Read project memory / context |
+| `project_sources_list` | List the project's sources (alias, description, link) |
 | `project_memory_write` | Write MemoryEntry (optionally linked to ticket) |
 | `project_memory_search` | Optional, later |
 | `user_token` | The latest message author's own Google / GitHub token (§5.7) |
@@ -641,7 +656,6 @@ No auth on MCP (sandbox). Ticket-scoped tokens deferred.
 - ClickUp source connector (shape ready in ProjectSource); Drive and GitHub are reached with each person's own token (§5.7)
 - Multi-org / multi-tenant hardening
 - Observability and audit log
-- How Workers get the MCP endpoint + `worker_id` config in Daytona vs local agents
 - Exact health thresholds and retry limit
 - Network setup beyond the local Compose POC (VPN / tunnel / public MCP URL)
 - How a Worker notices Coordinator follow-ups while busy (re-read `ticket_get` between steps)
@@ -697,7 +711,7 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `Scheduler` | run the health sweep every minute | Cron Trigger | `setInterval` |
 | `IntentClassifier` | Jev intent classification (§8.6) | pi-ai `classify` → OpenRouter (or Workers AI) | pi-ai `classify` → OpenRouter |
 | `AgentRuntime` | Pi Durable conversation: reply composition, admin dialogue | Harness in a Durable Object (DO SQLite storage) | Harness in-process (SQLite file storage) |
-| `WorkerLauncher` | start a Daytona sandbox (later) | Daytona API | no-op |
+| `WorkerLauncher` | start a Daytona sandbox for `daytona_pi` tickets | Daytona API | Daytona API when `DAYTONA_API_KEY` is set, else no-op |
 | `UserConnections` | per-person Google / GitHub links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
 
@@ -715,14 +729,13 @@ project-os/
 │  │  │  ├─ app.ts                     # builds the Elysia app from a provider Layer
 │  │  │  ├─ main.cloudflare.ts         # Elysia + CloudflareAdapter, .compile(); scheduled handler, DO export
 │  │  │  └─ main.bun.ts                # Bun.serve + setInterval sweep
-│  │  ├─ wrangler.jsonc                # D1, KV, DO, cron bindings
 │  │  └─ Dockerfile                    # local target (oven/bun)
 │  ├─ discord-adapter/
 │  ├─ email-adapter/                   # stub for POC
 │  ├─ watcher/                         # host-run Bun CLI
 │  │  ├─ src/{config,poll,spawn,main}.ts
 │  │  └─ prompts/session-start.md
-│  └─ web/                             # Web UI (later)
+│  └─ web/                             # Web UI; worker.ts proxies /api/* on Cloudflare
 │
 ├─ packages/
 │  ├─ core/                            # domain + application, provider-free
@@ -754,7 +767,7 @@ project-os/
 │  └─ config/                          # env parsing per target
 │
 ├─ docker-compose.yml                  # local target
-├─ package.json · bun.lock · vite.config.ts · tsconfig.base.json
+├─ package.json · bun.lock · vite.config.ts · tsconfig.base.json · alchemy.run.ts (Cloudflare IaC)
 ├─ docs/ · CONTEXT.md
 ```
 
@@ -777,11 +790,11 @@ Enforce these with lint import rules in the Vite+ config.
 ### 8.5 Notes and conflicts
 
 - **Conflicts with `CONTEXT.md`:** it says each domain module colocates its own Drizzle schema. Clean architecture moves the schema out of `core` into `db-sqlite`, so `core` stays provider-free. `CONTEXT.md` needs updating when we start coding. The `Db` service there becomes an infra detail behind the repository ports.
-- **HTTP framework: Elysia.** Native on Bun. On Workers it uses the experimental `CloudflareAdapter` (`elysia/adapter/cloudflare-worker`) and needs `.compile()` and `compatibility_date >= 2025-06-01`. On Workers, the static plugin, `Elysia.file`, and OpenAPI type generation don't work (no `fs`). Use Wrangler `assets` for static files.
+- **HTTP framework: Elysia.** Native on Bun. On Workers it uses the experimental `CloudflareAdapter` (`elysia/adapter/cloudflare-worker`) and needs `.compile()` and `compatibility_date >= 2025-06-01`. On Workers, the static plugin, `Elysia.file`, and OpenAPI type generation don't work (no `fs`). Serve static files with Workers static assets (the dashboard does, see `alchemy.run.ts`).
 - **Discord adapter: long-running gateway process (Hermes model).** Hermes Agent's messaging gateway is a single background process that opens an *outbound* Discord Gateway WebSocket. It needs no public URL or inbound port, which is why it looks "webhook-free". HTTP interactions alone can't be used, because they only deliver slash commands and buttons, not ordinary channel messages. So `discord-adapter` is a standalone Bun process that holds the gateway connection and calls the coordinator over HTTP. Locally it runs in Compose. On the Cloudflare target, it either runs anywhere that allows a long-running process (a small VM, Fly, a Cloudflare Container) or lives in a Durable Object that keeps the outbound WebSocket open (that DO can't hibernate, so it's always billed). The coordinator itself stays a normal Worker either way.
 - **Agent runtime:** see §8.6.
 - **Atomic claim:** `ticket_claim` is a single conditional `UPDATE … WHERE status = 'assigned'`, which works the same on D1 and bun:sqlite.
-- **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. `wrangler` handles Cloudflare dev and deploy.
+- **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. Alchemy v2 (`alchemy.run.ts`, an Effect program) declares the Cloudflare resources and handles Cloudflare dev and deploy; see `docs/deployment.md`.
 - `libs/auth` (Better Auth) is dropped for the POC since there's no auth. It comes back as an `Auth` port when Web UI auth is designed.
 - The v1.1 throwaway `Task` entity in `CONTEXT.md` is no longer needed once `ticket/` exists.
 

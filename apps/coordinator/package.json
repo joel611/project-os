@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
     "start": "bun src/main.bun.ts",
-    "seed": "bun src/main.seed.ts",
-    "dev:cf": "wrangler dev"
+    "seed": "bun src/main.seed.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -23,6 +22,7 @@
     "@project-os/contracts": "workspace:*",
     "@project-os/core": "workspace:*",
     "@project-os/infra-cloudflare": "workspace:*",
+    "@project-os/infra-daytona": "workspace:*",
     "@project-os/infra-local": "workspace:*",
     "effect": "4.1.2",
     "elysia": "1.4.30",
@@ -33,7 +33,6 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-durable": "1.5.0",
     "@project-os/db-sqlite": "workspace:*",
-    "@project-os/testing": "workspace:*",
-    "wrangler": "4.157.0"
+    "@project-os/testing": "workspace:*"
   }
 }

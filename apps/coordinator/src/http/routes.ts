@@ -17,6 +17,7 @@ import {
   type ProjectRepository,
   type ProjectSourceRepository,
   type TicketRepository,
+  type WorkerLauncher,
   type WorkerRepository,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
@@ -26,6 +27,8 @@ import {
   CreateProjectBody,
   createProject,
   CreateSourceBody,
+  UpdateSourceBody,
+  editSource,
   decode,
   getProject,
   linkSource,
@@ -56,6 +59,7 @@ export type HttpEnv =
   | ProjectRepository
   | ProjectSourceRepository
   | TicketRepository
+  | WorkerLauncher
   | WorkerRepository;
 
 export interface HttpDeps {
@@ -151,6 +155,16 @@ export const httpRoutes = ({
               Effect.flatMap((source) => linkSource(params.id, source)),
             ),
             201,
+          ),
+        ),
+      )
+      .patch("/projects/:id/sources/:sourceId", ({ params, body, set }) =>
+        reply(
+          set,
+          toResult(
+            decode(UpdateSourceBody, body).pipe(
+              Effect.flatMap((patch) => editSource(params.id, params.sourceId, patch)),
+            ),
           ),
         ),
       )

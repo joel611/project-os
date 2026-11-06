@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type Connections, makeConnections } from "@project-os/auth";
-import { type IntentClassifier, UserConnections } from "@project-os/core";
+import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
@@ -31,6 +31,13 @@ export interface CreatedThreadCall {
   readonly name: string;
 }
 
+export interface ReactionCall {
+  readonly channelId: string;
+  readonly threadId?: string;
+  readonly messageId: string;
+  readonly emoji: string;
+}
+
 export interface PostedPrompt {
   readonly target: ReplyTarget;
   readonly content: string;
@@ -49,6 +56,8 @@ export interface Stack {
   readonly createdChannels: string[];
   /** Threads the Discord adapter was told to open (ids `discord-thread-1`, …). */
   readonly createdThreads: CreatedThreadCall[];
+  /** Reactions the Discord adapter was told to add. */
+  readonly reactions: ReactionCall[];
   /** Prompts (messages with buttons) the Discord adapter was told to post. */
   readonly prompts: PostedPrompt[];
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
@@ -80,6 +89,7 @@ export const startStack = async (options: {
   readonly workerId: string;
   /** Account linking on Better Auth against a fake OAuth server (Google + GitHub). */
   readonly connections?: boolean;
+  readonly workerLauncher?: typeof WorkerLauncher.Service;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -94,6 +104,7 @@ export const startStack = async (options: {
   const posted: Posted[] = [];
   const createdChannels: string[] = [];
   const createdThreads: CreatedThreadCall[] = [];
+  const reactions: ReactionCall[] = [];
   const prompts: PostedPrompt[] = [];
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
@@ -109,6 +120,7 @@ export const startStack = async (options: {
       createdThreads.push(input);
       return { threadId: `discord-thread-${createdThreads.length}` };
     },
+    async (input) => void reactions.push(input),
     async (target, message) => {
       const messageId = `discord-prompt-${prompts.length + 1}`;
       prompts.push({ target, ...message, messageId });
@@ -131,7 +143,11 @@ export const startStack = async (options: {
   // Later layers win: the fakes replace LocalLive's AgentRuntime placeholder.
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
-      LocalLive({ dbPath, adapterUrls: { discord: `http://localhost:${adapter.server!.port}` } }),
+      LocalLive({
+        dbPath,
+        adapterUrls: { discord: `http://localhost:${adapter.server!.port}` },
+        ...(options.workerLauncher && { workerLauncher: options.workerLauncher }),
+      }),
       options.classifier,
       AgentRuntimeEcho,
       ...(oauth ? [connectionsLayer] : []),
@@ -194,6 +210,7 @@ export const startStack = async (options: {
     posted,
     createdChannels,
     createdThreads,
+    reactions,
     prompts,
     dbPath,
     ...(oauth && { oauth }),
@@ -205,6 +222,7 @@ export const startStack = async (options: {
         type: "discord_channel",
         externalId: channelId,
         name: `#${channelId}`,
+        alias: "chat",
         isDefaultResponse: true,
       });
       return project.id as string;

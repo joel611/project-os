@@ -55,6 +55,10 @@ createReplyApp(
     speaker.threadId = threadId;
     return { threadId };
   },
+  async ({ channelId, threadId, messageId, emoji }) => {
+    const where = threadId ? `${channelId}/${threadId}` : channelId;
+    console.log(`\n[bot reacted ${emoji} to ${where}/${messageId}]`);
+  },
   async (target, { content, components }) => {
     const where = target.threadId ? `${target.channelId}/${target.threadId}` : target.channelId;
     const parts = components.flatMap((row) => row.components);

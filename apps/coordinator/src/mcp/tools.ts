@@ -12,7 +12,9 @@ import {
   IdGenerator,
   KeyValueStore,
   listAssigned,
+  listProjectSources,
   MemoryRepository,
+  ProjectRepository,
   ProjectSourceRepository,
   readMemory,
   TicketRepository,
@@ -32,6 +34,7 @@ export type McpServices =
   | IdGenerator
   | KeyValueStore
   | MemoryRepository
+  | ProjectRepository
   | ProjectSourceRepository
   | TicketRepository
   | UserConnections
@@ -154,6 +157,16 @@ export const makeTools = (): readonly McpTool<McpServices>[] => [
     input: C.ProjectMemoryWriteInput,
     output: C.ProjectMemoryWriteOutput,
     run: (i) => Effect.map(writeMemory(i), (entry) => ({ entry })),
+  }),
+  define({
+    name: "project_sources_list",
+    description:
+      "List the project's sources (Google Drive folders, GitHub repos, channels). Each has an alias " +
+      "and optional description saying what it is for: match what the ticket asks about to an " +
+      "alias, then use its externalId or url.",
+    input: C.ProjectSourcesListInput,
+    output: C.ProjectSourcesListOutput,
+    run: (i) => Effect.map(listProjectSources(i), (sources) => ({ sources })),
   }),
   define({
     name: "user_token",

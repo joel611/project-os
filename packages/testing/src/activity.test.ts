@@ -49,6 +49,8 @@ describe("readActivity", () => {
           type: "email_address",
           externalId: "support@acme.co",
           name: "support@",
+          alias: "support",
+          description: null,
           direction: "both",
           isDefaultResponse: true,
           config: {},

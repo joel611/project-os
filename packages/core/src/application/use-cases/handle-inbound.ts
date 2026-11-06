@@ -10,8 +10,9 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   TicketRepository,
+  WorkerLauncher,
 } from "../ports/index.ts";
-import { sourceTypeFor, supportsThreads } from "./channels.ts";
+import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { nowIso } from "./tickets.ts";
 
 export interface HandleInboundConfig {
@@ -52,6 +53,9 @@ export type InboundOutcome =
 
 const TITLE_MAX = 80;
 
+/** Reaction put on a message the Coordinator takes in, so the sender knows it was seen. */
+export const ACK_EMOJI = "👀";
+
 export const THREAD_OPENED_MESSAGE =
   "I opened a ticket for this. Keep the conversation for it in this thread.";
 export const TICKET_CLOSED_MESSAGE =
@@ -67,6 +71,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const runtime = yield* AgentRuntime;
     const gateway = yield* ChannelGateway;
     const ids = yield* IdGenerator;
+    const launcher = yield* WorkerLauncher;
 
     const reply = (content: string): Effect.Effect<void> => {
       const instruction: ReplyInstruction = {
@@ -123,6 +128,27 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         });
       });
 
+    /**
+     * Reacts with 👀 once the message has passed every gate, before the (slow) classifier and
+     * agent run. A failure (e.g. no Add Reactions permission) is logged and handling carries on.
+     */
+    const acknowledge = (): Effect.Effect<void> =>
+      supportsReactions(message.channelType)
+        ? gateway
+            .react({
+              channelType: message.channelType,
+              channelId: message.channelId,
+              ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
+              messageId: message.externalId,
+              emoji: ACK_EMOJI,
+            })
+            .pipe(
+              Effect.catch((err) =>
+                Effect.logWarning(`could not react to message ${message.externalId}`, err.message),
+              ),
+            )
+        : Effect.void;
+
     const fresh = yield* kv.setIfAbsent(
       `inbound:${message.channelType}:${message.externalId}`,
       "1",
@@ -143,6 +169,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const isConfident = (confidence: number) => confidence >= (config.confidenceThreshold ?? 0.5);
 
     if (isAdminChannel) {
+      yield* acknowledge();
       const result = yield* classify("");
       if (!isConfident(result.confidence) || result.intent !== "admin_command") {
         return yield* clarify();
@@ -170,6 +197,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       ? yield* sources.findByExternal(sourceType, message.channelId)
       : undefined;
     if (!source) return { kind: "unlinked" } as InboundOutcome;
+    yield* acknowledge();
 
     const project = yield* projects.get(source.projectId);
     const at = yield* nowIso;
@@ -257,22 +285,23 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           payload: { sender: message.sender, channelType: message.channelType },
           createdAt: at,
         });
-        const assigned = yield* tickets.assign(
-          ticketId,
-          { workerType, workerId: config.workerId ?? null },
-          at,
-        );
+        // `ticket_claim` only admits the assigned worker. A Daytona session is a fresh worker
+        // per ticket, so it gets its own id and the host Watcher never sees the ticket.
+        const workerId =
+          workerType === "daytona_pi" ? `daytona-${ticketId}` : (config.workerId ?? null);
+        const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
         yield* tickets.appendEvent({
           id: yield* ids.next,
           ticketId,
           type: "assigned",
           actor: "coordinator",
           actorId: null,
-          body: `Assigned to ${config.workerId ?? workerType}`,
-          payload: { workerType, workerId: config.workerId ?? null },
+          body: `Assigned to ${workerId ?? workerType}`,
+          payload: { workerType, workerId },
           createdAt: at,
         });
         yield* openTicketThread(ticketId, at);
+        if (workerId !== null) yield* launcher.launch({ ticketId, workerType, workerId });
         return { kind: "ticket_created", ticket: assigned } as InboundOutcome;
       }
       case "follow_up": {

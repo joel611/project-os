@@ -147,6 +147,44 @@ describe("HTTP ChannelGateway", () => {
     });
   });
 
+  describe("react", () => {
+    const request = {
+      channelType: "discord",
+      channelId: "c1",
+      threadId: "t1",
+      messageId: "m1",
+      emoji: "👀",
+    } as const;
+
+    it("POSTs to the adapter's /reactions endpoint", async () => {
+      const calls: Array<{ url: string; body: unknown }> = [];
+      const gateway = makeHttpChannelGateway({
+        adapterUrls: { discord: "http://discord:3001/" },
+        fetch: async (url, init) => {
+          calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+          return Response.json({ ok: true });
+        },
+      });
+      await Effect.runPromise(gateway.react(request));
+      expect(calls).toEqual([{ url: "http://discord:3001/reactions", body: request }]);
+    });
+
+    it("fails with ReactionFailed carrying the adapter's error", async () => {
+      const gateway = makeHttpChannelGateway({
+        adapterUrls: { discord: "http://d" },
+        fetch: async () => Response.json({ error: "Missing Permissions" }, { status: 502 }),
+      });
+      const exit = await Effect.runPromiseExit(gateway.react(request));
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      const error = Cause.findErrorOption(exit.cause);
+      if (error._tag === "None") throw new Error("expected a typed failure, got a defect");
+      expect(error.value).toMatchObject({
+        _tag: "ReactionFailed",
+        message: "Adapter discord replied 502: Missing Permissions",
+      });
+    });
+  });
+
   describe("ask", () => {
     const request = {
       channelType: "discord",

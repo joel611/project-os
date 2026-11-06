@@ -62,10 +62,17 @@ export const relativeTime = (iso: string, now: Date): string => {
   return unit ? `${Math.floor(elapsed / unit.ms)}${unit.suffix} ago` : "just now";
 };
 
-export interface SourceInput {
+/** What a pasted link turns into, before the operator names it. */
+export interface DetectedSource {
   readonly type: "github_repo" | "google_drive_folder";
   readonly externalId: string;
   readonly name: string;
+}
+
+/** What the dashboard POSTs: the detected source plus its alias and optional description. */
+export interface SourceInput extends DetectedSource {
+  readonly alias: string;
+  readonly description?: string;
 }
 
 const GITHUB_REPO =
@@ -77,14 +84,14 @@ const DRIVE_FOLDER =
  * Turns what an operator pastes (URL or short form) into the `(type, externalId)` the Coordinator
  * keys on. GitHub names are case-insensitive, so they are lowercased to keep the key canonical.
  */
-const parseRepo = (text: string): SourceInput | null => {
+const parseRepo = (text: string): DetectedSource | null => {
   const m = GITHUB_REPO.exec(text);
   if (!m) return null;
   const externalId = `${m[1]}/${m[2]}`.toLowerCase();
   return { type: "github_repo", externalId, name: externalId };
 };
 
-const parseFolder = (text: string): SourceInput | null => {
+const parseFolder = (text: string): DetectedSource | null => {
   const id = DRIVE_FOLDER.exec(text)?.[1];
   return id
     ? { type: "google_drive_folder", externalId: id, name: `Drive folder ${id.slice(0, 8)}…` }
@@ -96,27 +103,56 @@ const parseFolder = (text: string): SourceInput | null => {
  * `(type, externalId)` the Coordinator keys on. Repo names are case-insensitive, so they are
  * lowercased to keep the key canonical. `owner/repo` is a repo, a bare long id is a Drive folder.
  */
-export const detectSource = (raw: string): SourceInput | null => {
+export const detectSource = (raw: string): DetectedSource | null => {
   const text = raw.trim();
   if (text.includes("drive.google.com")) return parseFolder(text);
   return parseRepo(text) ?? parseFolder(text);
 };
 
+/** Same rule as the Coordinator: lowercase letters and digits joined by `-` or `_`, ≤ 40 chars. */
+export const ALIAS_HINT = "Lowercase letters and digits joined by - or _, at most 40 characters.";
+const ALIAS_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
+
+export const normalizeAlias = (raw: string): string | null => {
+  const alias = raw.trim().toLowerCase().replace(/\s+/g, "-");
+  return alias.length <= 40 && ALIAS_PATTERN.test(alias) ? alias : null;
+};
+
+/** A starting alias for a pasted link: a repo's name. A Drive folder id says nothing, so none. */
+export const suggestAlias = (source: DetectedSource | null): string =>
+  source?.type === "github_repo"
+    ? source.externalId
+        .slice(source.externalId.indexOf("/") + 1)
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40)
+    : "";
+
 export type SourceCheck =
   | { readonly kind: "ok"; readonly input: SourceInput }
   | { readonly kind: "invalid" }
-  | { readonly kind: "duplicate"; readonly input: SourceInput };
+  | { readonly kind: "duplicate"; readonly input: DetectedSource }
+  | { readonly kind: "bad_alias" }
+  | { readonly kind: "alias_taken"; readonly alias: string };
 
-/** Flags junk and sources already on the project. */
+/** Flags junk, sources already on the project, and aliases that are malformed or taken. */
 export const checkSource = (
-  raw: string,
-  existing: ReadonlyArray<{ readonly type: string; readonly externalId: string }>,
+  raw: { readonly link: string; readonly alias: string; readonly description?: string },
+  existing: ReadonlyArray<{
+    readonly type: string;
+    readonly externalId: string;
+    readonly alias: string;
+  }>,
 ): SourceCheck => {
-  const input = detectSource(raw);
-  if (!input) return { kind: "invalid" };
-  return existing.some((s) => s.type === input.type && s.externalId === input.externalId)
-    ? { kind: "duplicate", input }
-    : { kind: "ok", input };
+  const detected = detectSource(raw.link);
+  if (!detected) return { kind: "invalid" };
+  if (existing.some((s) => s.type === detected.type && s.externalId === detected.externalId))
+    return { kind: "duplicate", input: detected };
+  const alias = normalizeAlias(raw.alias);
+  if (!alias) return { kind: "bad_alias" };
+  if (existing.some((s) => s.alias === alias)) return { kind: "alias_taken", alias };
+  const description = raw.description?.trim();
+  return { kind: "ok", input: { ...detected, alias, ...(description ? { description } : {}) } };
 };
 
 /** Where a linked source lives on the web, when it has a link-out. */

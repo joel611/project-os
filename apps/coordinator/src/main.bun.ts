@@ -7,6 +7,7 @@ import {
 } from "@project-os/agent-runtime";
 import { DEFAULT_WORKER_ID, env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
+import { daytonaSandboxRunner, makeDaytonaLauncher } from "@project-os/infra-daytona";
 import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { type Effect, Layer, ManagedRuntime } from "effect";
@@ -78,12 +79,34 @@ const AiLive = Layer.orDie(
   ),
 );
 
+// `daytona_pi` tickets start a sandbox only when a key is set; otherwise nothing launches them.
+const daytonaApiKey = process.env.DAYTONA_API_KEY;
+const workerLauncher = daytonaApiKey
+  ? makeDaytonaLauncher({
+      sandbox: daytonaSandboxRunner({
+        apiKey: daytonaApiKey,
+        ...(process.env.DAYTONA_API_URL && { apiUrl: process.env.DAYTONA_API_URL }),
+        ...(process.env.DAYTONA_SNAPSHOT && { snapshot: process.env.DAYTONA_SNAPSHOT }),
+      }),
+      // The sandbox is in the cloud: this must be a public URL (tunnel), not MCP_URL.
+      mcpUrl: env("DAYTONA_MCP_URL"),
+      openrouterApiKey: env("OPENROUTER_API_KEY"),
+      model: env("DAYTONA_PI_MODEL", `openrouter/${env("CHAT_MODEL_ID")}`),
+      prompt: await Bun.file(
+        new URL("../../watcher/prompts/session-start.md", import.meta.url),
+      ).text(),
+      timeoutSeconds: envNumber("DAYTONA_SESSION_TIMEOUT_SECONDS", 30 * 60),
+      log: console.log,
+    })
+  : undefined;
+
 // Later layers win: AiLive and connections replace LocalLive's placeholders.
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     LocalLive({
       dbPath,
       adapterUrls: { discord: env("DISCORD_ADAPTER_URL", "http://localhost:8081") },
+      ...(workerLauncher && { workerLauncher }),
     }),
     AiLive,
     ...(connections ? [connections.layer] : []),

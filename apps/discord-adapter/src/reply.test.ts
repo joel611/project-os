@@ -175,6 +175,72 @@ describe("threads endpoint", () => {
   });
 });
 
+const reactTo = (app: ReturnType<typeof createReplyApp>, body: unknown) =>
+  app.handle(
+    new Request("http://localhost/reactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+
+describe("reactions endpoint", () => {
+  const instruction = {
+    channelType: "discord",
+    channelId: "c1",
+    threadId: "t1",
+    messageId: "m1",
+    emoji: "👀",
+  };
+
+  it("reacts to the message", async () => {
+    const calls: unknown[] = [];
+    const app = createReplyApp(
+      async () => {},
+      undefined,
+      undefined,
+      async (input) => void calls.push(input),
+    );
+    const res = await reactTo(app, instruction);
+    expect(res.status).toBe(200);
+    expect(calls).toEqual([{ channelId: "c1", threadId: "t1", messageId: "m1", emoji: "👀" }]);
+  });
+
+  it("answers 501 without a react function, 400 on bad bodies", async () => {
+    const app = createReplyApp(async () => {});
+    expect((await reactTo(app, instruction)).status).toBe(501);
+    expect((await reactTo(app, { channelType: "discord", channelId: "c1" })).status).toBe(400);
+  });
+
+  it("returns 502 when Discord refuses", async () => {
+    const app = createReplyApp(
+      async () => {},
+      undefined,
+      undefined,
+      async () => {
+        throw new Error("Missing Permissions");
+      },
+    );
+    const res = await reactTo(app, instruction);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Missing Permissions" });
+  });
+
+  it("returns 502 with a generic message for non-Error failures", async () => {
+    const app = createReplyApp(
+      async () => {},
+      undefined,
+      undefined,
+      async () => {
+        throw "x";
+      },
+    );
+    const { threadId: _, ...topLevel } = instruction;
+    const res = await reactTo(app, topLevel);
+    expect(await res.json()).toEqual({ error: "discord reaction failed" });
+  });
+});
+
 describe("prompts endpoint", () => {
   const request = {
     channelType: "discord",
@@ -193,18 +259,15 @@ describe("prompts endpoint", () => {
         body: JSON.stringify(body),
       }),
     );
+  const withPoster = (postPrompt: Parameters<typeof createReplyApp>[4]) =>
+    createReplyApp(async () => {}, undefined, undefined, undefined, postPrompt);
 
   it("posts the question with its buttons and returns the message id", async () => {
     const calls: unknown[] = [];
-    const app = createReplyApp(
-      async () => {},
-      undefined,
-      undefined,
-      async (target, message) => {
-        calls.push([target, message.content, message.components[0]!.components.length]);
-        return { messageId: "m1" };
-      },
-    );
+    const app = withPoster(async (target, message) => {
+      calls.push([target, message.content, message.components[0]!.components.length]);
+      return { messageId: "m1" };
+    });
     const res = await prompt(app, request);
     expect(await res.json()).toEqual({ messageId: "m1" });
     await prompt(app, { ...request, threadId: undefined });
@@ -215,14 +278,9 @@ describe("prompts endpoint", () => {
   });
 
   it("answers 400 for a bad body, 501 without a poster, 502 when Discord fails", async () => {
-    const poster = createReplyApp(
-      async () => {},
-      undefined,
-      undefined,
-      async () => {
-        throw new Error("Missing Access");
-      },
-    );
+    const poster = withPoster(async () => {
+      throw new Error("Missing Access");
+    });
     expect((await prompt(poster, { nope: 1 })).status).toBe(400);
     expect(
       (
@@ -235,14 +293,9 @@ describe("prompts endpoint", () => {
     const failed = await prompt(poster, request);
     expect(failed.status).toBe(502);
     expect(await failed.json()).toEqual({ error: "Missing Access" });
-    const odd = createReplyApp(
-      async () => {},
-      undefined,
-      undefined,
-      async () => {
-        throw "x";
-      },
-    );
+    const odd = withPoster(async () => {
+      throw "x";
+    });
     expect(await (await prompt(odd, request)).json()).toEqual({
       error: "discord prompt post failed",
     });

@@ -16,6 +16,16 @@ export interface AdminActions {
     readonly projectId: string;
     readonly type: string;
     readonly externalId: string;
+    readonly alias: string;
+    readonly description?: string | undefined;
+  }) => Promise<string>;
+  readonly listSources: (args: { readonly projectId: string }) => Promise<string>;
+  /** Finds the source by its current `alias`; changes its alias and/or description. */
+  readonly updateSource: (args: {
+    readonly projectId: string;
+    readonly alias: string;
+    readonly newAlias?: string | undefined;
+    readonly description?: string | undefined;
   }) => Promise<string>;
   readonly setDefaultChannel: (args: {
     readonly projectId: string;
@@ -49,9 +59,38 @@ export const makeAdminExtension = (actions: AdminActions) =>
       }),
       defineTool({
         name: "add_source",
-        description: "Link a channel (e.g. a Discord channel) to a Project as a source.",
-        parameters: obj({ projectId: str(), type: str(), externalId: str() }),
+        description:
+          "Link a source (a Discord channel, GitHub repo, Google Drive folder, …) to a Project. " +
+          "`alias` is a short lowercase handle saying what it is for (e.g. design-docs), unique " +
+          "in the project; ask the admin for one if it isn't clear. `description` is optional " +
+          "extra context: what is in it and when to use it.",
+        parameters: obj({
+          projectId: str(),
+          type: str(),
+          externalId: str(),
+          alias: str(),
+          description: opt(str()),
+        }),
         execute: async (args) => text(await actions.addSource(args)),
+      }),
+      defineTool({
+        name: "list_sources",
+        description: "List a Project's sources with their aliases and descriptions.",
+        parameters: obj({ projectId: str() }),
+        execute: async (args) => text(await actions.listSources(args)),
+      }),
+      defineTool({
+        name: "update_source",
+        description:
+          "Rename a Project source's alias (newAlias) and/or set its description. Identify the " +
+          "source by its current alias; an empty description clears it.",
+        parameters: obj({
+          projectId: str(),
+          alias: str(),
+          newAlias: opt(str()),
+          description: opt(str()),
+        }),
+        execute: async (args) => text(await actions.updateSource(args)),
       }),
       defineTool({
         name: "set_default_channel",

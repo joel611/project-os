@@ -5,6 +5,7 @@ import type {
   CreatedChannel,
   CreatedThread,
   CreateThreadInstruction,
+  ReactInstruction,
   PostedPrompt,
   PromptInstruction,
   ReplyInstruction,
@@ -44,6 +45,8 @@ export class ChannelGateway extends Context.Service<
     readonly createThread: (
       request: CreateThreadInstruction,
     ) => Effect.Effect<CreatedThread, ThreadCreateFailed>;
+    /** Ask the matching Channel Adapter to react to a message (the 👀 acknowledgement). */
+    readonly react: (request: ReactInstruction) => Effect.Effect<void, ReactionFailed>;
     /** Ask the matching Channel Adapter to post a question answered with a click (buttons). */
     readonly ask: (request: PromptInstruction) => Effect.Effect<PostedPrompt, PromptSendFailed>;
   }
@@ -69,6 +72,12 @@ export class ChannelCreateFailed extends Data.TaggedError("ChannelCreateFailed")
 
 /** A Channel Adapter could not open a thread (no permission, unsupported channel, ...). */
 export class ThreadCreateFailed extends Data.TaggedError("ThreadCreateFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
+
+/** A Channel Adapter could not react to a message (no permission, message gone, ...). */
+export class ReactionFailed extends Data.TaggedError("ReactionFailed")<{
   readonly channelType: string;
   readonly message: string;
 }> {}
@@ -124,10 +133,16 @@ export class AgentRuntime extends Context.Service<
 export class WorkerLauncher extends Context.Service<
   WorkerLauncher,
   {
-    /** Start a worker for a ticket (Daytona later). No-op for pull-model local workers. */
+    /**
+     * Start a worker for a freshly assigned ticket. Returns once the launch is under way, not
+     * when the session ends; failures are the launcher's to report. No-op for pull-model local
+     * workers (the Watcher starts those).
+     */
     readonly launch: (input: {
       readonly ticketId: string;
       readonly workerType: WorkerType;
+      /** The id the ticket is assigned to; the session must claim as this worker. */
+      readonly workerId: string;
     }) => Effect.Effect<void>;
   }
 >()("@project-os/core/WorkerLauncher") {}

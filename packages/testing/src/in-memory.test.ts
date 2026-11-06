@@ -16,6 +16,8 @@ const source = (over: Partial<ProjectSource> = {}): ProjectSource => ({
   type: "discord_channel",
   externalId: "chan-1",
   name: "#general",
+  alias: `src-${over.id ?? "s1"}`,
+  description: null,
   direction: "both",
   isDefaultResponse: false,
   config: {},

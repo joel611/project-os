@@ -9,6 +9,13 @@ import {
 } from "discord.js";
 import { answerCommand, COMMAND_DEFINITIONS, normalizeCommand } from "./commands.ts";
 import { forwardInbound } from "./forward.ts";
+import {
+  isAllowedMember,
+  NOT_A_MEMBER_MESSAGE,
+  type MemberGate,
+  parseIds,
+  SERVER_ONLY_MESSAGE,
+} from "./members.ts";
 import { normalizeMessage } from "./normalize.ts";
 import { answerPromptClick, normalizePromptClick } from "./prompts.ts";
 import { createReplyApp } from "./reply.ts";
@@ -16,7 +23,8 @@ import { createReplyApp } from "./reply.ts";
 // Long-running process holding an outbound Discord Gateway WebSocket (§8.5).
 // Needs the Message Content privileged intent enabled in the Discord developer portal, and the
 // Manage Channels permission in DISCORD_GUILD_ID so new projects get their own channel, and
-// Create Public Threads + Send Messages in Threads so each new ticket gets its own thread.
+// Create Public Threads + Send Messages in Threads so each new ticket gets its own thread, and
+// Add Reactions so it can put 👀 on each message it takes in.
 // Invite the bot with the `applications.commands` scope so it can register /project-create.
 const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
 const port = envNumber("DISCORD_ADAPTER_PORT", 8081); // not PORT: that is the Coordinator's, shared via .env
@@ -29,7 +37,19 @@ const client = new Client({
   ],
 });
 
+// Optional: only people holding one of these roles can trigger the bot. Unset = everyone.
+// Admins (ADMIN_USER_IDS, the Coordinator's admin list) always pass.
+const memberGate: MemberGate = {
+  roleIds: parseIds(process.env.DISCORD_MEMBER_ROLE_IDS),
+  adminUserIds: parseIds(process.env.ADMIN_USER_IDS),
+};
+
 client.on(Events.MessageCreate, async (message) => {
+  // Server chat only: DMs are ignored (the bot doesn't ask for the DM intent either).
+  if (!message.inGuild()) return;
+  // Silent, like a missing @mention: people without a member role can talk among themselves.
+  if (!message.author.bot && !isAllowedMember(message.author.id, message.member, memberGate))
+    return;
   // The bot's own id, so the Coordinator can ignore project channel chatter that isn't for it.
   const inbound = normalizeMessage(message, client.user?.id);
   if (!inbound) return;
@@ -76,12 +96,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   });
   if (!answer) return;
   try {
-    // Prompts are only posted in server channels.
+    // Same gates as slash commands: server only, member role (admins always pass).
     if (!interaction.inGuild()) {
-      await interaction.reply({
-        content: "I only work in the server.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply({ content: SERVER_ONLY_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (!isAllowedMember(interaction.user.id, interaction.member, memberGate)) {
+      await interaction.reply({ content: NOT_A_MEMBER_MESSAGE, flags: MessageFlags.Ephemeral });
       return;
     }
     await answerPromptClick(
@@ -104,6 +125,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const command = normalizeCommand(interaction);
   if (!command) return;
   try {
+    // Server chat only. Commands aren't offered in DMs, but older registrations may linger.
+    if (!interaction.inGuild()) {
+      await interaction.reply({ content: SERVER_ONLY_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (!isAllowedMember(interaction.user.id, interaction.member, memberGate)) {
+      await interaction.reply({ content: NOT_A_MEMBER_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
     await answerCommand(
       command,
       {
@@ -150,6 +180,12 @@ createReplyApp(
     // Discord thread names are 1–100 characters.
     const thread = await message.startThread({ name: name.slice(0, 100) || "Ticket" });
     return { threadId: thread.id };
+  },
+  async ({ channelId, threadId, messageId, emoji }) => {
+    const channel = await client.channels.fetch(threadId ?? channelId);
+    if (!channel?.isTextBased())
+      throw new Error(`channel ${threadId ?? channelId} has no messages`);
+    await channel.messages.react(messageId, emoji);
   },
   async ({ channelId, threadId }, { content, components }) => {
     const channel = await client.channels.fetch(threadId ?? channelId);

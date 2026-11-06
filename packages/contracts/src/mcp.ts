@@ -6,6 +6,7 @@ import {
   ChannelType,
   ConnectionProvider,
   MemoryEntryType,
+  ProjectSourceType,
   TicketEventType,
   WorkerType,
 } from "./enums.ts";
@@ -64,6 +65,20 @@ export const ProjectMemoryWriteInput = Schema.Struct({
   sourceMetadata: Schema.optionalKey(Schema.Unknown),
 });
 export const ProjectMemoryWriteOutput = Schema.Struct({ entry: MemoryEntry });
+
+export const ProjectSourcesListInput = Schema.Struct({ projectId: Id });
+/** What a Worker needs to find a source by what it is for: alias, description, and where it is. */
+export const ProjectSourceSummary = Schema.Struct({
+  alias: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  type: ProjectSourceType,
+  externalId: Schema.String,
+  name: Schema.String,
+  url: Schema.NullOr(Schema.String),
+});
+export const ProjectSourcesListOutput = Schema.Struct({
+  sources: Schema.Array(ProjectSourceSummary),
+});
 
 export const WorkerHeartbeatInput = Schema.Struct({
   workerId: Id,

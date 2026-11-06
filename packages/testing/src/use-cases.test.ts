@@ -1,10 +1,12 @@
 import {
+  addSource,
   appendEvent,
   claimTicketUseCase,
   getTicket,
   handleInbound,
   heartbeat,
   listAssigned,
+  listProjectSources,
   MemoryRepository,
   onTicketCompleted,
   ProjectRepository,
@@ -12,6 +14,7 @@ import {
   readMemory,
   TicketRepository,
   updateProject,
+  updateSource,
   updateStatus,
   writeMemory,
   type Project,
@@ -47,6 +50,8 @@ const source = (over: Partial<ProjectSource> = {}): ProjectSource => ({
   type: "discord_channel",
   externalId: "chan-1",
   name: "#general",
+  alias: `src-${over.id ?? "s1"}`,
+  description: null,
   direction: "both",
   isDefaultResponse: true,
   config: {},
@@ -104,7 +109,13 @@ const run = <A, E>(
       yield* setup;
       return yield* eff;
     }).pipe(Effect.provide(t.layer)) as Effect.Effect<A, E>,
-  ).then((value) => ({ value, sent: t.sent, threads: t.createdThreads }));
+  ).then((value) => ({
+    value,
+    sent: t.sent,
+    threads: t.createdThreads,
+    reactions: t.reactions,
+    launched: t.launched,
+  }));
 };
 
 const inbound = (intent: string, confidence = 1) => ({
@@ -131,6 +142,21 @@ describe("handleInbound", () => {
     expect(value.events.map((e) => e.type)).toEqual(["created", "assigned"]);
   });
 
+  it("new_request for a daytona_pi worker gets its own worker id and a launch", async () => {
+    const { value, launched } = await run(
+      Effect.gen(function* () {
+        const out = yield* handleInbound(msg(), config);
+        if (out.kind !== "ticket_created") throw new Error(out.kind);
+        return out.ticket;
+      }),
+      { classifier: classifierReturning("new_request", 1, "daytona_pi") },
+    );
+    expect(value).toMatchObject({ workerType: "daytona_pi", workerId: `daytona-${value.id}` });
+    expect(launched).toEqual([
+      { ticketId: value.id, workerType: "daytona_pi", workerId: `daytona-${value.id}` },
+    ]);
+  });
+
   it("dedupes by externalId", async () => {
     const { value } = await run(
       Effect.gen(function* () {
@@ -143,13 +169,58 @@ describe("handleInbound", () => {
     expect(value).toEqual(["ticket_created", "duplicate"]);
   });
 
+  it("reacts 👀 to a message it takes in, and not again to a redelivery", async () => {
+    const { value, reactions } = await run(
+      Effect.gen(function* () {
+        yield* handleInbound(msg({ threadId: "th1" }), config);
+        return (yield* handleInbound(msg({ threadId: "th1" }), config)).kind;
+      }),
+      inbound("new_request"),
+    );
+    expect(value).toBe("duplicate");
+    expect(reactions).toEqual([
+      {
+        channelType: "discord",
+        channelId: "chan-1",
+        threadId: "th1",
+        messageId: "m1",
+        emoji: "👀",
+      },
+    ]);
+  });
+
+  it("carries on when the reaction fails", async () => {
+    const { value, reactions } = await run(handleInbound(msg(), config), {
+      ...inbound("new_request"),
+      failReact: "Missing Permissions",
+    });
+    expect(value.kind).toBe("ticket_created");
+    expect(reactions).toEqual([]);
+  });
+
+  it("reacts to admin channel messages from an admin, not from anyone else", async () => {
+    const admins = { ...config, adminUserIds: ["u1"] };
+    const ok = await run(
+      handleInbound(msg({ channelId: ADMIN }), admins),
+      inbound("admin_command"),
+    );
+    expect(ok.reactions).toHaveLength(1);
+    const no = await run(
+      handleInbound(msg({ channelId: ADMIN, sender: { id: "u2" } }), admins),
+      inbound("admin_command"),
+    );
+    expect(no.value.kind).toBe("admin_forbidden");
+    expect(no.reactions).toEqual([]);
+  });
+
   it("ignores messages from unlinked channels", async () => {
-    const { value, sent } = await run(
+    const { value, sent, reactions } = await run(
       handleInbound(msg({ channelId: "nope" }), config),
       inbound("new_request"),
     );
     expect(value.kind).toBe("unlinked");
     expect(sent).toHaveLength(0);
+    expect(reactions).toEqual([]);
   });
 
   it("follow_up appends a follow_up event to the project's open ticket", async () => {
@@ -228,9 +299,13 @@ describe("handleInbound", () => {
 
     it("ignores a top-level project channel message that doesn't mention the bot", async () => {
       for (const over of [{}, { mentionsBot: false }]) {
-        const { value, sent } = await run(handleInbound(msg(over), strict), inbound("new_request"));
+        const { value, sent, reactions } = await run(
+          handleInbound(msg(over), strict),
+          inbound("new_request"),
+        );
         expect(value.kind).toBe("not_mentioned");
         expect(sent).toEqual([]);
+        expect(reactions).toEqual([]);
       }
     });
 
@@ -462,6 +537,102 @@ describe("ticket use cases", () => {
       }),
     );
     expect(value._tag).toBe("InvalidTransition");
+  });
+});
+
+describe("project sources", () => {
+  it("names a source by the alias given, or derives one that is free in the project", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const named = yield* addSource({
+          projectId: "p1",
+          type: "google_drive_folder",
+          externalId: "1AbCdEfGhIjK",
+          name: "Drive folder",
+          alias: " Design Docs ",
+          description: "  specs and mockups ",
+        });
+        const fromName = yield* addSource({
+          projectId: "p1",
+          type: "discord_channel",
+          externalId: "c9",
+          name: "#Design Docs",
+        });
+        const fromType = yield* addSource({
+          projectId: "p1",
+          type: "discord_channel",
+          externalId: "c10",
+          name: "c10",
+        });
+        const taken = yield* Effect.flip(
+          addSource({
+            projectId: "p1",
+            type: "github_repo",
+            externalId: "acme/web",
+            name: "acme/web",
+            alias: "design-docs",
+          }),
+        );
+        const invalid = yield* Effect.flip(
+          addSource({
+            projectId: "p1",
+            type: "github_repo",
+            externalId: "acme/web",
+            name: "acme/web",
+            alias: "no good!",
+          }),
+        );
+        return { named, fromName, fromType, taken, invalid };
+      }),
+    );
+    expect(value.named).toMatchObject({ alias: "design-docs", description: "specs and mockups" });
+    expect(value.fromName).toMatchObject({ alias: "design-docs-2", description: null });
+    expect(value.fromType.alias).toBe("discord");
+    expect(value.taken._tag).toBe("SourceAliasTaken");
+    expect(value.invalid._tag).toBe("InvalidSourceAlias");
+  });
+
+  it("updates alias and description, and lists active sources the way Workers see them", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const repo = yield* addSource({
+          projectId: "p1",
+          type: "github_repo",
+          externalId: "acme/web",
+          name: "acme/web",
+          alias: "web",
+        });
+        yield* updateSource({
+          projectId: "p1",
+          sourceId: repo.id,
+          alias: "Marketing Site",
+          description: "the public website",
+        });
+        const blank = yield* updateSource({ projectId: "p1", sourceId: repo.id, description: " " });
+        yield* updateSource({
+          projectId: "p1",
+          sourceId: repo.id,
+          description: "the public website",
+        });
+        const bad = yield* Effect.flip(
+          updateSource({ projectId: "p1", sourceId: repo.id, alias: "-" }),
+        );
+        const listed = yield* listProjectSources({ projectId: "p1" });
+        const missing = yield* Effect.flip(listProjectSources({ projectId: "nope" }));
+        return { blank, bad, listed, missing };
+      }),
+    );
+    expect(value.blank).toMatchObject({ alias: "marketing-site", description: null });
+    expect(value.bad._tag).toBe("InvalidSourceAlias");
+    expect(value.listed).toContainEqual({
+      alias: "marketing-site",
+      description: "the public website",
+      type: "github_repo",
+      externalId: "acme/web",
+      name: "acme/web",
+      url: "https://github.com/acme/web",
+    });
+    expect(value.missing._tag).toBe("ProjectNotFound");
   });
 });
 
