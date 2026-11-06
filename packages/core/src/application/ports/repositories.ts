@@ -51,6 +51,11 @@ export class TicketRepository extends Context.Service<
       ticketId: string,
       limit?: number,
     ) => Effect.Effect<ReadonlyArray<TicketEvent>, TicketNotFound>;
+    /** Events on every ticket with `createdAt >= since`: the newest `limit`, oldest first. */
+    readonly listEventsSince: (
+      since: string,
+      limit: number,
+    ) => Effect.Effect<ReadonlyArray<TicketEvent>>;
   }
 >()("@project-os/core/TicketRepository") {}
 

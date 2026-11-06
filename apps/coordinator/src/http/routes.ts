@@ -3,6 +3,7 @@ import { InboundMessage, SlashCommand } from "@project-os/contracts";
 import {
   getTicket,
   handleInbound,
+  readActivity,
   type AgentRuntime,
   type ChannelGateway,
   type Clock,
@@ -140,6 +141,19 @@ export const httpRoutes = ({
       reply(set, toResult(listProjectTickets(params.id))),
     )
     .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
+    .get("/activity", ({ query, set }) => {
+      const since = typeof query.since === "string" ? query.since : undefined;
+      if (since !== undefined && Number.isNaN(Date.parse(since))) {
+        set.status = 400;
+        return { error: "since must be an ISO timestamp" };
+      }
+      return reply(
+        set,
+        toResult(
+          readActivity({ ...(since === undefined ? {} : { since }), staleAfterMs: workerStaleMs }),
+        ),
+      );
+    })
     .get("/tickets/:id", ({ params, set }) =>
       reply(set, toResult(getTicket({ ticketId: params.id }))),
     )
