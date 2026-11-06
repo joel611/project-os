@@ -225,4 +225,18 @@ describe("reactions endpoint", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "Missing Permissions" });
   });
+
+  it("returns 502 with a generic message for non-Error failures", async () => {
+    const app = createReplyApp(
+      async () => {},
+      undefined,
+      undefined,
+      async () => {
+        throw "x";
+      },
+    );
+    const { threadId: _, ...topLevel } = instruction;
+    const res = await reactTo(app, topLevel);
+    expect(await res.json()).toEqual({ error: "discord reaction failed" });
+  });
 });
