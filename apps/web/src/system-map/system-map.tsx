@@ -1,16 +1,8 @@
 import type { ActivityTicket, ChannelType, TicketStatus } from "@project-os/contracts";
-import {
-  Brain,
-  Cloud,
-  Laptop,
-  Mail,
-  MessageCircle,
-  MessagesSquare,
-  type LucideIcon,
-} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import { QueryError } from "@/components/states";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { relativeTime } from "@/model";
 import { useNow } from "@/use-now";
 import {
@@ -21,50 +13,38 @@ import {
   ticketLabel,
   workerKey,
   workerSlots,
-  type Identity,
   type MapModel,
-  type Module,
-  type Packet,
 } from "./feed.ts";
-import {
-  depthOrder,
-  face,
-  layout as makeLayout,
-  nodeId,
-  onLeftFace,
-  onTop,
-  packetAt,
-  project,
-  UNIT,
-  type Layout,
-  type MapNode,
-} from "./iso.ts";
-import { usePlayer, type Player, type Trip } from "./player.ts";
+import { IsoScene } from "./iso-scene.tsx";
+import { layout as makeLayout, nodeId, type Layout } from "./iso.ts";
+import { usePlayer, type Player } from "./player.ts";
+import type { WorkerView } from "./scene.tsx";
+import { SchematicScene } from "./schematic-scene.tsx";
+
+type MapStyle = "schematic" | "isometric";
+const STYLE_KEY = "system-map-style";
+
+/** The viewer's chosen style, remembered in this browser. Schematic unless they picked another. */
+const useMapStyle = () => {
+  const [style, setStyle] = useState<MapStyle>(() => {
+    try {
+      return localStorage.getItem(STYLE_KEY) === "isometric" ? "isometric" : "schematic";
+    } catch {
+      return "schematic";
+    }
+  });
+  const choose = (next: MapStyle) => {
+    setStyle(next);
+    try {
+      localStorage.setItem(STYLE_KEY, next);
+    } catch {
+      // Storage blocked: the choice lasts for this visit only.
+    }
+  };
+  return [style, choose] as const;
+};
 
 const POLL_MS = 2000;
-
-const CHANNEL_ICON: Readonly<Record<ChannelType, LucideIcon>> = {
-  discord: MessageCircle,
-  email: Mail,
-  chat: MessagesSquare,
-};
-const CHANNEL_COLOR: Readonly<Record<ChannelType, string>> = {
-  discord: "var(--iso-discord)",
-  email: "var(--iso-email)",
-  chat: "var(--iso-chat)",
-};
-const MODULES: ReadonlyArray<readonly [Module, string, number, number]> = [
-  ["jev", "Jev", -0.28, -0.22],
-  ["tickets", "Tickets", 0.22, -0.22],
-  ["mcp", "MCP", -0.28, 0.18],
-  ["pi", "Pi reply", 0.22, 0.18],
-];
-
-const nodeIcon = (n: MapNode): LucideIcon => {
-  if (n.kind === "coordinator") return Brain;
-  if (n.kind === "worker") return n.workerType === "daytona_pi" ? Cloud : Laptop;
-  return CHANNEL_ICON[n.channel ?? "chat"];
-};
 
 /** Polls `GET /activity` and turns each read into stories for the player. */
 const useActivity = (player: Player) => {
@@ -102,262 +82,7 @@ const useActivity = (player: Player) => {
   return { model, error };
 };
 
-const Avatar = ({ who, r = 13 }: { who: Identity; r?: number }) => {
-  const Badge = CHANNEL_ICON[who.channel];
-  return (
-    <g>
-      <title>{who.name}</title>
-      <circle r={r} fill={who.color} stroke="var(--iso-bg)" strokeWidth={2} />
-      <text y={r * 0.27} textAnchor="middle" className="iso-initials" fontSize={r * 0.77}>
-        {who.initials}
-      </text>
-      <g transform={`translate(${r * 0.77} ${-r * 0.77})`}>
-        <circle r={7} fill={CHANNEL_COLOR[who.channel]} stroke="var(--iso-bg)" strokeWidth={1.5} />
-        <Badge x={-4.25} y={-4.25} width={8.5} height={8.5} color="#fff" strokeWidth={2.5} />
-      </g>
-    </g>
-  );
-};
-
-const PacketBody = ({ packet }: { packet: Packet }) => {
-  switch (packet.kind) {
-    case "message":
-      return <Avatar who={packet.who} />;
-    case "reply":
-      return (
-        <g>
-          <rect x={-38} y={-11} width={76} height={22} rx={11} className="iso-reply" />
-          {packet.who && (
-            <g transform="translate(-26 0)">
-              <circle r={8} fill={packet.who.color} stroke="#fff" strokeWidth={1.2} />
-              <text y={2.6} textAnchor="middle" className="iso-initials" fontSize={7}>
-                {packet.who.initials}
-              </text>
-            </g>
-          )}
-          <text x={packet.who ? 6 : 0} y={4} textAnchor="middle" className="iso-chip-text">
-            reply
-          </text>
-        </g>
-      );
-    case "ticket":
-      return (
-        <g>
-          <rect
-            x={-31}
-            y={-11}
-            width={62}
-            height={22}
-            rx={6}
-            className={`iso-chip iso-chip-${packet.tone}`}
-          />
-          <text y={4} textAnchor="middle" className="iso-chip-text">
-            {packet.tone === "done" ? "✓ " : packet.tone === "failed" ? "✕ " : ""}
-            {ticketLabel(packet.ticketId)}
-          </text>
-        </g>
-      );
-    case "call":
-      return (
-        <g>
-          <circle r={4.5} className="iso-call" />
-          <text y={-10} textAnchor="middle" className="iso-call-label">
-            {packet.label}
-          </text>
-        </g>
-      );
-  }
-};
-
-const Packets = ({ trips, now, map }: { trips: ReadonlyArray<Trip>; now: number; map: Layout }) => (
-  <>
-    <g>
-      {trips.map((trip) => {
-        const a = map.byId.get(trip.from);
-        const b = map.byId.get(trip.to);
-        if (!a || !b) return null;
-        const { floor } = packetAt(a, b, Math.min(1, (now - trip.start) / trip.duration));
-        const big = trip.packet.kind !== "call";
-        return (
-          <ellipse
-            key={trip.id}
-            cx={floor.x}
-            cy={floor.y}
-            rx={big ? 14 : 5}
-            ry={big ? 6 : 2.5}
-            className="iso-shadow"
-          />
-        );
-      })}
-    </g>
-    <g>
-      {trips.map((trip) => {
-        const a = map.byId.get(trip.from);
-        const b = map.byId.get(trip.to);
-        if (!a || !b) return null;
-        const { at } = packetAt(a, b, Math.min(1, (now - trip.start) / trip.duration));
-        return (
-          <g key={trip.id} transform={`translate(${at.x} ${at.y})`}>
-            <PacketBody packet={trip.packet} />
-          </g>
-        );
-      })}
-    </g>
-  </>
-);
-
-interface WorkerView {
-  readonly line: string;
-  readonly working: boolean;
-  readonly offline: boolean;
-}
-
-const Block = ({
-  node,
-  player,
-  worker,
-}: {
-  node: MapNode;
-  player: Player;
-  worker: WorkerView | undefined;
-}) => {
-  const Icon = nodeIcon(node);
-  const top = project(node.u, node.v, node.h);
-  const kind = node.kind === "channel" ? "channel" : node.kind;
-  return (
-    <g className={`iso-block iso-${kind}${worker?.offline ? " iso-offline" : ""}`}>
-      {node.h > 0 && (
-        <>
-          <polygon points={face(node, "left")} className="iso-face iso-l" />
-          <polygon points={face(node, "right")} className="iso-face iso-r" />
-        </>
-      )}
-      <polygon points={face(node, "top")} className="iso-face iso-t" />
-      {node.kind === "coordinator" ? (
-        MODULES.map(([key, label, du, dv]) => {
-          const on = player.isFlashing(key);
-          const width = label.length * 6.4 + 12;
-          return (
-            <g key={key} transform={onTop(project(node.u + du, node.v + dv, node.h))}>
-              <rect
-                x={-width / 2}
-                y={-11}
-                width={width}
-                height={22}
-                rx={4}
-                className={on ? "iso-tile on" : "iso-tile"}
-              />
-              <text
-                y={3.5}
-                textAnchor="middle"
-                className={on ? "iso-tile-text on" : "iso-tile-text"}
-              >
-                {label}
-              </text>
-            </g>
-          );
-        })
-      ) : (
-        <g transform={onTop(top)}>
-          <Icon
-            x={-11}
-            y={-11}
-            width={22}
-            height={22}
-            strokeWidth={2}
-            color={node.channel ? CHANNEL_COLOR[node.channel] : "var(--iso-text)"}
-          />
-        </g>
-      )}
-      {node.kind === "worker" && (
-        <g transform={onLeftFace(project(node.u - node.w, node.v + node.d, node.h * 0.3))}>
-          <rect
-            x={10}
-            y={-4}
-            width={node.w * 2 * UNIT - 20}
-            height={6}
-            rx={3}
-            className="iso-track"
-          />
-          {worker?.working && (
-            <rect
-              x={10}
-              y={-4}
-              width={node.w * 2 * UNIT - 20}
-              height={6}
-              rx={3}
-              className="iso-busy"
-            />
-          )}
-        </g>
-      )}
-    </g>
-  );
-};
-
-const Labels = ({
-  node,
-  coordinatorLine,
-  worker,
-}: {
-  node: MapNode;
-  coordinatorLine: string;
-  worker: WorkerView | undefined;
-}) => {
-  const top = project(node.u, node.v, node.h);
-  if (node.kind === "channel")
-    return (
-      <text x={top.x} y={top.y + 34} textAnchor="middle" className="iso-label">
-        {node.label}
-      </text>
-    );
-  const y =
-    project(node.u - node.w, node.v - node.d, node.h).y - (node.kind === "coordinator" ? 26 : 12);
-  const sub =
-    node.kind === "coordinator"
-      ? coordinatorLine
-      : node.kind === "worker"
-        ? (worker?.line ?? "")
-        : node.sub;
-  return (
-    <g>
-      <text x={top.x} y={y - 14} textAnchor="middle" className="iso-label">
-        {node.kind === "worker" ? `${node.label} · ${node.sub}` : node.label}
-      </text>
-      <text
-        x={top.x}
-        y={y}
-        textAnchor="middle"
-        className={worker?.working ? "iso-sub iso-sub-busy" : "iso-sub"}
-      >
-        {sub}
-      </text>
-    </g>
-  );
-};
-
-const Floor = ({ map }: { map: Layout }) => {
-  const lines = [];
-  for (let k = -12; k <= 12; k += 0.5) {
-    const a = project(k, -12);
-    const b = project(k, 12);
-    const c = project(-12, k);
-    const d = project(12, k);
-    lines.push(
-      <line key={`u${k}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />,
-      <line key={`v${k}`} x1={c.x} y1={c.y} x2={d.x} y2={d.y} />,
-    );
-  }
-  const { x, y, w, h } = map.viewBox;
-  return (
-    <>
-      <rect x={x} y={y} width={w} height={h} className="iso-floor" />
-      <g className="iso-grid">{lines}</g>
-    </>
-  );
-};
-
-/** The live isometric map of channels, adapters, the Coordinator and Workers. */
+/** The live system map of channels, adapters, the Coordinator and Workers, in either style. */
 export const SystemMap = () => {
   const mapRef = useRef<Layout | null>(null);
   const [reducedMotion] = useState(
@@ -370,6 +95,7 @@ export const SystemMap = () => {
   );
   const { model, error } = useActivity(player);
   const clock = useNow();
+  const [style, setStyle] = useMapStyle();
 
   const tickets = [...model.tickets.values()];
   const channelKey = channelsOf(tickets).join(",");
@@ -408,75 +134,21 @@ export const SystemMap = () => {
     });
   }
 
-  const hot = new Set(player.trips.map((t) => [t.from, t.to].sort().join("|")));
-  const coordinator = map.byId.get(nodeId.coordinator)!;
-  const base = project(coordinator.u - coordinator.w, coordinator.v + coordinator.d);
-  const { x, y, w, h } = map.viewBox;
+  const scene = { map, player, workers: workerViews, waiting, coordinatorLine };
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <QueryError error={error} />}
-      <div className="iso-map overflow-x-auto rounded-xl border">
-        <svg
-          viewBox={`${x} ${y} ${w} ${h}`}
-          className="block h-auto w-full min-w-[720px]"
-          role="img"
-          aria-label="Live system map: messages move from channels through adapters to the Coordinator and on to Workers"
-        >
-          <Floor map={map} />
-          <g>
-            {map.edges.map(([a, b]) => {
-              const p = map.byId.get(a)!;
-              const q = map.byId.get(b)!;
-              const pa = project(p.u, p.v);
-              const pb = project(q.u, q.v);
-              return (
-                <line
-                  key={`${a}|${b}`}
-                  x1={pa.x}
-                  y1={pa.y}
-                  x2={pb.x}
-                  y2={pb.y}
-                  className={hot.has([a, b].sort().join("|")) ? "iso-rail hot" : "iso-rail"}
-                />
-              );
-            })}
-          </g>
-          <g>
-            {depthOrder(map.nodes).map((n) => (
-              <Block key={n.id} node={n} player={player} worker={workerViews.get(n.id)} />
-            ))}
-          </g>
-          <g>
-            {waiting.slice(0, 4).map((t, i) => (
-              <g key={t.id} transform={`translate(${base.x - 30 + i * 8} ${base.y + 14 + i * 4})`}>
-                <title>{t.title}</title>
-                <rect
-                  x={-28}
-                  y={-10}
-                  width={56}
-                  height={20}
-                  rx={5}
-                  className="iso-chip iso-chip-work"
-                />
-                <text y={4} textAnchor="middle" className="iso-chip-text">
-                  {ticketLabel(t.id)}
-                </text>
-              </g>
-            ))}
-          </g>
-          <Packets trips={player.trips} now={player.now} map={map} />
-          <g>
-            {map.nodes.map((n) => (
-              <Labels
-                key={n.id}
-                node={n}
-                coordinatorLine={coordinatorLine}
-                worker={workerViews.get(n.id)}
-              />
-            ))}
-          </g>
-        </svg>
+      <div className="flex items-center justify-between gap-3">
+        {error ? <QueryError error={error} /> : <span />}
+        <Tabs value={style} onValueChange={(v) => setStyle(v as MapStyle)}>
+          <TabsList aria-label="Map style">
+            <TabsTrigger value="schematic">Schematic</TabsTrigger>
+            <TabsTrigger value="isometric">Isometric</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      <div className={`map-stage map-${style} overflow-x-auto rounded-xl border`}>
+        {style === "schematic" ? <SchematicScene {...scene} /> : <IsoScene {...scene} />}
       </div>
       {slots.length === 0 && (
         <p className="text-sm text-muted-foreground">

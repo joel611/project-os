@@ -14,6 +14,9 @@ export interface MapNode {
   readonly sub: string;
   readonly channel?: ChannelType;
   readonly workerType?: WorkerType;
+  /** Position on the left-to-right flow chart: columns of channels, adapters, Coordinator, Workers. */
+  readonly x: number;
+  readonly y: number;
   /** Floor-grid position of the block's centre. */
   readonly u: number;
   readonly v: number;
@@ -108,7 +111,7 @@ export const layout = (
     rest: Pick<MapNode, "label" | "sub"> & Partial<MapNode>,
   ): MapNode => {
     const [w, d, h] = SIZE[kind];
-    return { id, kind, ...onFloor(x, y), w, d, h, ...rest };
+    return { id, kind, x, y, ...onFloor(x, y), w, d, h, ...rest };
   };
 
   const nodes: MapNode[] = [];
