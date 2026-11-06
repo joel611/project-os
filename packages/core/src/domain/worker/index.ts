@@ -14,6 +14,9 @@ export const workerStatus = (worker: Worker, now: Date, staleAfterMs: number): W
 /** A personal worker: a device someone registered, serving only their tickets. */
 export const isPersonal = (worker: Worker): boolean => worker.ownerId !== null;
 
+/** How to name a worker to people: its name, else its id. */
+export const workerLabel = (worker: Worker): string => worker.name ?? worker.id;
+
 export const ownedBy = (
   worker: Worker,
   person: { readonly channelType: string; readonly id: string },

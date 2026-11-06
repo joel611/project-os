@@ -11,6 +11,7 @@ import {
   handleInbound,
   readActivity,
   redeemWorkerRegistration,
+  workerLabel,
   type AgentRuntime,
   type ChannelGateway,
   type Clock,
@@ -188,7 +189,7 @@ export const httpRoutes = ({
               Effect.flatMap(redeemWorkerRegistration),
               Effect.map(({ worker, secret }) => ({
                 workerId: worker.id,
-                name: worker.name ?? worker.id,
+                name: workerLabel(worker),
                 secret,
               })),
             ),

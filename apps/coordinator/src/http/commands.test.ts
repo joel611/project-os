@@ -1,6 +1,6 @@
 import type { SlashCommand } from "@project-os/contracts";
 import { makeTestLayer } from "@project-os/testing";
-import { ConnectionsUnavailable, UserConnections } from "@project-os/core";
+import { ConnectionsUnavailable, UserConnections, WorkerRepository } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { createApp } from "../app.ts";
@@ -255,12 +255,32 @@ describe("runCommand personal workers", () => {
     expect(listed.content).toContain("**ada-mbp**");
     expect(listed.content).toContain("offline, last seen never");
 
+    // Seen once, a while ago (the test clock is 2026-11-04T00:00Z).
+    await config.workers!.run(
+      Effect.gen(function* () {
+        const repo = yield* WorkerRepository;
+        const [w] = yield* repo.list;
+        yield* repo.heartbeat({
+          workerId: w!.id,
+          workerType: "local_claude",
+          ticketId: null,
+          at: "2026-11-03T20:15:00.000Z",
+        });
+      }),
+    );
+    expect((await runCommand(worker("workers"), config)).content).toContain(
+      "offline, last seen 2026-11-03 20:15 UTC",
+    );
+
     expect(
       (await runCommand(worker("unregister-worker", { worker: "nope" }), config)).content,
     ).toContain('no worker called "nope"');
     expect(
       (await runCommand(worker("unregister-worker", { worker: "ada-mbp" }), config)).content,
     ).toContain("Removed ada-mbp");
+    expect((await runCommand(worker("unregister-worker", { worker: " " }), config)).content).toBe(
+      "Usage: /unregister-worker worker:<name or id>",
+    );
   });
 
   it("refuses when personal workers are not configured", async () => {

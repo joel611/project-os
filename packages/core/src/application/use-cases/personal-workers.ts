@@ -24,7 +24,6 @@ const PendingRegistration = Schema.fromJsonString(
   Schema.Struct({
     channelType: Schema.Literals(["discord", "email", "chat"]),
     id: Schema.String,
-    name: Schema.optionalKey(Schema.String),
   }),
 );
 const decodePending = Schema.decodeUnknownOption(PendingRegistration);
@@ -36,7 +35,7 @@ const base64url = (bytes: Uint8Array) =>
     .replace(/=+$/, "");
 
 /** A random URL-safe secret. Web Crypto: works on Bun and Workers alike. */
-export const randomSecret = (bytes = 32): Effect.Effect<string> =>
+export const randomSecret = (bytes: number): Effect.Effect<string> =>
   Effect.sync(() => base64url(crypto.getRandomValues(new Uint8Array(bytes))));
 
 /** Hex SHA-256: what the Coordinator stores in place of codes and device secrets. */
@@ -61,11 +60,7 @@ export const issueWorkerRegistration = (person: Person) =>
     const hash = yield* sha256Hex(token);
     yield* kv.set(
       pendingKey(hash),
-      JSON.stringify({
-        channelType: person.channelType,
-        id: person.id,
-        ...(person.name ? { name: person.name } : {}),
-      }),
+      JSON.stringify({ channelType: person.channelType, id: person.id }),
       { ttlSeconds: REGISTRATION_TTL_SECONDS },
     );
     return { token, expiresInSeconds: REGISTRATION_TTL_SECONDS };

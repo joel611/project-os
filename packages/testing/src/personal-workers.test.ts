@@ -11,8 +11,10 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   redeemWorkerRegistration,
+  sha256Hex,
   TicketRepository,
   unregisterWorker,
+  workerLabel,
   WorkerRepository,
   type Person,
 } from "@project-os/core";
@@ -91,6 +93,25 @@ describe("worker registration", () => {
     expect(value.unknown._tag).toBe("RegistrationInvalid");
   });
 
+  it("refuses a code a racing Watcher already took", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const { token } = yield* issueWorkerRegistration(ADA);
+        const hash = yield* sha256Hex(token);
+        yield* (yield* KeyValueStore).set(`worker-register-used:${hash}`, "1");
+        return yield* Effect.flip(redeemWorkerRegistration({ token }));
+      }),
+    );
+    expect(value._tag).toBe("RegistrationInvalid");
+  });
+
+  it("names a worker by its name, else its id", () => {
+    const base = { id: "local-1", workerType: "local_claude" as const, ownerChannelType: null };
+    const w = { ...base, ownerId: null, currentTicketId: null, lastSeenAt: T0, createdAt: T0 };
+    expect(workerLabel({ ...w, name: "mbp" })).toBe("mbp");
+    expect(workerLabel({ ...w, name: null })).toBe("local-1");
+  });
+
   it("stores only the code's hash, with a TTL", async () => {
     const { value } = await run(
       Effect.gen(function* () {
@@ -130,7 +151,7 @@ const msg = (sender: Person, externalId = "m1"): InboundMessage => ({
   channelType: "discord",
   externalId,
   channelId: "chan-1",
-  sender: { id: sender.id, name: sender.name! },
+  sender: { id: sender.id, ...(sender.name ? { name: sender.name } : {}) },
   content: "please fix login",
   mentionsBot: true,
   raw: {},
@@ -190,7 +211,9 @@ describe("ticket routing", () => {
       }),
     );
     expect(value.ticket).toMatchObject({ workerId: value.worker.id, workerType: "local_claude" });
-    expect(value.assigned?.body).toContain("Ada's worker");
+    expect(value.assigned?.body).toBe(
+      `Assigned to the requester's own worker ${value.worker.name}`,
+    );
     expect(launched).toEqual([
       { ticketId: value.ticket.id, workerType: "local_claude", workerId: value.worker.id },
     ]);
@@ -238,6 +261,11 @@ describe("MCP guards", () => {
           { channelType: "discord", id: "u9", name: "Cy" },
           "m2",
         );
+        // No shared worker id configured: assigned to a worker type, no worker id yet.
+        const unassigned = yield* handleInbound(msg({ channelType: "discord", id: "u9" }, "m3"), {
+          defaultWorkerType: "local_claude",
+        });
+        if (unassigned.kind !== "ticket_created") throw new Error(unassigned.kind);
         const ok = (e: Effect.Effect<void, any, any>) =>
           e.pipe(
             Effect.as("ok"),
@@ -253,6 +281,8 @@ describe("MCP guards", () => {
           ticketOther: yield* ok(guardTicketAccess(adaTicket.id, bob.worker)),
           sharedTicketAnon: yield* ok(guardTicketAccess(sharedTicket.id, undefined)),
           sharedTicketPersonal: yield* ok(guardTicketAccess(sharedTicket.id, ada.worker)),
+          noWorkerAnon: yield* ok(guardTicketAccess(unassigned.ticket.id, undefined)),
+          missingTicket: yield* ok(guardTicketAccess("nope", undefined)),
         };
       }),
     );
@@ -266,6 +296,8 @@ describe("MCP guards", () => {
       ticketOther: "WorkerUnauthorized",
       sharedTicketAnon: "ok",
       sharedTicketPersonal: "WorkerUnauthorized",
+      noWorkerAnon: "ok",
+      missingTicket: "ok",
     });
   });
 });
