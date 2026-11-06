@@ -1,6 +1,12 @@
-import { CreatedChannel, CreatedThread, type ChannelType } from "@project-os/contracts";
+import {
+  CreatedChannel,
+  CreatedThread,
+  PostedPrompt,
+  type ChannelType,
+} from "@project-os/contracts";
 import {
   ChannelCreateFailed,
+  PromptSendFailed,
   ReactionFailed,
   ThreadCreateFailed,
   type ChannelGateway,
@@ -15,6 +21,7 @@ export interface HttpGatewayConfig {
 
 const decodeCreated = Schema.decodeUnknownOption(CreatedChannel);
 const decodeThread = Schema.decodeUnknownOption(CreatedThread);
+const decodePosted = Schema.decodeUnknownOption(PostedPrompt);
 
 const baseUrl = (config: HttpGatewayConfig, channelType: ChannelType) => {
   const base = config.adapterUrls[channelType];
@@ -52,8 +59,9 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
 /**
  * POSTs reply instructions to `<adapter>/reply` (delivery failures are defects), channel
  * creation requests to `<adapter>/channels` (failures are `ChannelCreateFailed`, so the admin
- * dialogue can report them), thread requests to `<adapter>/threads` (`ThreadCreateFailed`), and
- * reactions to `<adapter>/reactions` (`ReactionFailed`).
+ * dialogue can report them), thread requests to `<adapter>/threads` (`ThreadCreateFailed`),
+ * reactions to `<adapter>/reactions` (`ReactionFailed`), and prompts to `<adapter>/prompts`
+ * (`PromptSendFailed`).
  */
 export const makeHttpChannelGateway = (
   config: HttpGatewayConfig,
@@ -94,4 +102,10 @@ export const makeHttpChannelGateway = (
       catch: (err) =>
         new ReactionFailed({ channelType: request.channelType, message: messageOf(err) }),
     }).pipe(Effect.asVoid),
+  ask: (request) =>
+    Effect.tryPromise({
+      try: () => postForResult(config, request, "/prompts", decodePosted, "prompt"),
+      catch: (err) =>
+        new PromptSendFailed({ channelType: request.channelType, message: messageOf(err) }),
+    }),
 });

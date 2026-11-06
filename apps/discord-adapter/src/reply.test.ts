@@ -240,3 +240,64 @@ describe("reactions endpoint", () => {
     expect(await res.json()).toEqual({ error: "discord reaction failed" });
   });
 });
+
+describe("prompts endpoint", () => {
+  const request = {
+    channelType: "discord",
+    channelId: "c1",
+    threadId: "t1",
+    promptId: "p1",
+    kind: "approval",
+    content: "Ship?",
+    options: ["Approve", "Deny"],
+  };
+  const prompt = (app: ReturnType<typeof createReplyApp>, body: unknown) =>
+    app.handle(
+      new Request("http://localhost/prompts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  const withPoster = (postPrompt: Parameters<typeof createReplyApp>[4]) =>
+    createReplyApp(async () => {}, undefined, undefined, undefined, postPrompt);
+
+  it("posts the question with its buttons and returns the message id", async () => {
+    const calls: unknown[] = [];
+    const app = withPoster(async (target, message) => {
+      calls.push([target, message.content, message.components[0]!.components.length]);
+      return { messageId: "m1" };
+    });
+    const res = await prompt(app, request);
+    expect(await res.json()).toEqual({ messageId: "m1" });
+    await prompt(app, { ...request, threadId: undefined });
+    expect(calls).toEqual([
+      [{ channelId: "c1", threadId: "t1" }, "Ship?", 2],
+      [{ channelId: "c1" }, "Ship?", 2],
+    ]);
+  });
+
+  it("answers 400 for a bad body, 501 without a poster, 502 when Discord fails", async () => {
+    const poster = withPoster(async () => {
+      throw new Error("Missing Access");
+    });
+    expect((await prompt(poster, { nope: 1 })).status).toBe(400);
+    expect(
+      (
+        await prompt(
+          createReplyApp(async () => {}),
+          request,
+        )
+      ).status,
+    ).toBe(501);
+    const failed = await prompt(poster, request);
+    expect(failed.status).toBe(502);
+    expect(await failed.json()).toEqual({ error: "Missing Access" });
+    const odd = withPoster(async () => {
+      throw "x";
+    });
+    expect(await (await prompt(odd, request)).json()).toEqual({
+      error: "discord prompt post failed",
+    });
+  });
+});

@@ -1,6 +1,7 @@
-import type { InboundMessage, SlashCommand } from "@project-os/contracts";
+import type { InboundMessage, PromptAnswer, SlashCommand } from "@project-os/contracts";
 import { normalizeCommand } from "./commands.ts";
 import { type DiscordMessageLike, normalizeMessage } from "./normalize.ts";
+import { type ActionRow, normalizePromptClick } from "./prompts.ts";
 
 /** User id of the fake bot; `fakeInbound` mentions it like a person typing @bot. */
 export const FAKE_BOT_ID = "fake-bot";
@@ -58,3 +59,31 @@ export const fakeCommand = (
     member: { displayName: speaker.name },
     options: { data: Object.entries(options).map(([name, value]) => ({ name, value })) },
   });
+
+/**
+ * Clicks option `choice` of a prompt posted with `components`, the way a person would (the
+ * button, or the select menu's option), and normalizes it like production.
+ */
+export const fakePromptClick = (
+  speaker: FakeSpeaker,
+  components: ReadonlyArray<ActionRow>,
+  choice: number,
+  id = `fake-click-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+): PromptAnswer | null => {
+  const parts = components.flatMap((row) => row.components);
+  const button = parts.find((c) => c.type === 2 && c.custom_id.endsWith(`:${choice}`));
+  const select = parts.find((c) => c.type === 3);
+  const customId = button?.custom_id ?? select?.custom_id;
+  if (customId === undefined) return null;
+  return normalizePromptClick({
+    id,
+    customId,
+    ...(button ? {} : { values: [String(choice)] }),
+    channelId: speaker.threadId ?? speaker.channelId,
+    channel: speaker.threadId
+      ? { isThread: () => true, parentId: speaker.channelId }
+      : { isThread: () => false },
+    user: { id: speaker.userId, username: speaker.name },
+    member: { displayName: speaker.name },
+  });
+};

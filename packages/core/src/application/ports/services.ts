@@ -6,6 +6,8 @@ import type {
   CreatedThread,
   CreateThreadInstruction,
   ReactInstruction,
+  PostedPrompt,
+  PromptInstruction,
   ReplyInstruction,
   WorkerType,
 } from "@project-os/contracts";
@@ -45,6 +47,8 @@ export class ChannelGateway extends Context.Service<
     ) => Effect.Effect<CreatedThread, ThreadCreateFailed>;
     /** Ask the matching Channel Adapter to react to a message (the 👀 acknowledgement). */
     readonly react: (request: ReactInstruction) => Effect.Effect<void, ReactionFailed>;
+    /** Ask the matching Channel Adapter to post a question answered with a click (buttons). */
+    readonly ask: (request: PromptInstruction) => Effect.Effect<PostedPrompt, PromptSendFailed>;
   }
 >()("@project-os/core/ChannelGateway") {}
 
@@ -74,6 +78,12 @@ export class ThreadCreateFailed extends Data.TaggedError("ThreadCreateFailed")<{
 
 /** A Channel Adapter could not react to a message (no permission, message gone, ...). */
 export class ReactionFailed extends Data.TaggedError("ReactionFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
+
+/** A Channel Adapter could not post a prompt (no adapter, no permission, ...). */
+export class PromptSendFailed extends Data.TaggedError("PromptSendFailed")<{
   readonly channelType: string;
   readonly message: string;
 }> {}

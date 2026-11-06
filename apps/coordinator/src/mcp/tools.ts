@@ -2,9 +2,11 @@ import * as C from "@project-os/contracts";
 import {
   AgentRuntime,
   appendEvent,
+  askOnTicket,
   ChannelGateway,
   claimTicketUseCase,
   Clock,
+  getPrompt,
   getTicket,
   heartbeat,
   IdGenerator,
@@ -122,6 +124,25 @@ export const makeTools = (): readonly McpTool<McpServices>[] => [
     input: C.TicketUpdateStatusInput,
     output: C.TicketUpdateStatusOutput,
     run: (i) => Effect.map(updateStatusAndNotify(i), (ticket) => ({ ticket })),
+  }),
+  define({
+    name: "ticket_ask",
+    description:
+      "Ask the people behind a ticket to confirm something (kind approval: Approve / Deny buttons) or to " +
+      "pick one option (kind choice: 2 to 25 options). The Coordinator posts it in the ticket's thread. " +
+      "Their answer arrives as a follow_up event on the ticket; check it with ticket_get_prompt or ticket_get. " +
+      "If you can't continue without it, set the ticket to blocked and end the session.",
+    input: C.TicketAskInput,
+    output: C.TicketAskOutput,
+    run: (i) => Effect.map(askOnTicket(i), (prompt) => ({ prompt })),
+  }),
+  define({
+    name: "ticket_get_prompt",
+    description:
+      "Read a question asked with ticket_ask: status pending, or answered with the option picked and by whom.",
+    input: C.TicketGetPromptInput,
+    output: C.TicketGetPromptOutput,
+    run: (i) => Effect.map(getPrompt(i), (prompt) => ({ prompt })),
   }),
   define({
     name: "project_memory_read",

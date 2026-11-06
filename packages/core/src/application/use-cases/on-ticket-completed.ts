@@ -1,12 +1,7 @@
 import { Effect } from "effect";
-import {
-  AgentRuntime,
-  ChannelGateway,
-  ProjectSourceRepository,
-  TicketRepository,
-} from "../ports/index.ts";
+import { AgentRuntime, ChannelGateway, TicketRepository } from "../ports/index.ts";
 import type { TicketStatus } from "../../domain/index.ts";
-import { channelTypeFor } from "./channels.ts";
+import { ticketChannel } from "./prompts.ts";
 import { updateStatus } from "./tickets.ts";
 
 /**
@@ -17,23 +12,13 @@ import { updateStatus } from "./tickets.ts";
 export const onTicketCompleted = (input: { readonly ticketId: string }) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
-    const sources = yield* ProjectSourceRepository;
     const runtime = yield* AgentRuntime;
     const gateway = yield* ChannelGateway;
 
     const ticket = yield* tickets.get(input.ticketId);
     const events = yield* tickets.listEvents(ticket.id);
     // The ticket's own thread if it has one, else the project's default response source.
-    const thread = yield* tickets.findThread(ticket.id);
-    const target = (yield* sources.listByProject(ticket.projectId)).find(
-      (s) => s.isDefaultResponse && s.status === "active",
-    );
-    const channelType = target && channelTypeFor(target.type);
-    const destination = thread
-      ? { channelType: thread.channelType, channelId: thread.channelId, threadId: thread.threadId }
-      : target && channelType
-        ? { channelType, channelId: target.externalId }
-        : undefined;
+    const destination = yield* ticketChannel(ticket.id);
     if (!destination) return false;
 
     const content = yield* runtime.respond({
