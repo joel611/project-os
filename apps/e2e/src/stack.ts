@@ -8,6 +8,7 @@ import { type IntentClassifier, UserConnections } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
+import type { ActionRow } from "../../discord-adapter/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../discord-adapter/src/reply.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
@@ -30,6 +31,15 @@ export interface CreatedThreadCall {
   readonly name: string;
 }
 
+export interface PostedPrompt {
+  readonly target: ReplyTarget;
+  readonly content: string;
+  /** The buttons or select menu, as sent to Discord. */
+  readonly components: ActionRow[];
+  /** Message id handed back (`discord-prompt-1`, …). */
+  readonly messageId: string;
+}
+
 export interface Stack {
   /** Coordinator base URL, e.g. `http://localhost:54321`. */
   readonly url: string;
@@ -39,6 +49,8 @@ export interface Stack {
   readonly createdChannels: string[];
   /** Threads the Discord adapter was told to open (ids `discord-thread-1`, …). */
   readonly createdThreads: CreatedThreadCall[];
+  /** Prompts (messages with buttons) the Discord adapter was told to post. */
+  readonly prompts: PostedPrompt[];
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
   readonly admin: ReturnType<typeof makeAdminActions>;
@@ -82,6 +94,7 @@ export const startStack = async (options: {
   const posted: Posted[] = [];
   const createdChannels: string[] = [];
   const createdThreads: CreatedThreadCall[] = [];
+  const prompts: PostedPrompt[] = [];
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
     async (name) => {
@@ -95,6 +108,11 @@ export const startStack = async (options: {
     async (input) => {
       createdThreads.push(input);
       return { threadId: `discord-thread-${createdThreads.length}` };
+    },
+    async (target, message) => {
+      const messageId = `discord-prompt-${prompts.length + 1}`;
+      prompts.push({ target, ...message, messageId });
+      return { messageId };
     },
   ).listen(0);
 
@@ -130,6 +148,7 @@ export const startStack = async (options: {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: { workerId: options.workerId, requireMention: true },
+        prompts: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER] },
         commands: {
           adminChannelId: ADMIN_CHANNEL,
           adminUserIds: [ADMIN_USER],
@@ -175,6 +194,7 @@ export const startStack = async (options: {
     posted,
     createdChannels,
     createdThreads,
+    prompts,
     dbPath,
     ...(oauth && { oauth }),
     json,

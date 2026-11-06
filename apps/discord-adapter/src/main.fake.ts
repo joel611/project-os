@@ -1,8 +1,9 @@
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import { env, envNumber } from "@project-os/config";
-import { fakeInbound, type FakeSpeaker } from "./fake.ts";
+import { fakeInbound, fakePromptClick, type FakeSpeaker } from "./fake.ts";
 import { forwardInbound } from "./forward.ts";
+import { answerPromptClick, type ActionRow } from "./prompts.ts";
 import { createReplyApp } from "./reply.ts";
 
 // Stand-in for the Discord adapter: no gateway, no token. It takes the adapter's place on
@@ -33,6 +34,9 @@ const speaker: FakeSpeaker = {
 let onReply: () => void = () => {};
 let fakeChannels = 0;
 let fakeThreads = 0;
+let fakePrompts = 0;
+// The latest prompt's buttons; typing `!N` clicks option N (from 1).
+let lastPrompt: ActionRow[] | undefined;
 createReplyApp(
   async (target, content) => {
     const where = target.threadId ? `${target.channelId}/${target.threadId}` : target.channelId;
@@ -51,7 +55,34 @@ createReplyApp(
     speaker.threadId = threadId;
     return { threadId };
   },
+  async (target, { content, components }) => {
+    const where = target.threadId ? `${target.channelId}/${target.threadId}` : target.channelId;
+    const parts = components.flatMap((row) => row.components);
+    const labels = parts.flatMap((c) => (c.type === 2 ? [c.label] : c.options.map((o) => o.label)));
+    console.log(`\n[bot -> #${where}] ${content}`);
+    labels.forEach((label, i) => console.log(`  [!${i + 1}] ${label}`));
+    lastPrompt = components;
+    onReply();
+    return { messageId: `fake-prompt-${++fakePrompts}` };
+  },
 ).listen(port);
+
+const click = async (choice: number) => {
+  const answer = lastPrompt && fakePromptClick(speaker, lastPrompt, choice);
+  if (!answer) return console.log("(no prompt with that option)");
+  await answerPromptClick(
+    answer,
+    {
+      defer: async () => {},
+      close: async (content) => {
+        lastPrompt = undefined;
+        console.log(`\n[bot edited the prompt] ${content}`);
+      },
+      whisper: async (content) => console.log(`\n[bot -> only you] ${content}`),
+    },
+    { coordinatorUrl, fetcher: fetch },
+  );
+};
 
 const say = async (content: string) => {
   const inbound = fakeInbound(speaker, content, { mention: !values["no-mention"] });
@@ -75,11 +106,13 @@ if (values.say !== undefined) {
 } else {
   console.log(
     `fake discord: #${speaker.channelId} as ${speaker.name} (${speaker.userId}); ` +
-      `coordinator ${coordinatorUrl}, reply endpoint :${port}. Type a message; Ctrl-D quits.`,
+      `coordinator ${coordinatorUrl}, reply endpoint :${port}. Type a message, or !N to click option N of the latest prompt; Ctrl-D quits.`,
   );
   const rl = createInterface({ input: process.stdin });
   for await (const line of rl) {
-    if (line.trim()) await say(line).catch((err) => console.error("forward failed:", err.message));
+    const pick = /^!(\d+)$/.exec(line.trim());
+    const send = pick ? click(Number(pick[1]) - 1) : line.trim() ? say(line) : undefined;
+    await send?.catch((err) => console.error("forward failed:", err.message));
   }
   process.exit(0);
 }

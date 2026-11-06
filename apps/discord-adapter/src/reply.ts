@@ -2,9 +2,11 @@ import { Schema } from "effect";
 import {
   CreateChannelInstruction,
   CreateThreadInstruction,
+  PromptInstruction,
   ReplyInstruction,
 } from "@project-os/contracts";
 import { Elysia } from "elysia";
+import { type ActionRow, promptComponents } from "./prompts.ts";
 
 export interface ReplyTarget {
   channelId: string;
@@ -19,22 +21,51 @@ export type CreateDiscordThread = (input: {
   messageId: string;
   name: string;
 }) => Promise<{ threadId: string }>;
+/** Posts a message with components (a prompt's buttons); resolves to the message's id. */
+export type PostDiscordPrompt = (
+  target: ReplyTarget,
+  message: { content: string; components: ActionRow[] },
+) => Promise<{ messageId: string }>;
 
 const decode = Schema.decodeUnknownOption(ReplyInstruction);
 const decodeCreate = Schema.decodeUnknownOption(CreateChannelInstruction);
 const decodeThread = Schema.decodeUnknownOption(CreateThreadInstruction);
+const decodePrompt = Schema.decodeUnknownOption(PromptInstruction);
 
 /**
  * Coordinator-facing endpoints: `/reply` posts a message, `/channels` creates a channel,
- * `/threads` opens a thread on a message. All execute Coordinator instructions; no decisions
- * are made here. Without `createChannel` / `createThread`, that endpoint answers 501.
+ * `/threads` opens a thread on a message, `/prompts` posts a question with buttons. All execute
+ * Coordinator instructions; no decisions are made here. Without `createChannel` /
+ * `createThread` / `postPrompt`, that endpoint answers 501.
  */
 export const createReplyApp = (
   post: PostToDiscord,
   createChannel?: CreateDiscordChannel,
   createThread?: CreateDiscordThread,
+  postPrompt?: PostDiscordPrompt,
 ) =>
   new Elysia()
+    .post("/prompts", async ({ body, set }) => {
+      const parsed = decodePrompt(body);
+      if (parsed._tag === "None" || parsed.value.channelType !== "discord") {
+        set.status = 400;
+        return { error: "invalid prompt instruction" };
+      }
+      if (!postPrompt) {
+        set.status = 501;
+        return { error: "this adapter can't post prompts" };
+      }
+      const { channelId, threadId, content } = parsed.value;
+      try {
+        return await postPrompt(threadId === undefined ? { channelId } : { channelId, threadId }, {
+          content,
+          components: promptComponents(parsed.value),
+        });
+      } catch (err) {
+        set.status = 502;
+        return { error: err instanceof Error ? err.message : "discord prompt post failed" };
+      }
+    })
     .post("/threads", async ({ body, set }) => {
       const parsed = decodeThread(body);
       if (parsed._tag === "None" || parsed.value.channelType !== "discord") {

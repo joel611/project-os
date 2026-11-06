@@ -264,6 +264,8 @@ Workers talk to Project Memory and Tickets **only** through MCP tools. No direct
 - `worker_heartbeat` — Worker (watcher or session) reports it is alive: `worker_id`, `worker_type`, current `ticket_id` if any
 - `ticket_append_event` — status_update | comment | result | error | …
 - `ticket_update_status` — open | assigned | in_progress | blocked | completed | failed | cancelled
+- `ticket_ask` — ask the people behind a ticket to approve (Approve / Deny) or pick one of 2–25 options. The Coordinator posts it in the ticket's thread with buttons (a select menu past 5 options); the click comes back through the adapter (`POST /prompts/answer`) and lands on the ticket as a `follow_up` event
+- `ticket_get_prompt` — a prompt's status and, once clicked, the option picked and by whom
 
 **Account tools**
 - `user_token` — OAuth access token (`google` | `github`) of the person behind the ticket's latest message (§5.7)
@@ -610,6 +612,8 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 | `worker_heartbeat` | Report Worker alive (+ current ticket) |
 | `ticket_append_event` | Append status_update, comment, result, error, … |
 | `ticket_update_status` | Update ticket status |
+| `ticket_ask` | Ask for approval or a multiple choice pick (Discord buttons) |
+| `ticket_get_prompt` | Read the answer to a `ticket_ask` |
 | `project_memory_read` | Read project memory / context |
 | `project_memory_write` | Write MemoryEntry (optionally linked to ticket) |
 | `project_memory_search` | Optional, later |

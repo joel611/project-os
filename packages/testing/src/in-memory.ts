@@ -15,6 +15,7 @@ import {
   Scheduler,
   SourceAlreadyLinked,
   SourceNotFound,
+  PromptSendFailed,
   ThreadCreateFailed,
   TicketNotFound,
   TicketRepository,
@@ -35,6 +36,7 @@ import {
   CONNECTION_PROVIDERS,
   type CreateChannelInstruction,
   type CreateThreadInstruction,
+  type PromptInstruction,
   type MemoryEntry,
   type ReplyInstruction,
 } from "@project-os/contracts";
@@ -249,22 +251,38 @@ export const KeyValueStoreInMemory = Layer.sync(KeyValueStore, () => {
 });
 
 /**
- * Records every reply sent (`sent`), channel created (`created`) and thread opened (`threads`).
+ * Records every reply sent (`sent`), channel created (`created`), thread opened (`threads`) and
+ * prompt posted (`prompts`, message ids `prompt-msg-1`, …).
  * Created channels get ids `chan-1`, …, threads `thread-1`, …; pass `failCreate` /
  * `failThread` to make channel / thread creation fail with that message.
  */
 export const makeChannelGatewayRecording = (options?: {
   readonly failCreate?: string;
   readonly failThread?: string;
+  readonly failPrompt?: string;
 }) => {
   const sent: ReplyInstruction[] = [];
   const created: CreateChannelInstruction[] = [];
   const threads: CreateThreadInstruction[] = [];
+  const prompts: PromptInstruction[] = [];
   return {
     sent,
     created,
     threads,
+    prompts,
     layer: Layer.succeed(ChannelGateway, {
+      ask: (request) =>
+        options?.failPrompt !== undefined
+          ? Effect.fail(
+              new PromptSendFailed({
+                channelType: request.channelType,
+                message: options.failPrompt,
+              }),
+            )
+          : Effect.sync(() => {
+              prompts.push(request);
+              return { messageId: `prompt-msg-${prompts.length}` };
+            }),
       createThread: (request) =>
         options?.failThread !== undefined
           ? Effect.fail(

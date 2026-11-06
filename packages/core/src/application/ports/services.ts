@@ -5,6 +5,8 @@ import type {
   CreatedChannel,
   CreatedThread,
   CreateThreadInstruction,
+  PostedPrompt,
+  PromptInstruction,
   ReplyInstruction,
   WorkerType,
 } from "@project-os/contracts";
@@ -42,6 +44,8 @@ export class ChannelGateway extends Context.Service<
     readonly createThread: (
       request: CreateThreadInstruction,
     ) => Effect.Effect<CreatedThread, ThreadCreateFailed>;
+    /** Ask the matching Channel Adapter to post a question answered with a click (buttons). */
+    readonly ask: (request: PromptInstruction) => Effect.Effect<PostedPrompt, PromptSendFailed>;
   }
 >()("@project-os/core/ChannelGateway") {}
 
@@ -65,6 +69,12 @@ export class ChannelCreateFailed extends Data.TaggedError("ChannelCreateFailed")
 
 /** A Channel Adapter could not open a thread (no permission, unsupported channel, ...). */
 export class ThreadCreateFailed extends Data.TaggedError("ThreadCreateFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
+
+/** A Channel Adapter could not post a prompt (no adapter, no permission, ...). */
+export class PromptSendFailed extends Data.TaggedError("PromptSendFailed")<{
   readonly channelType: string;
   readonly message: string;
 }> {}

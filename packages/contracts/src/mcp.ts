@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { MemoryEntry, Ticket, TicketEvent } from "./entities.ts";
+import { Prompt, PromptKind } from "./prompts.ts";
 import {
   Actor,
   ChannelType,
@@ -84,3 +85,16 @@ export const UserTokenOutput = Schema.Struct({
     name: Schema.NullOr(Schema.String),
   }),
 });
+
+export const TicketAskInput = Schema.Struct({
+  ticketId: Id,
+  /** `approval`: Approve / Deny. `choice`: one of `options`. */
+  kind: PromptKind,
+  question: Schema.NonEmptyString,
+  /** Required for `choice` (2 to 25, each at most 100 characters). Ignored for `approval`. */
+  options: Schema.optionalKey(Schema.Array(Schema.NonEmptyString)),
+});
+export const TicketAskOutput = Schema.Struct({ prompt: Prompt });
+
+export const TicketGetPromptInput = Schema.Struct({ promptId: Id });
+export const TicketGetPromptOutput = Schema.Struct({ prompt: Prompt });

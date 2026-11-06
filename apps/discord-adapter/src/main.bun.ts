@@ -10,6 +10,7 @@ import {
 import { answerCommand, COMMAND_DEFINITIONS, normalizeCommand } from "./commands.ts";
 import { forwardInbound } from "./forward.ts";
 import { normalizeMessage } from "./normalize.ts";
+import { answerPromptClick, normalizePromptClick } from "./prompts.ts";
 import { createReplyApp } from "./reply.ts";
 
 // Long-running process holding an outbound Discord Gateway WebSocket (§8.5).
@@ -57,6 +58,44 @@ client.once(Events.ClientReady, async (ready) => {
     console.log(`registered slash commands ${guildId ? `in guild ${guildId}` : "globally"}`);
   } catch (err) {
     console.error("slash command registration failed", err);
+  }
+});
+
+// Clicks on a prompt's buttons or select menu: the Coordinator records the answer and says
+// what the message should now read.
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
+  const answer = normalizePromptClick({
+    id: interaction.id,
+    customId: interaction.customId,
+    ...(interaction.isStringSelectMenu() ? { values: interaction.values } : {}),
+    channelId: interaction.channelId,
+    channel: interaction.channel,
+    user: interaction.user,
+    member: interaction.member,
+  });
+  if (!answer) return;
+  try {
+    // Prompts are only posted in server channels.
+    if (!interaction.inGuild()) {
+      await interaction.reply({
+        content: "I only work in the server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    await answerPromptClick(
+      answer,
+      {
+        defer: async () => void (await interaction.deferUpdate()),
+        close: async (content) => void (await interaction.editReply({ content, components: [] })),
+        whisper: async (content) =>
+          void (await interaction.followUp({ content, flags: MessageFlags.Ephemeral })),
+      },
+      { coordinatorUrl, fetcher: fetch },
+    );
+  } catch (err) {
+    console.error(`prompt click ${interaction.customId} failed`, err);
   }
 });
 
@@ -111,6 +150,12 @@ createReplyApp(
     // Discord thread names are 1–100 characters.
     const thread = await message.startThread({ name: name.slice(0, 100) || "Ticket" });
     return { threadId: thread.id };
+  },
+  async ({ channelId, threadId }, { content, components }) => {
+    const channel = await client.channels.fetch(threadId ?? channelId);
+    if (!channel?.isSendable()) throw new Error(`channel ${threadId ?? channelId} is not sendable`);
+    const message = await channel.send({ content, components });
+    return { messageId: message.id };
   },
 ).listen(port);
 

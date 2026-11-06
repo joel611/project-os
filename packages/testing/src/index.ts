@@ -35,10 +35,13 @@ export const makeTestLayer = (options?: {
   readonly failChannelCreate?: string;
   /** Make `ChannelGateway.createThread` fail with this message. */
   readonly failThreadCreate?: string;
+  /** Make `ChannelGateway.ask` fail with this message. */
+  readonly failPrompt?: string;
 }) => {
   const gateway = makeChannelGatewayRecording({
     ...(options?.failChannelCreate === undefined ? {} : { failCreate: options.failChannelCreate }),
     ...(options?.failThreadCreate === undefined ? {} : { failThread: options.failThreadCreate }),
+    ...(options?.failPrompt === undefined ? {} : { failPrompt: options.failPrompt }),
   });
   const connections = makeUserConnectionsInMemory();
   const layer = Layer.mergeAll(
@@ -64,6 +67,8 @@ export const makeTestLayer = (options?: {
     /** Link a person's account, as if they had finished `/connect`. */
     link: connections.link,
     createdThreads: gateway.threads,
+    /** Prompts passed to `ChannelGateway.ask`. */
+    prompts: gateway.prompts,
   };
 };
 

@@ -5,3 +5,4 @@ export * from "./entities.ts";
 export * from "./inbound.ts";
 export * from "./mcp.ts";
 export * from "./activity.ts";
+export * from "./prompts.ts";
