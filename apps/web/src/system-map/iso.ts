@@ -69,7 +69,7 @@ const CHANNEL_LABEL: Readonly<Record<ChannelType, readonly [string, string, stri
   chat: ["Chat", "Chat adapter", "web chat"],
 };
 
-const WORKER_LABEL: Readonly<Record<WorkerType, string>> = {
+export const WORKER_LABEL: Readonly<Record<WorkerType, string>> = {
   local_claude: "Claude Code",
   local_pi: "Pi (local)",
   daytona_pi: "Pi (Daytona)",
