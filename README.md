@@ -1,128 +1,192 @@
 # project-os
 
-**A project-aware AI agent that lives in your team's chat. You ask. It works the ticket. You get a grounded answer, and no engineer gets interrupted.**
+> The open-source control tower for your team's AI agents.  
+> Questions land in chat → tickets get cleared → grounded answers return. Engineers stay focused.
 
-## A Tuesday afternoon
+[![CI](https://img.shields.io/github/actions/workflow/status/joel611/project-os/ci.yml?branch=main)](https://github.com/joel611/project-os/actions)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
+[![MCP](https://img.shields.io/badge/MCP-ready-black)](https://modelcontextprotocol.io)
 
-Maya is a PM. A client emails: "Can we ship single sign-on by the end of the month?"
+<!-- TODO: Add hero GIF of Discord question → ticket → grounded reply -->
 
-Maya doesn't know. The answer lives in three places. The scope is in an email thread from two weeks ago. The estimate is in a Drive doc. The real constraint is in the code, and only Dev knows that part.
+**[Quick Start](#quick-start)** · **[Why](docs/why.md)** · **[Docs](docs/)** · **[Architecture](docs/technical-architecture.md)**
 
-So Maya pings Dev. Dev is deep in a bug. He stops, digs up context he already explained last sprint, and types a long reply. Maya forwards a polished version to the client. Tomorrow, a different PM asks Dev a similar question.
+---
 
-Nothing here is broken. It is just slow, and it taxes the people whose time is the most expensive. The knowledge exists. It is scattered across inboxes, chat history, folders, and one person's head, and every question pays the cost of gathering it again.
+## Why project-os?
 
-## The same afternoon, with project-os
+Most AI agents either interrupt engineers or give ungrounded answers.  
+project-os sits in the middle like a control tower:
 
-Maya types in the project's Discord channel:
+- **Questions land once** — PMs and clients ask in Discord/email. No more "quick ping" tax on senior engineers.
+- **Context stays project-scoped** — Every channel maps to exactly one Project. Memory, sources, and instructions never leak.
+- **Work becomes tickets** — The tower opens a Ticket, assigns it, and tracks every status update. Channels only see what the tower chooses to surface.
+- **Workers pull, never get pushed** — Local Claude Code (or cloud sandboxes) claim tickets atomically. Two agents never collide.
+- **Only the tower talks outside** — Adapters are thin. Workers speak only MCP. The surface that can say the wrong thing to a customer is tiny and centralized.
+- **Memory compounds** — Workers can write durable facts to Project Memory, so the next similar question starts with more context.
 
-> @agent can we ship SSO by end of month?
+The full story and design rationale: [docs/why.md](docs/why.md).
 
-Here is what happens next.
+---
 
-1. **A thin adapter hears her.** The Discord adapter does nothing clever. It turns the message into a standard shape and hands it to the Coordinator.
-2. **The Coordinator knows where it is.** This channel belongs to exactly one **Project**. The Coordinator loads that project's instructions, sources, and **Project Memory** (the durable facts the team has accumulated).
-3. **The work becomes a Ticket.** The Coordinator classifies the intent, opens a **Ticket**, and marks it `assigned`. It never pushes work into anyone. It just posts the work on the board.
-4. **A Worker picks it up.** On Dev's machine, a small **Watcher** polls the Coordinator. It sees an unclaimed ticket and starts a Claude Code session. That session claims the ticket, reads the project memory, does the research, and writes its findings back onto the ticket. It never talks to Discord.
-5. **The Coordinator replies.** It reads the result from the ticket, decides what is worth surfacing, and tells the adapter to post the answer in the channel.
+## Quick Start
 
-Maya gets a cited answer. Dev never saw a ping. The next time someone asks a related question, the finding is already in Project Memory.
+```sh
+bun install
+cp .env.example .env                 # Discord bot + OPENROUTER_API_KEY + ADMIN_*
+docker compose up --build            # coordinator :8080 + discord-adapter + Grafana :3000
 
-## Why it is built this way
+# one-time seed (replace with your Discord channel ID)
+docker compose exec -e SEED_DISCORD_CHANNEL_ID=<channel-id> coordinator bun run seed
 
-The shape of the system comes from a few choices. Each one removes a way this kind of agent usually goes wrong.
+# on the host — start the Watcher (local Claude Code worker)
+set -a; . ./.env; set +a
+bun apps/watcher/src/main.bun.ts
+```
 
-**The Project is the unit of context.** Chat, memory, sources, and instructions all live inside a Project. One Discord channel maps to exactly one Project, so the agent never has to guess whose context it is using.
+Open the dashboard:
 
-**The Ticket is the only conversation.** All status, follow-ups, and results live on the ticket, like a real work ticket. The channel only sees what the Coordinator chooses to surface, the same way a client sees curated updates from a PM and not the internal chatter.
+```sh
+bun run --cwd apps/web dev
+# → http://localhost:5173
+```
 
-**Workers pull, the Coordinator never pushes.** A Worker lists tickets assigned to it and claims one with an atomic `assigned → in_progress` step. Two Workers can never take the same ticket. A Worker can be a local Claude Code on a laptop today and a Daytona sandbox tomorrow. The Coordinator doesn't care.
+You should see projects, live tickets, Project Memory, and worker health refreshing every few seconds.
 
-**Only the Coordinator talks to the outside.** Channels, the database, and every outbound message go through one service. Adapters have no business logic. Workers have no channel access. The surface that can say the wrong thing to a customer is small and in one place.
+Without Docker:
 
-**Workers speak MCP.** Everything a Worker can do is a tool call: read or append to a ticket, read or write Project Memory. Nothing else.
+```sh
+bun run --cwd apps/coordinator dev
+curl http://localhost:8080/health
+```
+
+Full setup details → [SETUP.md](SETUP.md)
+
+---
+
+## How the tower works
 
 ```
  Discord / Email                                         Dev's laptop
  ┌─────────────┐   inbound    ┌───────────────────┐   ┌──────────────┐
  │  Adapters   │ ───────────▶ │    Coordinator    │◀──│   Watcher    │
- │ (thin, dumb)│ ◀─────────── │ agent loop        │   │ polls, then  │
+ │ (thin radar)│ ◀─────────── │   (the Tower)     │   │ polls, then  │
  └─────────────┘   replies    │ Project Memory    │   │ starts       │
                               │ Tickets + MCP     │   │ Claude Code  │
                               └───────────────────┘   └──────┬───────┘
                                         ▲   MCP tools        │
                                         └────────────────────┘
-                                   claim ticket, work it, write result
+                                   claim ticket → work it → write result
 ```
 
-## Where this stands
+| Role                | Real-world analogy      | Responsibility                                               |
+| ------------------- | ----------------------- | ------------------------------------------------------------ |
+| **Coordinator**     | Control Tower           | Owns context, tickets, memory, outbound messages             |
+| **Channel Adapter** | Radar / radio           | Thin translator. No business logic.                          |
+| **Ticket**          | Flight plan / clearance | Single source of truth for status + results                  |
+| **Worker**          | Pilot / aircraft        | Claims one ticket, works it via MCP, never talks to channels |
+| **Watcher**         | Ground crew             | Polls for assigned tickets and launches local Claude Code    |
+| **Project Memory**  | Flight database         | Durable facts the whole team (and future workers) can read   |
 
-This repo is a proof of concept of that loop: Discord message in, Ticket created, local Claude Code works it through MCP, reply out. The Coordinator runs locally on Bun and SQLite via Docker Compose, and the code is structured (ports and providers) so the same core can run on Cloudflare Workers with D1.
+Workers speak **MCP only**. Everything they can do is a tool call: read/append ticket, read/write Project Memory.
 
-The full product vision is in [`docs/product-brief.md`](docs/product-brief.md): Gmail classification, Drive sources, cited answers. The design behind the current build is in [`docs/technical-architecture.md`](docs/technical-architecture.md). The vocabulary used above (Project, Ticket, Worker, Claim, Watcher) is defined in [`CONTEXT.md`](CONTEXT.md).
+---
 
-## Try it
+## Usage example
+
+In a project Discord channel:
+
+```
+@agent can we ship SSO by end of month?
+```
+
+What happens next:
+
+1. Adapter turns the message into a standard inbound event.
+2. Coordinator loads the Project + its Memory, opens a Ticket, marks it `assigned`.
+3. Watcher on a developer machine sees the ticket and starts a Claude Code session.
+4. The Worker claims the ticket, researches via Project Memory + available sources, writes findings back.
+5. Coordinator posts a cited answer in the channel. The engineer never saw a ping.
+
+The next related question already benefits from the updated Project Memory.
+
+---
+
+## Self-hosting & Deployment
+
+**Local (recommended for development)**  
+`docker compose up --build` — Coordinator + Discord adapter + observability stack.
+
+**Cloudflare target**  
+The same core runs on Cloudflare Workers + D1 + KV.  
+Deployment is managed by Alchemy:
 
 ```sh
-bun install
-cp .env.example .env                 # fill in per SETUP.md: Discord bot, OPENROUTER_API_KEY, ADMIN_*
-docker compose up --build            # coordinator (:8080) + discord-adapter (+ email stub) + lgtm (Grafana :3000, admin/admin)
-
-# one-time: create the default org, a project, and its default Discord channel
-docker compose exec -e SEED_DISCORD_CHANNEL_ID=<channel-id> coordinator bun run seed
-
-# on the host: run the Watcher with the same WORKER_ID as the Coordinator (default local-claude-1)
-set -a; . ./.env; set +a
-bun apps/watcher/src/main.bun.ts
+bun run deploy
 ```
 
-The Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. SQLite and agent state live in the `coordinator-data` volume (`/data`). `CHAT_MODEL_ID` is required; Compose defaults it to `anthropic/claude-sonnet-4.5`.
+Estimated cost for a small team: **~$5–7 / month** on the Workers Paid plan (excluding LLM usage).  
+Steps and cost breakdown: [docs/deployment.md](docs/deployment.md).
 
-Without Docker: `bun run --cwd apps/coordinator dev`, then `GET http://localhost:8080/health`.
+---
 
-To watch it work, run the dashboard with `bun run --cwd apps/web dev` and open http://localhost:5173. It lists projects, their tickets with each ticket's activity log, project memory, and worker health, refreshing every few seconds. It is read-only and expects the Coordinator on `:8080` (override with `COORDINATOR_URL`).
+## Project layout
+
+```
+apps/
+  coordinator/          # Tower — Elysia HTTP + MCP, agent loop (main.bun.ts local, main.cloudflare.ts Workers)
+  discord-adapter/      # Thin inbound/outbound
+  email-adapter/        # Stub
+  watcher/              # Host-run Claude Code launcher
+  web/                  # Read-only dashboard (TanStack Start SPA; `build` exports a static site)
+packages/
+  core/                 # Domain + ports (provider-free)
+  agent-runtime/        # Intent classifier + agent loop
+  db-sqlite/            # Drizzle schema (SQLite / D1)
+  infra-local/          # Local provider Layer
+  infra-cloudflare/     # Cloudflare provider Layer
+  contracts/            # Shared wire types
+  testing/              # In-memory fakes
+libs/config/            # Env parsing
+alchemy.run.ts          # Cloudflare deployment
+docs/                   # Product brief + technical architecture
+CONTEXT.md              # Precise vocabulary used throughout
+```
+
+---
 
 ## Development
 
 ```sh
-bun run check       # format + lint, including dependency rules
+bun run check       # format + lint + dependency rules
 bun run typecheck
 bun run test
+bun run test:integration
 ```
 
-## Hosting cost
+Integration suite and the fake Discord adapter: [TESTING.md](TESTING.md).
 
-Estimated at about **$5–7 a month** on Cloudflare (Workers Paid plan, prices as of 2026-11). The usage figures are guesses for a small team, not measurements.
+---
 
-| Part              | Cost / month | Why                                                                                                                                                                                                                                                   |
-| ----------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workers Paid plan | $5 flat      | Covers the Coordinator, the dashboard, D1, KV and Cron. Cron every minute plus the Watcher polling every 5 minutes is about 52k requests, against 10M included. Static assets are free. D1 includes 25B rows read and 50M rows written.               |
-| Discord adapter   | ~$1.70       | Needs an always-on process. As a `lite` Cloudflare Container (256 MiB), memory is about $1.40 and disk about $0.30, and CPU stays inside the included minutes. A small VM elsewhere costs a few dollars, and running it on your own machine costs $0. |
-| Watcher           | $0           | Runs on the machine that hosts Claude Code.                                                                                                                                                                                                           |
+## Contributing
 
-The Workers free plan ($0) could work, but it caps CPU at 10 ms per request, which Elysia plus MCP will likely exceed sometimes, and it has no Containers.
+This is still a focused proof-of-concept of the full loop.  
+We welcome issues, discussions, and PRs — especially around:
 
-LLM usage through OpenRouter is the real variable cost. It grows with message volume and is not included above.
+- Additional channel adapters
+- More Worker runtimes beyond local Claude Code and Daytona
+- Dashboard UX
+- Memory quality / retrieval
 
-Sources: [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [Containers pricing](https://developers.cloudflare.com/containers/platform/pricing/). Deployment steps are in [docs/deployment.md](docs/deployment.md).
+See the issues tab and [CONTEXT.md](CONTEXT.md) for the language we use (Project, Ticket, Worker, Claim, etc.).
 
-## Layout
+---
 
-- `apps/coordinator`: Elysia HTTP + MCP server; `main.bun.ts` (local) and `main.cloudflare.ts` (Workers)
-- `apps/discord-adapter`, `apps/email-adapter`: thin channel adapters
-- `apps/watcher`: host-run CLI that starts Claude Code per ticket
-- `apps/web`: read-only dashboard (TanStack Start SPA, shadcn on Base UI) over the Coordinator HTTP API; `bun run --cwd apps/web build` exports a static site
-- `packages/core`: domain and ports, provider-free
-- `packages/contracts`: shared wire types
-- `packages/agent-runtime`: the Coordinator's agent loop and intent classifier
-- `packages/db-sqlite`: Drizzle SQLite schema and repositories (D1 and bun:sqlite)
-- `packages/infra-local`, `packages/infra-cloudflare`: provider Layers
-- `packages/testing`: in-memory fakes
-- `libs/config`: env parsing
-- `alchemy.run.ts`: Cloudflare deployment (Workers, D1, KV, secrets, dashboard); see [docs/deployment.md](docs/deployment.md)
+## License
 
-## Testing without Discord
+MIT — see [LICENSE](LICENSE).
 
-The integration suite and the fake Discord adapter for driving a running Coordinator by hand are covered in [Testing][testing].
+---
 
-[testing]: ./TESTING.md
+**project-os** — clear the airspace so your team can focus on flying.
