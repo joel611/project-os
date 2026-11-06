@@ -1,4 +1,5 @@
 import {
+  SourceAliasTaken,
   SourceAlreadyLinked,
   SourceNotFound,
   type ProjectSource,
@@ -22,31 +23,57 @@ export const makeProjectSourceRepository = (db: SqliteDb): Impl => {
         .limit(1),
     ).pipe(Effect.map(([row]): ProjectSource | undefined => row));
 
+  const aliasTaken = (projectId: string, alias: string, exceptId: string) =>
+    q(() =>
+      db
+        .select({ id: projectSources.id })
+        .from(projectSources)
+        .where(
+          and(
+            eq(projectSources.projectId, projectId),
+            eq(projectSources.alias, alias),
+            ne(projectSources.id, exceptId),
+          ),
+        )
+        .limit(1),
+    ).pipe(Effect.map((rows) => rows.length > 0));
+
   return {
     insert: (source) =>
-      q(() =>
-        db
-          .insert(projectSources)
-          .values(source)
-          .onConflictDoNothing({ target: [projectSources.type, projectSources.externalId] })
-          .returning(),
-      ).pipe(
+      // No conflict target: either unique index (channel link or project alias) skips the row.
+      q(() => db.insert(projectSources).values(source).onConflictDoNothing().returning()).pipe(
         Effect.flatMap(([inserted]) =>
           inserted
             ? Effect.succeed(inserted)
             : findByExternal(source.type, source.externalId).pipe(
                 Effect.flatMap((existing) =>
                   Effect.fail(
-                    new SourceAlreadyLinked({
-                      type: source.type,
-                      externalId: source.externalId,
-                      projectId: existing!.projectId,
-                    }),
+                    existing
+                      ? new SourceAlreadyLinked({
+                          type: source.type,
+                          externalId: source.externalId,
+                          projectId: existing.projectId,
+                        })
+                      : new SourceAliasTaken({ projectId: source.projectId, alias: source.alias }),
                   ),
                 ),
               ),
         ),
       ),
+    update: (projectId, sourceId, patch) =>
+      Effect.gen(function* () {
+        if (patch.alias !== undefined && (yield* aliasTaken(projectId, patch.alias, sourceId))) {
+          return yield* new SourceAliasTaken({ projectId, alias: patch.alias });
+        }
+        const [row] = yield* q(() =>
+          db
+            .update(projectSources)
+            .set(patch)
+            .where(and(eq(projectSources.id, sourceId), eq(projectSources.projectId, projectId)))
+            .returning(),
+        );
+        return row ?? (yield* new SourceNotFound({ sourceId }));
+      }),
     findByExternal,
     listByProject: (projectId) =>
       q(() => db.select().from(projectSources).where(eq(projectSources.projectId, projectId))),

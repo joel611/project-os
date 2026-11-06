@@ -20,6 +20,11 @@ export type ProjectDetail = typeof ProjectDetail.Type;
 const TicketDetail = Schema.Struct({ ticket: Ticket, events: Schema.Array(TicketEvent) });
 export type TicketDetail = typeof TicketDetail.Type;
 
+export interface SourcePatch {
+  readonly alias?: string;
+  readonly description?: string | null;
+}
+
 export interface ProjectPatch {
   readonly name?: string;
   readonly customInstructions?: string;
@@ -99,6 +104,11 @@ export const makeApi = (fetchFn: typeof fetch = fetch) => {
       send(`/projects/${id(projectId)}`, Project, { method: "PATCH", json: patch }),
     addSource: (projectId: string, source: SourceInput) =>
       send(`/projects/${id(projectId)}/sources`, ProjectSource, { method: "POST", json: source }),
+    updateSource: (projectId: string, sourceId: string, patch: SourcePatch) =>
+      send(`/projects/${id(projectId)}/sources/${id(sourceId)}`, ProjectSource, {
+        method: "PATCH",
+        json: patch,
+      }),
   };
 };
 

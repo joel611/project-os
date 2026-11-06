@@ -13,6 +13,7 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   Scheduler,
+  SourceAliasTaken,
   SourceAlreadyLinked,
   SourceNotFound,
   ThreadCreateFailed,
@@ -143,7 +144,7 @@ export const ProjectSourceRepositoryInMemory = Layer.sync(ProjectSourceRepositor
     [...sources.values()].find((s) => s.type === type && s.externalId === externalId);
   return {
     insert: (source) =>
-      Effect.suspend(() => {
+      Effect.suspend((): Effect.Effect<ProjectSource, SourceAlreadyLinked | SourceAliasTaken> => {
         const existing = find(source.type, source.externalId);
         if (existing) {
           return Effect.fail(
@@ -154,8 +155,36 @@ export const ProjectSourceRepositoryInMemory = Layer.sync(ProjectSourceRepositor
             }),
           );
         }
+        if (
+          [...sources.values()].some(
+            (s) => s.projectId === source.projectId && s.alias === source.alias,
+          )
+        ) {
+          return Effect.fail(
+            new SourceAliasTaken({ projectId: source.projectId, alias: source.alias }),
+          );
+        }
         sources.set(source.id, source);
         return Effect.succeed(source);
+      }),
+    update: (projectId, sourceId, patch) =>
+      Effect.suspend((): Effect.Effect<ProjectSource, SourceNotFound | SourceAliasTaken> => {
+        const target = sources.get(sourceId);
+        if (!target || target.projectId !== projectId) {
+          return Effect.fail(new SourceNotFound({ sourceId }));
+        }
+        const { alias } = patch;
+        if (
+          alias !== undefined &&
+          [...sources.values()].some(
+            (s) => s.projectId === projectId && s.alias === alias && s.id !== sourceId,
+          )
+        ) {
+          return Effect.fail(new SourceAliasTaken({ projectId, alias }));
+        }
+        const updated = { ...target, ...patch };
+        sources.set(sourceId, updated);
+        return Effect.succeed(updated);
       }),
     findByExternal: (type, externalId) => Effect.sync(() => find(type, externalId)),
     listByProject: (projectId) =>

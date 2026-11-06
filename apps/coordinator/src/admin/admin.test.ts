@@ -86,7 +86,12 @@ describe("AdminActions", () => {
   it("reports failures as text, not exceptions", async () => {
     const { actions } = setup();
     expect(
-      await actions.addSource({ projectId: "nope", type: "discord", externalId: "c1" }),
+      await actions.addSource({
+        projectId: "nope",
+        type: "discord",
+        externalId: "c1",
+        alias: "chat",
+      }),
     ).toMatch(/ProjectNotFound/);
     expect(await actions.setDefaultChannel({ projectId: "nope", externalId: "c1" })).toMatch(
       /ProjectNotFound/,
@@ -99,23 +104,86 @@ describe("AdminActions", () => {
     const project = await run(createProject({ orgId: "o1", name: "Acme" }));
 
     expect(
-      await actions.addSource({ projectId: project.id, type: "discord", externalId: "c1" }),
-    ).toMatch(/Linked discord_channel c1/);
+      await actions.addSource({
+        projectId: project.id,
+        type: "discord",
+        externalId: "c1",
+        alias: "chat",
+      }),
+    ).toMatch(/Linked discord_channel c1 .* as "chat"/);
     expect(
-      await actions.addSource({ projectId: project.id, type: "email", externalId: "a@b.c" }),
+      await actions.addSource({
+        projectId: project.id,
+        type: "email",
+        externalId: "a@b.c",
+        alias: "inbox",
+      }),
     ).toMatch(/email_address/);
     expect(
-      await actions.addSource({ projectId: project.id, type: "github_repo", externalId: "o/r" }),
+      await actions.addSource({
+        projectId: project.id,
+        type: "github_repo",
+        externalId: "o/r",
+        alias: "code",
+      }),
     ).toMatch(/github_repo/);
     expect(
-      await actions.addSource({ projectId: project.id, type: "carrier-pigeon", externalId: "x" }),
+      await actions.addSource({
+        projectId: project.id,
+        type: "carrier-pigeon",
+        externalId: "x",
+        alias: "x",
+      }),
     ).toMatch(/Unknown source type/);
     expect(
-      await actions.addSource({ projectId: project.id, type: "discord", externalId: "c1" }),
+      await actions.addSource({
+        projectId: project.id,
+        type: "discord",
+        externalId: "c1",
+        alias: "other",
+      }),
     ).toMatch(/SourceAlreadyLinked/);
 
     expect(await actions.setDefaultChannel({ projectId: project.id, externalId: "c1" })).toMatch(
       /Default reply channel .* c1/,
+    );
+
+    expect(
+      await actions.addSource({
+        projectId: project.id,
+        type: "github_repo",
+        externalId: "o/other",
+        alias: "code",
+      }),
+    ).toMatch(/SourceAliasTaken/);
+    expect(
+      await actions.updateSource({
+        projectId: project.id,
+        alias: "Code",
+        newAlias: "app-code",
+        description: "the app",
+      }),
+    ).toBe("Updated: - app-code: github_repo o/r — the app");
+    expect(await actions.updateSource({ projectId: project.id, alias: "nope!" })).toMatch(
+      /No source "nope!" .* Known: chat, inbox, app-code\.$/,
+    );
+    expect(
+      await actions.updateSource({ projectId: project.id, alias: "chat", newAlias: "app-code" }),
+    ).toMatch(/SourceAliasTaken/);
+    expect(await actions.listSources({ projectId: project.id })).toBe(
+      [
+        "- chat: discord_channel c1 (reply channel)",
+        "- inbox: email_address a@b.c",
+        "- app-code: github_repo o/r — the app",
+      ].join("\n"),
+    );
+    expect(await actions.listSources({ projectId: "nope" })).toMatch(/ProjectNotFound/);
+    const empty = await run(createProject({ orgId: "o1", name: "Empty" }));
+    expect(await actions.listSources({ projectId: empty.id })).toBe(
+      `Project ${empty.id} has no sources.`,
+    );
+    expect(await actions.updateSource({ projectId: empty.id, alias: "x" })).toBe(
+      `No source "x" in project ${empty.id}.`,
     );
 
     const ticket: Ticket = {

@@ -24,6 +24,8 @@ import {
   CreateProjectBody,
   createProject,
   CreateSourceBody,
+  UpdateSourceBody,
+  editSource,
   decode,
   getProject,
   linkSource,
@@ -134,6 +136,16 @@ export const httpRoutes = ({
             Effect.flatMap((source) => linkSource(params.id, source)),
           ),
           201,
+        ),
+      ),
+    )
+    .patch("/projects/:id/sources/:sourceId", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(UpdateSourceBody, body).pipe(
+            Effect.flatMap((patch) => editSource(params.id, params.sourceId, patch)),
+          ),
         ),
       ),
     )

@@ -320,6 +320,8 @@ ProjectSource
                           // Drive folder id, repo full name, etc.
 
   name                    // display name
+  alias                   // what it is for (e.g. design-docs); unique per project
+  description             // optional extra context for agents and people
   direction               // inbound | outbound | both
 
   is_default_response     // boolean – at most one true per project
@@ -611,6 +613,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 | `ticket_append_event` | Append status_update, comment, result, error, … |
 | `ticket_update_status` | Update ticket status |
 | `project_memory_read` | Read project memory / context |
+| `project_sources_list` | List the project's sources (alias, description, link) |
 | `project_memory_write` | Write MemoryEntry (optionally linked to ticket) |
 | `project_memory_search` | Optional, later |
 | `user_token` | The latest message author's own Google / GitHub token (§5.7) |

@@ -11,7 +11,7 @@ _Avoid_: bot, integration (alone).
 
 **Project**: the unit of context. Owns sources, custom instructions, memory, and tickets. One Discord channel maps to exactly one Project.
 
-**ProjectSource**: a link between a Project and something external (Discord channel, email address, repo, Drive folder). `(type, external_id)` is unique.
+**ProjectSource**: a link between a Project and something external (Discord channel, email address, repo, Drive folder). `(type, external_id)` is unique. Each has an **alias** saying what it is for (unique within the project, e.g. `design-docs`) and an optional description.
 
 **Project Memory**: the durable knowledge of a Project, stored as MemoryEntries. Readable by the Coordinator, Workers (via MCP), and the Web UI.
 

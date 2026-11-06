@@ -185,6 +185,7 @@ export const startStack = async (options: {
         type: "discord_channel",
         externalId: channelId,
         name: `#${channelId}`,
+        alias: "chat",
         isDefaultResponse: true,
       });
       return project.id as string;

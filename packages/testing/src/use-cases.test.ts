@@ -1,10 +1,12 @@
 import {
+  addSource,
   appendEvent,
   claimTicketUseCase,
   getTicket,
   handleInbound,
   heartbeat,
   listAssigned,
+  listProjectSources,
   MemoryRepository,
   onTicketCompleted,
   ProjectRepository,
@@ -12,6 +14,7 @@ import {
   readMemory,
   TicketRepository,
   updateProject,
+  updateSource,
   updateStatus,
   writeMemory,
   type Project,
@@ -47,6 +50,8 @@ const source = (over: Partial<ProjectSource> = {}): ProjectSource => ({
   type: "discord_channel",
   externalId: "chan-1",
   name: "#general",
+  alias: `src-${over.id ?? "s1"}`,
+  description: null,
   direction: "both",
   isDefaultResponse: true,
   config: {},
@@ -462,6 +467,102 @@ describe("ticket use cases", () => {
       }),
     );
     expect(value._tag).toBe("InvalidTransition");
+  });
+});
+
+describe("project sources", () => {
+  it("names a source by the alias given, or derives one that is free in the project", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const named = yield* addSource({
+          projectId: "p1",
+          type: "google_drive_folder",
+          externalId: "1AbCdEfGhIjK",
+          name: "Drive folder",
+          alias: " Design Docs ",
+          description: "  specs and mockups ",
+        });
+        const fromName = yield* addSource({
+          projectId: "p1",
+          type: "discord_channel",
+          externalId: "c9",
+          name: "#Design Docs",
+        });
+        const fromType = yield* addSource({
+          projectId: "p1",
+          type: "discord_channel",
+          externalId: "c10",
+          name: "c10",
+        });
+        const taken = yield* Effect.flip(
+          addSource({
+            projectId: "p1",
+            type: "github_repo",
+            externalId: "acme/web",
+            name: "acme/web",
+            alias: "design-docs",
+          }),
+        );
+        const invalid = yield* Effect.flip(
+          addSource({
+            projectId: "p1",
+            type: "github_repo",
+            externalId: "acme/web",
+            name: "acme/web",
+            alias: "no good!",
+          }),
+        );
+        return { named, fromName, fromType, taken, invalid };
+      }),
+    );
+    expect(value.named).toMatchObject({ alias: "design-docs", description: "specs and mockups" });
+    expect(value.fromName).toMatchObject({ alias: "design-docs-2", description: null });
+    expect(value.fromType.alias).toBe("discord");
+    expect(value.taken._tag).toBe("SourceAliasTaken");
+    expect(value.invalid._tag).toBe("InvalidSourceAlias");
+  });
+
+  it("updates alias and description, and lists active sources the way Workers see them", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const repo = yield* addSource({
+          projectId: "p1",
+          type: "github_repo",
+          externalId: "acme/web",
+          name: "acme/web",
+          alias: "web",
+        });
+        yield* updateSource({
+          projectId: "p1",
+          sourceId: repo.id,
+          alias: "Marketing Site",
+          description: "the public website",
+        });
+        const blank = yield* updateSource({ projectId: "p1", sourceId: repo.id, description: " " });
+        yield* updateSource({
+          projectId: "p1",
+          sourceId: repo.id,
+          description: "the public website",
+        });
+        const bad = yield* Effect.flip(
+          updateSource({ projectId: "p1", sourceId: repo.id, alias: "-" }),
+        );
+        const listed = yield* listProjectSources({ projectId: "p1" });
+        const missing = yield* Effect.flip(listProjectSources({ projectId: "nope" }));
+        return { blank, bad, listed, missing };
+      }),
+    );
+    expect(value.blank).toMatchObject({ alias: "marketing-site", description: null });
+    expect(value.bad._tag).toBe("InvalidSourceAlias");
+    expect(value.listed).toContainEqual({
+      alias: "marketing-site",
+      description: "the public website",
+      type: "github_repo",
+      externalId: "acme/web",
+      name: "acme/web",
+      url: "https://github.com/acme/web",
+    });
+    expect(value.missing._tag).toBe("ProjectNotFound");
   });
 });
 

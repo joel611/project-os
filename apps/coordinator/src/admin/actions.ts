@@ -1,5 +1,9 @@
 import type { AdminActions } from "@project-os/agent-runtime";
-import { PROJECT_SOURCE_TYPES, type ProjectSourceType } from "@project-os/contracts";
+import {
+  PROJECT_SOURCE_TYPES,
+  type ProjectSource,
+  type ProjectSourceType,
+} from "@project-os/contracts";
 import {
   addSource,
   CHANNEL_SOURCE_TYPES,
@@ -7,11 +11,13 @@ import {
   createProjectWithChannel,
   type ChannelGateway,
   getTicket,
+  normalizeAlias,
+  ProjectRepository,
+  ProjectSourceRepository,
   setDefaultChannel,
+  updateSource,
   type Clock,
   type IdGenerator,
-  type ProjectRepository,
-  type ProjectSourceRepository,
   type TicketRepository,
 } from "@project-os/core";
 import { Effect } from "effect";
@@ -30,6 +36,12 @@ const SOURCE_TYPES: Record<string, ProjectSourceType> = {
   ...CHANNEL_SOURCE_TYPES,
   ...Object.fromEntries(PROJECT_SOURCE_TYPES.map((t) => [t, t])),
 };
+
+/** One line per source for the model: alias, what it is, and its description. */
+const describeSource = (s: ProjectSource) =>
+  `- ${s.alias}: ${s.type} ${s.externalId}` +
+  (s.isDefaultResponse ? " (reply channel)" : "") +
+  (s.description ? ` — ${s.description}` : "");
 
 /** Failures become text the model can relay, never exceptions out of a tool call. */
 const asText = <E extends { readonly _tag: string }>(effect: Effect.Effect<string, E, AdminEnv>) =>
@@ -74,7 +86,7 @@ export const makeAdminActions = (deps: {
       ),
     );
   },
-  addSource: ({ projectId, type, externalId }) => {
+  addSource: ({ projectId, type, externalId, alias, description }) => {
     const sourceType = SOURCE_TYPES[type];
     if (!sourceType) {
       return Promise.resolve(
@@ -83,12 +95,54 @@ export const makeAdminActions = (deps: {
     }
     return deps.run(
       asText(
-        addSource({ projectId, type: sourceType, externalId, name: externalId }).pipe(
-          Effect.map((s) => `Linked ${s.type} ${s.externalId} to project ${s.projectId}.`),
+        addSource({
+          projectId,
+          type: sourceType,
+          externalId,
+          name: externalId,
+          alias,
+          description,
+        }).pipe(
+          Effect.map(
+            (s) => `Linked ${s.type} ${s.externalId} to project ${s.projectId} as "${s.alias}".`,
+          ),
         ),
       ),
     );
   },
+  listSources: ({ projectId }) =>
+    deps.run(
+      asText(
+        Effect.gen(function* () {
+          yield* (yield* ProjectRepository).get(projectId);
+          const sources = yield* (yield* ProjectSourceRepository).listByProject(projectId);
+          return sources.length === 0
+            ? `Project ${projectId} has no sources.`
+            : sources.map(describeSource).join("\n");
+        }),
+      ),
+    ),
+  updateSource: ({ projectId, alias, newAlias, description }) =>
+    deps.run(
+      asText(
+        Effect.gen(function* () {
+          const sources = yield* (yield* ProjectSourceRepository).listByProject(projectId);
+          const wanted = normalizeAlias(alias) ?? alias;
+          const source = sources.find((s) => s.alias === wanted);
+          if (!source) {
+            const known = sources.map((s) => s.alias).join(", ");
+            return `No source "${alias}" in project ${projectId}.${known && ` Known: ${known}.`}`;
+          }
+          const updated = yield* updateSource({
+            projectId,
+            sourceId: source.id,
+            alias: newAlias,
+            description,
+          });
+          return `Updated: ${describeSource(updated)}`;
+        }),
+      ),
+    ),
   setDefaultChannel: ({ projectId, externalId }) =>
     deps.run(
       asText(
