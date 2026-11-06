@@ -7,7 +7,7 @@ import {
   type TicketStatus,
   type TicketRepository,
 } from "@project-os/core";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { ticketEvents, tickets } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
@@ -153,5 +153,14 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
         // Newest-N selected above; return chronological like the in-memory fake.
         Effect.map((rows) => rows.reverse()),
       ),
+    listEventsSince: (since, limit) =>
+      q(() =>
+        db
+          .select()
+          .from(ticketEvents)
+          .where(gte(ticketEvents.createdAt, since))
+          .orderBy(desc(ticketEvents.createdAt), desc(sql`rowid`))
+          .limit(limit),
+      ).pipe(Effect.map((rows) => rows.reverse())),
   };
 };

@@ -106,6 +106,14 @@ describe("makeApi", () => {
     expect(await api.workers()).toEqual([worker]);
   });
 
+  it("reads the activity feed, passing the previous read's time as since", async () => {
+    const feed = { now: T, tickets: [], events: [], workers: [] };
+    const { api, calls } = respond(200, feed);
+    expect(await api.activity(null)).toEqual(feed);
+    await api.activity(T);
+    expect(calls).toEqual(["/api/activity", `/api/activity?since=${encodeURIComponent(T)}`]);
+  });
+
   it("surfaces the Coordinator's tagged error", async () => {
     const { api } = respond(404, { error: "ProjectNotFound" });
     await expect(api.project("nope")).rejects.toEqual(new ApiError(404, "ProjectNotFound"));
