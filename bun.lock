@@ -50,6 +50,14 @@
         "@project-os/testing": "workspace:*",
       },
     },
+    "apps/discord-gateway": {
+      "name": "@project-os/discord-gateway",
+      "version": "0.0.0",
+      "dependencies": {
+        "@project-os/channel-discord": "workspace:*",
+        "@project-os/config": "workspace:*",
+      },
+    },
     "apps/e2e": {
       "name": "@project-os/e2e",
       "version": "0.0.0",
@@ -831,6 +839,8 @@
     "@project-os/core": ["@project-os/core@workspace:packages/core"],
 
     "@project-os/db-sqlite": ["@project-os/db-sqlite@workspace:packages/db-sqlite"],
+
+    "@project-os/discord-gateway": ["@project-os/discord-gateway@workspace:apps/discord-gateway"],
 
     "@project-os/e2e": ["@project-os/e2e@workspace:apps/e2e"],
 

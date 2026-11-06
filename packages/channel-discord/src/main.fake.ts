@@ -7,7 +7,7 @@ import { answerPromptClick, type ActionRow } from "./prompts.ts";
 import { createReplyApp } from "./reply.ts";
 
 // Stand-in for the Discord adapter: no gateway, no token. It takes the adapter's place on
-// the reply port (DISCORD_SPLIT_ADAPTER_URL must point here), speaks to the Coordinator's /inbound,
+// the reply port (DISCORD_SPLIT_GATEWAY_URL must point here), speaks to the Coordinator's /inbound,
 // and prints what the Coordinator would have posted to Discord.
 const { values } = parseArgs({
   options: {
@@ -23,7 +23,7 @@ const { values } = parseArgs({
 });
 
 const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
-const port = envNumber("DISCORD_ADAPTER_PORT", 8081);
+const port = envNumber("DISCORD_SPLIT_GATEWAY_PORT", 8081);
 const speaker: FakeSpeaker = {
   channelId: values.channel!,
   ...(values.thread ? { threadId: values.thread } : {}),

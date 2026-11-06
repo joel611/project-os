@@ -37,7 +37,7 @@ export interface Discord {
 }
 
 // Holds an outbound Discord Gateway WebSocket (§8.5), hosted by the Coordinator process or run
-// alone (main.standalone.ts) when the Coordinator can't hold a socket, e.g. on Cloudflare.
+// alone by apps/discord-gateway when the Coordinator can't hold a socket, e.g. on Cloudflare.
 // Needs the Message Content privileged intent enabled in the Discord developer portal, and the
 // Manage Channels permission in DISCORD_GUILD_ID so new projects get their own channel, and
 // Create Public Threads + Send Messages in Threads so each new ticket gets its own thread, and

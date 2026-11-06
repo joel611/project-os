@@ -74,6 +74,7 @@ export default defineConfig({
       {
         files: [
           "packages/channel-discord/**",
+          "apps/discord-gateway/**",
           "packages/channel-email/**",
           "apps/watcher/**",
           "apps/web/**",

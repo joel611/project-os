@@ -103,12 +103,12 @@ const workerLauncher = daytonaApiKey
   : undefined;
 
 // Discord runs inside this process when a bot token is set. Its reply endpoint binds loopback on
-// a free port: it can post as the bot, so it must not sit on the public port. DISCORD_SPLIT_ADAPTER_URL
-// points at a separate adapter instead (Cloudflare, or the fake in TESTING.md) and wins.
-const remoteAdapterUrl = process.env.DISCORD_SPLIT_ADAPTER_URL;
+// a free port: it can post as the bot, so it must not sit on the public port. DISCORD_SPLIT_GATEWAY_URL
+// points at a separate apps/discord-gateway instead (Cloudflare, or the fake in TESTING.md) and wins.
+const remoteGatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
 const discordToken = process.env.DISCORD_BOT_TOKEN;
 const discord =
-  discordToken && !remoteAdapterUrl
+  discordToken && !remoteGatewayUrl
     ? createDiscord({
         token: discordToken,
         coordinatorUrl: `http://localhost:${port}`,
@@ -116,11 +116,11 @@ const discord =
         replyHost: "127.0.0.1",
       })
     : undefined;
-if (discordToken && remoteAdapterUrl) {
+if (discordToken && remoteGatewayUrl) {
   console.log(
-    `DISCORD_BOT_TOKEN ignored: DISCORD_SPLIT_ADAPTER_URL is set, replies go to ${remoteAdapterUrl}`,
+    `DISCORD_BOT_TOKEN ignored: DISCORD_SPLIT_GATEWAY_URL is set, replies go to ${remoteGatewayUrl}`,
   );
-} else if (!discordToken && !remoteAdapterUrl) {
+} else if (!discordToken && !remoteGatewayUrl) {
   // Env is read once at startup, so adding the token needs a restart.
   console.log("Discord off: set DISCORD_BOT_TOKEN and restart the Coordinator to enable it");
 }
@@ -130,7 +130,7 @@ const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     LocalLive({
       dbPath,
-      adapterUrls: { discord: discord?.replyUrl ?? remoteAdapterUrl ?? "http://localhost:8081" },
+      adapterUrls: { discord: discord?.replyUrl ?? remoteGatewayUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
     }),
     AiLive,
