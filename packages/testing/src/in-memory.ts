@@ -99,6 +99,13 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
       Effect.sync(() =>
         [...threads.values()].find((t) => t.channelType === channelType && t.threadId === threadId),
       ),
+    listEventsSince: (since, limit) =>
+      Effect.sync(() =>
+        byKey(
+          [...events.values()].flat().filter((e) => e.createdAt >= since),
+          (e) => e.createdAt,
+        ).slice(-limit),
+      ),
   };
 });
 

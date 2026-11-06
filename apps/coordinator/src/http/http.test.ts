@@ -370,6 +370,48 @@ describe("dashboard reads", () => {
   });
 });
 
+describe("GET /activity", () => {
+  it("returns in-flight tickets with origin and reply channel, their events, and workers", async () => {
+    const { app } = setup();
+    await linkedProject(app, { isDefaultResponse: true });
+    const created = await call(
+      app,
+      "POST",
+      "/inbound",
+      inbound({ sender: { id: "u1", name: "mira.k" } }),
+    );
+    const res = await call(app, "GET", "/activity");
+    expect(res.status).toBe(200);
+    expect(res.body.now).toBe(T0);
+    expect(res.body.tickets).toMatchObject([
+      {
+        id: created.body.ticket.id,
+        status: "assigned",
+        origin: { channelType: "discord", sender: { id: "u1", name: "mira.k" } },
+        replyChannel: "discord",
+      },
+    ]);
+    expect(res.body.events.map((e: { type: string }) => e.type)).toEqual(["created", "assigned"]);
+    expect(res.body.workers).toEqual([]);
+  });
+
+  it("only returns what changed since the given time", async () => {
+    const { app } = setup();
+    await linkedProject(app);
+    await call(app, "POST", "/inbound", inbound());
+    const later = await call(app, "GET", "/activity?since=2026-11-04T00:00:01.000Z");
+    expect(later.body).toMatchObject({ tickets: [], events: [] });
+    const same = await call(app, "GET", `/activity?since=${T0}`);
+    expect(same.body.events).toHaveLength(2);
+  });
+
+  it("rejects a since that is not a timestamp", async () => {
+    const { app } = setup();
+    const res = await call(app, "GET", "/activity?since=yesterday");
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("with the infra-local Layer (SQLite)", () => {
   it("serves the full flow on a real SQLite file", async () => {
     const dir = mkdtempSync(join(tmpdir(), "coordinator-http-"));
@@ -391,6 +433,11 @@ describe("with the infra-local Layer (SQLite)", () => {
       expect(list.body).toHaveLength(1);
       const detail = await call(app, "GET", `/tickets/${list.body[0].id}`);
       expect(detail.body.events).toHaveLength(2);
+      const activity = await call(app, "GET", `/activity?since=${T0}`);
+      expect(activity.body.events.map((e: { type: string }) => e.type)).toEqual([
+        "created",
+        "assigned",
+      ]);
     } finally {
       await Promise.all(disposers.splice(0).map((d) => d()));
       rmSync(dir, { recursive: true, force: true });

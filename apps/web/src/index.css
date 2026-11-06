@@ -128,3 +128,200 @@
     @apply font-sans;
   }
 }
+
+/* Live system map (isometric). Colours for blocks, rails and packets. */
+:root {
+  --iso-bg: oklch(0.96 0.006 255);
+  --iso-floor: oklch(0.93 0.008 255);
+  --iso-grid: oklch(0.96 0.006 255);
+  --iso-rail: oklch(0.8 0.015 255);
+  --iso-accent: oklch(0.55 0.17 265);
+  --iso-text: oklch(0.25 0.02 260);
+  --iso-sub: oklch(0.55 0.02 260);
+  --iso-discord: oklch(0.57 0.17 275);
+  --iso-email: oklch(0.62 0.14 60);
+  --iso-chat: oklch(0.6 0.12 180);
+  --iso-ticket: oklch(0.6 0.11 210);
+  --iso-done: oklch(0.6 0.14 150);
+  --iso-failed: oklch(0.58 0.2 25);
+  --iso-busy: oklch(0.72 0.15 75);
+  --iso-adapter-t: oklch(1 0 0);
+  --iso-adapter-l: oklch(0.89 0.01 255);
+  --iso-adapter-r: oklch(0.83 0.014 255);
+  --iso-coord-t: oklch(0.94 0.025 270);
+  --iso-coord-l: oklch(0.83 0.06 270);
+  --iso-coord-r: oklch(0.77 0.08 270);
+  --iso-worker-t: oklch(0.97 0.004 255);
+  --iso-worker-l: oklch(0.87 0.01 255);
+  --iso-worker-r: oklch(0.81 0.014 255);
+  --iso-tile: oklch(0.88 0.04 270);
+}
+.dark {
+  --iso-bg: oklch(0.19 0.01 260);
+  --iso-floor: oklch(0.22 0.012 260);
+  --iso-grid: oklch(0.19 0.01 260);
+  --iso-rail: oklch(0.38 0.02 260);
+  --iso-accent: oklch(0.72 0.13 265);
+  --iso-text: oklch(0.92 0.01 260);
+  --iso-sub: oklch(0.65 0.015 260);
+  --iso-adapter-t: oklch(0.3 0.015 260);
+  --iso-adapter-l: oklch(0.25 0.015 260);
+  --iso-adapter-r: oklch(0.22 0.015 260);
+  --iso-coord-t: oklch(0.33 0.06 270);
+  --iso-coord-l: oklch(0.28 0.06 270);
+  --iso-coord-r: oklch(0.24 0.05 270);
+  --iso-worker-t: oklch(0.29 0.012 260);
+  --iso-worker-l: oklch(0.24 0.012 260);
+  --iso-worker-r: oklch(0.21 0.012 260);
+  --iso-tile: oklch(0.4 0.07 270);
+}
+.iso-map {
+  background: var(--iso-bg);
+}
+.iso-floor {
+  fill: var(--iso-floor);
+}
+.iso-grid line {
+  stroke: var(--iso-grid);
+  stroke-width: 1;
+}
+.iso-rail {
+  stroke: var(--iso-rail);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.iso-rail.hot {
+  stroke: var(--iso-accent);
+  stroke-dasharray: 3 7;
+  animation: iso-march 0.6s linear infinite;
+}
+.iso-face {
+  stroke: color-mix(in oklch, var(--iso-text) 10%, transparent);
+  stroke-width: 0.8;
+}
+.iso-adapter .iso-t {
+  fill: var(--iso-adapter-t);
+}
+.iso-adapter .iso-l {
+  fill: var(--iso-adapter-l);
+}
+.iso-adapter .iso-r {
+  fill: var(--iso-adapter-r);
+}
+.iso-coordinator .iso-t {
+  fill: var(--iso-coord-t);
+}
+.iso-coordinator .iso-l {
+  fill: var(--iso-coord-l);
+}
+.iso-coordinator .iso-r {
+  fill: var(--iso-coord-r);
+}
+.iso-worker .iso-t {
+  fill: var(--iso-worker-t);
+}
+.iso-worker .iso-l {
+  fill: var(--iso-worker-l);
+}
+.iso-worker .iso-r {
+  fill: var(--iso-worker-r);
+}
+.iso-channel .iso-t {
+  fill: none;
+  stroke: var(--iso-rail);
+  stroke-dasharray: 4 4;
+}
+.iso-offline {
+  opacity: 0.55;
+}
+.iso-tile {
+  fill: var(--iso-tile);
+  transition: fill 0.2s;
+}
+.iso-tile.on {
+  fill: var(--iso-accent);
+}
+.iso-tile-text {
+  fill: var(--iso-text);
+  font-size: 9.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.iso-tile-text.on {
+  fill: #fff;
+}
+.iso-track {
+  fill: var(--iso-bg);
+  opacity: 0.8;
+}
+.iso-busy {
+  fill: var(--iso-busy);
+  stroke-dasharray: 8 6;
+  animation: iso-pulse 1.4s ease-in-out infinite;
+}
+.iso-label {
+  fill: var(--iso-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.iso-sub {
+  fill: var(--iso-sub);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.iso-sub-busy {
+  fill: var(--iso-busy);
+}
+.iso-shadow {
+  fill: #000;
+  opacity: 0.14;
+}
+.iso-initials {
+  fill: #fff;
+  font-weight: 600;
+}
+.iso-chip-work {
+  fill: var(--iso-ticket);
+}
+.iso-chip-done {
+  fill: var(--iso-done);
+}
+.iso-chip-failed {
+  fill: var(--iso-failed);
+}
+.iso-reply {
+  fill: var(--iso-discord);
+}
+.iso-chip-text {
+  fill: #fff;
+  font-size: 10.5px;
+  font-weight: 500;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.iso-call {
+  fill: var(--iso-accent);
+}
+.iso-call-label {
+  fill: var(--iso-text);
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  paint-order: stroke;
+  stroke: var(--iso-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+@keyframes iso-march {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+@keyframes iso-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iso-rail.hot,
+  .iso-busy {
+    animation: none;
+  }
+}
