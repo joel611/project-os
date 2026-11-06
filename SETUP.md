@@ -90,6 +90,10 @@ Two behaviour switches, both on by default:
 - `DISCORD_REQUIRE_MENTION=true`: in project channels, the bot only answers top-level messages that @mention it. Messages inside ticket threads and the admin channel don't need a mention. Set `false` to answer every message.
 - `DISCORD_PROJECT_CHANNEL_AUTO_CREATE=true`: creating a project also creates its channel.
 
+Optional, from [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet):
+
+- `DISCORD_MEMBER_ROLE_IDS`: comma-separated role ids (right-click a role → Copy Role ID). When set, only people holding one of those roles can trigger the bot. Others' messages are ignored silently, and their slash commands get a private refusal. DMs carry no roles, so `/connect` and the other commands then only work inside the server. People in `ADMIN_USER_IDS` are not exempt, so give them a role too. Unset means everyone can use the bot.
+
 ### 1.4 Check it
 
 Start the stack (see [5. Run it](#5-run-it)), then:
@@ -241,15 +245,16 @@ Deploying to Cloudflare with Alchemy is in [PR #42](https://github.com/joel611/p
 
 ## Troubleshooting
 
-| Symptom                                                | Likely cause                                                                                                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bot is online but never answers                        | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project |
-| Slash commands don't show up                           | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)         |
-| `/project-create` says it failed to create the channel | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                   |
-| Tickets don't get threads                              | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                          |
-| `/connect` says linking is off                         | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                       |
-| Google says `redirect_uri_mismatch`                    | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |
-| Google says "access blocked"                           | The person isn't a test user on an External app in Testing                                                                                  |
-| GitHub says the redirect URI isn't associated          | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                         |
-| Worker can't see a repo                                | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                    |
-| Google stops working after a week                      | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                       |
+| Symptom                                                     | Likely cause                                                                                                                                |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot is online but never answers                             | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project |
+| Bot ignores one person, or their slash commands are refused | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                     |
+| Slash commands don't show up                                | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)         |
+| `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                   |
+| Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                          |
+| `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                       |
+| Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |
+| Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                  |
+| GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                         |
+| Worker can't see a repo                                     | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                    |
+| Google stops working after a week                           | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                       |
