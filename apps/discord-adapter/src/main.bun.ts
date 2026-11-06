@@ -12,7 +12,8 @@ import { forwardInbound } from "./forward.ts";
 import {
   isAllowedMember,
   NOT_A_MEMBER_MESSAGE,
-  parseRoleIds,
+  type MemberGate,
+  parseIds,
   SERVER_ONLY_MESSAGE,
 } from "./members.ts";
 import { normalizeMessage } from "./normalize.ts";
@@ -35,13 +36,18 @@ const client = new Client({
 });
 
 // Optional: only people holding one of these roles can trigger the bot. Unset = everyone.
-const memberRoleIds = parseRoleIds(process.env.DISCORD_MEMBER_ROLE_IDS);
+// Admins (ADMIN_USER_IDS, the Coordinator's admin list) always pass.
+const memberGate: MemberGate = {
+  roleIds: parseIds(process.env.DISCORD_MEMBER_ROLE_IDS),
+  adminUserIds: parseIds(process.env.ADMIN_USER_IDS),
+};
 
 client.on(Events.MessageCreate, async (message) => {
   // Server chat only: DMs are ignored (the bot doesn't ask for the DM intent either).
   if (!message.inGuild()) return;
   // Silent, like a missing @mention: people without a member role can talk among themselves.
-  if (!message.author.bot && !isAllowedMember(message.member, memberRoleIds)) return;
+  if (!message.author.bot && !isAllowedMember(message.author.id, message.member, memberGate))
+    return;
   // The bot's own id, so the Coordinator can ignore project channel chatter that isn't for it.
   const inbound = normalizeMessage(message, client.user?.id);
   if (!inbound) return;
@@ -83,7 +89,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.reply({ content: SERVER_ONLY_MESSAGE, flags: MessageFlags.Ephemeral });
       return;
     }
-    if (!isAllowedMember(interaction.member, memberRoleIds)) {
+    if (!isAllowedMember(interaction.user.id, interaction.member, memberGate)) {
       await interaction.reply({ content: NOT_A_MEMBER_MESSAGE, flags: MessageFlags.Ephemeral });
       return;
     }

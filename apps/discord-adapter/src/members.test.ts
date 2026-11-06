@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
-import { isAllowedMember, memberRoleIds, parseRoleIds } from "./members.ts";
+import { isAllowedMember, memberRoleIds, parseIds } from "./members.ts";
 
-describe("parseRoleIds", () => {
+describe("parseIds", () => {
   it("is undefined (no gate) when unset or blank", () => {
-    expect(parseRoleIds(undefined)).toBeUndefined();
-    expect(parseRoleIds("")).toBeUndefined();
-    expect(parseRoleIds(" , ")).toBeUndefined();
+    expect(parseIds(undefined)).toBeUndefined();
+    expect(parseIds("")).toBeUndefined();
+    expect(parseIds(" , ")).toBeUndefined();
   });
 
   it("splits and trims a comma-separated list", () => {
-    expect([...parseRoleIds(" r1, r2 ,,r3")!]).toEqual(["r1", "r2", "r3"]);
+    expect([...parseIds(" r1, r2 ,,r3")!]).toEqual(["r1", "r2", "r3"]);
   });
 });
 
@@ -40,19 +40,28 @@ describe("memberRoleIds", () => {
 });
 
 describe("isAllowedMember", () => {
-  const gate = parseRoleIds("member,staff");
+  const gate = { roleIds: parseIds("member,staff"), adminUserIds: parseIds("admin1") };
 
   it("lets everyone through without a gate", () => {
-    expect(isAllowedMember(null, undefined)).toBe(true);
+    expect(isAllowedMember("u1", null, { roleIds: undefined })).toBe(true);
   });
 
   it("allows a member holding any allowed role", () => {
-    expect(isAllowedMember({ roles: ["guest", "staff"] }, gate)).toBe(true);
-    expect(isAllowedMember({ roles: { cache: new Map([["member", {}]]) } }, gate)).toBe(true);
+    expect(isAllowedMember("u1", { roles: ["guest", "staff"] }, gate)).toBe(true);
+    expect(isAllowedMember("u1", { roles: { cache: new Map([["member", {}]]) } }, gate)).toBe(true);
   });
 
   it("refuses members without an allowed role, and DMs", () => {
-    expect(isAllowedMember({ roles: ["guest"] }, gate)).toBe(false);
-    expect(isAllowedMember(null, gate)).toBe(false);
+    expect(isAllowedMember("u1", { roles: ["guest"] }, gate)).toBe(false);
+    expect(isAllowedMember("u1", null, gate)).toBe(false);
+  });
+
+  it("always lets admins through, even without a member role", () => {
+    expect(isAllowedMember("admin1", { roles: ["guest"] }, gate)).toBe(true);
+    expect(isAllowedMember("admin1", null, gate)).toBe(true);
+  });
+
+  it("checks roles when no admin list is given", () => {
+    expect(isAllowedMember("admin1", null, { roleIds: gate.roleIds })).toBe(false);
   });
 });
