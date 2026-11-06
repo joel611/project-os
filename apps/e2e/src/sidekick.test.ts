@@ -1,9 +1,13 @@
 import { IntentClassifier, THREAD_OPENED_MESSAGE, TICKET_CLOSED_MESSAGE } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { forwardCommand } from "../../discord-adapter/src/commands.ts";
-import { fakeCommand, fakeInbound, type FakeSpeaker } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
+import {
+  fakeCommand,
+  fakeInbound,
+  type FakeSpeaker,
+} from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 import { browse } from "./browse.ts";
 import { type Stack, startStack } from "./stack.ts";
 
