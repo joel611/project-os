@@ -18,3 +18,6 @@ export const channelTypeFor = (source: ProjectSourceType): ChannelType | undefin
 
 /** Channels whose adapter can open a thread on a message, so each Ticket gets its own. */
 export const supportsThreads = (channel: ChannelType): boolean => channel === "discord";
+
+/** Channels whose adapter can react to a message, so the Coordinator can acknowledge it. */
+export const supportsReactions = (channel: ChannelType): boolean => channel === "discord";

@@ -104,7 +104,7 @@ const run = <A, E>(
       yield* setup;
       return yield* eff;
     }).pipe(Effect.provide(t.layer)) as Effect.Effect<A, E>,
-  ).then((value) => ({ value, sent: t.sent, threads: t.createdThreads }));
+  ).then((value) => ({ value, sent: t.sent, threads: t.createdThreads, reactions: t.reactions }));
 };
 
 const inbound = (intent: string, confidence = 1) => ({
@@ -143,13 +143,58 @@ describe("handleInbound", () => {
     expect(value).toEqual(["ticket_created", "duplicate"]);
   });
 
+  it("reacts 👀 to a message it takes in, and not again to a redelivery", async () => {
+    const { value, reactions } = await run(
+      Effect.gen(function* () {
+        yield* handleInbound(msg({ threadId: "th1" }), config);
+        return (yield* handleInbound(msg({ threadId: "th1" }), config)).kind;
+      }),
+      inbound("new_request"),
+    );
+    expect(value).toBe("duplicate");
+    expect(reactions).toEqual([
+      {
+        channelType: "discord",
+        channelId: "chan-1",
+        threadId: "th1",
+        messageId: "m1",
+        emoji: "👀",
+      },
+    ]);
+  });
+
+  it("carries on when the reaction fails", async () => {
+    const { value, reactions } = await run(handleInbound(msg(), config), {
+      ...inbound("new_request"),
+      failReact: "Missing Permissions",
+    });
+    expect(value.kind).toBe("ticket_created");
+    expect(reactions).toEqual([]);
+  });
+
+  it("reacts to admin channel messages from an admin, not from anyone else", async () => {
+    const admins = { ...config, adminUserIds: ["u1"] };
+    const ok = await run(
+      handleInbound(msg({ channelId: ADMIN }), admins),
+      inbound("admin_command"),
+    );
+    expect(ok.reactions).toHaveLength(1);
+    const no = await run(
+      handleInbound(msg({ channelId: ADMIN, sender: { id: "u2" } }), admins),
+      inbound("admin_command"),
+    );
+    expect(no.value.kind).toBe("admin_forbidden");
+    expect(no.reactions).toEqual([]);
+  });
+
   it("ignores messages from unlinked channels", async () => {
-    const { value, sent } = await run(
+    const { value, sent, reactions } = await run(
       handleInbound(msg({ channelId: "nope" }), config),
       inbound("new_request"),
     );
     expect(value.kind).toBe("unlinked");
     expect(sent).toHaveLength(0);
+    expect(reactions).toEqual([]);
   });
 
   it("follow_up appends a follow_up event to the project's open ticket", async () => {
@@ -228,9 +273,13 @@ describe("handleInbound", () => {
 
     it("ignores a top-level project channel message that doesn't mention the bot", async () => {
       for (const over of [{}, { mentionsBot: false }]) {
-        const { value, sent } = await run(handleInbound(msg(over), strict), inbound("new_request"));
+        const { value, sent, reactions } = await run(
+          handleInbound(msg(over), strict),
+          inbound("new_request"),
+        );
         expect(value.kind).toBe("not_mentioned");
         expect(sent).toEqual([]);
+        expect(reactions).toEqual([]);
       }
     });
 
