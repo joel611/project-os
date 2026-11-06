@@ -1,10 +1,11 @@
+import { WORKER_TYPES } from "@project-os/contracts";
 import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const workers = sqliteTable(
   "workers",
   {
     id: text("id").primaryKey(),
-    workerType: text("worker_type", { enum: ["daytona_pi", "local_claude", "local_pi"] }).notNull(),
+    workerType: text("worker_type", { enum: WORKER_TYPES }).notNull(),
     /** Set on personal workers (registered with /register-worker): whose tickets they serve. */
     ownerChannelType: text("owner_channel_type", { enum: ["discord", "email", "chat"] }),
     ownerId: text("owner_id"),

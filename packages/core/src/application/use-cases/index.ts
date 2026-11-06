@@ -6,6 +6,7 @@ export * from "./health-sweep.ts";
 export * from "./heartbeat.ts";
 export * from "./memory.ts";
 export * from "./on-ticket-completed.ts";
+export * from "./sidekick.ts";
 export * from "./tickets.ts";
 export * from "./connections.ts";
 export * from "./prompts.ts";

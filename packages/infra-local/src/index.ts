@@ -5,6 +5,8 @@ import {
   IdGenerator,
   KeyValueStore,
   Scheduler,
+  Sidekick,
+  SidekickError,
   UserConnections,
   WorkerLauncher,
 } from "@project-os/core";
@@ -38,6 +40,11 @@ const SchedulerTimer = Layer.succeed(Scheduler, makeTimerScheduler());
 
 const noopLauncher: typeof WorkerLauncher.Service = { launch: () => Effect.void };
 
+/** Placeholder until an entry file supplies the agent runtime, which also provides the Sidekick. */
+const SidekickPending = Layer.succeed(Sidekick, {
+  answer: () => Effect.fail(new SidekickError({ message: "The Sidekick is not wired here." })),
+});
+
 /** Placeholder until the agent-runtime ticket (#14) supplies the in-process implementation. */
 const AgentRuntimePending = Layer.succeed(AgentRuntime, {
   respond: () => Effect.die(new Error("AgentRuntime not wired yet (see #14)")),
@@ -66,6 +73,7 @@ export const LocalLive = (config: LocalConfig) =>
       makeHttpChannelGateway({ adapterUrls: config.adapterUrls, fetch }),
     ),
     AgentRuntimePending,
+    SidekickPending,
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
   );
