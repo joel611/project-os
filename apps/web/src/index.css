@@ -128,3 +128,416 @@
     @apply font-sans;
   }
 }
+
+/* Live system map. Shared map tokens, then the Schematic and Isometric styles. */
+:root {
+  --map-bg: oklch(0.985 0.002 255);
+  --map-rail: oklch(0.82 0.012 255);
+  --map-accent: oklch(0.55 0.17 265);
+  --map-text: oklch(0.25 0.02 260);
+  --map-sub: oklch(0.55 0.02 260);
+  --map-discord: oklch(0.57 0.17 275);
+  --map-email: oklch(0.62 0.14 60);
+  --map-chat: oklch(0.6 0.12 180);
+  --map-ticket: oklch(0.6 0.11 210);
+  --map-done: oklch(0.6 0.14 150);
+  --map-failed: oklch(0.58 0.2 25);
+  --map-busy: oklch(0.72 0.15 75);
+  --sch-dot: oklch(0.88 0.008 255);
+  --sch-chip: oklch(0.96 0.004 255);
+  --iso-bg: oklch(0.96 0.006 255);
+  --iso-floor: oklch(0.93 0.008 255);
+  --iso-grid: oklch(0.96 0.006 255);
+  --iso-adapter-t: oklch(1 0 0);
+  --iso-adapter-l: oklch(0.89 0.01 255);
+  --iso-adapter-r: oklch(0.83 0.014 255);
+  --iso-coord-t: oklch(0.94 0.025 270);
+  --iso-coord-l: oklch(0.83 0.06 270);
+  --iso-coord-r: oklch(0.77 0.08 270);
+  --iso-worker-t: oklch(0.97 0.004 255);
+  --iso-worker-l: oklch(0.87 0.01 255);
+  --iso-worker-r: oklch(0.81 0.014 255);
+  --iso-tile: oklch(0.88 0.04 270);
+}
+.dark {
+  --map-bg: oklch(0.17 0.008 260);
+  --map-rail: oklch(0.36 0.02 260);
+  --map-accent: oklch(0.72 0.13 265);
+  --map-text: oklch(0.92 0.01 260);
+  --map-sub: oklch(0.65 0.015 260);
+  --sch-dot: oklch(0.27 0.012 260);
+  --sch-chip: oklch(0.25 0.012 260);
+  --iso-bg: oklch(0.19 0.01 260);
+  --iso-floor: oklch(0.22 0.012 260);
+  --iso-grid: oklch(0.19 0.01 260);
+  --iso-adapter-t: oklch(0.3 0.015 260);
+  --iso-adapter-l: oklch(0.25 0.015 260);
+  --iso-adapter-r: oklch(0.22 0.015 260);
+  --iso-coord-t: oklch(0.33 0.06 270);
+  --iso-coord-l: oklch(0.28 0.06 270);
+  --iso-coord-r: oklch(0.24 0.05 270);
+  --iso-worker-t: oklch(0.29 0.012 260);
+  --iso-worker-l: oklch(0.24 0.012 260);
+  --iso-worker-r: oklch(0.21 0.012 260);
+  --iso-tile: oklch(0.4 0.07 270);
+}
+.map-stage {
+  background: var(--map-bg);
+}
+.map-isometric {
+  --map-bg: var(--iso-bg);
+}
+
+/* Shared: rails, labels, packets */
+.map-rail {
+  stroke: var(--map-rail);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.map-rail.hot {
+  stroke: var(--map-accent);
+  stroke-dasharray: 3 7;
+  animation: map-march 0.6s linear infinite;
+}
+.map-label {
+  fill: var(--map-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.map-sub {
+  fill: var(--map-sub);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.map-sub-busy {
+  fill: var(--map-busy);
+}
+.map-busy {
+  fill: var(--map-busy);
+  stroke-dasharray: 8 6;
+  animation: map-pulse 1.4s ease-in-out infinite;
+}
+.map-initials {
+  fill: #fff;
+  font-weight: 600;
+}
+.map-chip-work {
+  fill: var(--map-ticket);
+}
+.map-chip-done {
+  fill: var(--map-done);
+}
+.map-chip-failed {
+  fill: var(--map-failed);
+}
+.map-reply {
+  fill: var(--map-discord);
+}
+.map-chip-text {
+  fill: #fff;
+  font-size: 10.5px;
+  font-weight: 500;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.map-call {
+  fill: var(--map-accent);
+}
+.map-call-label {
+  fill: var(--map-text);
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Schematic */
+.sch-dot {
+  fill: var(--sch-dot);
+}
+.sch-edge {
+  fill: none;
+  stroke: var(--map-rail);
+  stroke-width: 1.5;
+}
+.sch-edge.hot {
+  stroke: var(--map-accent);
+  stroke-dasharray: 5 5;
+  animation: map-march 0.7s linear infinite;
+}
+.sch-card {
+  fill: var(--card);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.sch-coordinator {
+  stroke-width: 1.5;
+}
+.sch-ghost {
+  fill: none;
+  stroke: var(--map-rail);
+  stroke-dasharray: 4 4;
+}
+.sch-accent {
+  fill: var(--map-accent);
+}
+.sch-title {
+  fill: var(--map-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.sch-title-lg {
+  font-size: 16px;
+}
+.sch-sub {
+  fill: var(--map-sub);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.sch-chip {
+  fill: var(--sch-chip);
+  transition: fill 0.2s;
+}
+.sch-chip.on {
+  fill: var(--map-accent);
+}
+.sch-chip-text {
+  fill: var(--map-sub);
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.sch-chip-text.on {
+  fill: #fff;
+}
+.sch-divider {
+  stroke: var(--border);
+}
+.sch-icon-bg,
+.sch-track {
+  fill: var(--sch-chip);
+}
+.sch-offline {
+  opacity: 0.55;
+}
+
+/* Isometric */
+.iso-floor {
+  fill: var(--iso-floor);
+}
+.iso-grid line {
+  stroke: var(--iso-grid);
+  stroke-width: 1;
+}
+.iso-face {
+  stroke: color-mix(in oklch, var(--map-text) 10%, transparent);
+  stroke-width: 0.8;
+}
+.iso-adapter .iso-t {
+  fill: var(--iso-adapter-t);
+}
+.iso-adapter .iso-l {
+  fill: var(--iso-adapter-l);
+}
+.iso-adapter .iso-r {
+  fill: var(--iso-adapter-r);
+}
+.iso-coordinator .iso-t {
+  fill: var(--iso-coord-t);
+}
+.iso-coordinator .iso-l {
+  fill: var(--iso-coord-l);
+}
+.iso-coordinator .iso-r {
+  fill: var(--iso-coord-r);
+}
+.iso-worker .iso-t {
+  fill: var(--iso-worker-t);
+}
+.iso-worker .iso-l {
+  fill: var(--iso-worker-l);
+}
+.iso-worker .iso-r {
+  fill: var(--iso-worker-r);
+}
+.iso-channel .iso-t {
+  fill: none;
+  stroke: var(--map-rail);
+  stroke-dasharray: 4 4;
+}
+.iso-offline {
+  opacity: 0.55;
+}
+.iso-tile {
+  fill: var(--iso-tile);
+  transition: fill 0.2s;
+}
+.iso-tile.on {
+  fill: var(--map-accent);
+}
+.iso-tile-text {
+  fill: var(--map-text);
+  font-size: 9.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.iso-tile-text.on {
+  fill: #fff;
+}
+.iso-track {
+  fill: var(--iso-bg);
+  opacity: 0.8;
+}
+.iso-shadow {
+  fill: #000;
+  opacity: 0.14;
+}
+
+@keyframes map-march {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+@keyframes map-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-rail.hot,
+  .sch-edge.hot,
+  .map-busy {
+    animation: none;
+  }
+}
+
+/* Tickets table and event log under the map. */
+.map-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+@media (max-width: 860px) {
+  .map-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.map-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 14px 16px;
+}
+.map-card h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.map-card h2 small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
+}
+.map-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.map-table th {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+.map-table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.map-table tr:last-child td {
+  border-bottom: 0;
+}
+.map-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.map-av {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.map-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 99px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.map-pill.st-open,
+.map-pill.st-cancelled {
+  color: var(--muted-foreground);
+}
+.map-pill.st-assigned {
+  color: var(--map-accent);
+}
+.map-pill.st-in_progress,
+.map-pill.st-blocked {
+  color: var(--map-busy);
+}
+.map-pill.st-completed {
+  color: var(--map-done);
+}
+.map-pill.st-failed {
+  color: var(--map-failed);
+}
+.map-log {
+  display: grid;
+  gap: 2px;
+  max-height: 300px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  font-size: 12.5px;
+  list-style: none;
+}
+.map-log li {
+  display: grid;
+  grid-template-columns: 64px 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 3px 0;
+}
+.map-log time {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.map-log .dot {
+  justify-self: center;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+.map-log code {
+  color: var(--map-accent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}

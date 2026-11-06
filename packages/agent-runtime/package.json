@@ -11,8 +11,14 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-durable": "1.5.0",
     "@earendil-works/pi-schema": "1.5.0",
+    "@earendil-works/pi-telemetry": "1.5.0",
+    "@opentelemetry/api": "^1.10.0",
     "@project-os/contracts": "workspace:*",
     "@project-os/core": "workspace:*",
     "effect": "4.1.2"
+  },
+  "devDependencies": {
+    "@opentelemetry/sdk-metrics": "^3.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.12.0"
   }
 }

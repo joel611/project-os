@@ -15,6 +15,7 @@ import {
   Scheduler,
   SourceAlreadyLinked,
   SourceNotFound,
+  ThreadCreateFailed,
   TicketNotFound,
   TicketRepository,
   transitionTicket,
@@ -26,12 +27,14 @@ import {
   type ProjectSource,
   type Ticket,
   type TicketEvent,
+  type TicketThread,
   type Worker,
 } from "@project-os/core";
 import {
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
   type CreateChannelInstruction,
+  type CreateThreadInstruction,
   type MemoryEntry,
   type ReplyInstruction,
 } from "@project-os/contracts";
@@ -43,6 +46,7 @@ const byKey = <A>(items: Iterable<A>, key: (a: A) => string): A[] =>
 export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
   const tickets = new Map<string, Ticket>();
   const events = new Map<string, TicketEvent[]>();
+  const threads = new Map<string, TicketThread>();
   const find = (id: string) => {
     const t = tickets.get(id);
     return t ? Effect.succeed(t) : Effect.fail(new TicketNotFound({ ticketId: id }));
@@ -87,6 +91,25 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
           const all = events.get(ticketId) ?? [];
           return limit === undefined ? all : all.slice(-limit);
         }),
+      ),
+    linkThread: (thread) =>
+      Effect.flatMap(find(thread.ticketId), () =>
+        Effect.sync(() => {
+          threads.set(thread.ticketId, thread);
+          return thread;
+        }),
+      ),
+    findThread: (ticketId) => Effect.sync(() => threads.get(ticketId)),
+    findByThread: (channelType, threadId) =>
+      Effect.sync(() =>
+        [...threads.values()].find((t) => t.channelType === channelType && t.threadId === threadId),
+      ),
+    listEventsSince: (since, limit) =>
+      Effect.sync(() =>
+        byKey(
+          [...events.values()].flat().filter((e) => e.createdAt >= since),
+          (e) => e.createdAt,
+        ).slice(-limit),
       ),
   };
 });
@@ -226,16 +249,34 @@ export const KeyValueStoreInMemory = Layer.sync(KeyValueStore, () => {
 });
 
 /**
- * Records every reply sent (`sent`) and channel created (`created`). Created channels get
- * ids `chan-1`, `chan-2`, …; pass `failCreate` to make channel creation fail with that message.
+ * Records every reply sent (`sent`), channel created (`created`) and thread opened (`threads`).
+ * Created channels get ids `chan-1`, …, threads `thread-1`, …; pass `failCreate` /
+ * `failThread` to make channel / thread creation fail with that message.
  */
-export const makeChannelGatewayRecording = (options?: { readonly failCreate?: string }) => {
+export const makeChannelGatewayRecording = (options?: {
+  readonly failCreate?: string;
+  readonly failThread?: string;
+}) => {
   const sent: ReplyInstruction[] = [];
   const created: CreateChannelInstruction[] = [];
+  const threads: CreateThreadInstruction[] = [];
   return {
     sent,
     created,
+    threads,
     layer: Layer.succeed(ChannelGateway, {
+      createThread: (request) =>
+        options?.failThread !== undefined
+          ? Effect.fail(
+              new ThreadCreateFailed({
+                channelType: request.channelType,
+                message: options.failThread,
+              }),
+            )
+          : Effect.sync(() => {
+              threads.push(request);
+              return { threadId: `thread-${threads.length}` };
+            }),
       send: (reply) => Effect.sync(() => void sent.push(reply)),
       createChannel: (request) =>
         options?.failCreate !== undefined
