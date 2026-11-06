@@ -45,6 +45,10 @@ describe("COMMAND_DEFINITIONS", () => {
     expect(connect.options[0]).toMatchObject({ name: "provider", required: true });
     expect(connect.options[0]!.choices.map((c) => c.value)).toEqual(["google", "github"]);
   });
+
+  it("offers no command in DMs: the bot only works in the server", () => {
+    expect(COMMAND_DEFINITIONS.every((c) => c.dm_permission === false)).toBe(true);
+  });
 });
 
 describe("normalizeCommand", () => {

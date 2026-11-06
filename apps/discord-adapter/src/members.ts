@@ -37,3 +37,5 @@ export const isAllowedMember = (
   allowedRoleIds === undefined || memberRoleIds(member).some((id) => allowedRoleIds.has(id));
 
 export const NOT_A_MEMBER_MESSAGE = "Sorry, you need a member role to use this bot.";
+
+export const SERVER_ONLY_MESSAGE = "I only work in the server. Run this in a server channel.";

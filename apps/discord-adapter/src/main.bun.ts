@@ -9,7 +9,12 @@ import {
 } from "discord.js";
 import { answerCommand, COMMAND_DEFINITIONS, normalizeCommand } from "./commands.ts";
 import { forwardInbound } from "./forward.ts";
-import { isAllowedMember, NOT_A_MEMBER_MESSAGE, parseRoleIds } from "./members.ts";
+import {
+  isAllowedMember,
+  NOT_A_MEMBER_MESSAGE,
+  parseRoleIds,
+  SERVER_ONLY_MESSAGE,
+} from "./members.ts";
 import { normalizeMessage } from "./normalize.ts";
 import { createReplyApp } from "./reply.ts";
 
@@ -33,6 +38,8 @@ const client = new Client({
 const memberRoleIds = parseRoleIds(process.env.DISCORD_MEMBER_ROLE_IDS);
 
 client.on(Events.MessageCreate, async (message) => {
+  // Server chat only: DMs are ignored (the bot doesn't ask for the DM intent either).
+  if (!message.inGuild()) return;
   // Silent, like a missing @mention: people without a member role can talk among themselves.
   if (!message.author.bot && !isAllowedMember(message.member, memberRoleIds)) return;
   // The bot's own id, so the Coordinator can ignore project channel chatter that isn't for it.
@@ -71,6 +78,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const command = normalizeCommand(interaction);
   if (!command) return;
   try {
+    // Server chat only. Commands aren't offered in DMs, but older registrations may linger.
+    if (!interaction.inGuild()) {
+      await interaction.reply({ content: SERVER_ONLY_MESSAGE, flags: MessageFlags.Ephemeral });
+      return;
+    }
     if (!isAllowedMember(interaction.member, memberRoleIds)) {
       await interaction.reply({ content: NOT_A_MEMBER_MESSAGE, flags: MessageFlags.Ephemeral });
       return;
