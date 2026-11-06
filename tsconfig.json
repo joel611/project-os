@@ -6,7 +6,8 @@
     "libs/*/src",
     "vite.config.ts",
     "alchemy.run.ts",
-    "apps/web/worker.ts"
+    "apps/web/worker.ts",
+    "scripts"
   ],
   "exclude": [
     "apps/coordinator/src/main.cloudflare.ts",
