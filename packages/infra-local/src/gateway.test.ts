@@ -184,4 +184,38 @@ describe("HTTP ChannelGateway", () => {
       });
     });
   });
+
+  describe("ask", () => {
+    const request = {
+      channelType: "discord",
+      channelId: "c1",
+      promptId: "p1",
+      kind: "approval",
+      content: "Ship?",
+      options: ["Approve", "Deny"],
+    } as const;
+
+    it("POSTs to the adapter's /prompts endpoint and returns the message id", async () => {
+      const calls: Array<{ url: string; body: unknown }> = [];
+      const gateway = makeHttpChannelGateway({
+        adapterUrls: { discord: "http://discord:3001" },
+        fetch: async (url, init) => {
+          calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+          return Response.json({ messageId: "m7" });
+        },
+      });
+      expect(await Effect.runPromise(gateway.ask(request))).toEqual({ messageId: "m7" });
+      expect(calls).toEqual([{ url: "http://discord:3001/prompts", body: request }]);
+    });
+
+    it("fails with PromptSendFailed when the adapter refuses", async () => {
+      const gateway = makeHttpChannelGateway({
+        adapterUrls: { discord: "http://d" },
+        fetch: async () => Response.json({ error: "Missing Access" }, { status: 502 }),
+      });
+      const error = await Effect.runPromise(Effect.flip(gateway.ask(request)));
+      expect(error).toMatchObject({ _tag: "PromptSendFailed", channelType: "discord" });
+      expect(error.message).toContain("Missing Access");
+    });
+  });
 });

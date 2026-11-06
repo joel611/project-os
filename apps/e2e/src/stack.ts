@@ -8,6 +8,7 @@ import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@pr
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
+import type { ActionRow } from "../../discord-adapter/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../discord-adapter/src/reply.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
@@ -37,6 +38,15 @@ export interface ReactionCall {
   readonly emoji: string;
 }
 
+export interface PostedPrompt {
+  readonly target: ReplyTarget;
+  readonly content: string;
+  /** The buttons or select menu, as sent to Discord. */
+  readonly components: ActionRow[];
+  /** Message id handed back (`discord-prompt-1`, …). */
+  readonly messageId: string;
+}
+
 export interface Stack {
   /** Coordinator base URL, e.g. `http://localhost:54321`. */
   readonly url: string;
@@ -48,6 +58,8 @@ export interface Stack {
   readonly createdThreads: CreatedThreadCall[];
   /** Reactions the Discord adapter was told to add. */
   readonly reactions: ReactionCall[];
+  /** Prompts (messages with buttons) the Discord adapter was told to post. */
+  readonly prompts: PostedPrompt[];
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
   readonly admin: ReturnType<typeof makeAdminActions>;
@@ -93,6 +105,7 @@ export const startStack = async (options: {
   const createdChannels: string[] = [];
   const createdThreads: CreatedThreadCall[] = [];
   const reactions: ReactionCall[] = [];
+  const prompts: PostedPrompt[] = [];
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
     async (name) => {
@@ -108,6 +121,11 @@ export const startStack = async (options: {
       return { threadId: `discord-thread-${createdThreads.length}` };
     },
     async (input) => void reactions.push(input),
+    async (target, message) => {
+      const messageId = `discord-prompt-${prompts.length + 1}`;
+      prompts.push({ target, ...message, messageId });
+      return { messageId };
+    },
   ).listen(0);
 
   // Better Auth needs the Coordinator's URL, known only once it listens: the Layer and the
@@ -146,6 +164,7 @@ export const startStack = async (options: {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: { workerId: options.workerId, requireMention: true },
+        prompts: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER] },
         commands: {
           adminChannelId: ADMIN_CHANNEL,
           adminUserIds: [ADMIN_USER],
@@ -192,6 +211,7 @@ export const startStack = async (options: {
     createdChannels,
     createdThreads,
     reactions,
+    prompts,
     dbPath,
     ...(oauth && { oauth }),
     json,
