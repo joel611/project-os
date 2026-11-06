@@ -88,7 +88,7 @@ describe("applyFeed", () => {
     expect(stories).toEqual([]);
     expect(model.since).toBe(T(5));
     expect(model.tickets.get("t1")?.status).toBe("assigned");
-    expect(model.recent.map((e) => e.id)).toEqual(["e1"]);
+    expect(model.log.map((l) => l.id)).toEqual(["e1:ticket", "e1:intent", "e1:message"]);
   });
 
   it("tells a new ticket's story from the channel to the Coordinator's queue", () => {
@@ -143,7 +143,7 @@ describe("applyFeed", () => {
     const first = applyFeed(emptyModel, feed(2, [ticket()], [event("e1", "created", 1)])).model;
     const { stories, model } = applyFeed(first, feed(3, [ticket()], [event("e1", "created", 1)]));
     expect(stories).toEqual([]);
-    expect(model.recent).toHaveLength(1);
+    expect(model.log).toHaveLength(3);
   });
 
   it("routes a follow-up from its sender to the working worker", () => {
