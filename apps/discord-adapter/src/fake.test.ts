@@ -12,8 +12,16 @@ describe("fakeInbound", () => {
       channelId: "c1",
       sender: { id: "u1", name: "Ada" },
       content: "hi",
+      mentionsBot: true,
     });
     expect(m).not.toHaveProperty("threadId");
+  });
+
+  it("can speak without mentioning the bot", () => {
+    expect(fakeInbound(speaker, "hi", { mention: false })).toMatchObject({
+      content: "hi",
+      mentionsBot: false,
+    });
   });
 
   it("maps a thread to its parent channel plus threadId", () => {

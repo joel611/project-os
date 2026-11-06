@@ -176,6 +176,8 @@ Single bounded context that owns:
 
 The channel (Discord / email) only sees what the Coordinator chooses to surface — just like a customer only sees curated updates from a PM, not internal ticket chatter.
 
+**Project channels need an @mention.** In a project's Discord channel, the Coordinator only acts on top-level messages that @mention the bot (a reply to the bot's message counts); other messages are left alone so people can talk among themselves. The adapter sets `InboundMessage.mentionsBot` and strips the mention from the content. Messages inside a thread are handled without a mention, since a thread is already a conversation with the bot, and the admin channel is unchanged. `DISCORD_REQUIRE_MENTION=false` turns the rule off.
+
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration
 - Admin can create projects, add sources, set default channels, and ask about ticket status

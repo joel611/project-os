@@ -116,4 +116,4 @@ bun run --cwd apps/discord-adapter fake            # REPL: type a message, repli
 bun run --cwd apps/discord-adapter fake --say "fix the login bug" --wait 120   # one-shot, exits on first reply
 ```
 
-Flags: `--channel`, `--thread`, `--user`, `--name`. Set `--channel`/`--user` to `ADMIN_CHANNEL_ID`/an id in `ADMIN_USER_IDS` to exercise the admin channel.
+Flags: `--channel`, `--thread`, `--user`, `--name`. Messages @mention the bot like a person would; `--no-mention` sends one without, which the Coordinator ignores at the top of a project channel. Set `--channel`/`--user` to `ADMIN_CHANNEL_ID`/an id in `ADMIN_USER_IDS` to exercise the admin channel.
