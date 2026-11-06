@@ -103,6 +103,7 @@ bun run test
 - `packages/infra-local`, `packages/infra-cloudflare`: provider Layers
 - `packages/testing`: in-memory fakes
 - `libs/config`: env parsing
+- `alchemy.run.ts`: Cloudflare deployment (Workers, D1, KV, secrets, dashboard); see [docs/deployment.md](docs/deployment.md)
 
 ## Testing without Discord
 

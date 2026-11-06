@@ -9,6 +9,10 @@
   "type": "module",
   "scripts": {
     "dev": "vp run --parallel -r dev",
+    "dev:cf": "alchemy dev",
+    "deploy": "alchemy deploy",
+    "plan": "alchemy plan",
+    "destroy": "alchemy destroy",
     "seed": "bun apps/coordinator/src/main.seed.ts",
     "build": "vp run -r build",
     "prepare": "vp config",
@@ -23,10 +27,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web --noEmit"
   },
   "devDependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.85",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
+    "@effect/platform-bun": "4.1.2",
+    "@effect/platform-node": "4.1.2",
     "@types/bun": "1.4.4",
     "@vitest/coverage-v8": "5.0.5",
+    "alchemy": "2.0.0-beta.85",
+    "effect": "4.1.2",
     "typescript": "^5.9.3",
     "vite-plus": "1.4.0"
   },
