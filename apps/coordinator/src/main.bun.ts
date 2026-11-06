@@ -103,9 +103,9 @@ const workerLauncher = daytonaApiKey
   : undefined;
 
 // Discord runs inside this process when a bot token is set. Its reply endpoint binds loopback on
-// a free port: it can post as the bot, so it must not sit on the public port. DISCORD_ADAPTER_URL
+// a free port: it can post as the bot, so it must not sit on the public port. DISCORD_SPLIT_ADAPTER_URL
 // points at a separate adapter instead (Cloudflare, or the fake in TESTING.md) and wins.
-const remoteAdapterUrl = process.env.DISCORD_ADAPTER_URL;
+const remoteAdapterUrl = process.env.DISCORD_SPLIT_ADAPTER_URL;
 const discordToken = process.env.DISCORD_BOT_TOKEN;
 const discord =
   discordToken && !remoteAdapterUrl
@@ -118,7 +118,7 @@ const discord =
     : undefined;
 if (discordToken && remoteAdapterUrl) {
   console.log(
-    `DISCORD_BOT_TOKEN ignored: DISCORD_ADAPTER_URL is set, replies go to ${remoteAdapterUrl}`,
+    `DISCORD_BOT_TOKEN ignored: DISCORD_SPLIT_ADAPTER_URL is set, replies go to ${remoteAdapterUrl}`,
   );
 } else if (!discordToken && !remoteAdapterUrl) {
   // Env is read once at startup, so adding the token needs a restart.

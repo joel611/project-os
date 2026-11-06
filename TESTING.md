@@ -2,7 +2,7 @@
 
 `bun run test:integration` runs `apps/e2e/`: message → ticket → Watcher → MCP worker → completion → reply, with discord.js and the AI providers faked. `bun run test:run` includes it.
 
-To drive a running Coordinator by hand, start it without `DISCORD_BOT_TOKEN` (and without `DISCORD_ADAPTER_URL`), so it posts replies to `:8081`, and run the fake there:
+To drive a running Coordinator by hand, start it without `DISCORD_BOT_TOKEN` (and without `DISCORD_SPLIT_ADAPTER_URL`), so it posts replies to `:8081`, and run the fake there:
 
 ```sh
 SEED_DISCORD_CHANNEL_ID=fake-chan-1 bun run seed   # link the fake channel once

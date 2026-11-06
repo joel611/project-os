@@ -19,12 +19,12 @@ Discord needs an outbound Gateway WebSocket that stays open for as long as the b
 | --- | --- | --- |
 | Infrastructure | One Bun process: local, Docker Compose, or a VM or container you run | Coordinator on Cloudflare Workers, Discord in a separate long-lived Bun process |
 | Where Discord runs | Inside the Coordinator (`packages/channel-discord`, started by `main.bun.ts`) | `bun run --cwd packages/channel-discord standalone`, or its `Dockerfile`, on a VM, Fly, or a container |
-| Discord settings | `DISCORD_BOT_TOKEN` on the Coordinator | `DISCORD_BOT_TOKEN`, `COORDINATOR_URL`, `DISCORD_ADAPTER_PORT` on the Discord process, and `DISCORD_ADAPTER_URL` on the Coordinator |
+| Discord settings | `DISCORD_BOT_TOKEN` on the Coordinator | `DISCORD_BOT_TOKEN`, `COORDINATOR_URL`, `DISCORD_ADAPTER_PORT` on the Discord process, and `DISCORD_SPLIT_ADAPTER_URL` on the Coordinator |
 | Reply endpoint | Loopback, on a free port | The Discord process listens on `0.0.0.0:DISCORD_ADAPTER_PORT` |
 
 **Single process.** The Coordinator starts Discord after it begins listening. The reply endpoint binds `127.0.0.1` because it can post as the bot. Without `DISCORD_BOT_TOKEN`, Discord is skipped and the Coordinator logs that it is off. Add the token and restart. A failed login is logged and the Coordinator keeps running without Discord.
 
-**Split.** Setting `DISCORD_ADAPTER_URL` on the Coordinator turns the in-process bot off, even if `DISCORD_BOT_TOKEN` is also set, and sends replies to that URL. The Discord process forwards messages, slash commands and button clicks to `COORDINATOR_URL`. To self-host the split in containers, set `DISCORD_ADAPTER_URL=http://discord:8081` in `.env` and run `docker compose --profile split up`.
+**Split.** Setting `DISCORD_SPLIT_ADAPTER_URL` on the Coordinator turns the in-process bot off, even if `DISCORD_BOT_TOKEN` is also set, and sends replies to that URL. The Discord process forwards messages, slash commands and button clicks to `COORDINATOR_URL`. To self-host the split in containers, set `DISCORD_SPLIT_ADAPTER_URL=http://discord:8081` in `.env` and run `docker compose --profile split up`.
 
 The split reply endpoint has no authentication. Keep it on a private network or behind a firewall, and never publish its port. Today `main.cloudflare.ts` serves only `/health` (see Known gaps), so the Cloudflare half of the split is not usable end to end yet.
 
@@ -50,7 +50,7 @@ Without `--stage`, the stage is `$ALCHEMY_STAGE` or `live_$USER`, which gives ea
 Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never as plain vars, and are redacted in Alchemy's output and state. A key that is unset is not bound at all, so a stage without OAuth clients deploys with account linking off, the same rule as the local target.
 
 - **Vars with defaults:** `WORKER_ID`, `CHAT_MODEL_PROVIDER`, `CHAT_MODEL_ID`, `JEV_MODEL_ID`, `INTENT_CONFIDENCE_THRESHOLD`, `DISCORD_PROJECT_CHANNEL_AUTO_CREATE`.
-- **Vars bound when set:** `DISCORD_ADAPTER_URL`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`.
+- **Vars bound when set:** `DISCORD_SPLIT_ADAPTER_URL`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`.
 - **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`.
 
 The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the URL browsers use for the OAuth callbacks (`$PUBLIC_URL/api/auth/oauth2/callback/<provider>`), usually the dashboard URL from the first deploy, then deploy again.

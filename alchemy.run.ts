@@ -49,7 +49,7 @@ const vars = {
 const optionalVars = [
   // Where the Coordinator POSTs replies. Discord is a long-running gateway process, so on
   // Workers it runs off-platform (packages/channel-discord `standalone`, docs/technical-architecture.md §8).
-  "DISCORD_ADAPTER_URL",
+  "DISCORD_SPLIT_ADAPTER_URL",
   "ADMIN_CHANNEL_ID",
   "ADMIN_USER_IDS",
   // Account linking (Better Auth, PR #41): connect links and OAuth callbacks.

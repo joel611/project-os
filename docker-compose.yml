@@ -9,8 +9,8 @@ services:
       DATABASE_PATH: /data/project-os.sqlite
       PI_STORAGE_PATH: /data/pi-durable.sqlite
       # Discord runs inside the Coordinator when the token is set. For the split layout
-      # (`--profile split`), set DISCORD_ADAPTER_URL=http://discord:8081 and the token is ignored here.
-      DISCORD_ADAPTER_URL: ${DISCORD_ADAPTER_URL:-}
+      # (`--profile split`), set DISCORD_SPLIT_ADAPTER_URL=http://discord:8081 and the token is ignored here.
+      DISCORD_SPLIT_ADAPTER_URL: ${DISCORD_SPLIT_ADAPTER_URL:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}
@@ -48,7 +48,7 @@ services:
     volumes: ["lgtm-data:/data"]
 
   # Optional split layout: Discord in its own container, for a Coordinator that can't host it
-  # or to scale them apart. `docker compose --profile split up`, with DISCORD_ADAPTER_URL set.
+  # or to scale them apart. `docker compose --profile split up`, with DISCORD_SPLIT_ADAPTER_URL set.
   discord:
     profiles: ["split"]
     build: { context: ., dockerfile: packages/channel-discord/Dockerfile }
