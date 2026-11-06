@@ -1,9 +1,9 @@
 import { classifierReturning } from "@project-os/testing";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { forwardCommand } from "../../discord-adapter/src/commands.ts";
-import { fakeCommand, fakeInbound } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
+import { fakeCommand, fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 import { parseArgs } from "../../watcher/src/cli.ts";
 import { loadConfig } from "../../watcher/src/config.ts";
 import type { WatcherCredentials } from "../../watcher/src/credentials.ts";

@@ -1,9 +1,13 @@
 import { IntentClassifier } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { fakeInbound, fakePromptClick, type FakeSpeaker } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
-import { answerPromptClick } from "../../discord-adapter/src/prompts.ts";
+import {
+  fakeInbound,
+  fakePromptClick,
+  type FakeSpeaker,
+} from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
+import { answerPromptClick } from "../../../packages/channel-discord/src/prompts.ts";
 import { type Stack, startStack } from "./stack.ts";
 
 // A Worker asks for confirmation (Approve / Deny) or a pick among options with `ticket_ask`.

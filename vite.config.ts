@@ -73,7 +73,7 @@ export default defineConfig({
       },
       {
         files: [
-          "apps/discord-adapter/**",
+          "packages/channel-discord/**",
           "apps/email-adapter/**",
           "apps/watcher/**",
           "apps/web/**",

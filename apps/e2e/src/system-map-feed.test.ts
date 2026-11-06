@@ -1,7 +1,7 @@
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { fakeInbound, type FakeSpeaker } from "../../discord-adapter/src/fake.ts";
-import { forwardInbound } from "../../discord-adapter/src/forward.ts";
+import { fakeInbound, type FakeSpeaker } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 import { type Stack, startStack } from "./stack.ts";
 
 // The dashboard's live system map reads GET /activity. A Discord message, an MCP worker's
