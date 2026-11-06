@@ -23,6 +23,10 @@ export interface DiscordOptions {
   readonly token: string;
   /** Where inbound messages, commands and prompt clicks are POSTed. */
   readonly coordinatorUrl: string;
+  /** Port for the reply endpoint; 0 picks a free one. */
+  readonly replyPort: number;
+  /** Interface the reply endpoint binds. Loopback unless the Coordinator is on another host. */
+  readonly replyHost: string;
 }
 
 export interface Discord {
@@ -32,16 +36,21 @@ export interface Discord {
   readonly login: () => Promise<void>;
 }
 
-// Holds an outbound Discord Gateway WebSocket (§8.5), hosted by the Coordinator process.
+// Holds an outbound Discord Gateway WebSocket (§8.5), hosted by the Coordinator process or run
+// alone (main.standalone.ts) when the Coordinator can't hold a socket, e.g. on Cloudflare.
 // Needs the Message Content privileged intent enabled in the Discord developer portal, and the
 // Manage Channels permission in DISCORD_GUILD_ID so new projects get their own channel, and
 // Create Public Threads + Send Messages in Threads so each new ticket gets its own thread, and
 // Add Reactions so it can put 👀 on each message it takes in.
 // Invite the bot with the `applications.commands` scope so it can register /project-create.
-// The reply endpoint starts now, on loopback and a free port because it can post as the bot; the
-// Gateway only on `login()`, so the Coordinator can be told `replyUrl` before it exists and start
-// serving before the first message arrives.
-export const createDiscord = ({ token, coordinatorUrl }: DiscordOptions): Discord => {
+// The reply endpoint starts now; the Gateway only on `login()`, so the Coordinator can be told
+// `replyUrl` before it exists and start serving before the first message arrives.
+export const createDiscord = ({
+  token,
+  coordinatorUrl,
+  replyPort,
+  replyHost,
+}: DiscordOptions): Discord => {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -208,14 +217,16 @@ export const createDiscord = ({ token, coordinatorUrl }: DiscordOptions): Discor
       const message = await channel.send({ content, components });
       return { messageId: message.id };
     },
-  ).listen({ port: 0, hostname: "127.0.0.1" });
+  ).listen({ port: replyPort, hostname: replyHost });
 
-  const replyUrl = `http://127.0.0.1:${reply.server?.port}`;
+  const connectHost = replyHost === "0.0.0.0" ? "localhost" : replyHost;
   return {
-    replyUrl,
+    replyUrl: `http://${connectHost}:${reply.server?.port}`,
     login: async () => {
       await client.login(token);
-      console.log(`discord ready; forwarding to ${coordinatorUrl}, reply endpoint ${replyUrl}`);
+      console.log(
+        `discord ready; forwarding to ${coordinatorUrl}, reply endpoint ${replyHost}:${reply.server?.port}`,
+      );
     },
   };
 };

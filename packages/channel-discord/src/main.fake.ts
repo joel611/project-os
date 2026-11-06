@@ -1,14 +1,14 @@
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
-import { env } from "@project-os/config";
+import { env, envNumber } from "@project-os/config";
 import { fakeInbound, fakePromptClick, type FakeSpeaker } from "./fake.ts";
 import { forwardInbound } from "./forward.ts";
 import { answerPromptClick, type ActionRow } from "./prompts.ts";
 import { createReplyApp } from "./reply.ts";
 
-// Stand-in for Discord: no gateway, no token. A Coordinator started without DISCORD_BOT_TOKEN
-// posts replies to :8081, where this listens. It speaks to the Coordinator's /inbound and prints
-// what the Coordinator would have posted to Discord.
+// Stand-in for the Discord adapter: no gateway, no token. It takes the adapter's place on
+// the reply port (DISCORD_ADAPTER_URL must point here), speaks to the Coordinator's /inbound,
+// and prints what the Coordinator would have posted to Discord.
 const { values } = parseArgs({
   options: {
     channel: { type: "string", default: "fake-chan-1" },
@@ -23,7 +23,7 @@ const { values } = parseArgs({
 });
 
 const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
-const port = 8081;
+const port = envNumber("DISCORD_ADAPTER_PORT", 8081);
 const speaker: FakeSpeaker = {
   channelId: values.channel!,
   ...(values.thread ? { threadId: values.thread } : {}),

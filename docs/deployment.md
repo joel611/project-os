@@ -33,14 +33,14 @@ Without `--stage`, the stage is `$ALCHEMY_STAGE` or `live_$USER`, which gives ea
 Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never as plain vars, and are redacted in Alchemy's output and state. A key that is unset is not bound at all, so a stage without OAuth clients deploys with account linking off, the same rule as the local target.
 
 - **Vars with defaults:** `WORKER_ID`, `CHAT_MODEL_PROVIDER`, `CHAT_MODEL_ID`, `JEV_MODEL_ID`, `INTENT_CONFIDENCE_THRESHOLD`, `DISCORD_PROJECT_CHANNEL_AUTO_CREATE`.
-- **Vars bound when set:** `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`.
+- **Vars bound when set:** `DISCORD_ADAPTER_URL`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`.
 - **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`.
 
 The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the URL browsers use for the OAuth callbacks (`$PUBLIC_URL/api/auth/oauth2/callback/<provider>`), usually the dashboard URL from the first deploy, then deploy again.
 
 ## Not on Workers
 
-- **Discord:** the Bun Coordinator runs the bot inside its own process. A Worker can't hold the long-running gateway WebSocket, so a Cloudflare deployment has no Discord until that changes.
+- **Discord:** a Bun Coordinator runs the bot in its own process. A Worker can't hold the long-running gateway WebSocket, so Discord runs elsewhere (a VM, Fly, or a Cloudflare Container later) with `bun run --cwd packages/channel-discord standalone`, pointed at the Coordinator with `COORDINATOR_URL`. Set `DISCORD_ADAPTER_URL` so the Coordinator can reach its `/reply` endpoint. If the Coordinator has `DISCORD_ADAPTER_URL`, it ignores `DISCORD_BOT_TOKEN`.
 - **Watcher:** runs on the machine that hosts Claude Code, with `MCP_URL=<coordinatorUrl>/mcp`.
 
 ## Known gaps
