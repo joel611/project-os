@@ -18,7 +18,8 @@ services:
       ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       # Pi Durable traces + metrics -> the lgtm service (Grafana at http://localhost:3000).
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://lgtm:4318}
+      # Forced, like the data paths: a host .env value (localhost:4318) would point at the container itself.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
     volumes: ["coordinator-data:/data"]
     depends_on: [lgtm]
 
