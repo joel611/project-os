@@ -129,22 +129,25 @@
   }
 }
 
-/* Live system map (isometric). Colours for blocks, rails and packets. */
+/* Live system map. Shared map tokens, then the Schematic and Isometric styles. */
 :root {
+  --map-bg: oklch(0.985 0.002 255);
+  --map-rail: oklch(0.82 0.012 255);
+  --map-accent: oklch(0.55 0.17 265);
+  --map-text: oklch(0.25 0.02 260);
+  --map-sub: oklch(0.55 0.02 260);
+  --map-discord: oklch(0.57 0.17 275);
+  --map-email: oklch(0.62 0.14 60);
+  --map-chat: oklch(0.6 0.12 180);
+  --map-ticket: oklch(0.6 0.11 210);
+  --map-done: oklch(0.6 0.14 150);
+  --map-failed: oklch(0.58 0.2 25);
+  --map-busy: oklch(0.72 0.15 75);
+  --sch-dot: oklch(0.88 0.008 255);
+  --sch-chip: oklch(0.96 0.004 255);
   --iso-bg: oklch(0.96 0.006 255);
   --iso-floor: oklch(0.93 0.008 255);
   --iso-grid: oklch(0.96 0.006 255);
-  --iso-rail: oklch(0.8 0.015 255);
-  --iso-accent: oklch(0.55 0.17 265);
-  --iso-text: oklch(0.25 0.02 260);
-  --iso-sub: oklch(0.55 0.02 260);
-  --iso-discord: oklch(0.57 0.17 275);
-  --iso-email: oklch(0.62 0.14 60);
-  --iso-chat: oklch(0.6 0.12 180);
-  --iso-ticket: oklch(0.6 0.11 210);
-  --iso-done: oklch(0.6 0.14 150);
-  --iso-failed: oklch(0.58 0.2 25);
-  --iso-busy: oklch(0.72 0.15 75);
   --iso-adapter-t: oklch(1 0 0);
   --iso-adapter-l: oklch(0.89 0.01 255);
   --iso-adapter-r: oklch(0.83 0.014 255);
@@ -157,13 +160,16 @@
   --iso-tile: oklch(0.88 0.04 270);
 }
 .dark {
+  --map-bg: oklch(0.17 0.008 260);
+  --map-rail: oklch(0.36 0.02 260);
+  --map-accent: oklch(0.72 0.13 265);
+  --map-text: oklch(0.92 0.01 260);
+  --map-sub: oklch(0.65 0.015 260);
+  --sch-dot: oklch(0.27 0.012 260);
+  --sch-chip: oklch(0.25 0.012 260);
   --iso-bg: oklch(0.19 0.01 260);
   --iso-floor: oklch(0.22 0.012 260);
   --iso-grid: oklch(0.19 0.01 260);
-  --iso-rail: oklch(0.38 0.02 260);
-  --iso-accent: oklch(0.72 0.13 265);
-  --iso-text: oklch(0.92 0.01 260);
-  --iso-sub: oklch(0.65 0.015 260);
   --iso-adapter-t: oklch(0.3 0.015 260);
   --iso-adapter-l: oklch(0.25 0.015 260);
   --iso-adapter-r: oklch(0.22 0.015 260);
@@ -175,9 +181,147 @@
   --iso-worker-r: oklch(0.21 0.012 260);
   --iso-tile: oklch(0.4 0.07 270);
 }
-.iso-map {
-  background: var(--iso-bg);
+.map-stage {
+  background: var(--map-bg);
 }
+.map-isometric {
+  --map-bg: var(--iso-bg);
+}
+
+/* Shared: rails, labels, packets */
+.map-rail {
+  stroke: var(--map-rail);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.map-rail.hot {
+  stroke: var(--map-accent);
+  stroke-dasharray: 3 7;
+  animation: map-march 0.6s linear infinite;
+}
+.map-label {
+  fill: var(--map-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.map-sub {
+  fill: var(--map-sub);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.map-sub-busy {
+  fill: var(--map-busy);
+}
+.map-busy {
+  fill: var(--map-busy);
+  stroke-dasharray: 8 6;
+  animation: map-pulse 1.4s ease-in-out infinite;
+}
+.map-initials {
+  fill: #fff;
+  font-weight: 600;
+}
+.map-chip-work {
+  fill: var(--map-ticket);
+}
+.map-chip-done {
+  fill: var(--map-done);
+}
+.map-chip-failed {
+  fill: var(--map-failed);
+}
+.map-reply {
+  fill: var(--map-discord);
+}
+.map-chip-text {
+  fill: #fff;
+  font-size: 10.5px;
+  font-weight: 500;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.map-call {
+  fill: var(--map-accent);
+}
+.map-call-label {
+  fill: var(--map-text);
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Schematic */
+.sch-dot {
+  fill: var(--sch-dot);
+}
+.sch-edge {
+  fill: none;
+  stroke: var(--map-rail);
+  stroke-width: 1.5;
+}
+.sch-edge.hot {
+  stroke: var(--map-accent);
+  stroke-dasharray: 5 5;
+  animation: map-march 0.7s linear infinite;
+}
+.sch-card {
+  fill: var(--card);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.sch-coordinator {
+  stroke-width: 1.5;
+}
+.sch-ghost {
+  fill: none;
+  stroke: var(--map-rail);
+  stroke-dasharray: 4 4;
+}
+.sch-accent {
+  fill: var(--map-accent);
+}
+.sch-title {
+  fill: var(--map-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.sch-title-lg {
+  font-size: 16px;
+}
+.sch-sub {
+  fill: var(--map-sub);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.sch-chip {
+  fill: var(--sch-chip);
+  transition: fill 0.2s;
+}
+.sch-chip.on {
+  fill: var(--map-accent);
+}
+.sch-chip-text {
+  fill: var(--map-sub);
+  font-size: 10.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.sch-chip-text.on {
+  fill: #fff;
+}
+.sch-divider {
+  stroke: var(--border);
+}
+.sch-icon-bg,
+.sch-track {
+  fill: var(--sch-chip);
+}
+.sch-offline {
+  opacity: 0.55;
+}
+
+/* Isometric */
 .iso-floor {
   fill: var(--iso-floor);
 }
@@ -185,18 +329,8 @@
   stroke: var(--iso-grid);
   stroke-width: 1;
 }
-.iso-rail {
-  stroke: var(--iso-rail);
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-.iso-rail.hot {
-  stroke: var(--iso-accent);
-  stroke-dasharray: 3 7;
-  animation: iso-march 0.6s linear infinite;
-}
 .iso-face {
-  stroke: color-mix(in oklch, var(--iso-text) 10%, transparent);
+  stroke: color-mix(in oklch, var(--map-text) 10%, transparent);
   stroke-width: 0.8;
 }
 .iso-adapter .iso-t {
@@ -228,7 +362,7 @@
 }
 .iso-channel .iso-t {
   fill: none;
-  stroke: var(--iso-rail);
+  stroke: var(--map-rail);
   stroke-dasharray: 4 4;
 }
 .iso-offline {
@@ -239,10 +373,10 @@
   transition: fill 0.2s;
 }
 .iso-tile.on {
-  fill: var(--iso-accent);
+  fill: var(--map-accent);
 }
 .iso-tile-text {
-  fill: var(--iso-text);
+  fill: var(--map-text);
   font-size: 9.5px;
   font-family: var(--font-mono, ui-monospace, monospace);
 }
@@ -253,75 +387,25 @@
   fill: var(--iso-bg);
   opacity: 0.8;
 }
-.iso-busy {
-  fill: var(--iso-busy);
-  stroke-dasharray: 8 6;
-  animation: iso-pulse 1.4s ease-in-out infinite;
-}
-.iso-label {
-  fill: var(--iso-text);
-  font-size: 13.5px;
-  font-weight: 600;
-}
-.iso-sub {
-  fill: var(--iso-sub);
-  font-size: 11px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-}
-.iso-sub-busy {
-  fill: var(--iso-busy);
-}
 .iso-shadow {
   fill: #000;
   opacity: 0.14;
 }
-.iso-initials {
-  fill: #fff;
-  font-weight: 600;
-}
-.iso-chip-work {
-  fill: var(--iso-ticket);
-}
-.iso-chip-done {
-  fill: var(--iso-done);
-}
-.iso-chip-failed {
-  fill: var(--iso-failed);
-}
-.iso-reply {
-  fill: var(--iso-discord);
-}
-.iso-chip-text {
-  fill: #fff;
-  font-size: 10.5px;
-  font-weight: 500;
-  font-family: var(--font-mono, ui-monospace, monospace);
-}
-.iso-call {
-  fill: var(--iso-accent);
-}
-.iso-call-label {
-  fill: var(--iso-text);
-  font-size: 10.5px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  paint-order: stroke;
-  stroke: var(--iso-bg);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-}
-@keyframes iso-march {
+
+@keyframes map-march {
   to {
     stroke-dashoffset: -10;
   }
 }
-@keyframes iso-pulse {
+@keyframes map-pulse {
   50% {
     opacity: 0.45;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .iso-rail.hot,
-  .iso-busy {
+  .map-rail.hot,
+  .sch-edge.hot,
+  .map-busy {
     animation: none;
   }
 }
