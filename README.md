@@ -10,7 +10,7 @@
 
 <!-- TODO: Add hero GIF of Discord question → ticket → grounded reply -->
 
-**[Live Dashboard](#try-it)** · **[Docs](docs/)** · **[Architecture](docs/technical-architecture.md)**
+**[Quick Start](#quick-start)** · **[Why](docs/why.md)** · **[Docs](docs/)** · **[Architecture](docs/technical-architecture.md)**
 
 ---
 
@@ -21,10 +21,12 @@ project-os sits in the middle like a control tower:
 
 - **Questions land once** — PMs and clients ask in Discord/email. No more "quick ping" tax on senior engineers.
 - **Context stays project-scoped** — Every channel maps to exactly one Project. Memory, sources, and instructions never leak.
-- **Work becomes tickets** — The tower opens a Ticket, assigns it, and tracks every status update. Channels only see the final clearance.
+- **Work becomes tickets** — The tower opens a Ticket, assigns it, and tracks every status update. Channels only see what the tower chooses to surface.
 - **Workers pull, never get pushed** — Local Claude Code (or cloud sandboxes) claim tickets atomically. Two agents never collide.
 - **Only the tower talks outside** — Adapters are thin. Workers speak only MCP. The surface that can say the wrong thing to a customer is tiny and centralized.
-- **Memory compounds** — Every resolved ticket can update Project Memory. The next similar question is faster and cheaper.
+- **Memory compounds** — Workers can write durable facts to Project Memory, so the next similar question starts with more context.
+
+The full story and design rationale: [docs/why.md](docs/why.md).
 
 ---
 
@@ -78,14 +80,14 @@ Full setup details → [SETUP.md](SETUP.md)
                                    claim ticket → work it → write result
 ```
 
-| Role              | Real-world analogy     | Responsibility                                      |
-|-------------------|------------------------|-----------------------------------------------------|
-| **Coordinator**   | Control Tower          | Owns context, tickets, memory, outbound messages    |
-| **Channel Adapter** | Radar / radio        | Thin translator. No business logic.                 |
-| **Ticket**        | Flight plan / clearance| Single source of truth for status + results         |
-| **Worker**        | Pilot / aircraft       | Claims one ticket, works it via MCP, never talks to channels |
-| **Watcher**       | Ground crew            | Polls for assigned tickets and launches local Claude Code |
-| **Project Memory**| Flight database        | Durable facts the whole team (and future workers) can read |
+| Role                | Real-world analogy      | Responsibility                                               |
+| ------------------- | ----------------------- | ------------------------------------------------------------ |
+| **Coordinator**     | Control Tower           | Owns context, tickets, memory, outbound messages             |
+| **Channel Adapter** | Radar / radio           | Thin translator. No business logic.                          |
+| **Ticket**          | Flight plan / clearance | Single source of truth for status + results                  |
+| **Worker**          | Pilot / aircraft        | Claims one ticket, works it via MCP, never talks to channels |
+| **Watcher**         | Ground crew             | Polls for assigned tickets and launches local Claude Code    |
+| **Project Memory**  | Flight database         | Durable facts the whole team (and future workers) can read   |
 
 Workers speak **MCP only**. Everything they can do is a tool call: read/append ticket, read/write Project Memory.
 
@@ -125,7 +127,7 @@ bun run deploy
 ```
 
 Estimated cost for a small team: **~$5–7 / month** on the Workers Paid plan (excluding LLM usage).  
-See [docs/deployment.md](docs/deployment.md).
+Steps and cost breakdown: [docs/deployment.md](docs/deployment.md).
 
 ---
 
@@ -133,11 +135,11 @@ See [docs/deployment.md](docs/deployment.md).
 
 ```
 apps/
-  coordinator/          # Tower — Elysia HTTP + MCP, agent loop
+  coordinator/          # Tower — Elysia HTTP + MCP, agent loop (main.bun.ts local, main.cloudflare.ts Workers)
   discord-adapter/      # Thin inbound/outbound
   email-adapter/        # Stub
   watcher/              # Host-run Claude Code launcher
-  web/                  # Read-only control-tower dashboard
+  web/                  # Read-only dashboard (TanStack Start SPA; `build` exports a static site)
 packages/
   core/                 # Domain + ports (provider-free)
   agent-runtime/        # Intent classifier + agent loop
@@ -145,6 +147,9 @@ packages/
   infra-local/          # Local provider Layer
   infra-cloudflare/     # Cloudflare provider Layer
   contracts/            # Shared wire types
+  testing/              # In-memory fakes
+libs/config/            # Env parsing
+alchemy.run.ts          # Cloudflare deployment
 docs/                   # Product brief + technical architecture
 CONTEXT.md              # Precise vocabulary used throughout
 ```
@@ -160,6 +165,8 @@ bun run test
 bun run test:integration
 ```
 
+Integration suite and the fake Discord adapter: [TESTING.md](TESTING.md).
+
 ---
 
 ## Contributing
@@ -168,7 +175,7 @@ This is still a focused proof-of-concept of the full loop.
 We welcome issues, discussions, and PRs — especially around:
 
 - Additional channel adapters
-- Better Worker sandboxes
+- More Worker runtimes beyond local Claude Code and Daytona
 - Dashboard UX
 - Memory quality / retrieval
 

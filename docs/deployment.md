@@ -49,3 +49,19 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 - Cron Triggers (the health sweep) are left off until `main.cloudflare.ts` exports a `scheduled` handler. Add `crons: ["* * * * *"]` to the Coordinator then.
 - Alchemy reads flat `.sql` folders or the drizzle-kit v1 layout. `db-sqlite` uses the v0 layout (`meta/_journal.json`), which the local migrator also needs, so the stack copies just the `.sql` files into `dist/d1-migrations/` on each run.
 - Alchemy v2 is in beta. Versions are pinned exactly (`alchemy`, `@alchemy.run/cloudflare`); expect breaking changes on upgrade.
+
+## Cost
+
+Estimated at about **$5–7 a month** on Cloudflare (Workers Paid plan, prices as of 2026-11). The usage figures are guesses for a small team, not measurements.
+
+| Part              | Cost / month | Why                                                                                                                                                                                                                                                   |
+| ----------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workers Paid plan | $5 flat      | Covers the Coordinator, the dashboard, D1, KV and Cron. Cron every minute plus the Watcher polling every 5 minutes is about 52k requests, against 10M included. Static assets are free. D1 includes 25B rows read and 50M rows written.               |
+| Discord adapter   | ~$1.70       | Needs an always-on process. As a `lite` Cloudflare Container (256 MiB), memory is about $1.40 and disk about $0.30, and CPU stays inside the included minutes. A small VM elsewhere costs a few dollars, and running it on your own machine costs $0. |
+| Watcher           | $0           | Runs on the machine that hosts Claude Code.                                                                                                                                                                                                           |
+
+The Workers free plan ($0) could work, but it caps CPU at 10 ms per request, which Elysia plus MCP will likely exceed sometimes, and it has no Containers.
+
+LLM usage through OpenRouter is the real variable cost. It grows with message volume and is not included above.
+
+Sources: [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [Containers pricing](https://developers.cloudflare.com/containers/platform/pricing/).

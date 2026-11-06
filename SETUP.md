@@ -274,11 +274,13 @@ bun apps/watcher/src/main.bun.ts
 bun apps/watcher/src/main.bun.ts register <code> --server http://localhost:8080
 ```
 
-Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model. See the README for running without Docker and for the dashboard.
+Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model (Compose defaults `CHAT_MODEL_ID` to `anthropic/claude-sonnet-4.5`). SQLite and agent state live in the `coordinator-data` volume (`/data`). The Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. See the README for running without Docker and for the dashboard.
 
-## 7. Cloudflare (pending)
+The dashboard is read-only and expects the Coordinator on `:8080` (override with `COORDINATOR_URL`). `bun run --cwd apps/web build` exports it as a static site.
 
-Deploying to Cloudflare with Alchemy is in [PR #42](https://github.com/joel611/project-os/pull/42), which is **not merged yet**. Once it is, the same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. The Discord adapter keeps running as its own process, because it holds a gateway WebSocket. Steps will be in `docs/deployment.md` from that PR.
+## 7. Cloudflare
+
+Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. The Discord adapter keeps running as its own process, because it holds a gateway WebSocket.
 
 ## Troubleshooting
 
