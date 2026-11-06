@@ -78,7 +78,15 @@ export const ReactInstruction = Schema.Struct({
 export type ReactInstruction = typeof ReactInstruction.Type;
 
 /** Slash commands a Channel Adapter registers and forwards to the Coordinator's `/commands`. */
-export const SLASH_COMMANDS = ["project-create", "connect", "disconnect", "connections"] as const;
+export const SLASH_COMMANDS = [
+  "project-create",
+  "connect",
+  "disconnect",
+  "connections",
+  "register-worker",
+  "workers",
+  "unregister-worker",
+] as const;
 export const SlashCommandName = Schema.Literals(SLASH_COMMANDS);
 export type SlashCommandName = typeof SlashCommandName.Type;
 
@@ -103,3 +111,23 @@ export const CommandReply = Schema.Struct({
   ephemeral: Schema.Boolean,
 });
 export type CommandReply = typeof CommandReply.Type;
+
+/**
+ * A Watcher trading the one-time code from /register-worker for its device credentials
+ * (`POST /workers/register`). The code is the only proof needed, so it is short-lived and
+ * works once.
+ */
+export const WorkerRegisterRequest = Schema.Struct({
+  token: Schema.NonEmptyString,
+  name: Schema.optionalKey(Schema.String),
+  hostname: Schema.optionalKey(Schema.String),
+});
+export type WorkerRegisterRequest = typeof WorkerRegisterRequest.Type;
+
+export const WorkerRegisterResponse = Schema.Struct({
+  workerId: Schema.String,
+  name: Schema.String,
+  /** Bearer secret for `/mcp`. Shown once; the Coordinator keeps only its hash. */
+  secret: Schema.String,
+});
+export type WorkerRegisterResponse = typeof WorkerRegisterResponse.Type;

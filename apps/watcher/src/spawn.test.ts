@@ -26,6 +26,34 @@ describe("claudeArgs", () => {
   });
 });
 
+describe("personal worker MCP config", () => {
+  const personal = { ...config, secret: "s3cret" };
+
+  it("sends the secret as a Bearer header", () => {
+    expect(JSON.parse(mcpConfigJson(personal)).mcpServers[MCP_SERVER_NAME]).toEqual({
+      type: "http",
+      url: config.mcpUrl,
+      headers: { Authorization: "Bearer s3cret" },
+    });
+    expect(JSON.parse(mcpConfigJson(config)).mcpServers[MCP_SERVER_NAME].headers).toBeUndefined();
+  });
+
+  it("passes a config file path instead of inline JSON, so the secret stays out of ps", async () => {
+    let seen: string[] = [];
+    const spawner = bunSpawner(
+      personal,
+      (cmd) => {
+        seen = cmd;
+        return { exited: Promise.resolve(0) };
+      },
+      { mcpConfigFile: "/home/me/.config/project-os/mcp.json" },
+    );
+    await spawner.spawn();
+    expect(seen[seen.indexOf("--mcp-config") + 1]).toBe("/home/me/.config/project-os/mcp.json");
+    expect(seen.join(" ")).not.toContain("s3cret");
+  });
+});
+
 describe("bunSpawner", () => {
   it("spawns claude in the worker cwd with the worker id in the prompt", async () => {
     let seen: { cmd: string[]; cwd: string } | undefined;

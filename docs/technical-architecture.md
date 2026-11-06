@@ -89,7 +89,7 @@ Three main moving parts:
 | Workers pull and execute tickets via MCP | On session start, look for tickets assigned but not yet picked up, claim one, then work it through MCP tools, read/write Project Memory, post status and results **on the ticket**. Never talk to channels directly. |
 | Project Memory is the source of truth | Channel → Project mapping, sources, default reply targets, and durable project knowledge. Accessible by Coordinator, Workers (via MCP), and Web UI. |
 | Pull assignment | Coordinator only marks a ticket `assigned` (to a worker / worker type). Workers find and claim their work; the Coordinator never pushes into a Worker. |
-| No Worker auth (deferred) | Workers run in a sandbox / trusted network; no auth concern for now. Per-ticket scoped tokens are deferred indefinitely. |
+| Shared Workers need no auth; personal Workers do | Shared Workers (Daytona sandboxes, the shared Watcher) run in a sandbox / trusted network and call MCP without credentials. A personal Worker (someone's own computer, registered with `/register-worker`) authenticates with a Bearer secret, and only it can reach its owner's tickets (§5.8). Per-ticket scoped tokens are still deferred. |
 | 1:1 Channel → Project | One Discord channel belongs to exactly one project. |
 | Admin via conversation + Web UI | Admins configure projects/sources via the dedicated admin Discord channel or the web interface. |
 
@@ -223,7 +223,10 @@ Every Worker session begins with a fixed instruction (system prompt / startup ho
 
 **Local Watcher (how local Workers get started):**
 
-A small program Joel runs on his own machine. It joins the network, polls for work, and launches local Claude Code.
+A small program a developer runs on their own machine. It polls for work and launches local Claude Code. It runs in one of two modes:
+
+- **Personal** (the usual one, §5.8): someone runs `/register-worker` in Discord and pastes the one-line command it gives them. The computer is then their own Worker: it gets only the tickets they start, while it is online.
+- **Shared** (the original POC setup): no registration, configured from env (`MCP_URL`, `WORKER_ID`), and gets the tickets assigned to `WORKER_ID`.
 
 - Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local_claude`, poll interval (default 5 min), max concurrent sessions (default 1), working directory.
 - Every 5 minutes: call `ticket_list_assigned` for its `worker_id`.
@@ -255,7 +258,9 @@ How it works (`packages/infra-daytona`, enabled by `DAYTONA_API_KEY`):
 
 ### 3.1 Auth stance
 
-**No auth.** For the POC everything runs inside one safe network (local Docker Compose, see §5.5), so there is no auth concern. Workers are configured with the MCP endpoint and their `worker_id`, and call tools directly. Per-ticket scoped tokens are deferred; adding them later should not change the tool surface.
+**Shared Workers: no auth.** Daytona sandboxes and the shared Watcher call MCP with just their `worker_id`, as in the POC.
+
+**Personal Workers: a Bearer secret** (§5.8). A device registered with `/register-worker` sends `Authorization: Bearer <secret>` on every MCP request; the Coordinator stores only its SHA-256. The rule is symmetric: a personal Worker, and any ticket assigned to one, is reachable only with that Worker's secret, and a personal Worker reaches only its own tickets (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`, `ticket_get`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). An unknown Bearer token gets HTTP 401. Project-scoped tools (`project_memory_*`, `project_sources_list`) are not guarded yet. Per-ticket scoped tokens stay deferred; the tool surface did not change.
 
 ### 3.1a Assignment model: pull
 
@@ -427,8 +432,12 @@ This is the internal chat / activity stream of the ticket. Coordinator and Worke
 
 ```text
 Worker
-  id                      // worker_id, e.g. joel-local-claude
+  id                      // worker_id, e.g. joel-local-claude, local-<uuid> for personal
   worker_type             // daytona_pi | local_claude | local_pi | ...
+  owner_channel_type      // personal Workers: whose tickets they serve (null = shared)
+  owner_id                //   e.g. discord + the Discord user id
+  name                    // personal Workers: label, defaults to the hostname
+  secret_hash             // personal Workers: SHA-256 of the Bearer secret (never returned)
   status                  // online | offline (derived from last_seen_at)
   current_ticket_id       // optional
   last_seen_at            // updated by worker_heartbeat
@@ -597,6 +606,26 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 - **Providers.** Google: OAuth web client, `drive.readonly`, offline access. In Testing mode, refresh tokens last 7 days, so people re-link weekly until the app is verified (accepted, Joel, 2026-11-06). GitHub: a GitHub App's user tokens (8 h, refreshable), limited to repos the app is installed on and the person can access.
 - **Commands.** `/connect`, `/disconnect`, `/connections`.
 
+### 5.8 Personal Workers (`/register-worker`)
+
+A developer can make their own computer their Worker, like linking an account. It serves only them; everyone else, and they too while it is offline, get the shared cloud Worker (Daytona).
+
+```text
+/register-worker [name]            (Discord, any server channel; ephemeral reply)
+  → Coordinator: one-time code for (discord, user id), 10 min, only its hash kept in KV
+  → reply: bun install -g @project-os/watcher && project-os-watcher register <code> --server <PUBLIC_URL>
+  → Watcher: POST /workers/register {token, hostname}
+  → Coordinator: Worker local-<uuid>, owner = that user, secret (hash stored)
+  → Watcher saves ~/.config/project-os/watcher.json (0600) and starts polling /mcp with the secret
+```
+
+- **Command shape.** `bun install -g` can't pass arguments to the installed program, so the line installs, then runs `project-os-watcher register`, which keeps running. Later starts are just `project-os-watcher`. `WATCHER_INSTALL_COMMAND` changes the install half (the package isn't on npm yet).
+- **Routing.** For a new ticket, `handleInbound` looks for the requester's personal Workers that heartbeat within `HEALTH_WORKER_STALE_MIN` and assigns the most recently seen one (`worker_type` = `local_claude`, nothing launched). With none online, the ticket goes to the shared Worker: `DEFAULT_WORKER_TYPE`, which defaults to `daytona_pi` when `DAYTONA_API_KEY` is set, else the shared Watcher (`WORKER_ID`).
+- **Whose ticket.** The requester is the sender of the message that created the ticket. Follow-ups by others stay on the same Worker.
+- **Claude Code's MCP config** carries the secret as an `Authorization` header, written to `~/.config/project-os/mcp.json` (0600) so it never appears in the process list.
+- **Commands.** `/register-worker [name]`, `/workers` (yours, online or offline), `/unregister-worker worker:<name or id>` (deletes it; its secret stops working). All private, server only, behind the member role gate.
+- **Not handled yet.** A ticket assigned to a personal Worker that then goes offline stays `assigned` for the health sweep to flag; it is not moved to the cloud Worker.
+
 ---
 
 ## 6. API Surface
@@ -613,6 +642,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 - `GET /projects/:id/tickets`
 - `GET /tickets/:id` (+ events)
 - `GET /workers` (online/offline derived from `lastSeenAt`)
+- `POST /workers/register` (Watcher trades a `/register-worker` code for its credentials, §5.8)
 - `GET /activity?since=` (tickets changed and events appended since a time, plus workers; polled by the dashboard's live system map)
 - Settings endpoints as needed
 
@@ -634,7 +664,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 | `project_memory_search` | Optional, later |
 | `user_token` | The latest message author's own Google / GitHub token (§5.7) |
 
-No auth on MCP (sandbox). Ticket-scoped tokens deferred.
+No auth on MCP for shared Workers; personal Workers send a Bearer secret (§3.1). Ticket-scoped tokens deferred.
 
 ### Internal (used by agent loop)
 
@@ -651,7 +681,9 @@ No auth on MCP (sandbox). Ticket-scoped tokens deferred.
 
 - Coordinator stack: TypeScript + Effect + Elysia + Drizzle; Cloudflare (Workers, D1, KV) as target, local Bun/SQLite for POC (§8)
 - Auth for Web UI and admin Discord actions
-- Per-ticket scoped Worker auth tokens (deferred; sandbox assumed, no auth concern)
+- Per-ticket scoped Worker auth tokens (deferred). Personal Workers have device secrets (§5.8); shared Workers have none
+- Moving a personal Worker's ticket to the cloud Worker when the device goes offline mid-ticket
+- Publishing `@project-os/watcher` to npm (it depends on workspace packages)
 - Detailed JSON schemas for TicketEvent.payload and Ticket.result
 - ClickUp source connector (shape ready in ProjectSource); Drive and GitHub are reached with each person's own token (§5.7)
 - Multi-org / multi-tenant hardening

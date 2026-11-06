@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type Connections, makeConnections } from "@project-os/auth";
+import type { WorkerType } from "@project-os/core";
 import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho } from "@project-os/testing";
@@ -69,8 +70,11 @@ export interface Stack {
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
   readonly oauth?: FakeOAuth;
-  /** Connects an MCP client the way Claude Code does (SDK streamable HTTP). */
-  readonly worker: () => Promise<Client>;
+  /**
+   * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `secret`: a personal
+   * worker's Bearer token, as the Watcher puts in Claude Code's MCP config.
+   */
+  readonly worker: (secret?: string) => Promise<Client>;
   readonly stop: () => Promise<void>;
 }
 
@@ -90,6 +94,8 @@ export const startStack = async (options: {
   /** Account linking on Better Auth against a fake OAuth server (Google + GitHub). */
   readonly connections?: boolean;
   readonly workerLauncher?: typeof WorkerLauncher.Service;
+  /** Where tickets go when the requester has no online personal worker. */
+  readonly defaultWorkerType?: WorkerType;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -163,13 +169,25 @@ export const startStack = async (options: {
     {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
-        inbound: { workerId: options.workerId, requireMention: true },
+        inbound: {
+          workerId: options.workerId,
+          requireMention: true,
+          ...(options.defaultWorkerType && { defaultWorkerType: options.defaultWorkerType }),
+        },
         prompts: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER] },
         commands: {
           adminChannelId: ADMIN_CHANNEL,
           adminUserIds: [ADMIN_USER],
           admin,
           connections: (effect) => runtime.runPromise(effect as any),
+          workers: {
+            run: (effect) => runtime.runPromise(effect as any),
+            // Known once the Coordinator listens; read only when a command runs.
+            get publicUrl(): string {
+              return url;
+            },
+            staleMs: 15 * 60_000,
+          },
         },
       },
       mcp: runtime,
@@ -181,7 +199,7 @@ export const startStack = async (options: {
       }),
     },
   ).listen(0);
-  const url = `http://localhost:${coordinator.server!.port}`;
+  const url: string = `http://localhost:${coordinator.server!.port}`;
   const authDb = oauth ? openLocalDb(dbPath) : undefined;
   if (oauth && authDb) {
     connections = makeConnections({
@@ -227,9 +245,14 @@ export const startStack = async (options: {
       });
       return project.id as string;
     },
-    worker: async () => {
+    worker: async (secret) => {
       const client = new Client({ name: "integration-worker", version: "0" });
-      await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+      await client.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`${url}/mcp`),
+          secret ? { requestInit: { headers: { authorization: `Bearer ${secret}` } } } : undefined,
+        ),
+      );
       clients.push(client);
       return client;
     },

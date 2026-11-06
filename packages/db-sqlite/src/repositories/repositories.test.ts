@@ -598,6 +598,9 @@ describe("WorkerRepository", () => {
     expect(out.first).toEqual({
       id: "w1",
       workerType: "local_claude",
+      ownerChannelType: null,
+      ownerId: null,
+      name: null,
       currentTicketId: null,
       lastSeenAt: T0,
       createdAt: T0,
@@ -606,5 +609,57 @@ describe("WorkerRepository", () => {
     expect(out.got).toEqual(out.second);
     expect(out.list).toHaveLength(1);
     expect(out.miss._tag).toBe("WorkerNotFound");
+  });
+
+  it("registers personal workers by owner and finds them by secret hash, never exposing it", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* WorkerRepository;
+        const owner = { channelType: "discord" as const, id: "u1" };
+        const mine = yield* repo.register({
+          id: "local-a",
+          workerType: "local_claude",
+          owner,
+          name: "laptop",
+          secretHash: "h1",
+          at: T0,
+        });
+        yield* repo.register({
+          id: "local-b",
+          workerType: "local_claude",
+          owner: { channelType: "discord", id: "u2" },
+          name: "desktop",
+          secretHash: "h2",
+          at: T0,
+        });
+        // A heartbeat keeps the owner.
+        const beat = yield* repo.heartbeat({
+          workerId: "local-a",
+          workerType: "local_claude",
+          ticketId: null,
+          at: T1,
+        });
+        return {
+          mine,
+          beat,
+          byHash: yield* repo.findBySecretHash("h1"),
+          noHash: yield* repo.findBySecretHash("nope"),
+          owned: (yield* repo.listByOwner("discord", "u1")).map((w) => w.id),
+          removed: yield* repo.remove("local-a"),
+          removedAgain: yield* repo.remove("local-a"),
+          afterRemove: yield* repo.findBySecretHash("h1"),
+        };
+      }),
+    );
+    expect(out.mine).toMatchObject({ ownerChannelType: "discord", ownerId: "u1", name: "laptop" });
+    expect(out.mine).not.toHaveProperty("secretHash");
+    expect(out.beat).toMatchObject({ ownerId: "u1", lastSeenAt: T1 });
+    expect(out.byHash?.id).toBe("local-a");
+    expect(out.byHash).not.toHaveProperty("secretHash");
+    expect(out.noHash).toBeUndefined();
+    expect(out.owned).toEqual(["local-a"]);
+    expect(out.removed).toBe(true);
+    expect(out.removedAgain).toBe(false);
+    expect(out.afterRemove).toBeUndefined();
   });
 });
