@@ -60,6 +60,7 @@ describe("system map activity feed", () => {
       done.events.map((e: { type: string; actor: string }) => [e.type, e.actor]),
     ).toContainEqual(["status_update", "worker"]);
     expect(done.workers).toMatchObject([{ id: WORKER, status: "online" }]);
-    expect(stack.posted).toHaveLength(1);
+    // The ticket's thread-opened note, then the result in that thread.
+    expect(stack.posted).toHaveLength(2);
   });
 });

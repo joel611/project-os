@@ -3,10 +3,11 @@ import {
   type Ticket,
   type TicketEvent,
   type TicketStatus,
+  type TicketThread,
 } from "@project-os/contracts";
 import { Data, Effect } from "effect";
 
-export type { Ticket, TicketEvent, TicketStatus };
+export type { Ticket, TicketEvent, TicketStatus, TicketThread };
 export { TERMINAL_STATUSES };
 
 export class TicketNotFound extends Data.TaggedError("TicketNotFound")<{

@@ -44,6 +44,24 @@ export const CreatedChannel = Schema.Struct({
 });
 export type CreatedChannel = typeof CreatedChannel.Type;
 
+/**
+ * Asks a Channel Adapter to open a thread on a message, so a Ticket's conversation is grouped
+ * there (Discord: a public thread started from the message).
+ */
+export const CreateThreadInstruction = Schema.Struct({
+  channelType: ChannelType,
+  /** Channel the message is in. */
+  channelId: Schema.String,
+  /** Platform id of the message to start the thread from (the inbound `externalId`). */
+  messageId: Schema.String,
+  name: Schema.String,
+});
+export type CreateThreadInstruction = typeof CreateThreadInstruction.Type;
+
+/** The thread a Channel Adapter opened. */
+export const CreatedThread = Schema.Struct({ threadId: Schema.String });
+export type CreatedThread = typeof CreatedThread.Type;
+
 /** Slash commands a Channel Adapter registers and forwards to the Coordinator's `/commands`. */
 export const SLASH_COMMANDS = ["project-create"] as const;
 export const SlashCommandName = Schema.Literals(SLASH_COMMANDS);

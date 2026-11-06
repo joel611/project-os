@@ -98,9 +98,10 @@ describe("watcher loop", () => {
 
     const [ticket] = await stack.json("GET", `/projects/${projectId}/tickets`);
     expect(ticket).toMatchObject({ status: "completed", workerId: WORKER });
-    expect(stack.posted).toHaveLength(1);
-    expect(stack.posted[0]!.target).toEqual({ channelId: CHANNEL });
-    expect(stack.posted[0]!.content).toContain("added dark mode toggle");
+    // [0] is the thread-opened note; the result follows in the same thread.
+    expect(stack.posted).toHaveLength(2);
+    expect(stack.posted[1]!.target).toEqual({ channelId: CHANNEL, threadId: "discord-thread-1" });
+    expect(stack.posted[1]!.content).toContain("added dark mode toggle");
   });
 
   it("heartbeats and spawns nothing when no ticket is assigned", async () => {
