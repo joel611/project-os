@@ -8,6 +8,7 @@ import {
   ProjectSourceRepository,
   readMemory,
   TicketRepository,
+  updateSource,
   updateStatusAndNotify,
   WorkerRepository,
   workerStatus,
@@ -31,9 +32,17 @@ export const CreateSourceBody = Schema.Struct({
   type: ProjectSourceType,
   externalId: Schema.NonEmptyString,
   name: Schema.NonEmptyString,
+  /** What the source is for, unique in the project (e.g. `design-docs`). */
+  alias: Schema.NonEmptyString,
+  description: Schema.optionalKey(Schema.NullOr(Schema.String)),
   direction: Schema.optionalKey(Schema.Literals(["inbound", "outbound", "both"])),
   isDefaultResponse: Schema.optionalKey(Schema.Boolean),
   config: Schema.optionalKey(Schema.Unknown),
+});
+
+export const UpdateSourceBody = Schema.Struct({
+  alias: Schema.optionalKey(Schema.NonEmptyString),
+  description: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 export const UpdateStatusBody = Schema.Struct({
@@ -74,6 +83,12 @@ export const listWorkers = (staleAfterMs: number) =>
 
 export const linkSource = (projectId: string, body: typeof CreateSourceBody.Type) =>
   addSource({ projectId, ...body });
+
+export const editSource = (
+  projectId: string,
+  sourceId: string,
+  body: typeof UpdateSourceBody.Type,
+) => updateSource({ projectId, sourceId, ...body });
 
 export const listProjectTickets = (projectId: string) =>
   Effect.gen(function* () {

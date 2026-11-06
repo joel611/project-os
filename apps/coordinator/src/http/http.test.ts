@@ -66,6 +66,7 @@ const linkedProject = async (app: App, source: Record<string, unknown> = {}) => 
     type: "discord_channel",
     externalId: "c1",
     name: "#acme",
+    alias: "acme",
     ...source,
   });
   return { project: project.body, source: linked.body };
@@ -152,6 +153,7 @@ describe("projects and sources", () => {
       type: "discord_channel",
       externalId: "c1",
       name: "x",
+      alias: "x",
     });
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("ProjectNotFound");
@@ -165,9 +167,70 @@ describe("projects and sources", () => {
       type: "discord_channel",
       externalId: "c1",
       name: "dup",
+      alias: "dup",
     });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("SourceAlreadyLinked");
+  });
+
+  it("requires an alias, unique and well-formed within the project", async () => {
+    const { app } = setup();
+    const { project } = await linkedProject(app, { description: "  where the team talks  " });
+    const add = (body: Record<string, unknown>) =>
+      call(app, "POST", `/projects/${project.id}/sources`, {
+        type: "github_repo",
+        externalId: "acme/web",
+        name: "acme/web",
+        ...body,
+      });
+    expect((await add({})).status).toBe(400);
+    expect(await add({ alias: "ACME" })).toMatchObject({
+      status: 409,
+      body: { error: "SourceAliasTaken" },
+    });
+    expect(await add({ alias: "not ok!" })).toMatchObject({
+      status: 400,
+      body: { error: "InvalidSourceAlias" },
+    });
+    expect(await add({ alias: " Web Site " })).toMatchObject({
+      status: 201,
+      body: { alias: "web-site", description: null },
+    });
+    const got = await call(app, "GET", `/projects/${project.id}`);
+    expect(got.body.sources.map((s: { alias: string }) => s.alias).toSorted()).toEqual([
+      "acme",
+      "web-site",
+    ]);
+    expect(got.body.sources.find((s: { alias: string }) => s.alias === "acme").description).toBe(
+      "where the team talks",
+    );
+  });
+
+  it("PATCHes a source's alias and description", async () => {
+    const { app } = setup();
+    const { project, source } = await linkedProject(app);
+    await call(app, "POST", `/projects/${project.id}/sources`, {
+      type: "github_repo",
+      externalId: "acme/web",
+      name: "acme/web",
+      alias: "web",
+    });
+    const patch = (body: Record<string, unknown>, id = source.id) =>
+      call(app, "PATCH", `/projects/${project.id}/sources/${id}`, body);
+
+    expect(await patch({ alias: "Team Chat", description: "daily chatter" })).toMatchObject({
+      status: 200,
+      body: { alias: "team-chat", description: "daily chatter" },
+    });
+    expect(await patch({ description: null })).toMatchObject({
+      body: { alias: "team-chat", description: null },
+    });
+    expect(await patch({ alias: "web" })).toMatchObject({
+      status: 409,
+      body: { error: "SourceAliasTaken" },
+    });
+    expect((await patch({ alias: "team-chat" })).status).toBe(200);
+    expect((await patch({ alias: "x" }, "nope")).status).toBe(404);
   });
 
   it("rejects an invalid source body with 400", async () => {

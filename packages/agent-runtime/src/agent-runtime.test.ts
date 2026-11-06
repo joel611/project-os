@@ -217,13 +217,15 @@ describe("AgentRuntime (Pi Durable)", () => {
       const a: AdminActions = {
         createProject: record("create_project"),
         addSource: record("add_source"),
+        listSources: record("list_sources"),
+        updateSource: record("update_source"),
         setDefaultChannel: record("set_default_channel"),
         ticketStatus: record("ticket_status"),
       };
       return { calls, a };
     };
 
-    it("exposes the four Coordinator actions to admin sessions only", async () => {
+    it("exposes the Coordinator actions to admin sessions only", async () => {
       const { faux, models, model } = setup();
       const { calls, a } = actions();
       const offered: boolean[] = [];
@@ -240,7 +242,10 @@ describe("AgentRuntime (Pi Durable)", () => {
                 projectId: "p1",
                 type: "discord_channel",
                 externalId: "c1",
+                alias: "chat",
               }),
+              fauxToolCall("list_sources", { projectId: "p1" }),
+              fauxToolCall("update_source", { projectId: "p1", alias: "chat", newAlias: "team" }),
               fauxToolCall("set_default_channel", { projectId: "p1", externalId: "c1" }),
               fauxToolCall("ticket_status", { ticketId: "t1" }),
             ],
@@ -268,7 +273,12 @@ describe("AgentRuntime (Pi Durable)", () => {
       expect(project).toBe("project reply");
       expect(calls).toEqual([
         ["create_project", { name: "Acme", createChannel: false }],
-        ["add_source", { projectId: "p1", type: "discord_channel", externalId: "c1" }],
+        [
+          "add_source",
+          { projectId: "p1", type: "discord_channel", externalId: "c1", alias: "chat" },
+        ],
+        ["list_sources", { projectId: "p1" }],
+        ["update_source", { projectId: "p1", alias: "chat", newAlias: "team" }],
         ["set_default_channel", { projectId: "p1", externalId: "c1" }],
         ["ticket_status", { ticketId: "t1" }],
       ]);
@@ -282,6 +292,8 @@ describe("AgentRuntime (Pi Durable)", () => {
           throw new Error("name taken");
         },
         addSource: async () => "",
+        listSources: async () => "",
+        updateSource: async () => "",
         setDefaultChannel: async () => "",
         ticketStatus: async () => "",
       };

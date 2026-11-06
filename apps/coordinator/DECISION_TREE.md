@@ -16,7 +16,7 @@ flowchart TD
 
     chan -- admin channel --> isadmin{"intent == admin_command?"}
     isadmin -- no --> clarify
-    isadmin -- yes --> adminllm["<b>Chat LLM</b><br/>session admin:{channelId}<br/>tools: create_project, add_source,<br/>set_default_channel, ticket_status"]
+    isadmin -- yes --> adminllm["<b>Chat LLM</b><br/>session admin:{channelId}<br/>tools: create_project, add_source,<br/>list_sources, update_source,<br/>set_default_channel, ticket_status"]
 
     chan -- project channel --> intent{"intent"}
     intent -- new_request --> newt["create Ticket<br/>workerType from worker_type<br/>no LLM"]
@@ -29,20 +29,22 @@ flowchart TD
 
 ## What each component can do
 
-| Component                     | Called when                                                             | Input                        | Tools                                                                                                                                             | Output                                               |
-| ----------------------------- | ----------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Intent classifier             | Every non-duplicate message from a known channel (or the admin channel) | `message`, `project_context` | none                                                                                                                                              | `intent` + confidence, `worker_type`, `needs_worker` |
-| Chat LLM, `admin:{channelId}` | Admin channel, confident `admin_command`                                | raw message                  | `create_project` (also creates the project's Discord channel unless `createChannel: false`), `add_source`, `set_default_channel`, `ticket_status` | text, relayed as reply                               |
-| Chat LLM, `project:{id}`      | `status_question`; also the reply composed when a Ticket completes      | prompt built in code         | none                                                                                                                                              | text, relayed as reply                               |
+| Component                     | Called when                                                             | Input                        | Tools                                                                                                                                                                              | Output                                               |
+| ----------------------------- | ----------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Intent classifier             | Every non-duplicate message from a known channel (or the admin channel) | `message`, `project_context` | none                                                                                                                                                                               | `intent` + confidence, `worker_type`, `needs_worker` |
+| Chat LLM, `admin:{channelId}` | Admin channel, confident `admin_command`                                | raw message                  | `create_project` (also creates the project's Discord channel unless `createChannel: false`), `add_source`, `list_sources`, `update_source`, `set_default_channel`, `ticket_status` | text, relayed as reply                               |
+| Chat LLM, `project:{id}`      | `status_question`; also the reply composed when a Ticket completes      | prompt built in code         | none                                                                                                                                                                               | text, relayed as reply                               |
 
 Admin tools (`packages/agent-runtime/src/admin-tools.ts`):
 
-| Tool                  | Args                              | Effect                               |
-| --------------------- | --------------------------------- | ------------------------------------ |
-| `create_project`      | `name`, `customInstructions?`     | Create a Project                     |
-| `add_source`          | `projectId`, `type`, `externalId` | Link a channel to a Project          |
-| `set_default_channel` | `projectId`, `externalId`         | Set where the Project's replies post |
-| `ticket_status`       | `ticketId`                        | Read a Ticket's status               |
+| Tool                  | Args                                                       | Effect                                                          |
+| --------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `create_project`      | `name`, `customInstructions?`                              | Create a Project                                                |
+| `add_source`          | `projectId`, `type`, `externalId`, `alias`, `description?` | Link a source to a Project under an alias unique in the project |
+| `list_sources`        | `projectId`                                                | List a Project's sources (alias, type, description)             |
+| `update_source`       | `projectId`, `alias`, `newAlias?`, `description?`          | Rename a source's alias or set its description                  |
+| `set_default_channel` | `projectId`, `externalId`                                  | Set where the Project's replies post                            |
+| `ticket_status`       | `ticketId`                                                 | Read a Ticket's status                                          |
 
 ## Rules worth knowing
 

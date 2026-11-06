@@ -94,6 +94,10 @@ export const ProjectSource = Schema.Struct({
   type: ProjectSourceType,
   externalId: Schema.String,
   name: Schema.String,
+  /** Short handle, unique within the project, that says what the source is for (e.g. `design-docs`). */
+  alias: Schema.String,
+  /** Optional extra context for agents and people: what is in it, when to use it. */
+  description: Schema.NullOr(Schema.String),
   direction: SourceDirection,
   isDefaultResponse: Schema.Boolean,
   config: Json,

@@ -5,6 +5,7 @@ import type {
   ProjectSource,
   ProjectSourceType,
   SourceAlreadyLinked,
+  SourceAliasTaken,
   SourceNotFound,
 } from "../../domain/project-source/index.ts";
 import type {
@@ -83,8 +84,13 @@ export class ProjectRepository extends Context.Service<
 export class ProjectSourceRepository extends Context.Service<
   ProjectSourceRepository,
   {
-    /** Fails with `SourceAlreadyLinked` if `(type, externalId)` exists (1:1 channel → project). */
-    readonly insert: (source: ProjectSource) => Effect.Effect<ProjectSource, SourceAlreadyLinked>;
+    /**
+     * Fails with `SourceAlreadyLinked` if `(type, externalId)` exists (1:1 channel → project),
+     * or `SourceAliasTaken` if the project already has a source with this alias.
+     */
+    readonly insert: (
+      source: ProjectSource,
+    ) => Effect.Effect<ProjectSource, SourceAlreadyLinked | SourceAliasTaken>;
     /** Channel → project lookup. `undefined` when the channel is not linked. */
     readonly findByExternal: (
       type: ProjectSourceType,
@@ -96,6 +102,16 @@ export class ProjectSourceRepository extends Context.Service<
       projectId: string,
       sourceId: string,
     ) => Effect.Effect<ProjectSource, SourceNotFound>;
+    /** Changes a source's alias and/or description. Fails if the alias is taken in the project. */
+    readonly update: (
+      projectId: string,
+      sourceId: string,
+      patch: {
+        readonly alias?: string;
+        readonly description?: string | null;
+        readonly updatedAt: string;
+      },
+    ) => Effect.Effect<ProjectSource, SourceNotFound | SourceAliasTaken>;
   }
 >()("@project-os/core/ProjectSourceRepository") {}
 
