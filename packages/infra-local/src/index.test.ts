@@ -39,7 +39,11 @@ describe("LocalLive", () => {
       yield* kv.set("k", "v");
       const stop = yield* (yield* Scheduler).every("t", 1000, Effect.void);
       yield* stop;
-      yield* (yield* WorkerLauncher).launch({ ticketId: "t", workerType: "local_claude" });
+      yield* (yield* WorkerLauncher).launch({
+        ticketId: "t",
+        workerType: "local_claude",
+        workerId: "w",
+      });
       return { now, id, v: yield* kv.get("k") };
     });
     const out = await Effect.runPromise(program.pipe(Effect.provide(live())));
