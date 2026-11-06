@@ -174,3 +174,55 @@ describe("threads endpoint", () => {
     expect(await generic.json()).toEqual({ error: "discord thread create failed" });
   });
 });
+
+const reactTo = (app: ReturnType<typeof createReplyApp>, body: unknown) =>
+  app.handle(
+    new Request("http://localhost/reactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+
+describe("reactions endpoint", () => {
+  const instruction = {
+    channelType: "discord",
+    channelId: "c1",
+    threadId: "t1",
+    messageId: "m1",
+    emoji: "👀",
+  };
+
+  it("reacts to the message", async () => {
+    const calls: unknown[] = [];
+    const app = createReplyApp(
+      async () => {},
+      undefined,
+      undefined,
+      async (input) => void calls.push(input),
+    );
+    const res = await reactTo(app, instruction);
+    expect(res.status).toBe(200);
+    expect(calls).toEqual([{ channelId: "c1", threadId: "t1", messageId: "m1", emoji: "👀" }]);
+  });
+
+  it("answers 501 without a react function, 400 on bad bodies", async () => {
+    const app = createReplyApp(async () => {});
+    expect((await reactTo(app, instruction)).status).toBe(501);
+    expect((await reactTo(app, { channelType: "discord", channelId: "c1" })).status).toBe(400);
+  });
+
+  it("returns 502 when Discord refuses", async () => {
+    const app = createReplyApp(
+      async () => {},
+      undefined,
+      undefined,
+      async () => {
+        throw new Error("Missing Permissions");
+      },
+    );
+    const res = await reactTo(app, instruction);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Missing Permissions" });
+  });
+});

@@ -30,6 +30,13 @@ export interface CreatedThreadCall {
   readonly name: string;
 }
 
+export interface ReactionCall {
+  readonly channelId: string;
+  readonly threadId?: string;
+  readonly messageId: string;
+  readonly emoji: string;
+}
+
 export interface Stack {
   /** Coordinator base URL, e.g. `http://localhost:54321`. */
   readonly url: string;
@@ -39,6 +46,8 @@ export interface Stack {
   readonly createdChannels: string[];
   /** Threads the Discord adapter was told to open (ids `discord-thread-1`, …). */
   readonly createdThreads: CreatedThreadCall[];
+  /** Reactions the Discord adapter was told to add. */
+  readonly reactions: ReactionCall[];
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
   readonly admin: ReturnType<typeof makeAdminActions>;
@@ -82,6 +91,7 @@ export const startStack = async (options: {
   const posted: Posted[] = [];
   const createdChannels: string[] = [];
   const createdThreads: CreatedThreadCall[] = [];
+  const reactions: ReactionCall[] = [];
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
     async (name) => {
@@ -96,6 +106,7 @@ export const startStack = async (options: {
       createdThreads.push(input);
       return { threadId: `discord-thread-${createdThreads.length}` };
     },
+    async (input) => void reactions.push(input),
   ).listen(0);
 
   // Better Auth needs the Coordinator's URL, known only once it listens: the Layer and the
@@ -175,6 +186,7 @@ export const startStack = async (options: {
     posted,
     createdChannels,
     createdThreads,
+    reactions,
     dbPath,
     ...(oauth && { oauth }),
     json,

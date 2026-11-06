@@ -15,7 +15,8 @@ import { createReplyApp } from "./reply.ts";
 // Long-running process holding an outbound Discord Gateway WebSocket (§8.5).
 // Needs the Message Content privileged intent enabled in the Discord developer portal, and the
 // Manage Channels permission in DISCORD_GUILD_ID so new projects get their own channel, and
-// Create Public Threads + Send Messages in Threads so each new ticket gets its own thread.
+// Create Public Threads + Send Messages in Threads so each new ticket gets its own thread, and
+// Add Reactions so it can put 👀 on each message it takes in.
 // Invite the bot with the `applications.commands` scope so it can register /project-create.
 const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
 const port = envNumber("DISCORD_ADAPTER_PORT", 8081); // not PORT: that is the Coordinator's, shared via .env
@@ -111,6 +112,12 @@ createReplyApp(
     // Discord thread names are 1–100 characters.
     const thread = await message.startThread({ name: name.slice(0, 100) || "Ticket" });
     return { threadId: thread.id };
+  },
+  async ({ channelId, threadId, messageId, emoji }) => {
+    const channel = await client.channels.fetch(threadId ?? channelId);
+    if (!channel?.isTextBased())
+      throw new Error(`channel ${threadId ?? channelId} has no messages`);
+    await channel.messages.react(messageId, emoji);
   },
 ).listen(port);
 
