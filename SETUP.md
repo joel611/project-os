@@ -280,7 +280,7 @@ The dashboard is read-only and expects the Coordinator on `:8080` (override with
 
 ## 7. Cloudflare
 
-Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. The Discord adapter keeps running as its own process, because it holds a gateway WebSocket.
+Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord does not run there, because a Worker can't hold a gateway WebSocket, so use the Bun Coordinator if you need the bot.
 
 ## Troubleshooting
 

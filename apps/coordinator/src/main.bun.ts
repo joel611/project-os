@@ -102,25 +102,12 @@ const workerLauncher = daytonaApiKey
     })
   : undefined;
 
-// Discord runs inside this process when a bot token is set. Its reply endpoint binds loopback on
-// a free port: it can post as the bot, so it must not sit on the public port. DISCORD_ADAPTER_URL
-// points at a separate adapter instead (Cloudflare, or the fake in TESTING.md) and wins.
-const remoteAdapterUrl = process.env.DISCORD_ADAPTER_URL;
+// Discord runs inside this process when a bot token is set.
 const discordToken = process.env.DISCORD_BOT_TOKEN;
-const discord =
-  discordToken && !remoteAdapterUrl
-    ? createDiscord({
-        token: discordToken,
-        coordinatorUrl: `http://localhost:${port}`,
-        replyPort: 0,
-        replyHost: "127.0.0.1",
-      })
-    : undefined;
-if (discordToken && remoteAdapterUrl) {
-  console.log(
-    `DISCORD_BOT_TOKEN ignored: DISCORD_ADAPTER_URL is set, replies go to ${remoteAdapterUrl}`,
-  );
-} else if (!discordToken && !remoteAdapterUrl) {
+const discord = discordToken
+  ? createDiscord({ token: discordToken, coordinatorUrl: `http://localhost:${port}` })
+  : undefined;
+if (!discord) {
   // Env is read once at startup, so adding the token needs a restart.
   console.log("Discord off: set DISCORD_BOT_TOKEN and restart the Coordinator to enable it");
 }
@@ -130,7 +117,8 @@ const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     LocalLive({
       dbPath,
-      adapterUrls: { discord: discord?.replyUrl ?? remoteAdapterUrl ?? "http://localhost:8081" },
+      // Without Discord, replies go to :8081, where the fake in TESTING.md listens.
+      adapterUrls: { discord: discord?.replyUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
     }),
     AiLive,
