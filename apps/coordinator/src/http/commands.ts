@@ -16,6 +16,7 @@ import {
   REGISTRATION_TTL_SECONDS,
   unregisterWorker,
   UserConnections,
+  workerLabel,
   type WorkerRepository,
 } from "@project-os/core";
 import { Effect } from "effect";
@@ -152,7 +153,6 @@ const accountCommand = async (
 const personOf = (command: SlashCommand): Person => ({
   channelType: command.channelType,
   id: command.sender.id,
-  ...(command.sender.name ? { name: command.sender.name } : {}),
 });
 
 /** Quotes a value for a POSIX shell line (names may contain spaces). */
@@ -208,7 +208,7 @@ const workerCommand = async (
     }
     const lines = mine.map(
       ({ worker, status }) =>
-        `- **${worker.name ?? worker.id}** (\`${worker.id}\`): ${status}${
+        `- **${workerLabel(worker)}** (\`${worker.id}\`): ${status}${
           status === "online" ? "" : `, last seen ${seen(worker.lastSeenAt)}`
         }`,
     );
@@ -220,7 +220,7 @@ const workerCommand = async (
   const removed = await workers.run(unregisterWorker(person, which));
   return privately(
     removed
-      ? `Removed ${removed.name ?? removed.id}. Its Watcher can no longer pick up tickets.`
+      ? `Removed ${workerLabel(removed)}. Its Watcher can no longer pick up tickets.`
       : `You have no worker called "${which}". Run \`/workers\` to see yours.`,
   );
 };

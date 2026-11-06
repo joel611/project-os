@@ -16,6 +16,8 @@ describe("credentials", () => {
     expect(credentialsPath({ PROJECT_OS_WATCHER_HOME: "/w" })).toBe("/w/watcher.json");
     expect(configDir({ XDG_CONFIG_HOME: "/x" })).toBe("/x/project-os");
     expect(configDir({})).toMatch(/\.config\/project-os$/);
+    expect(credentialsPath()).toMatch(/project-os\/watcher\.json$/);
+    expect(configDir()).toBe(credentialsPath().replace(/\/watcher\.json$/, ""));
   });
 
   it("round-trips, readable by this user only", () => {
@@ -25,6 +27,12 @@ describe("credentials", () => {
     saveCredentials(path, creds);
     expect(loadCredentials(path)).toEqual(creds);
     expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
+  it("names the device by its id when the file has no name", () => {
+    const path = join(dir, "watcher.json");
+    writeFileSync(path, JSON.stringify({ server: "https://c", workerId: "local-1", secret: "s" }));
+    expect(loadCredentials(path)?.name).toBe("local-1");
   });
 
   it("rejects an incomplete file", () => {
@@ -44,14 +52,21 @@ describe("registerDevice", () => {
       });
     }) as unknown as typeof fetch;
     const creds = await registerDevice(
-      { server: "https://c/", token: "abc", hostname: "mbp" },
+      { server: "https://c/", token: "abc", name: "work laptop", hostname: "mbp" },
       fetcher,
     );
     expect(seen).toEqual({
       url: "https://c/workers/register",
-      body: { token: "abc", hostname: "mbp" },
+      body: { token: "abc", name: "work laptop", hostname: "mbp" },
     });
     expect(creds).toEqual({ server: "https://c", workerId: "local-1", name: "mbp", secret: "s" });
+  });
+
+  it("reports other failures with their status", async () => {
+    const fetcher = (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch;
+    await expect(registerDevice({ server: "https://c", token: "x" }, fetcher)).rejects.toThrow(
+      /HTTP 503/,
+    );
   });
 
   it("says when the code is no good", async () => {

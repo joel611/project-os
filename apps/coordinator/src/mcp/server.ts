@@ -17,10 +17,7 @@ const jsonSchema = (schema: Schema.Constraint) => {
  * Builds an MCP `Server` exposing `tools`, each run on `runtime`.
  * Typed failures are returned as `isError` tool results so the model can react to them.
  */
-export const makeMcpServer = (
-  runtime: McpRuntime,
-  tools: readonly McpTool<McpServices>[] = makeTools(),
-) => {
+export const makeMcpServer = (runtime: McpRuntime, tools: readonly McpTool<McpServices>[]) => {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const server = new Server(
     { name: "project-os-coordinator", version: "0.0.0" },

@@ -1,6 +1,6 @@
 import type { InboundMessage, ReplyInstruction, WorkerType } from "@project-os/contracts";
 import { Effect } from "effect";
-import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
+import { ACTIVE_STATUSES, isTerminal, type Ticket, workerLabel } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -315,7 +315,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           actor: "coordinator",
           actorId: null,
           body: personal
-            ? `Assigned to ${message.sender.name ?? "the requester"}'s worker ${personal.name ?? personal.id}`
+            ? `Assigned to the requester's own worker ${workerLabel(personal)}`
             : `Assigned to ${workerId ?? workerType}`,
           payload: { workerType, workerId, personal: personal !== undefined },
           createdAt: at,
