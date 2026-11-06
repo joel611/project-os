@@ -188,6 +188,7 @@ The channel (Discord / email) only sees what the Coordinator chooses to surface 
 - Everything said in a ticket's thread is a `follow_up` on that ticket, whatever the classifier says, except a confident `status_question`, which is answered about that ticket alone. Once the ticket is finished, the thread says so and points back to the channel.
 - The completion reply goes to the ticket's thread; tickets without one still reply in the project's default response source.
 - The bot needs **Create Public Threads** and **Send Messages in Threads**. If Discord refuses, the ticket is created anyway, without a thread.
+- Once a message passes the gates (dedupe, admin list, @mention, linked channel), the Coordinator asks the adapter to react 👀 on it (`ChannelGateway.react` → the adapter's `/reactions`) before classifying, so the sender knows it was received. Filtered messages get no reaction. The bot needs **Add Reactions**; if Discord refuses, handling carries on.
 
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration

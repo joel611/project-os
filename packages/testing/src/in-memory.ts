@@ -12,6 +12,7 @@ import {
   ProjectNotFound,
   ProjectRepository,
   ProjectSourceRepository,
+  ReactionFailed,
   Scheduler,
   SourceAlreadyLinked,
   SourceNotFound,
@@ -36,6 +37,7 @@ import {
   type CreateChannelInstruction,
   type CreateThreadInstruction,
   type MemoryEntry,
+  type ReactInstruction,
   type ReplyInstruction,
 } from "@project-os/contracts";
 import { Effect, Layer } from "effect";
@@ -256,15 +258,24 @@ export const KeyValueStoreInMemory = Layer.sync(KeyValueStore, () => {
 export const makeChannelGatewayRecording = (options?: {
   readonly failCreate?: string;
   readonly failThread?: string;
+  readonly failReact?: string;
 }) => {
   const sent: ReplyInstruction[] = [];
   const created: CreateChannelInstruction[] = [];
   const threads: CreateThreadInstruction[] = [];
+  const reactions: ReactInstruction[] = [];
   return {
     sent,
     created,
     threads,
+    reactions,
     layer: Layer.succeed(ChannelGateway, {
+      react: (request) =>
+        options?.failReact !== undefined
+          ? Effect.fail(
+              new ReactionFailed({ channelType: request.channelType, message: options.failReact }),
+            )
+          : Effect.sync(() => void reactions.push(request)),
       createThread: (request) =>
         options?.failThread !== undefined
           ? Effect.fail(

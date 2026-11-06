@@ -5,6 +5,7 @@ import type {
   CreatedChannel,
   CreatedThread,
   CreateThreadInstruction,
+  ReactInstruction,
   ReplyInstruction,
   WorkerType,
 } from "@project-os/contracts";
@@ -42,6 +43,8 @@ export class ChannelGateway extends Context.Service<
     readonly createThread: (
       request: CreateThreadInstruction,
     ) => Effect.Effect<CreatedThread, ThreadCreateFailed>;
+    /** Ask the matching Channel Adapter to react to a message (the 👀 acknowledgement). */
+    readonly react: (request: ReactInstruction) => Effect.Effect<void, ReactionFailed>;
   }
 >()("@project-os/core/ChannelGateway") {}
 
@@ -65,6 +68,12 @@ export class ChannelCreateFailed extends Data.TaggedError("ChannelCreateFailed")
 
 /** A Channel Adapter could not open a thread (no permission, unsupported channel, ...). */
 export class ThreadCreateFailed extends Data.TaggedError("ThreadCreateFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
+
+/** A Channel Adapter could not react to a message (no permission, message gone, ...). */
+export class ReactionFailed extends Data.TaggedError("ReactionFailed")<{
   readonly channelType: string;
   readonly message: string;
 }> {}
