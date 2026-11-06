@@ -1,6 +1,6 @@
 import type { InboundMessage, ReplyInstruction, WorkerType } from "@project-os/contracts";
 import { Effect } from "effect";
-import { ACTIVE_STATUSES, type Ticket } from "../../domain/index.ts";
+import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -11,7 +11,7 @@ import {
   ProjectSourceRepository,
   TicketRepository,
 } from "../ports/index.ts";
-import { sourceTypeFor } from "./channels.ts";
+import { sourceTypeFor, supportsThreads } from "./channels.ts";
 import { nowIso } from "./tickets.ts";
 
 export interface HandleInboundConfig {
@@ -38,12 +38,18 @@ export type InboundOutcome =
   | { readonly kind: "unlinked" }
   | { readonly kind: "ticket_created"; readonly ticket: Ticket }
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
+  | { readonly kind: "ticket_closed"; readonly ticketId: string }
   | { readonly kind: "status_answered" }
   | { readonly kind: "admin_handled" }
   | { readonly kind: "admin_forbidden" }
   | { readonly kind: "clarification_sent" };
 
 const TITLE_MAX = 80;
+
+export const THREAD_OPENED_MESSAGE =
+  "I opened a ticket for this. Keep the conversation for it in this thread.";
+export const TICKET_CLOSED_MESSAGE =
+  "This ticket is finished. Post in the channel to start something new.";
 
 export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) =>
   Effect.gen(function* () {
@@ -68,6 +74,47 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const clarify = (): Effect.Effect<InboundOutcome> =>
       Effect.as(reply("Sorry, I didn't catch that. Could you tell me what you need?"), {
         kind: "clarification_sent",
+      });
+
+    /**
+     * Gives a new ticket its own thread: the thread the message is in, or a new one opened on
+     * the message. A failure to open one is logged and the ticket carries on without a thread.
+     */
+    const openTicketThread = (ticketId: string, at: string) =>
+      Effect.gen(function* () {
+        if (!supportsThreads(message.channelType)) return;
+        const threadId =
+          message.threadId ??
+          (yield* gateway
+            .createThread({
+              channelType: message.channelType,
+              channelId: message.channelId,
+              messageId: message.externalId,
+              name: message.content.slice(0, TITLE_MAX),
+            })
+            .pipe(
+              Effect.map((created) => created.threadId),
+              Effect.catch((err) =>
+                Effect.as(
+                  Effect.logWarning(`could not open a thread for ticket ${ticketId}`, err.message),
+                  undefined,
+                ),
+              ),
+            ));
+        if (threadId === undefined) return;
+        yield* tickets.linkThread({
+          ticketId,
+          channelType: message.channelType,
+          channelId: message.channelId,
+          threadId,
+          createdAt: at,
+        });
+        yield* gateway.send({
+          channelType: message.channelType,
+          channelId: message.channelId,
+          threadId,
+          content: THREAD_OPENED_MESSAGE,
+        });
       });
 
     const fresh = yield* kv.setIfAbsent(
@@ -110,10 +157,54 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     if (!source) return { kind: "unlinked" } as InboundOutcome;
 
     const project = yield* projects.get(source.projectId);
+    const at = yield* nowIso;
+
+    const addFollowUp = (ticketId: string) =>
+      Effect.gen(function* () {
+        yield* tickets.appendEvent({
+          id: yield* ids.next,
+          ticketId,
+          type: "follow_up",
+          actor: "coordinator",
+          actorId: message.sender.id,
+          body: message.content,
+          payload: { sender: message.sender },
+          createdAt: at,
+        });
+        return { kind: "follow_up_added", ticketId } as InboundOutcome;
+      });
+
+    // A message in a ticket's thread belongs to that ticket, whatever the classifier says,
+    // unless it asks how the ticket is going.
+    const thread =
+      message.threadId === undefined
+        ? undefined
+        : yield* tickets.findByThread(message.channelType, message.threadId);
+    const threadTicket = thread && (yield* tickets.get(thread.ticketId));
+    if (threadTicket && threadTicket.projectId === project.id) {
+      const result = yield* classify(project.customInstructions);
+      if (isConfident(result.confidence) && result.intent === "status_question") {
+        const text = yield* runtime.respond({
+          sessionId: `project:${project.id}`,
+          requestId: message.externalId,
+          prompt: [
+            `Answer this status question from ticket state: ${message.content}`,
+            `- ${threadTicket.title} [${threadTicket.status}]`,
+          ].join("\n"),
+        });
+        yield* reply(text);
+        return { kind: "status_answered" } as InboundOutcome;
+      }
+      if (isTerminal(threadTicket.status)) {
+        yield* reply(TICKET_CLOSED_MESSAGE);
+        return { kind: "ticket_closed", ticketId: threadTicket.id } as InboundOutcome;
+      }
+      return yield* addFollowUp(threadTicket.id);
+    }
+
     const result = yield* classify(project.customInstructions);
     if (!isConfident(result.confidence)) return yield* clarify();
 
-    const at = yield* nowIso;
     const active = (yield* tickets.listByStatus(ACTIVE_STATUSES))
       .filter((t) => t.projectId === project.id)
       .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
@@ -166,22 +257,13 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           payload: { workerType, workerId: config.workerId ?? null },
           createdAt: at,
         });
+        yield* openTicketThread(ticketId, at);
         return { kind: "ticket_created", ticket: assigned } as InboundOutcome;
       }
       case "follow_up": {
         const target = active[0];
         if (!target) return yield* clarify();
-        yield* tickets.appendEvent({
-          id: yield* ids.next,
-          ticketId: target.id,
-          type: "follow_up",
-          actor: "coordinator",
-          actorId: message.sender.id,
-          body: message.content,
-          payload: { sender: message.sender },
-          createdAt: at,
-        });
-        return { kind: "follow_up_added", ticketId: target.id } as InboundOutcome;
+        return yield* addFollowUp(target.id);
       }
       case "status_question": {
         const text = yield* runtime.respond({

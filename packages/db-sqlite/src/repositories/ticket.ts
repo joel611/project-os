@@ -9,7 +9,7 @@ import {
 } from "@project-os/core";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { ticketEvents, tickets } from "../schema/index.ts";
+import { ticketEvents, tickets, ticketThreads } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
 
 type Impl = (typeof TicketRepository)["Service"];
@@ -153,5 +153,23 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
         // Newest-N selected above; return chronological like the in-memory fake.
         Effect.map((rows) => rows.reverse()),
       ),
+    linkThread: (thread) =>
+      find(thread.ticketId).pipe(
+        Effect.andThen(q(() => db.insert(ticketThreads).values(thread))),
+        Effect.as(thread),
+      ),
+    findThread: (ticketId) =>
+      q(() => db.select().from(ticketThreads).where(eq(ticketThreads.ticketId, ticketId))).pipe(
+        Effect.map(([row]) => row),
+      ),
+    findByThread: (channelType, threadId) =>
+      q(() =>
+        db
+          .select()
+          .from(ticketThreads)
+          .where(
+            and(eq(ticketThreads.channelType, channelType), eq(ticketThreads.threadId, threadId)),
+          ),
+      ).pipe(Effect.map(([row]) => row)),
   };
 };

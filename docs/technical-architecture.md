@@ -176,6 +176,12 @@ Single bounded context that owns:
 
 The channel (Discord / email) only sees what the Coordinator chooses to surface — just like a customer only sees curated updates from a PM, not internal ticket chatter.
 
+**Ticket threads (Discord)**
+- A new ticket gets its own thread: the Coordinator asks the Discord adapter to open one on the message that created it (`ChannelGateway.createThread` → the adapter's `/threads`), records it in `ticket_threads`, and posts a short note there. A new request already made inside a thread uses that thread instead.
+- Everything said in a ticket's thread is a `follow_up` on that ticket, whatever the classifier says, except a confident `status_question`, which is answered about that ticket alone. Once the ticket is finished, the thread says so and points back to the channel.
+- The completion reply goes to the ticket's thread; tickets without one still reply in the project's default response source.
+- The bot needs **Create Public Threads** and **Send Messages in Threads**. If Discord refuses, the ticket is created anyway, without a thread.
+
 **Admin channel special behaviour**
 - Dedicated Discord channel for configuration
 - Admin can create projects, add sources, set default channels, and ask about ticket status

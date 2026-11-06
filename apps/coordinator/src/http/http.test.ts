@@ -262,9 +262,10 @@ describe("tickets", () => {
     return res.body.ticket.id as string;
   };
 
-  it("completing a ticket runs onTicketCompleted and replies via the default source", async () => {
+  it("completing a ticket runs onTicketCompleted and replies in the ticket's thread", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
+    sent.length = 0; // the thread-opened note
     const started = await call(app, "POST", `/tickets/${id}/status`, { status: "in_progress" });
     expect(started.status).toBe(200);
     expect(sent).toHaveLength(0);
@@ -272,12 +273,17 @@ describe("tickets", () => {
     const done = await call(app, "POST", `/tickets/${id}/status`, { status: "completed" });
     expect(done.body.status).toBe("completed");
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ channelType: "discord", channelId: "c1" });
+    expect(sent[0]).toMatchObject({
+      channelType: "discord",
+      channelId: "c1",
+      threadId: "thread-1",
+    });
   });
 
   it("does not reply for non-completing transitions", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
+    sent.length = 0; // the thread-opened note
     const res = await call(app, "POST", `/tickets/${id}/status`, {
       status: "failed",
       error: "boom",

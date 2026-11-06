@@ -1,6 +1,8 @@
 import type {
   CreateChannelInstruction,
   CreatedChannel,
+  CreatedThread,
+  CreateThreadInstruction,
   ReplyInstruction,
   WorkerType,
 } from "@project-os/contracts";
@@ -34,6 +36,10 @@ export class ChannelGateway extends Context.Service<
     readonly createChannel: (
       request: CreateChannelInstruction,
     ) => Effect.Effect<CreatedChannel, ChannelCreateFailed>;
+    /** Ask the matching Channel Adapter to open a thread on a message (a Ticket's thread). */
+    readonly createThread: (
+      request: CreateThreadInstruction,
+    ) => Effect.Effect<CreatedThread, ThreadCreateFailed>;
   }
 >()("@project-os/core/ChannelGateway") {}
 
@@ -51,6 +57,12 @@ export class Scheduler extends Context.Service<
 
 /** A Channel Adapter could not create a channel (missing permission, no adapter, ...). */
 export class ChannelCreateFailed extends Data.TaggedError("ChannelCreateFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
+
+/** A Channel Adapter could not open a thread (no permission, unsupported channel, ...). */
+export class ThreadCreateFailed extends Data.TaggedError("ThreadCreateFailed")<{
   readonly channelType: string;
   readonly message: string;
 }> {}

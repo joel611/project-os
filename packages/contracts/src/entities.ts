@@ -1,5 +1,12 @@
 import { Schema } from "effect";
-import { Actor, MemoryEntryType, ProjectSourceType, TicketEventType, WorkerType } from "./enums.ts";
+import {
+  Actor,
+  ChannelType,
+  MemoryEntryType,
+  ProjectSourceType,
+  TicketEventType,
+  WorkerType,
+} from "./enums.ts";
 import { TicketStatus } from "./ticket-status.ts";
 
 const Json = Schema.Unknown;
@@ -38,6 +45,17 @@ export const TicketEvent = Schema.Struct({
   createdAt: Timestamp,
 });
 export type TicketEvent = typeof TicketEvent.Type;
+
+/** The channel thread a Ticket's conversation lives in. One thread per ticket, and back. */
+export const TicketThread = Schema.Struct({
+  ticketId: Id,
+  channelType: ChannelType,
+  /** Parent channel of the thread. */
+  channelId: Schema.String,
+  threadId: Schema.String,
+  createdAt: Timestamp,
+});
+export type TicketThread = typeof TicketThread.Type;
 
 export const MemoryEntry = Schema.Struct({
   id: Id,
