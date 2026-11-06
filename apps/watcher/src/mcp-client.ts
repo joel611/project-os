@@ -6,7 +6,8 @@ interface RpcResponse {
 }
 
 // Minimal MCP streamable-HTTP client: one JSON-RPC tools/call per request.
-export const httpMcpClient = (url: string, fetcher: typeof fetch): McpClient => {
+// `secret`: a personal worker's Bearer token.
+export const httpMcpClient = (url: string, fetcher: typeof fetch, secret?: string): McpClient => {
   let id = 0;
   return {
     callTool: async (name, args) => {
@@ -15,6 +16,7 @@ export const httpMcpClient = (url: string, fetcher: typeof fetch): McpClient => 
         headers: {
           "content-type": "application/json",
           accept: "application/json, text/event-stream",
+          ...(secret && { authorization: `Bearer ${secret}` }),
         },
         body: JSON.stringify({
           jsonrpc: "2.0",

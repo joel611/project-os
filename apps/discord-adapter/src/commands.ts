@@ -18,7 +18,8 @@ const PROVIDER_OPTION = {
  * Slash commands this adapter registers with Discord (application command JSON, type 1 =
  * chat input, option type 3 = string). Discord can't limit a bot's command to one channel,
  * so the Coordinator refuses admin commands outside the admin channel. Account commands
- * (/connect, /disconnect, /connections) work in any server channel. The bot only works in
+ * (/connect, /disconnect, /connections) and personal worker commands (/register-worker,
+ * /workers, /unregister-worker) work in any server channel and answer privately. The bot only works in
  * the server, so no command is offered in DMs.
  */
 export const COMMAND_DEFINITIONS = [
@@ -57,6 +58,43 @@ export const COMMAND_DEFINITIONS = [
     type: 1,
     dm_permission: false,
     options: [],
+  },
+  {
+    name: "register-worker",
+    description: "Use your own computer as your worker: get a one-time command to run there",
+    type: 1,
+    dm_permission: false,
+    options: [
+      {
+        name: "name",
+        description: "A name for this computer (default: its hostname)",
+        type: 3,
+        required: false,
+        max_length: 60,
+      },
+    ],
+  },
+  {
+    name: "workers",
+    description: "Show your registered computers and whether they're online",
+    type: 1,
+    dm_permission: false,
+    options: [],
+  },
+  {
+    name: "unregister-worker",
+    description: "Remove one of your registered computers",
+    type: 1,
+    dm_permission: false,
+    options: [
+      {
+        name: "worker",
+        description: "Its name or id (see /workers)",
+        type: 3,
+        required: true,
+        max_length: 100,
+      },
+    ],
   },
 ] as const;
 // Every registered command must be one the Coordinator knows.

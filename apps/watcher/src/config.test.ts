@@ -36,4 +36,9 @@ describe("loadConfig", () => {
       cwd: "/work",
     });
   });
+
+  it("uses saved credentials as a personal worker", () => {
+    const c = loadConfig({ server: "https://c", workerId: "local-9", name: "mbp", secret: "s" });
+    expect(c).toMatchObject({ mcpUrl: "https://c/mcp", workerId: "local-9", secret: "s" });
+  });
 });
