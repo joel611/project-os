@@ -146,10 +146,10 @@ describe("cloudflare sandbox worker loop", () => {
     expect(ticket).toMatchObject({
       status: "completed",
       workerType: "cloudflare_pi",
-      workerId: `cloudflare-${ticket.id}`,
+      workerId: `sandbox-cloudflare-${ticket.id}`,
     });
     const box = sandboxes.get("sbx-1")!;
-    expect(box.envs[0]!.PROJECT_OS_PROMPT).toContain(`cloudflare-${ticket.id}`);
+    expect(box.envs[0]!.PROJECT_OS_PROMPT).toContain(`sandbox-cloudflare-${ticket.id}`);
     expect(box.envs[0]!.OPENROUTER_API_KEY).toBe("sk-or");
     expect(daytonaRuns).toBe(0);
     await eventually(() => expect(stack.posted.at(-1)?.content).toContain("cloudflare did it"));

@@ -158,9 +158,12 @@ describe("handleInbound", () => {
         sandboxPool: [{ workerType: "daytona_pi" }],
       },
     );
-    expect(value).toMatchObject({ workerType: "daytona_pi", workerId: `daytona-${value.id}` });
+    expect(value).toMatchObject({
+      workerType: "daytona_pi",
+      workerId: `sandbox-daytona-${value.id}`,
+    });
     expect(launched).toEqual([
-      { ticketId: value.id, workerType: "daytona_pi", workerId: `daytona-${value.id}` },
+      { ticketId: value.id, workerType: "daytona_pi", workerId: `sandbox-daytona-${value.id}` },
     ]);
   });
 
@@ -180,10 +183,14 @@ describe("handleInbound", () => {
       });
       expect(value).toMatchObject({
         workerType: "cloudflare_pi",
-        workerId: `cloudflare-${value.id}`,
+        workerId: `sandbox-cloudflare-${value.id}`,
       });
       expect(launched).toEqual([
-        { ticketId: value.id, workerType: "cloudflare_pi", workerId: `cloudflare-${value.id}` },
+        {
+          ticketId: value.id,
+          workerType: "cloudflare_pi",
+          workerId: `sandbox-cloudflare-${value.id}`,
+        },
       ]);
     });
 

@@ -228,7 +228,10 @@ describe("ticket routing", () => {
         return yield* newTicket(ADA);
       }),
     );
-    expect(value).toMatchObject({ workerType: "daytona_pi", workerId: `daytona-${value.id}` });
+    expect(value).toMatchObject({
+      workerType: "daytona_pi",
+      workerId: `sandbox-daytona-${value.id}`,
+    });
   });
 
   it("prefers the most recently seen online device", async () => {

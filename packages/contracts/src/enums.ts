@@ -49,14 +49,14 @@ export const isSandboxWorkerType = (type: WorkerType): type is SandboxWorkerType
   (SANDBOX_WORKER_TYPES as ReadonlyArray<WorkerType>).includes(type);
 
 /** Sandbox providers by name, as written in `WORKER_PROVIDERS`. */
-export const SANDBOX_PROVIDERS = ["daytona", "cloudflare", "boat"] as const;
+export const SANDBOX_PROVIDERS = ["sandbox-daytona", "sandbox-cloudflare", "sandbox-boat"] as const;
 export type SandboxProvider = (typeof SANDBOX_PROVIDERS)[number];
 
 /** The provider each sandbox worker type runs on. Its session ids are `<provider>-<ticketId>`. */
 export const SANDBOX_PROVIDER_OF: Readonly<Record<SandboxWorkerType, SandboxProvider>> = {
-  daytona_pi: "daytona",
-  cloudflare_pi: "cloudflare",
-  boat_pi: "boat",
+  daytona_pi: "sandbox-daytona",
+  cloudflare_pi: "sandbox-cloudflare",
+  boat_pi: "sandbox-boat",
 };
 
 export const MemoryEntryType = Schema.Literals([

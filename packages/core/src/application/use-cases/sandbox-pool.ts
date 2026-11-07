@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { ACTIVE_STATUSES } from "../../domain/index.ts";
 import { type SandboxPoolEntry, TicketRepository, WorkerLauncher } from "../ports/index.ts";
 
-/** The worker id a sandbox session claims as: one fresh worker per ticket, e.g. `daytona-<id>`. */
+/** The worker id a sandbox session claims as: one fresh worker per ticket, e.g. `sandbox-daytona-<id>`. */
 export const sandboxWorkerId = (workerType: SandboxWorkerType, ticketId: string) =>
   `${SANDBOX_PROVIDER_OF[workerType]}-${ticketId}`;
 

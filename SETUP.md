@@ -264,14 +264,14 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 
 ## 6. Cloud sandbox workers
 
-Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
+Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`sandbox-daytona-<ticketId>`, `sandbox-cloudflare-<ticketId>` or `sandbox-boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
 
 You choose the providers. Each one joins the **pool** when its credentials are set, and `WORKER_PROVIDERS` sets which ones and in what order:
 
 ```sh
 # Try Cloudflare first, then Daytona, then boat.dev. Unset: every configured provider,
-# in the order daytona, cloudflare, boat.
-WORKER_PROVIDERS=cloudflare,daytona,boat
+# in the order sandbox-daytona, sandbox-cloudflare, sandbox-boat.
+WORKER_PROVIDERS=sandbox-cloudflare,sandbox-daytona,sandbox-boat
 
 # Required with any provider: the Coordinator's /mcp as the sandbox's cloud sees it
 # (a tunnel such as https://abc.trycloudflare.com/mcp, never localhost).
@@ -281,13 +281,13 @@ SANDBOX_PI_MODEL=
 SANDBOX_SESSION_TIMEOUT_SECONDS=
 ```
 
-When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Naming a provider that isn't configured stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
+When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Provider names carry the `sandbox-` prefix. Naming one that isn't configured, or a bare name like `daytona`, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
 
-| Provider           | Worker type     | Status    | Settings                                                                                           |
-| ------------------ | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
-| Daytona            | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
-| Cloudflare Sandbox | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
-| boat.dev           | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
+| Provider           | `WORKER_PROVIDERS` name | Worker type     | Status    | Settings                                                                                           |
+| ------------------ | ----------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
+| Daytona            | `sandbox-daytona`       | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
+| Cloudflare Sandbox | `sandbox-cloudflare`    | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
+| boat.dev           | `sandbox-boat`          | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
 
 The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SECONDS` still work as fallbacks for the `SANDBOX_*` names.
 
@@ -346,22 +346,22 @@ Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/dep
 
 ## Troubleshooting
 
-| Symptom                                                     | Likely cause                                                                                                                                |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bot is online but never answers                             | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project |
-| Bot ignores one person, or their slash commands are refused | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                     |
-| Slash commands don't show up                                | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)         |
-| `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                   |
-| Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                          |
-| `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                       |
-| `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                               |
-| Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                 |
-| Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `<provider>: <worker> failed: …`      |
-| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                      |
-| Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                 |
-| Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                       |
-| Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |
-| Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                  |
-| GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                         |
-| Worker can't see a repo                                     | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                    |
-| Google stops working after a week                           | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                       |
+| Symptom                                                     | Likely cause                                                                                                                                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot is online but never answers                             | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project    |
+| Bot ignores one person, or their slash commands are refused | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                        |
+| Slash commands don't show up                                | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)            |
+| `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                      |
+| Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                             |
+| `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                          |
+| `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                  |
+| Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                    |
+| Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `sandbox-<provider>: <worker> failed: …` |
+| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                         |
+| Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                    |
+| Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                          |
+| Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                       |
+| Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                     |
+| GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                            |
+| Worker can't see a repo                                     | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                       |
+| Google stops working after a week                           | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                          |

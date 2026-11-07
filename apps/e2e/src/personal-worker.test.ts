@@ -130,7 +130,7 @@ describe("personal worker", () => {
     expect(adaTicket).toMatchObject({ workerType: "local_claude", workerId: config.workerId });
     expect(bobTicket).toMatchObject({
       workerType: "daytona_pi",
-      workerId: `daytona-${bobTicket.id}`,
+      workerId: `sandbox-daytona-${bobTicket.id}`,
     });
     expect(launched.map((l) => l.workerType)).toEqual(["local_claude", "daytona_pi"]);
 

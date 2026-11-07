@@ -11,7 +11,7 @@ const base = {
 };
 const launcher = (
   env: Record<string, string>,
-  runners = { daytona: runner(), cloudflare: runner() },
+  runners = { "sandbox-daytona": runner(), "sandbox-cloudflare": runner() },
 ) => sandboxLauncherFromEnv({ ...base, ...env }, { prompt: "p", log: () => {}, runners });
 const pool = (l: ReturnType<typeof launcher>) => Effect.runPromise(l!.pool);
 
@@ -42,7 +42,7 @@ describe("sandbox pool from env", () => {
     expect(() =>
       sandboxLauncherFromEnv(
         { SANDBOX_MCP_URL: "https://t/mcp", OPENROUTER_API_KEY: "k" },
-        { prompt: "p", log: () => {}, runners: { daytona: runner() } },
+        { prompt: "p", log: () => {}, runners: { "sandbox-daytona": runner() } },
       ),
     ).toThrow("Missing env var SANDBOX_PI_MODEL");
   });
@@ -51,7 +51,7 @@ describe("sandbox pool from env", () => {
     expect(
       await pool(
         launcher({
-          WORKER_PROVIDERS: "cloudflare,daytona",
+          WORKER_PROVIDERS: "sandbox-cloudflare,sandbox-daytona",
           CLOUDFLARE_SANDBOX_MAX_CONCURRENT: "2",
         }),
       ),
@@ -71,7 +71,7 @@ describe("sandbox pool from env", () => {
     const l = sandboxLauncherFromEnv(env, {
       prompt: "p",
       log: () => {},
-      runners: { daytona: runner() },
+      runners: { "sandbox-daytona": runner() },
     });
     expect(await pool(l)).toEqual([{ workerType: "daytona_pi" }]);
   });
@@ -80,7 +80,7 @@ describe("sandbox pool from env", () => {
     expect(() =>
       sandboxLauncherFromEnv(
         { OPENROUTER_API_KEY: "k", CHAT_MODEL_ID: "m" },
-        { prompt: "p", log: () => {}, runners: { daytona: runner() } },
+        { prompt: "p", log: () => {}, runners: { "sandbox-daytona": runner() } },
       ),
     ).toThrow("Missing env var SANDBOX_MCP_URL");
   });
@@ -103,8 +103,8 @@ describe("configured runners", () => {
       },
       live,
     );
-    expect(Object.keys(both)).toEqual(["daytona", "cloudflare"]);
-    expect((both.cloudflare as unknown as { o: unknown }).o).toEqual({
+    expect(Object.keys(both)).toEqual(["sandbox-daytona", "sandbox-cloudflare"]);
+    expect((both["sandbox-cloudflare"] as unknown as { o: unknown }).o).toEqual({
       url: "https://bridge.example",
       token: "t",
     });
@@ -118,13 +118,13 @@ describe("configured runners", () => {
         BOAT_SANDBOX_SIZE: "small",
       },
       live,
-    ).boat as unknown as { o: unknown };
+    )["sandbox-boat"] as unknown as { o: unknown };
     expect(boat.o).toEqual({
       apiKey: "boat_k",
       apiUrl: "https://boat.example/api/v1",
       size: "small",
     });
-    expect(Object.keys(configuredRunners({ BOAT_API_KEY: "k" }, live))).toEqual(["boat"]);
+    expect(Object.keys(configuredRunners({ BOAT_API_KEY: "k" }, live))).toEqual(["sandbox-boat"]);
   });
 
   it("refuses an unknown boat.dev size", () => {
