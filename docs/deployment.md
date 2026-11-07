@@ -64,7 +64,7 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 
 - `main.cloudflare.ts` serves only `/health` until `packages/infra-cloudflare` provides the D1/KV Layer, so the deployed Coordinator does not use its bindings yet.
 - Cron Triggers (the health sweep) are left off until `main.cloudflare.ts` exports a `scheduled` handler. Add `crons: ["* * * * *"]` to the Coordinator then.
-- Alchemy reads flat `.sql` folders or the drizzle-kit v1 layout. `db-sqlite` uses the v0 layout (`meta/_journal.json`), which the local migrator also needs, so the stack copies just the `.sql` files into `dist/d1-migrations/` on each run.
+- Alchemy reads the drizzle-kit v1 layout (one folder per migration) straight from `packages/db-sqlite/migrations`, the same folder the local migrator uses.
 - Alchemy v2 is in beta. Versions are pinned exactly (`alchemy`, `@alchemy.run/cloudflare`); expect breaking changes on upgrade.
 
 ## Cost

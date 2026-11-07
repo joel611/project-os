@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { migrationsFolder, schema } from "@project-os/db-sqlite";
+import { migrationsFolder } from "@project-os/db-sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect } from "effect";
@@ -12,7 +12,7 @@ import { makeConnections, type OAuthClientConfig } from "./connections.ts";
 const client: OAuthClientConfig = { clientId: "id", clientSecret: "secret" };
 
 const connectionsWith = (providers: { google?: OAuthClientConfig; github?: OAuthClientConfig }) => {
-  const db = drizzle(new Database(":memory:"), { schema });
+  const db = drizzle({ client: new Database(":memory:") });
   migrate(db, { migrationsFolder });
   return makeConnections({
     db,

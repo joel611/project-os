@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MemoryEntry } from "@project-os/contracts";
@@ -28,7 +28,7 @@ const T2 = "2026-11-04T00:02:00.000Z";
 const makeDb = () => {
   const sqlite = new Database(":memory:");
   sqlite.run("PRAGMA foreign_keys = ON");
-  const db = drizzle(sqlite, { schema });
+  const db = drizzle({ client: sqlite });
   migrate(db, { migrationsFolder: new URL("../../migrations", import.meta.url).pathname });
   db.insert(schema.orgs).values({ id: "o1", name: "Org", createdAt: T0 }).run();
   return db;
@@ -282,16 +282,16 @@ describe("migration 0003 (source alias)", () => {
     // Apply migrations up to 0002 only, add sources the old way, then apply the rest.
     const all = new URL("../../migrations", import.meta.url).pathname;
     const before = mkdtempSync(join(tmpdir(), "migrations-"));
-    for (const f of ["0000_init.sql", "0001_ticket_threads.sql", "0002_auth.sql"]) {
-      copyFileSync(join(all, f), join(before, f));
+    const dirs = readdirSync(all, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    for (const d of dirs.slice(0, 3)) {
+      cpSync(join(all, d), join(before, d), { recursive: true });
     }
-    mkdirSync(join(before, "meta"));
-    const journal = JSON.parse(readFileSync(join(all, "meta/_journal.json"), "utf8"));
-    journal.entries = journal.entries.filter((e: { idx: number }) => e.idx <= 2);
-    writeFileSync(join(before, "meta/_journal.json"), JSON.stringify(journal));
 
     const sqlite = new Database(":memory:");
-    const db = drizzle(sqlite, { schema });
+    const db = drizzle({ client: sqlite });
     migrate(db, { migrationsFolder: before });
     sqlite.run(`INSERT INTO orgs (id, name, created_at) VALUES ('o1', 'Org', '${T0}')`);
     for (const p of ["p1", "p2"]) {
