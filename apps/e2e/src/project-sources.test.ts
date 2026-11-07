@@ -5,16 +5,18 @@ import { type Stack, startStack } from "./stack.ts";
 // Source aliases end to end: the dashboard API (POST/PATCH sources) and the admin dialogue's
 // actions name sources, and a Worker finds them by alias over MCP `project_sources_list`.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let SECRET: string;
 let stack: Stack;
 
 beforeEach(async () => {
-  stack = await startStack({ classifier: classifierReturning("new_request"), workerId: WORKER });
+  stack = await startStack({ classifier: classifierReturning("new_request") });
+  ({ secret: SECRET } = await stack.registerSharedWorker());
 });
 afterEach(() => stack.stop());
 
 const listSources = async (projectId: string) => {
-  const mcp = await stack.worker();
+  const mcp = await stack.worker(SECRET);
   const res = (await mcp.callTool({ name: "project_sources_list", arguments: { projectId } })) as {
     isError?: boolean;
     structuredContent?: any;

@@ -15,8 +15,8 @@ import { type Stack, startStack } from "./stack.ts";
 // /register-worker in Discord -> Coordinator /commands -> one-time code in a private reply ->
 // the Watcher on Ada's computer runs the command line from that reply: POST /workers/register
 // -> device credentials -> polls /mcp with its Bearer secret. Ada's tickets go to her device;
-// everyone else's (and hers while it's offline) go to the shared cloud worker (Daytona, played
-// by a recording launcher). The spawned Claude Code session is an SDK MCP client.
+// everyone else's (and hers while it's offline) go to the shared pool (Daytona, played by a
+// recording launcher). The spawned Claude Code session is an SDK MCP client.
 
 const CHANNEL = "chan-1";
 const ada = { channelId: CHANNEL, userId: "u-ada", name: "Ada" };
@@ -28,8 +28,6 @@ beforeEach(async () => {
   launched = [];
   stack = await startStack({
     classifier: classifierReturning("new_request"),
-    workerId: "shared-1",
-    defaultWorkerType: "daytona_pi",
     workerLauncher: {
       pool: Effect.succeed([{ workerType: "daytona_pi" }]),
       launch: (input) => Effect.sync(() => void launched.push(input)),
@@ -158,7 +156,7 @@ describe("personal worker", () => {
       anon.callTool("ticket_list_assigned", { workerId: credentials.workerId }),
     ).rejects.toThrow(/WorkerUnauthorized/);
     await expect(
-      anon.callTool("ticket_claim", { ticketId: ticket.id, workerId: "shared-1" }),
+      anon.callTool("ticket_claim", { ticketId: ticket.id, workerId: "daytona-x" }),
     ).rejects.toThrow(/WorkerUnauthorized/);
     await expect(
       anon.callTool("user_token", { ticketId: ticket.id, provider: "github" }),
@@ -177,7 +175,7 @@ describe("personal worker", () => {
     );
   });
 
-  it("sends Ada's tickets to the shared cloud worker while her device is offline, and after removal", async () => {
+  it("sends Ada's tickets to the shared pool while her device is offline, and after removal", async () => {
     const credentials = await registerFromReply((await slash(ada, "register-worker")).content);
     // Registered but never heartbeat: offline.
     await say(ada, ADA_ASK);

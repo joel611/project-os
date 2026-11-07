@@ -18,7 +18,7 @@ Faked (production boundaries to external systems): intent classifier (always `ne
 .claude/skills/verify-project-os/run.sh up      # ~10s; from empty data dir
 ```
 
-Ready = prints `READY coordinator=… project=<id>` then `WEB http://localhost:15173`. It creates org `verify-org`, project **Verify Project**, default Discord channel `verify-chan`. Defaults: Coordinator `:18080`, reply endpoint `:18081`, web `:15173`, worker id `verify-worker`, state in `/tmp/project-os-verify-18080` (`VERIFY_DIR`). Override with `COORD_PORT ADAPTER_PORT WEB_PORT WORKER_ID VERIFY_DIR`; use all different values for a second side-by-side instance. `up` refuses if any port is already taken — never double-drive an instance you didn't start. Needs `bun install` done in the checkout (worktrees: run it first).
+Ready = prints `READY coordinator=… project=<id> worker=<shared-…>` then `WEB http://localhost:15173`. It creates org `verify-org`, project **Verify Project**, default Discord channel `verify-chan`, a shared worker **verify-box** (registered as an admin's `/register-worker shared:True` would; credentials in `$VERIFY_DIR/data/worker.json`) and an offline personal device **bob-laptop**. Defaults: Coordinator `:18080`, reply endpoint `:18081`, web `:15173`, state in `/tmp/project-os-verify-18080` (`VERIFY_DIR`). Override with `COORD_PORT ADAPTER_PORT WEB_PORT VERIFY_DIR`; use all different values for a second side-by-side instance. `up` refuses if any port is already taken — never double-drive an instance you didn't start. Needs `bun install` done in the checkout (worktrees: run it first).
 
 ## Doctor
 
@@ -26,7 +26,7 @@ Ready = prints `READY coordinator=… project=<id>` then `WEB http://localhost:1
 
 ## Drive
 
-Everything below runs from `apps/e2e` (`cd apps/e2e`); scripts: `verify/drive.ts`.
+Everything below runs from `apps/e2e` (`cd apps/e2e`) with `DATA_DIR=$VERIFY_DIR/data` exported (drive.ts reads the shared worker's credentials there); scripts: `verify/drive.ts`.
 
 | Action                                             | Command                                                                                                                |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -60,5 +60,5 @@ Save to `$VERIFY_DIR/evidence/` (default `/tmp/project-os-verify-18080/evidence/
 
 ## Known limits
 
-- Workers panel stays "No worker has checked in" until `drive.ts heartbeat` runs (the real Watcher does this each poll); it flips to offline after the stale window. See `features/worker-health.md`.
+- The shared worker shows offline ("seen never") until `drive.ts heartbeat` runs (the real Watcher does this each poll), and new tickets queue until then; it flips to offline again after the stale window. See `features/worker-health.md`.
 - Fixed ports mean one instance per port set; classifier is hard-wired, so low-confidence / admin-channel paths are covered only by `apps/e2e` tests.

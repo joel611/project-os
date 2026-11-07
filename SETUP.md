@@ -10,7 +10,7 @@ You need three things working, in this order:
 | [2. Google Drive](#2-google-drive-oauth-client)      | Each person links their own Google account, so Workers read Drive with that person's access                | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
 | [3. GitHub](#3-github-app)                           | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access          | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
 | [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                                      | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                           |
-| [5. Personal workers](#5-personal-workers)           | People run `/register-worker` to use their own computer as their Worker; others get a sandbox              | Optional          | `PUBLIC_URL`, `DEFAULT_WORKER_TYPE`, `WATCHER_INSTALL_COMMAND`                                               |
+| [5. Registered workers](#5-registered-workers)       | People run `/register-worker` to use their own computer; admins add shared computers for everyone          | Optional          | `PUBLIC_URL`, `SHARED_WORKER_MAX_TICKETS`, `WATCHER_INSTALL_COMMAND`                                         |
 | [6. Cloud sandbox workers](#6-cloud-sandbox-workers) | The Coordinator runs each shared ticket in a Daytona, Cloudflare or boat.dev sandbox, from a pool you pick | Optional          | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `BOAT_API_KEY`           |
 
 Start with:
@@ -230,9 +230,14 @@ How a person links an account:
 
 ---
 
-## 5. Personal workers
+## 5. Registered workers
 
-A developer can use their own computer as their Worker. It works only on the tickets they start; anyone without one, and they too while it's offline, gets the shared Worker.
+Computers running the Watcher take tickets after they register with a one-time code. There are two kinds:
+
+- **Personal:** a developer's own computer. It works only on the tickets they start.
+- **Shared:** a computer an admin adds to the pool. It works on anyone's tickets.
+
+A new ticket goes to the requester's own computer if it's online, else to an online shared computer with room, else to a sandbox (step 6). If none of them has room, the ticket is **queued**: its thread says so, and the health sweep assigns it as soon as something frees up. Nothing runs tickets unless at least one of these is set up.
 
 Coordinator `.env`:
 
@@ -241,22 +246,23 @@ Coordinator `.env`:
 # Same value as step 4; must be reachable from their machines, so a tunnel or public host.
 PUBLIC_URL=https://coordinator.example.com
 
-# The shared Worker for everyone else is a sandbox from the pool (step 6) when you set one up,
-# else the shared Watcher (WORKER_ID). DEFAULT_WORKER_TYPE is used only when the classifier
-# doesn't pick a worker type.
-DEFAULT_WORKER_TYPE=
+# Tickets one shared computer holds at once before the next goes to another one or a sandbox.
+# Match the Watcher's MAX_SESSIONS on those computers. Default 1.
+SHARED_WORKER_MAX_TICKETS=1
 
 # Optional: how people install the Watcher. Default: bun install -g @project-os/watcher
 # The package isn't on npm yet, so until it is, point this at something that installs it.
 WATCHER_INSTALL_COMMAND=
 ```
 
-Then, for each person:
+Then, for each person's own computer:
 
 1. Run `/register-worker` in any server channel (optionally `name:my-laptop`). The reply is private.
 2. Paste the command it shows on the computer that should do the work. It needs Bun and the `claude` CLI signed in. The code works once, for 10 minutes.
 3. The Watcher saves its credentials in `~/.config/project-os/watcher.json` and keeps running. Start it again later with `project-os-watcher`.
-4. `/workers` lists your computers and whether they're online. `/unregister-worker worker:<name>` removes one.
+4. `/workers` lists your computers, and the shared ones, and whether they're online. `/unregister-worker worker:<name>` removes one of yours.
+
+For a shared computer, an admin (in `ADMIN_USER_IDS`) does the same in the admin channel with `shared:True`: `/register-worker shared:True name:build-box`, then pastes the command on that computer. `/workers shared:True` lists the shared computers and `/unregister-worker shared:True worker:<name>` removes one. Both kinds show in the dashboard sidebar under Workers.
 
 A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (15 minutes by default; it checks in every 5).
 
@@ -264,7 +270,7 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 
 ## 6. Cloud sandbox workers
 
-Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
+Tickets that no personal or shared computer takes (step 5) can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. No Watcher ever sees these tickets.
 
 You choose the providers. Each one joins the **pool** when its credentials are set, and `WORKER_PROVIDERS` sets which ones and in what order:
 
@@ -281,7 +287,7 @@ SANDBOX_PI_MODEL=
 SANDBOX_SESSION_TIMEOUT_SECONDS=
 ```
 
-When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Worker ids are `<provider>-<id>`. Naming one that isn't configured, or an unknown name, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
+When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket is queued until something has room. Which sandbox runs a ticket is always the pool's call. Worker ids are `<provider>-<id>`. Naming one that isn't configured, or an unknown name, stops the Coordinator at startup so a typo can't silently leave tickets queued.
 
 | Provider           | `WORKER_PROVIDERS` name | Worker type     | Status    | Settings                                                                                           |
 | ------------------ | ----------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
@@ -327,13 +333,12 @@ The sandbox image is Cloudflare's base image (`docker.io/cloudflare/sandbox`, wi
 ```sh
 docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
 
-# Shared Watcher, on the host (only if you don't use sandbox or personal workers).
-# It needs the `claude` CLI installed and signed in.
-set -a; . ./.env; set +a
-bun apps/watcher/src/main.bun.ts
-
-# Or register this computer as your personal worker (code from /register-worker):
+# A Watcher on this computer, if you want it to work tickets (it needs the `claude` CLI
+# installed and signed in). Register it first with the code from /register-worker (yours),
+# or /register-worker shared:True in the admin channel (for everyone):
 bun apps/watcher/src/main.bun.ts register <code> --server http://localhost:8080
+# Later runs need no code:
+bun apps/watcher/src/main.bun.ts
 ```
 
 Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model (Compose defaults `CHAT_MODEL_ID` to `anthropic/claude-sonnet-4.5`). SQLite and agent state live in the `coordinator-data` volume (`/data`). The Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. See the README for running without Docker and for the dashboard.
@@ -356,6 +361,8 @@ Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/dep
 | `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                          |
 | `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                  |
 | Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                    |
+| Tickets say they're queued and stay `open`                  | No personal or shared computer is online with room and no sandbox provider has room. Start a Watcher, or set up a provider (step 6)            |
+| Watcher exits with "isn't registered yet"                   | It no longer runs unregistered. Run `/register-worker` (or `shared:True` as an admin) and paste the command                                    |
 | Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `sandbox-<provider>: <worker> failed: …` |
 | Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                         |
 | Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                    |

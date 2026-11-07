@@ -234,7 +234,7 @@ describe("runCommand personal workers", () => {
       /bun install -g @project-os\/watcher && project-os-watcher register [\w-]+ --server https:\/\/coord\.example\.com --name 'my laptop'/,
     );
     expect(reply.content).toContain("10 minutes");
-    expect(reply.content).toContain("shared cloud worker");
+    expect(reply.content).toContain("your tickets go to the shared pool");
   });
 
   it("/workers lists the person's devices; /unregister-worker removes one", async () => {
@@ -279,15 +279,95 @@ describe("runCommand personal workers", () => {
       (await runCommand(worker("unregister-worker", { worker: "ada-mbp" }), config)).content,
     ).toContain("Removed ada-mbp");
     expect((await runCommand(worker("unregister-worker", { worker: " " }), config)).content).toBe(
-      "Usage: /unregister-worker worker:<name or id>",
+      "Usage: /unregister-worker worker:<name or id> [shared:True]",
     );
   });
 
-  it("refuses when personal workers are not configured", async () => {
+  it("refuses when registered workers are not configured", async () => {
     const { config } = recording();
     expect(await runCommand(worker("register-worker"), config)).toEqual({
-      content: "Personal workers are not configured here.",
+      content: "Registered workers are not configured here.",
       ephemeral: true,
+    });
+  });
+
+  describe("shared:True (admins, in the admin channel)", () => {
+    const shared = (
+      name: "register-worker" | "workers" | "unregister-worker",
+      options: Record<string, string> = {},
+      over: Partial<SlashCommand> = {},
+    ) =>
+      command({
+        command: name,
+        channelId: "admin",
+        options: { shared: "true", ...options },
+        ...over,
+      });
+
+    it("refuses outside the admin channel, and to non-admins", async () => {
+      const config = workersConfig();
+      expect(
+        (await runCommand(shared("register-worker", {}, { channelId: "general" }), config)).content,
+      ).toBe("/register-worker shared:True only works in the admin channel.");
+      expect(
+        (await runCommand(shared("workers", {}, { sender: { id: "u2" } }), config)).content,
+      ).toBe("Not authorized: you are not on the admin list.");
+    });
+
+    it("registers a shared device, lists it for everyone, and removes it", async () => {
+      const config = workersConfig();
+      expect((await runCommand(shared("workers"), config)).content).toContain(
+        "There are no shared workers",
+      );
+
+      const registered = await runCommand(shared("register-worker"), config);
+      expect(registered.content).toContain("should join the shared pool");
+      expect(registered.content).toContain("/unregister-worker shared:True");
+      const token = registered.content.match(/register ([\w-]+) --server/)![1]!;
+      const { redeemWorkerRegistration } = await import("@project-os/core");
+      const { worker: device } = await config.workers!.run(
+        Effect.orDie(redeemWorkerRegistration({ token, hostname: "build-box" })),
+      );
+      expect(device).toMatchObject({ ownerId: null, registered: true });
+      expect(device.id).toMatch(/^shared-/);
+
+      expect((await runCommand(shared("workers"), config)).content).toBe(
+        `Shared workers:\n- **build-box** (\`${device.id}\`): offline, last seen never`,
+      );
+      // Members see the pool next to their own devices (none here).
+      const mine = await runCommand(worker("workers"), config);
+      expect(mine.content).toContain("no registered workers");
+      expect(mine.content).toContain("**build-box**");
+      // ...and can't remove it as one of theirs.
+      expect(
+        (await runCommand(worker("unregister-worker", { worker: "build-box" }), config)).content,
+      ).toContain('no worker called "build-box"');
+
+      expect(
+        (await runCommand(shared("unregister-worker", { worker: "nope" }), config)).content,
+      ).toContain('no shared worker called "nope"');
+      expect(
+        (await runCommand(shared("unregister-worker", { worker: "BUILD-BOX" }), config)).content,
+      ).toContain("Removed build-box");
+    });
+
+    it("shows a member both their devices and the pool", async () => {
+      const config = workersConfig();
+      const { redeemWorkerRegistration } = await import("@project-os/core");
+      for (const [cmd, hostname] of [
+        [shared("register-worker"), "build-box"],
+        [worker("register-worker"), "ada-mbp"],
+      ] as const) {
+        const token = (await runCommand(cmd, config)).content.match(
+          /register ([\w-]+) --server/,
+        )![1]!;
+        await config.workers!.run(Effect.orDie(redeemWorkerRegistration({ token, hostname })));
+      }
+      const listed = (await runCommand(worker("workers"), config)).content.split("\n");
+      expect(listed[0]).toBe("Your workers:");
+      expect(listed[1]).toContain("**ada-mbp**");
+      expect(listed[2]).toBe("Shared workers:");
+      expect(listed[3]).toContain("**build-box**");
     });
   });
 });

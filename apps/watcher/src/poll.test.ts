@@ -10,6 +10,7 @@ const config: WatcherConfig = {
   intervalMs: 1000,
   maxSessions: 1,
   cwd: "/tmp",
+  secret: "s3cret",
 };
 
 const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {

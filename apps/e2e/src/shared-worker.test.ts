@@ -1,18 +1,20 @@
 import { readFileSync } from "node:fs";
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
+import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
+import { fakeCommand, fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
 import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
-import type { WatcherConfig } from "../../watcher/src/config.ts";
+import { loadConfig } from "../../watcher/src/config.ts";
 import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import type { Spawner } from "../../watcher/src/spawn.ts";
-import { type Stack, startStack } from "./stack.ts";
+import { ADMIN_CHANNEL, ADMIN_USER, type Stack, startStack } from "./stack.ts";
 
-// Watcher (real MCP client, real poll loop) against the real Coordinator /mcp.
-// The spawned Claude Code session is played by an SDK MCP client following session-start.md.
+// A shared worker: an admin runs `/register-worker shared:True`, the Watcher on that computer
+// trades the code for credentials, then (real MCP client, real poll loop, against the real
+// Coordinator /mcp) works tickets from anyone without their own worker online. The spawned
+// Claude Code session is played by an SDK MCP client following session-start.md.
 
-const WORKER = "local-claude-1";
 const CHANNEL = "chan-1";
 const PROMPT = readFileSync(
   new URL("../../watcher/prompts/session-start.md", import.meta.url),
@@ -20,20 +22,20 @@ const PROMPT = readFileSync(
 );
 
 let stack: Stack;
+let WORKER: string;
+let SECRET: string;
 beforeEach(async () => {
-  stack = await startStack({ classifier: classifierReturning("new_request"), workerId: WORKER });
+  // Production's cap: one ticket per shared device at a time.
+  stack = await startStack({
+    classifier: classifierReturning("new_request"),
+    sharedWorkerMaxTickets: 1,
+  });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
 });
 afterEach(() => stack.stop());
 
 const watcherFor = (session: () => Promise<number>) => {
-  const config: WatcherConfig = {
-    mcpUrl: `${stack.url}/mcp`,
-    workerId: WORKER,
-    workerType: "local_claude",
-    intervalMs: 60_000,
-    maxSessions: 1,
-    cwd: "/tmp",
-  };
+  const config = loadConfig({ server: stack.url, workerId: WORKER, name: "box", secret: SECRET });
   const logs: string[] = [];
   const sessions: Promise<number>[] = [];
   const spawner: Spawner = {
@@ -45,21 +47,21 @@ const watcherFor = (session: () => Promise<number>) => {
   };
   const watcher = createWatcher({
     config,
-    client: httpMcpClient(config.mcpUrl, fetch),
+    client: httpMcpClient(config.mcpUrl, fetch, config.secret),
     spawner,
     log: (m) => logs.push(m),
   });
   return { watcher, logs, sessions };
 };
 
-const say = async (content: string) => {
-  const inbound = fakeInbound({ channelId: CHANNEL, userId: "u1", name: "Ada" }, content);
+const say = async (content: string, userId = "u1") => {
+  const inbound = fakeInbound({ channelId: CHANNEL, userId, name: "Ada" }, content);
   await forwardInbound(stack.url, inbound!, fetch);
 };
 
 /** Plays session-start.md the way a Claude Code Worker would. */
 const claudeSession = async () => {
-  const mcp = await stack.worker();
+  const mcp = await stack.worker(SECRET);
   const tool = async (name: string, args: Record<string, unknown>) => {
     const res = (await mcp.callTool({ name, arguments: args })) as {
       isError?: boolean;
@@ -84,8 +86,8 @@ const claudeSession = async () => {
   return 0;
 };
 
-describe("watcher loop", () => {
-  it("spawns a session for an assigned ticket, and the session's result reaches Discord", async () => {
+describe("shared worker loop", () => {
+  it("joins the pool from an admin's code, and works anyone's ticket through to Discord", async () => {
     const projectId = await stack.linkChannel(CHANNEL);
     await say("please add dark mode");
 
@@ -122,16 +124,52 @@ describe("watcher loop", () => {
   });
 
   it("surfaces Coordinator tool errors through the watcher's MCP client", async () => {
-    const client = httpMcpClient(`${stack.url}/mcp`, fetch);
+    const client = httpMcpClient(`${stack.url}/mcp`, fetch, SECRET);
     await expect(
       client.callTool("ticket_claim", { ticketId: "missing", workerId: WORKER }),
     ).rejects.toThrow(/^MCP ticket_claim: /);
+  });
+
+  it("refuses anyone acting as the shared worker without its secret", async () => {
+    const anon = await stack.worker();
+    const res = (await anon.callTool({
+      name: "ticket_list_assigned",
+      arguments: { workerId: WORKER },
+    })) as { isError?: boolean; content: Array<{ text?: string }> };
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain("registered worker");
+  });
+
+  it("queues a ticket while the shared worker is busy and nothing else has room", async () => {
+    const projectId = await stack.linkChannel(CHANNEL);
+    await say("please add dark mode");
+    await say("and write release notes", "u2");
+
+    const tickets = (await stack.json("GET", `/projects/${projectId}/tickets`)) as any[];
+    const byTitle = (t: string) => tickets.find((x) => x.title === t);
+    expect(byTitle("please add dark mode")).toMatchObject({ status: "assigned", workerId: WORKER });
+    expect(byTitle("and write release notes")).toMatchObject({ status: "open", workerId: null });
+    expect(stack.posted.at(-1)).toMatchObject({
+      target: { channelId: CHANNEL, threadId: "discord-thread-2" },
+      content: expect.stringContaining("queued"),
+    });
+  });
+
+  it("lets only admins, in the admin channel, register a shared worker", async () => {
+    const run = (channelId: string, userId: string) =>
+      forwardCommand(
+        stack.url,
+        fakeCommand({ channelId, userId, name: "X" }, "register-worker", { shared: "true" })!,
+        fetch,
+      );
+    expect((await run(CHANNEL, ADMIN_USER)).content).toContain("only works in the admin channel");
+    expect((await run(ADMIN_CHANNEL, "u1")).content).toContain("Not authorized");
   });
 });
 
 describe("worker prompt contract", () => {
   it("names only tools the Coordinator serves", async () => {
-    const mcp = await stack.worker();
+    const mcp = await stack.worker(SECRET);
     const served = new Set((await mcp.listTools()).tools.map((t) => t.name));
     const named = [...PROMPT.matchAll(/`((?:ticket|project)_[a-z_]+)`/g)].map((m) => m[1]);
     expect(named.length).toBeGreaterThan(0);

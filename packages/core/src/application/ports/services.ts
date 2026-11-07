@@ -102,8 +102,6 @@ export class AgentRuntimeError extends Data.TaggedError("AgentRuntimeError")<{
 export interface IntentResult {
   readonly intent: string;
   readonly confidence: number;
-  /** Only meaningful for `new_request`. Falls back to the configured default. */
-  readonly workerType?: WorkerType;
   /**
    * Who does a new request. `worker`: it needs the repo checked out, tests run, or a script
    * run. `sidekick`: read-only lookups through Google Drive or GitHub tools. Unset: `worker`.
