@@ -1,5 +1,5 @@
-import { cloudflareSandboxRunnerLive } from "@project-os/infra-cloudflare-sandbox";
-import { handleBridge, type SandboxStubLike } from "@project-os/infra-cloudflare-sandbox/bridge";
+import { cloudflareSandboxRunnerLive } from "@project-os/sandbox-cloudflare";
+import { handleBridge, type SandboxStubLike } from "@project-os/sandbox-cloudflare/bridge";
 import { makeSandboxLauncher, type SandboxRunner } from "@project-os/infra-sandbox";
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";

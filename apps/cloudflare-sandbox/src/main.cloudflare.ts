@@ -1,8 +1,8 @@
 // Cloudflare Sandbox bridge Worker. Sandboxes are Durable Objects reachable only through a
 // Worker binding, so the Coordinator (on Bun) starts and polls them over this small HTTP API.
-// Routes and wire format: packages/infra-cloudflare-sandbox/src/protocol.ts.
+// Routes and wire format: packages/sandbox-cloudflare/src/protocol.ts.
 import { getSandbox, type Sandbox } from "@cloudflare/sandbox";
-import { handleBridge } from "@project-os/infra-cloudflare-sandbox/bridge";
+import { handleBridge } from "@project-os/sandbox-cloudflare/bridge";
 
 export { Sandbox } from "@cloudflare/sandbox";
 

@@ -238,7 +238,7 @@ A small program a developer runs on their own machine. It polls for work and lau
 
 Daytona Workers don't need a watcher: the Coordinator starts a sandbox when it assigns a `daytona_pi` ticket, and the sandbox runs the same session-start instruction.
 
-How it works (`packages/infra-daytona`, enabled by `DAYTONA_API_KEY`):
+How it works (`packages/sandbox-daytona`, enabled by `DAYTONA_API_KEY`):
 
 - A `daytona_pi` ticket is assigned to its own worker id, `daytona-<ticketId>`, so the host Watcher (which polls as `WORKER_ID`) never sees it and `ticket_claim` admits only that sandbox.
 - `handleInbound` calls `WorkerLauncher.launch` after assigning. The launcher creates an ephemeral sandbox, installs Pi (`@earendil-works/pi-coding-agent`), writes `~/.pi/agent/mcp.json` pointing at the Coordinator, and runs `pi --print` with the session-start prompt plus the worker id. Pi speaks streamable-HTTP MCP natively, so no bridge is needed. The sandbox is deleted when the session ends.

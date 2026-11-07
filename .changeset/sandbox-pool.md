@@ -3,8 +3,8 @@
 "@project-os/core": minor
 "@project-os/coordinator": minor
 "@project-os/infra-sandbox": minor
-"@project-os/infra-daytona": minor
-"@project-os/infra-cloudflare-sandbox": minor
+"@project-os/sandbox-daytona": minor
+"@project-os/sandbox-cloudflare": minor
 "@project-os/sandbox-boat": minor
 "@project-os/cloudflare-sandbox": minor
 "@project-os/infra-local": patch

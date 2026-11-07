@@ -1,5 +1,5 @@
 {
-  "name": "@project-os/infra-daytona",
+  "name": "@project-os/sandbox-daytona",
   "version": "0.0.0",
   "private": true,
   "type": "module",

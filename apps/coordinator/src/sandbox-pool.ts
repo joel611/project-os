@@ -1,8 +1,8 @@
 import type { SandboxProvider } from "@project-os/contracts";
 import type { WorkerLauncher } from "@project-os/core";
 import { BOAT_SIZES, type BoatSize, boatSandboxRunner } from "@project-os/sandbox-boat";
-import { cloudflareSandboxRunnerLive } from "@project-os/infra-cloudflare-sandbox";
-import { daytonaSandboxRunner } from "@project-os/infra-daytona";
+import { cloudflareSandboxRunnerLive } from "@project-os/sandbox-cloudflare";
+import { daytonaSandboxRunner } from "@project-os/sandbox-daytona";
 import { makeSandboxLauncher, resolvePool, type SandboxRunner } from "@project-os/infra-sandbox";
 
 type Env = Readonly<Record<string, string | undefined>>;
