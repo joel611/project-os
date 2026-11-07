@@ -5,7 +5,6 @@ import {
   IntentClassifier,
   type SandboxPoolEntry,
   WorkerLauncher,
-  type WorkerType,
 } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import {
@@ -103,11 +102,10 @@ export const makeTestLayer = (options?: {
   };
 };
 
-/** Classifier returning a fixed intent / confidence / workerType / executor. */
+/** Classifier returning a fixed intent / confidence / executor. */
 export const classifierReturning = (
   intent: string,
   confidence = 1,
-  workerType?: WorkerType,
   executor?: Executor,
 ): Layer.Layer<IntentClassifier> =>
   Layer.succeed(IntentClassifier, {
@@ -115,7 +113,6 @@ export const classifierReturning = (
       Effect.succeed({
         intent,
         confidence,
-        ...(workerType ? { workerType } : {}),
         ...(executor ? { executor } : {}),
       }),
   });

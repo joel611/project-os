@@ -16,12 +16,20 @@ const PROVIDER_OPTION = {
 
 /**
  * Slash commands this adapter registers with Discord (application command JSON, type 1 =
- * chat input, option type 3 = string). Discord can't limit a bot's command to one channel,
- * so the Coordinator refuses admin commands outside the admin channel. Account commands
+ * chat input, option type 3 = string, 5 = boolean). Discord can't limit a bot's command to one
+ * channel, so the Coordinator refuses admin commands outside the admin channel. Account commands
  * (/connect, /disconnect, /connections) and personal worker commands (/register-worker,
- * /workers, /unregister-worker) work in any server channel and answer privately. The bot only works in
- * the server, so no command is offered in DMs.
+ * /workers, /unregister-worker) work in any server channel and answer privately. Their
+ * `shared` option manages the shared pool instead, for admins in the admin channel only. The
+ * bot only works in the server, so no command is offered in DMs.
  */
+const SHARED_OPTION = {
+  name: "shared",
+  description: "Admins: the shared pool of workers instead of your own (admin channel only)",
+  type: 5,
+  required: false,
+} as const;
+
 export const COMMAND_DEFINITIONS = [
   {
     name: "project-create",
@@ -72,6 +80,7 @@ export const COMMAND_DEFINITIONS = [
         required: false,
         max_length: 60,
       },
+      SHARED_OPTION,
     ],
   },
   {
@@ -79,7 +88,7 @@ export const COMMAND_DEFINITIONS = [
     description: "Show your registered computers and whether they're online",
     type: 1,
     dm_permission: false,
-    options: [],
+    options: [SHARED_OPTION],
   },
   {
     name: "unregister-worker",
@@ -94,6 +103,7 @@ export const COMMAND_DEFINITIONS = [
         required: true,
         max_length: 100,
       },
+      SHARED_OPTION,
     ],
   },
 ] as const;

@@ -5,7 +5,7 @@ Index of user-facing features and the recipe for each. Read this, then the match
 ## Baseline preconditions
 
 - `../run.sh up` from an empty data dir; `../run.sh doctor` all `ok`.
-- Seed: org `verify-org`, project **Verify Project**, default Discord channel `verify-chan`, worker id `verify-worker`. No tickets, memory, or workers yet.
+- Seed: org `verify-org`, project **Verify Project**, default Discord channel `verify-chan`, shared worker **verify-box** (offline until `drive.ts heartbeat`) and personal device **bob-laptop** (never online). No tickets or memory yet.
 - Commands run from `apps/e2e`; dashboard at `http://localhost:15173`.
 - Recipes may build on earlier state; run in index order or `down`/`up` between them.
 

@@ -37,7 +37,6 @@ const d1Migrations = () => {
 
 /** Plain vars with the same defaults as `.env.example`. */
 const vars = {
-  WORKER_ID: "local-claude-1",
   CHAT_MODEL_PROVIDER: "openrouter",
   CHAT_MODEL_ID: "anthropic/claude-sonnet-4.5",
   JEV_MODEL_ID: "typesafe/jev-1.14",

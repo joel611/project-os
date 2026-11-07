@@ -17,7 +17,7 @@ export const mcpConfigJson = (config: WatcherConfig): string =>
       [MCP_SERVER_NAME]: {
         type: "http",
         url: config.mcpUrl,
-        ...(config.secret && { headers: { Authorization: `Bearer ${config.secret}` } }),
+        headers: { Authorization: `Bearer ${config.secret}` },
       },
     },
   });

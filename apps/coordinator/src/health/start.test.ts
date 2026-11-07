@@ -3,6 +3,7 @@ import {
   IdGenerator,
   Scheduler,
   TicketRepository,
+  WorkerLauncher,
   WorkerRepository,
   type Ticket,
 } from "@project-os/core";
@@ -28,6 +29,7 @@ describe("startHealthSweep", () => {
       Layer.succeed(Clock, { now: Effect.succeed(new Date("2026-11-04T00:00:00.000Z")) }),
       Layer.succeed(IdGenerator, { next: Effect.succeed("id") }),
       Layer.succeed(WorkerRepository, { list: Effect.succeed([]) } as never),
+      Layer.succeed(WorkerLauncher, { pool: Effect.succeed([]), launch: () => Effect.void }),
       Layer.succeed(TicketRepository, {
         listByStatus: (statuses: ReadonlyArray<string>) => {
           queried.push([...statuses]);
@@ -49,7 +51,7 @@ describe("startHealthSweep", () => {
     expect(scheduled).toMatchObject({ name: "health-sweep", everyMs: 60_000 });
 
     await Effect.runPromise(scheduled!.task);
-    expect(queried).toEqual([["assigned"], ["in_progress"]]);
+    expect(queried).toEqual([["open"], ["assigned"], ["in_progress"]]);
 
     await Effect.runPromise(stop);
     expect(stopped).toBe(true);

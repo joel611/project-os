@@ -78,7 +78,7 @@ export const configuredRunners = (
 /**
  * The Coordinator's sandbox pool from env: WORKER_PROVIDERS (comma list, preference order;
  * default every configured provider, Daytona first) and the shared Pi session settings.
- * Undefined when the pool is empty, so tickets go to the shared Watcher.
+ * Undefined when the pool is empty: tickets then wait for a registered device.
  */
 export const sandboxLauncherFromEnv = (
   env: Env,

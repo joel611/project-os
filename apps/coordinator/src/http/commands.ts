@@ -11,11 +11,14 @@ import {
   issueWorkerRegistration,
   type KeyValueStore,
   listPersonalWorkers,
+  listSharedWorkers,
   type Person,
   PROVIDER_LABELS,
   REGISTRATION_TTL_SECONDS,
+  unregisterSharedWorker,
   unregisterWorker,
   UserConnections,
+  type Worker,
   workerLabel,
   type WorkerRepository,
 } from "@project-os/core";
@@ -30,7 +33,10 @@ export interface CommandsConfig {
   readonly admin: Pick<AdminActions, "createProject">;
   /** Runs account-linking effects (/connect, /disconnect, /connections). Unset: refused. */
   readonly connections?: <A>(effect: Effect.Effect<A, never, UserConnections>) => Promise<A>;
-  /** Personal workers (/register-worker, /workers, /unregister-worker). Unset: refused. */
+  /**
+   * Registered devices (/register-worker, /workers, /unregister-worker): personal ones for
+   * anyone, shared ones (`shared:True`) for admins in the admin channel. Unset: refused.
+   */
   readonly workers?: WorkersCommandsConfig;
 }
 
@@ -73,19 +79,30 @@ export const runCommand = async (
   }
 };
 
-const projectCreate = async (
+/** Why `command` may not run as an admin command, or undefined when it may. */
+const adminRefusal = (
   command: SlashCommand,
   config: CommandsConfig,
-): Promise<CommandReply> => {
+  what = `/${command.command}`,
+): CommandReply | undefined => {
   const inAdminChannel =
     config.adminChannelId !== undefined &&
     command.channelType === "discord" &&
     command.channelId === config.adminChannelId &&
     command.threadId === undefined;
-  if (!inAdminChannel) return privately(`/${command.command} only works in the admin channel.`);
+  if (!inAdminChannel) return privately(`${what} only works in the admin channel.`);
   if (config.adminUserIds && !config.adminUserIds.includes(command.sender.id)) {
     return privately("Not authorized: you are not on the admin list.");
   }
+  return undefined;
+};
+
+const projectCreate = async (
+  command: SlashCommand,
+  config: CommandsConfig,
+): Promise<CommandReply> => {
+  const refused = adminRefusal(command, config);
+  if (refused) return refused;
 
   const name = command.options.name?.trim();
   if (!name) return privately("Usage: /project-create name:<project name> [instructions:<text>]");
@@ -180,50 +197,77 @@ const workerCommand = async (
   config: CommandsConfig,
 ): Promise<CommandReply> => {
   const workers = config.workers;
-  if (!workers) return privately("Personal workers are not configured here.");
+  if (!workers) return privately("Registered workers are not configured here.");
   const person = personOf(command);
+  const shared = command.options.shared === "true";
+  if (shared) {
+    const refused = adminRefusal(command, config, `/${command.command} shared:True`);
+    if (refused) return refused;
+  }
 
   if (command.command === "register-worker") {
     const name = command.options.name?.trim() || undefined;
-    const { token } = await workers.run(issueWorkerRegistration(person));
+    const { token } = await workers.run(issueWorkerRegistration(person, { shared }));
     const minutes = Math.round(REGISTRATION_TTL_SECONDS / 60);
     return privately(
       [
-        `Run this on the computer that should work on your tickets (the code works once, for ${minutes} minutes):`,
+        shared
+          ? `Run this on the computer that should join the shared pool (the code works once, for ${minutes} minutes):`
+          : `Run this on the computer that should work on your tickets (the code works once, for ${minutes} minutes):`,
         "```sh",
         watcherCommandLine(workers, token, name),
         "```",
-        "It needs Bun and Claude Code. It registers the computer to you, then keeps running and picks up only the tickets you start. To start it again later, run `project-os-watcher`.",
-        "While it's offline, your tickets go to the shared cloud worker.",
+        shared
+          ? "It needs Bun and Claude Code. It registers the computer as a shared worker, then keeps running and picks up tickets from anyone without their own worker online, one at a time. To start it again later, run `project-os-watcher`."
+          : "It needs Bun and Claude Code. It registers the computer to you, then keeps running and picks up only the tickets you start. To start it again later, run `project-os-watcher`.",
+        shared
+          ? "Remove it with `/unregister-worker shared:True`."
+          : "While it's offline, your tickets go to the shared pool.",
       ].join("\n"),
     );
   }
 
   if (command.command === "workers") {
-    const mine = await workers.run(listPersonalWorkers(person, workers.staleMs));
-    if (mine.length === 0) {
+    const mine = shared ? [] : await workers.run(listPersonalWorkers(person, workers.staleMs));
+    const pool = await workers.run(listSharedWorkers(workers.staleMs));
+    const sharedLines = pool.length === 0 ? [] : ["Shared workers:", ...pool.map(workerLine)];
+    if (shared) {
       return privately(
-        "You have no registered workers, so your tickets go to the shared cloud worker. Run `/register-worker` to use your own computer.",
+        pool.length === 0
+          ? "There are no shared workers. Add one with `/register-worker shared:True`."
+          : sharedLines.join("\n"),
       );
     }
-    const lines = mine.map(
-      ({ worker, status }) =>
-        `- **${workerLabel(worker)}** (\`${worker.id}\`): ${status}${
-          status === "online" ? "" : `, last seen ${seen(worker.lastSeenAt)}`
-        }`,
-    );
-    return privately(["Your workers:", ...lines].join("\n"));
+    if (mine.length === 0) {
+      return privately(
+        [
+          "You have no registered workers, so your tickets go to the shared pool. Run `/register-worker` to use your own computer.",
+          ...sharedLines,
+        ].join("\n"),
+      );
+    }
+    return privately(["Your workers:", ...mine.map(workerLine), ...sharedLines].join("\n"));
   }
 
   const which = command.options.worker?.trim();
-  if (!which) return privately("Usage: /unregister-worker worker:<name or id>");
-  const removed = await workers.run(unregisterWorker(person, which));
+  if (!which) return privately("Usage: /unregister-worker worker:<name or id> [shared:True]");
+  const removed = await workers.run(
+    shared ? unregisterSharedWorker(which) : unregisterWorker(person, which),
+  );
+  if (removed) {
+    return privately(`Removed ${workerLabel(removed)}. Its Watcher can no longer pick up tickets.`);
+  }
   return privately(
-    removed
-      ? `Removed ${workerLabel(removed)}. Its Watcher can no longer pick up tickets.`
+    shared
+      ? `There is no shared worker called "${which}". Run \`/workers shared:True\` to see them.`
       : `You have no worker called "${which}". Run \`/workers\` to see yours.`,
   );
 };
+
+const workerLine = ({ worker, status }: { readonly worker: Worker; readonly status: string }) =>
+  `- **${workerLabel(worker)}** (\`${worker.id}\`): ${status}${
+    status === "online" ? "" : `, last seen ${seen(worker.lastSeenAt)}`
+  }`;
 
 const seen = (iso: string) =>
   Date.parse(iso) <= 0 ? "never" : iso.replace("T", " ").slice(0, 16) + " UTC";

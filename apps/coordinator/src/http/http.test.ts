@@ -56,7 +56,10 @@ const inbound = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const setup = (config?: HandleInboundConfig) => {
-  const { layer, sent } = makeTestLayer({ classifier: classifierReturning("new_request") });
+  const { layer, sent } = makeTestLayer({
+    classifier: classifierReturning("new_request"),
+    sandboxPool: [{ workerType: "daytona_pi" }],
+  });
   return { app: appFor(layer, config), sent };
 };
 
@@ -294,10 +297,10 @@ describe("POST /inbound", () => {
   });
 
   it("applies the configured HandleInboundConfig", async () => {
-    const { app } = setup({ workerId: "w1" });
+    const { app } = setup({ requireMention: true });
     await linkedProject(app);
     const res = await call(app, "POST", "/inbound", inbound());
-    expect(res.body.ticket.workerId).toBe("w1");
+    expect(res.body).toEqual({ kind: "not_mentioned" });
   });
 });
 
@@ -365,7 +368,10 @@ describe("tickets", () => {
   });
 
   it("502s when the agent runtime fails while composing the reply", async () => {
-    const { layer } = makeTestLayer({ classifier: classifierReturning("new_request") });
+    const { layer } = makeTestLayer({
+      classifier: classifierReturning("new_request"),
+      sandboxPool: [{ workerType: "daytona_pi" }],
+    });
     const failing = Layer.succeed(AgentRuntime, {
       respond: () => Effect.fail(new AgentRuntimeError({ message: "down" })),
     });
@@ -487,7 +493,13 @@ describe("with the infra-local Layer (SQLite)", () => {
       const classifier = Layer.succeed(IntentClassifier, {
         classify: () => Effect.succeed({ intent: "new_request", confidence: 1 }),
       });
-      const app = appFor(Layer.mergeAll(LocalLive({ dbPath, adapterUrls: {} }), classifier));
+      const workerLauncher = {
+        pool: Effect.succeed([{ workerType: "daytona_pi" as const }]),
+        launch: () => Effect.void,
+      };
+      const app = appFor(
+        Layer.mergeAll(LocalLive({ dbPath, adapterUrls: {}, workerLauncher }), classifier),
+      );
 
       const { project } = await linkedProject(app);
       const res = await call(app, "POST", "/inbound", inbound());

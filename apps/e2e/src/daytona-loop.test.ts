@@ -3,6 +3,7 @@ import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
 import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
+import { loadConfig } from "../../watcher/src/config.ts";
 import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import { type Stack, startStack } from "./stack.ts";
@@ -11,7 +12,6 @@ import { type Stack, startStack } from "./stack.ts";
 // The Daytona SDK is faked at the SandboxRunner seam. The sandbox's Pi session is played by an
 // SDK MCP client that reads its worker id from the prompt the launcher hands the sandbox.
 
-const LOCAL_WORKER = "local-claude-1";
 const CHANNEL = "chan-1";
 
 let stack: Stack;
@@ -60,8 +60,7 @@ beforeEach(async () => {
   sessions = [];
   hold = undefined;
   stack = await startStack({
-    classifier: classifierReturning("new_request", 1, "daytona_pi"),
-    workerId: LOCAL_WORKER,
+    classifier: classifierReturning("new_request"),
     workerLauncher: makeSandboxLauncher({
       providers: [{ workerType: "daytona_pi", runner: sandbox }],
       mcpUrl: "https://tunnel.example/mcp",
@@ -96,22 +95,18 @@ describe("daytona worker loop", () => {
     expect(stack.posted.at(-1)!.content).toContain("sandbox did it");
   });
 
-  it("keeps the host Watcher from picking up a daytona ticket", async () => {
+  it("keeps a shared Watcher from picking up a daytona ticket", async () => {
     hold = new Promise(() => {});
     const projectId = await stack.linkChannel(CHANNEL);
     await say("add dark mode");
 
+    // Registered after the ticket went to Daytona, so the ticket isn't its to take.
+    const shared = await stack.registerSharedWorker();
+    const config = loadConfig({ server: stack.url, name: "box", ...shared });
     const spawns: number[] = [];
     const watcher = createWatcher({
-      config: {
-        mcpUrl: `${stack.url}/mcp`,
-        workerId: LOCAL_WORKER,
-        workerType: "local_claude",
-        intervalMs: 60_000,
-        maxSessions: 1,
-        cwd: "/tmp",
-      },
-      client: httpMcpClient(`${stack.url}/mcp`, fetch),
+      config,
+      client: httpMcpClient(config.mcpUrl, fetch, config.secret),
       spawner: { spawn: async () => spawns.push(1) },
       log: () => {},
     });

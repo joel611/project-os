@@ -110,6 +110,7 @@ describe("makeApi", () => {
       workerType: "local_claude",
       ownerChannelType: null,
       ownerId: null,
+      registered: false,
       name: null,
       currentTicketId: null,
       lastSeenAt: T,
