@@ -230,7 +230,7 @@ describe("ticket routing", () => {
     );
     expect(value).toMatchObject({
       workerType: "daytona_pi",
-      workerId: `sandbox-daytona-${value.id}`,
+      workerId: `daytona-${value.id}`,
     });
   });
 

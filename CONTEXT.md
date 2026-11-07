@@ -35,7 +35,7 @@ _Avoid_: bot, helper agent, Worker (it never pulls or claims through MCP).
 **Personal Worker**: a person's own computer, registered with `/register-worker`, running the Watcher. It gets only the Tickets that person starts, and only while it is online; otherwise their Tickets go to the shared Worker (a Sandbox Pool provider, else the shared Watcher). Authenticates to MCP with a Bearer secret.
 _Avoid_: private worker, device worker.
 
-**Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Each provider is named with a `sandbox-` prefix (`sandbox-daytona`, `sandbox-cloudflare`, `sandbox-boat`), and its Workers are `sandbox-<provider>-<ticketId>`. On assigning a shared Ticket the Coordinator reads the pool and starts the first provider with room under its cap.
+**Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Each provider is named with a `sandbox-` prefix (`sandbox-daytona`, `sandbox-cloudflare`, `sandbox-boat`), and its Workers are `<provider>-<ticketId>` without the prefix (`daytona-<ticketId>`). On assigning a shared Ticket the Coordinator reads the pool and starts the first provider with room under its cap.
 _Avoid_: worker pool (the Watchers are not in it), provider list.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.

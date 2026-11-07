@@ -90,9 +90,9 @@ describe("daytona worker loop", () => {
     expect(ticket).toMatchObject({
       status: "completed",
       workerType: "daytona_pi",
-      workerId: `sandbox-daytona-${ticket.id}`,
+      workerId: `daytona-${ticket.id}`,
     });
-    expect(envs[0]!.PROJECT_OS_PROMPT).toContain(`sandbox-daytona-${ticket.id}`);
+    expect(envs[0]!.PROJECT_OS_PROMPT).toContain(`daytona-${ticket.id}`);
     expect(stack.posted.at(-1)!.content).toContain("sandbox did it");
   });
 

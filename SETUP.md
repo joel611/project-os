@@ -264,7 +264,7 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 
 ## 6. Cloud sandbox workers
 
-Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`sandbox-daytona-<ticketId>`, `sandbox-cloudflare-<ticketId>` or `sandbox-boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
+Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
 
 You choose the providers. Each one joins the **pool** when its credentials are set, and `WORKER_PROVIDERS` sets which ones and in what order:
 
@@ -281,7 +281,7 @@ SANDBOX_PI_MODEL=
 SANDBOX_SESSION_TIMEOUT_SECONDS=
 ```
 
-When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Provider names carry the `sandbox-` prefix. Naming one that isn't configured, or a bare name like `daytona`, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
+When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Provider names carry the `sandbox-` prefix; worker ids don't. Naming one that isn't configured, or a bare name like `daytona`, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
 
 | Provider           | `WORKER_PROVIDERS` name | Worker type     | Status    | Settings                                                                                           |
 | ------------------ | ----------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------- |

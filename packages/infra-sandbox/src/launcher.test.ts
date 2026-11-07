@@ -24,7 +24,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 const daytonaTicket = {
   ticketId: "t1",
   workerType: "daytona_pi",
-  workerId: "sandbox-daytona-t1",
+  workerId: "daytona-t1",
 } as const;
 const ok = async () => ({ exitCode: 0, output: "" });
 
@@ -42,7 +42,7 @@ describe("sandbox launcher", () => {
       OPENROUTER_API_KEY: "sk-or",
       PROJECT_OS_MCP_JSON: piMcpJson("https://tunnel.example/mcp"),
       PROJECT_OS_MODEL: "openrouter/m",
-      PROJECT_OS_PROMPT: "Work one ticket.\nYour worker_id is `sandbox-daytona-t1`.",
+      PROJECT_OS_PROMPT: "Work one ticket.\nYour worker_id is `daytona-t1`.",
     });
     expect(JSON.parse(calls[0]!.env.PROJECT_OS_MCP_JSON!)).toEqual({
       mcpServers: { "project-os": { url: "https://tunnel.example/mcp", exposure: "direct" } },
@@ -69,14 +69,14 @@ describe("sandbox launcher", () => {
       launcher.launch({
         ticketId: "t2",
         workerType: "cloudflare_pi",
-        workerId: "sandbox-cloudflare-t2",
+        workerId: "cloudflare-t2",
       }),
     );
     await settle();
     expect(ran).toEqual(["cloudflare"]);
     expect(logs).toEqual([
-      "sandbox-cloudflare: launching sandbox-cloudflare-t2 for ticket t2",
-      "sandbox-cloudflare: sandbox-cloudflare-t2 finished",
+      "sandbox-cloudflare: launching cloudflare-t2 for ticket t2",
+      "sandbox-cloudflare: cloudflare-t2 finished",
     ]);
   });
 
@@ -103,7 +103,7 @@ describe("sandbox launcher", () => {
       launcher.launch({
         ticketId: "t1",
         workerType: "cloudflare_pi",
-        workerId: "sandbox-cloudflare-t1",
+        workerId: "cloudflare-t1",
       }),
     );
     expect(ran).toBe(false);
@@ -113,20 +113,20 @@ describe("sandbox launcher", () => {
     const { launcher, logs } = setup(() => Promise.reject(new Error("no capacity")));
     await Effect.runPromise(launcher.launch(daytonaTicket));
     await settle();
-    expect(logs.at(-1)).toBe("sandbox-daytona: sandbox-daytona-t1 failed: no capacity");
+    expect(logs.at(-1)).toBe("sandbox-daytona: daytona-t1 failed: no capacity");
   });
 
   it("logs a non-Error rejection as text", async () => {
     const { launcher, logs } = setup(() => Promise.reject("boom"));
     await Effect.runPromise(launcher.launch(daytonaTicket));
     await settle();
-    expect(logs.at(-1)).toBe("sandbox-daytona: sandbox-daytona-t1 failed: boom");
+    expect(logs.at(-1)).toBe("sandbox-daytona: daytona-t1 failed: boom");
   });
 
   it("logs the output tail of a non-zero exit", async () => {
     const { launcher, logs } = setup(async () => ({ exitCode: 2, output: "pi: bad model" }));
     await Effect.runPromise(launcher.launch(daytonaTicket));
     await settle();
-    expect(logs.at(-1)).toBe("sandbox-daytona: sandbox-daytona-t1 exited 2: pi: bad model");
+    expect(logs.at(-1)).toBe("sandbox-daytona: daytona-t1 exited 2: pi: bad model");
   });
 });
