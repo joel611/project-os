@@ -1,0 +1,13 @@
+{
+  "name": "@project-os/sandbox-daytona",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@daytona/sdk": "0.230.0",
+    "@project-os/infra-sandbox": "workspace:*"
+  }
+}

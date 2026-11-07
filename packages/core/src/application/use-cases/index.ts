@@ -11,3 +11,4 @@ export * from "./tickets.ts";
 export * from "./connections.ts";
 export * from "./prompts.ts";
 export * from "./personal-workers.ts";
+export * from "./sandbox-pool.ts";

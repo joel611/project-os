@@ -9,6 +9,7 @@ import type {
   PostedPrompt,
   PromptInstruction,
   ReplyInstruction,
+  SandboxWorkerType,
   WorkerType,
 } from "@project-os/contracts";
 import { Context, Data, type Effect } from "effect";
@@ -164,9 +165,21 @@ export class Sidekick extends Context.Service<
   }
 >()("@project-os/core/Sidekick") {}
 
+/** One sandbox provider the Coordinator may start workers on. */
+export interface SandboxPoolEntry {
+  readonly workerType: SandboxWorkerType;
+  /** Most of its tickets active at once; further tickets go to the next provider. Unset: no cap. */
+  readonly maxConcurrent?: number;
+}
+
 export class WorkerLauncher extends Context.Service<
   WorkerLauncher,
   {
+    /**
+     * The sandbox pool: providers this launcher can start, in the order the Coordinator should
+     * try them. Empty when no sandbox provider is configured.
+     */
+    readonly pool: Effect.Effect<ReadonlyArray<SandboxPoolEntry>>;
     /**
      * Start a worker for a freshly assigned ticket. Returns once the launch is under way, not
      * when the session ends; failures are the launcher's to report. No-op for pull-model local

@@ -153,12 +153,101 @@ describe("handleInbound", () => {
         if (out.kind !== "ticket_created") throw new Error(out.kind);
         return out.ticket;
       }),
-      { classifier: classifierReturning("new_request", 1, "daytona_pi") },
+      {
+        classifier: classifierReturning("new_request", 1, "daytona_pi"),
+        sandboxPool: [{ workerType: "daytona_pi" }],
+      },
     );
-    expect(value).toMatchObject({ workerType: "daytona_pi", workerId: `daytona-${value.id}` });
+    expect(value).toMatchObject({
+      workerType: "daytona_pi",
+      workerId: `daytona-${value.id}`,
+    });
     expect(launched).toEqual([
       { ticketId: value.id, workerType: "daytona_pi", workerId: `daytona-${value.id}` },
     ]);
+  });
+
+  describe("sandbox pool", () => {
+    const newTicket = (cfg: Parameters<typeof handleInbound>[1] = config, externalId = "m1") =>
+      Effect.gen(function* () {
+        const out = yield* handleInbound(msg({ externalId }), cfg);
+        if (out.kind !== "ticket_created") throw new Error(out.kind);
+        return out.ticket;
+      });
+    const sandboxPick = classifierReturning("new_request", 1, "daytona_pi");
+
+    it("starts the first provider in pool order, whatever sandbox the classifier named", async () => {
+      const { value, launched } = await run(newTicket(), {
+        classifier: sandboxPick,
+        sandboxPool: [{ workerType: "cloudflare_pi" }, { workerType: "daytona_pi" }],
+      });
+      expect(value).toMatchObject({
+        workerType: "cloudflare_pi",
+        workerId: `cloudflare-${value.id}`,
+      });
+      expect(launched).toEqual([
+        {
+          ticketId: value.id,
+          workerType: "cloudflare_pi",
+          workerId: `cloudflare-${value.id}`,
+        },
+      ]);
+    });
+
+    it("uses the pool when nothing names a worker type", async () => {
+      const { value } = await run(newTicket(), {
+        classifier: classifierReturning("new_request"),
+        sandboxPool: [{ workerType: "cloudflare_pi" }],
+      });
+      expect(value.workerType).toBe("cloudflare_pi");
+    });
+
+    it("skips a provider at its cap and takes the next", async () => {
+      const { value } = await run(
+        Effect.gen(function* () {
+          const first = yield* newTicket(config, "m1");
+          const second = yield* newTicket(config, "m2");
+          return [first.workerType, second.workerType];
+        }),
+        {
+          classifier: sandboxPick,
+          sandboxPool: [
+            { workerType: "cloudflare_pi", maxConcurrent: 1 },
+            { workerType: "daytona_pi" },
+          ],
+        },
+      );
+      expect(value).toEqual(["cloudflare_pi", "daytona_pi"]);
+    });
+
+    it("falls back to the shared Watcher when every provider is full", async () => {
+      const { value, launched } = await run(
+        Effect.gen(function* () {
+          yield* newTicket(config, "m1");
+          return yield* newTicket(config, "m2");
+        }),
+        { classifier: sandboxPick, sandboxPool: [{ workerType: "daytona_pi", maxConcurrent: 1 }] },
+      );
+      expect(value).toMatchObject({ workerType: "local_claude", workerId: "w1" });
+      expect(launched.at(-1)).toEqual({
+        ticketId: value.id,
+        workerType: "local_claude",
+        workerId: "w1",
+      });
+    });
+
+    it("falls back to the shared Watcher when the pool is empty", async () => {
+      const { value } = await run(newTicket(), { classifier: sandboxPick });
+      expect(value).toMatchObject({ workerType: "local_claude", workerId: "w1" });
+    });
+
+    it("leaves a local worker pick alone even with a pool", async () => {
+      const { value } = await run(newTicket(), {
+        classifier: classifierReturning("new_request", 1, "local_pi"),
+        sandboxPool: [{ workerType: "daytona_pi" }],
+      });
+      expect(value).toMatchObject({ workerType: "local_pi", workerId: "w1" });
+    });
   });
 
   it("dedupes by externalId", async () => {
