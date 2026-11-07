@@ -11,8 +11,9 @@ export class WorkerNotFound extends Data.TaggedError("WorkerNotFound")<{
 export const workerStatus = (worker: Worker, now: Date, staleAfterMs: number): WorkerStatus =>
   now.getTime() - Date.parse(worker.lastSeenAt) <= staleAfterMs ? "online" : "offline";
 
-/** A personal worker: a device someone registered, serving only their tickets. */
-export const isPersonal = (worker: Worker): boolean => worker.ownerId !== null;
+/** A shared worker: a device an admin registered into the pool, serving everyone's tickets. */
+export const isSharedDevice = (worker: Worker): boolean =>
+  worker.registered && worker.ownerId === null;
 
 /** How to name a worker to people: its name, else its id. */
 export const workerLabel = (worker: Worker): string => worker.name ?? worker.id;
@@ -28,8 +29,9 @@ export class RegistrationInvalid extends Data.TaggedError("RegistrationInvalid")
 }> {}
 
 /**
- * A caller tried to act as, or on the tickets of, a personal worker it isn't (or a personal
- * worker reached past its own tickets). Personal workers must present their bearer secret.
+ * A caller tried to act as, or on the tickets of, a registered worker it isn't (or a
+ * registered worker reached past its own tickets). Registered workers must present their
+ * bearer secret.
  */
 export class WorkerUnauthorized extends Data.TaggedError("WorkerUnauthorized")<{
   readonly workerId: string;

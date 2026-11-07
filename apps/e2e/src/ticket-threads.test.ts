@@ -8,7 +8,9 @@ import { type Stack, startStack } from "./stack.ts";
 // A new request opens a Discord thread on its message; everything said in that thread
 // belongs to the ticket, and the ticket's result is posted back there.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let WORKER: string;
+let SECRET: string;
 const CHANNEL = "chan-1";
 const ada: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada" };
 
@@ -31,8 +33,9 @@ let mcp: Awaited<ReturnType<Stack["worker"]>>;
 let projectId: string;
 
 beforeEach(async () => {
-  stack = await startStack({ classifier, workerId: WORKER });
-  mcp = await stack.worker();
+  stack = await startStack({ classifier });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
+  mcp = await stack.worker(SECRET);
   projectId = await stack.linkChannel(CHANNEL);
 });
 afterEach(() => stack.stop());

@@ -15,7 +15,9 @@ import { type Stack, startStack } from "./stack.ts";
 // Coordinator hands it to the Sidekick, which answers in the ticket's thread as the person who
 // asked. A request that needs the repo, tests or a script still waits for a Worker to pull it.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let WORKER: string;
+let SECRET: string;
 const CHANNEL = "chan-1";
 const ada: FakeSpeaker = { channelId: CHANNEL, userId: "u-ada", name: "Ada" };
 
@@ -33,7 +35,8 @@ let stack: Stack;
 let projectId: string;
 
 beforeEach(async () => {
-  stack = await startStack({ classifier, workerId: WORKER, connections: true });
+  stack = await startStack({ classifier, connections: true });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
   projectId = await stack.linkChannel(CHANNEL);
 });
 afterEach(() => stack.stop());
@@ -46,6 +49,7 @@ const say = async (who: FakeSpeaker, content: string, id?: string) => {
 const tickets = (): Promise<
   Array<{ id: string; title: string; status: string; workerType: string; workerId: string }>
 > => stack.json("GET", `/projects/${projectId}/tickets`);
+// Read as an anonymous client: a Sidekick ticket isn't the shared worker's to see.
 const events = async (ticketId: string) => {
   const mcp = await stack.worker();
   const out = (await mcp.callTool({ name: "ticket_get", arguments: { ticketId } })) as unknown as {
@@ -54,7 +58,7 @@ const events = async (ticketId: string) => {
   return out.structuredContent.events;
 };
 const assignedToWorker = async () => {
-  const mcp = await stack.worker();
+  const mcp = await stack.worker(SECRET);
   const out = (await mcp.callTool({
     name: "ticket_list_assigned",
     arguments: { workerId: WORKER, workerType: "local_claude" },

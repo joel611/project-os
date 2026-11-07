@@ -4,13 +4,15 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type Connections, makeConnections } from "@project-os/auth";
-import type { WorkerType } from "@project-os/core";
 import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
+import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
+import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
+import { registerDevice } from "../../watcher/src/register.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
@@ -77,6 +79,14 @@ export interface Stack {
    * worker's Bearer token, as the Watcher puts in Claude Code's MCP config.
    */
   readonly worker: (secret?: string) => Promise<Client>;
+  /**
+   * Adds a shared worker the way an admin does: `/register-worker shared:True` in the admin
+   * channel, the Watcher trading the code at POST /workers/register, then a heartbeat so it
+   * reads as online. Returns its id, secret, and an MCP client that sends the secret.
+   */
+  readonly registerSharedWorker: (
+    name?: string,
+  ) => Promise<{ readonly workerId: string; readonly secret: string; readonly mcp: Client }>;
   readonly stop: () => Promise<void>;
 }
 
@@ -92,12 +102,14 @@ const isLocal = (input: string | URL | Request) => {
 
 export const startStack = async (options: {
   readonly classifier: Layer.Layer<IntentClassifier>;
-  readonly workerId: string;
   /** Account linking on Better Auth against a fake OAuth server (Google + GitHub). */
   readonly connections?: boolean;
   readonly workerLauncher?: typeof WorkerLauncher.Service;
-  /** Where tickets go when the requester has no online personal worker. */
-  readonly defaultWorkerType?: WorkerType;
+  /**
+   * Tickets one shared device may hold. Default here 100, so suites that open several
+   * tickets on one shared worker don't queue them; production defaults to 1.
+   */
+  readonly sharedWorkerMaxTickets?: number;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -175,9 +187,8 @@ export const startStack = async (options: {
       http: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: {
-          workerId: options.workerId,
           requireMention: true,
-          ...(options.defaultWorkerType && { defaultWorkerType: options.defaultWorkerType }),
+          sharedWorkerMaxTickets: options.sharedWorkerMaxTickets ?? 100,
         },
         prompts: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER] },
         commands: {
@@ -217,6 +228,17 @@ export const startStack = async (options: {
   }
 
   const clients: Client[] = [];
+  const worker = async (secret?: string) => {
+    const client = new Client({ name: "integration-worker", version: "0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(
+        new URL(`${url}/mcp`),
+        secret ? { requestInit: { headers: { authorization: `Bearer ${secret}` } } } : undefined,
+      ),
+    );
+    clients.push(client);
+    return client;
+  };
 
   const json = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(`${url}${path}`, {
@@ -251,16 +273,19 @@ export const startStack = async (options: {
       });
       return project.id as string;
     },
-    worker: async (secret) => {
-      const client = new Client({ name: "integration-worker", version: "0" });
-      await client.connect(
-        new StreamableHTTPClientTransport(
-          new URL(`${url}/mcp`),
-          secret ? { requestInit: { headers: { authorization: `Bearer ${secret}` } } } : undefined,
-        ),
-      );
-      clients.push(client);
-      return client;
+    worker,
+    registerSharedWorker: async (name = "shared-box") => {
+      const admin = { channelId: ADMIN_CHANNEL, userId: ADMIN_USER, name: "Admin" };
+      const command = fakeCommand(admin, "register-worker", { shared: "true" })!;
+      const reply = await forwardCommand(url, command, fetch);
+      const token = /project-os-watcher register (\S+)/.exec(reply.content)![1]!;
+      const credentials = await registerDevice({ server: url, token, name }, fetch);
+      const mcp = await worker(credentials.secret);
+      await mcp.callTool({
+        name: "worker_heartbeat",
+        arguments: { workerId: credentials.workerId, workerType: "local_claude" },
+      });
+      return { workerId: credentials.workerId, secret: credentials.secret, mcp };
     },
     stop: async () => {
       await Promise.all(clients.map((c) => c.close()));

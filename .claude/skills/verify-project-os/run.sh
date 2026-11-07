@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Lifecycle helper for verify-project-os.  Usage: run.sh up | doctor | down
-# Ports (override via env): COORD_PORT=18080 ADAPTER_PORT=18081 WEB_PORT=15173. Worker id: WORKER_ID=verify-worker.
+# Ports (override via env): COORD_PORT=18080 ADAPTER_PORT=18081 WEB_PORT=15173. serve.ts registers a shared worker and saves its credentials to $DATA_DIR/worker.json.
 # State + logs + evidence live in $VERIFY_DIR (default /tmp/project-os-verify-$COORD_PORT).
 # `down` removes data/pids/logs but NEVER $VERIFY_DIR/evidence.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 export COORD_PORT="${COORD_PORT:-18080}" ADAPTER_PORT="${ADAPTER_PORT:-18081}" WEB_PORT="${WEB_PORT:-15173}"
-export WORKER_ID="${WORKER_ID:-verify-worker}"
 VERIFY_DIR="${VERIFY_DIR:-/tmp/project-os-verify-$COORD_PORT}"
 export DATA_DIR="$VERIFY_DIR/data"
 listener() { lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true; }
