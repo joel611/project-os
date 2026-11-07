@@ -1,4 +1,4 @@
-import type { SandboxRunner } from "@project-os/infra-sandbox";
+import type { SandboxRunner } from "@project-os/sandbox-core";
 
 /** The slice of `@daytona/sdk` the runner uses, so tests can fake it. */
 export interface DaytonaLike {
