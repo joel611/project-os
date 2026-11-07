@@ -5,7 +5,7 @@
 "@project-os/infra-sandbox": minor
 "@project-os/infra-daytona": minor
 "@project-os/infra-cloudflare-sandbox": minor
-"@project-os/infra-boat": minor
+"@project-os/sandbox-boat": minor
 "@project-os/cloudflare-sandbox": minor
 "@project-os/infra-local": patch
 "@project-os/agent-runtime": patch
