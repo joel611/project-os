@@ -6,7 +6,9 @@ import { type Stack, startStack } from "./stack.ts";
 
 // Discord -> /inbound -> ticket -> MCP worker -> completion -> /reply, with no Discord.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let WORKER: string;
+let SECRET: string;
 const CHANNEL = "chan-1";
 const speaker: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada" };
 
@@ -14,8 +16,9 @@ let stack: Stack;
 let mcp: Awaited<ReturnType<Stack["worker"]>>;
 
 const boot = async (classifier: ReturnType<typeof classifierReturning>) => {
-  stack = await startStack({ classifier, workerId: WORKER });
-  mcp = await stack.worker();
+  stack = await startStack({ classifier });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
+  mcp = await stack.worker(SECRET);
 };
 
 afterEach(() => stack.stop());

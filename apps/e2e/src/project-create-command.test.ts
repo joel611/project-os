@@ -10,7 +10,7 @@ import { ADMIN_CHANNEL, ADMIN_USER, type Stack, startStack } from "./stack.ts";
 
 let stack: Stack;
 beforeEach(async () => {
-  stack = await startStack({ classifier: classifierReturning("new_request"), workerId: "w1" });
+  stack = await startStack({ classifier: classifierReturning("new_request") });
 });
 afterEach(() => stack.stop());
 

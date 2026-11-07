@@ -144,16 +144,19 @@ export class WorkerRepository extends Context.Service<
     }) => Effect.Effect<Worker>;
     readonly get: (id: string) => Effect.Effect<Worker, WorkerNotFound>;
     readonly list: Effect.Effect<ReadonlyArray<Worker>>;
-    /** Creates a personal worker owned by one person, authenticated by `secretHash`. */
+    /**
+     * Creates a registered device, authenticated by `secretHash`: a personal worker owned by
+     * one person, or (owner null) a shared worker an admin added to the pool.
+     */
     readonly register: (input: {
       readonly id: string;
       readonly workerType: WorkerType;
-      readonly owner: { readonly channelType: ChannelType; readonly id: string };
+      readonly owner: { readonly channelType: ChannelType; readonly id: string } | null;
       readonly name: string;
       readonly secretHash: string;
       readonly at: string;
     }) => Effect.Effect<Worker>;
-    /** The personal worker whose secret hashes to `secretHash`, if any. */
+    /** The registered worker whose secret hashes to `secretHash`, if any. */
     readonly findBySecretHash: (secretHash: string) => Effect.Effect<Worker | undefined>;
     /** Personal workers this person registered. */
     readonly listByOwner: (

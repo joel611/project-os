@@ -3,8 +3,10 @@ import {
   healthSweep,
   TicketNotFound,
   TicketRepository,
+  WorkerLauncher,
   WorkerRepository,
   type HealthThresholds,
+  type SandboxPoolEntry,
   type TicketEvent,
   type Ticket,
 } from "@project-os/core";
@@ -55,6 +57,8 @@ const inProgress = (over: Partial<Ticket> = {}) =>
 const scenario = <A>(
   body: (setNow: (minutes: number) => void) => Effect.Effect<A, unknown, any>,
   tickets: Layer.Layer<TicketRepository> = TicketRepositoryInMemory,
+  pool: ReadonlyArray<SandboxPoolEntry> = [],
+  launched: Array<{ ticketId: string; workerId: string }> = [],
 ): Promise<A> => {
   let nowMs = T0;
   const layer = Layer.mergeAll(
@@ -62,6 +66,11 @@ const scenario = <A>(
     IdGeneratorSequential,
     tickets,
     WorkerRepositoryInMemory,
+    Layer.succeed(WorkerLauncher, {
+      pool: Effect.succeed(pool),
+      launch: ({ ticketId, workerId }) =>
+        Effect.sync(() => void launched.push({ ticketId, workerId })),
+    }),
   );
   const program = body((m) => {
     nowMs = T0 + m * MIN;
@@ -251,6 +260,114 @@ describe("healthSweep: in_progress tickets", () => {
         yield* repo.insert(ticket({ id: "b", status: "blocked" }));
         yield* repo.insert(ticket({ id: "c", status: "open", workerId: null }));
         setNow(120);
+        expect(yield* healthSweep(thresholds)).toEqual([]);
+      }),
+    ));
+});
+
+describe("healthSweep: queued tickets", () => {
+  const ADA = { channelType: "discord" as const, sender: { id: "u-ada" } };
+  /** An `open` ticket with no worker, as handleInbound leaves it when nobody had room. */
+  const queue = (id: string, minutes: number, payload: unknown = ADA) =>
+    Effect.gen(function* () {
+      const repo = yield* TicketRepository;
+      yield* repo.insert(
+        ticket({
+          id,
+          status: "open",
+          workerType: null,
+          workerId: null,
+          assignedAt: null,
+          createdAt: iso(minutes),
+        }),
+      );
+      yield* repo.appendEvent({
+        id: `${id}-created`,
+        ticketId: id,
+        type: "created",
+        actor: "coordinator",
+        actorId: null,
+        body: "",
+        payload,
+        createdAt: iso(minutes),
+      });
+    });
+  const register = (id: string, owner: { channelType: "discord"; id: string } | null) =>
+    Effect.flatMap(WorkerRepository, (w) =>
+      w.register({
+        id,
+        workerType: "local_claude",
+        owner,
+        name: id,
+        secretHash: `h-${id}`,
+        at: iso(0),
+      }),
+    );
+
+  it("assigns the oldest queued ticket once a shared device frees up, and leaves the next queued", () =>
+    scenario((setNow) =>
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        yield* register("shared-1", null);
+        yield* beat("shared-1", 0);
+        yield* repo.insert(inProgress({ id: "busy", workerId: "shared-1" }));
+        yield* queue("q2", 2);
+        yield* queue("q1", 1);
+        expect(yield* healthSweep(thresholds)).toEqual([]);
+
+        yield* repo.updateStatus("busy", "completed", iso(3));
+        yield* beat("shared-1", 3);
+        setNow(3);
+        expect(yield* healthSweep(thresholds)).toEqual([
+          { kind: "assigned", ticketId: "q1", workerId: "shared-1" },
+        ]);
+        expect(yield* repo.get("q1")).toMatchObject({ status: "assigned", workerId: "shared-1" });
+        expect((yield* repo.get("q2")).status).toBe("open");
+        const events = yield* repo.listEvents("q1");
+        expect(events.at(-1)).toMatchObject({
+          type: "assigned",
+          body: "Assigned to the shared worker shared-1",
+          payload: { kind: "shared", personal: false },
+        });
+      }),
+    ));
+
+  it("gives a queued ticket to the requester's own device once it comes online", () =>
+    scenario(() =>
+      Effect.gen(function* () {
+        yield* queue("q1", 0);
+        yield* register("local-ada", { channelType: "discord", id: "u-ada" });
+        expect(yield* healthSweep(thresholds)).toEqual([]);
+        yield* beat("local-ada", 0);
+        expect(yield* healthSweep(thresholds)).toEqual([
+          { kind: "assigned", ticketId: "q1", workerId: "local-ada" },
+        ]);
+      }),
+    ));
+
+  it("starts a sandbox for a queued ticket once the pool has room", async () => {
+    const launched: Array<{ ticketId: string; workerId: string }> = [];
+    await scenario(
+      () =>
+        Effect.gen(function* () {
+          yield* queue("q1", 0);
+          expect(yield* healthSweep(thresholds)).toEqual([
+            { kind: "assigned", ticketId: "q1", workerId: "daytona-q1" },
+          ]);
+        }),
+      TicketRepositoryInMemory,
+      [{ workerType: "daytona_pi" }],
+      launched,
+    );
+    expect(launched).toEqual([{ ticketId: "q1", workerId: "daytona-q1" }]);
+  });
+
+  it("skips a queued ticket whose requester it can't tell", () =>
+    scenario(() =>
+      Effect.gen(function* () {
+        yield* register("shared-1", null);
+        yield* beat("shared-1", 0);
+        yield* queue("q1", 0, { note: "no sender" });
         expect(yield* healthSweep(thresholds)).toEqual([]);
       }),
     ));

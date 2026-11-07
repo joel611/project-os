@@ -1,7 +1,8 @@
-import type { TicketEvent } from "@project-os/contracts";
-import { Effect } from "effect";
+import { ChannelType, type TicketEvent } from "@project-os/contracts";
+import { Effect, Option, Schema } from "effect";
 import { workerStatus, type Ticket } from "../../domain/index.ts";
 import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
+import { assignToWorker, pickWorker } from "./assign-worker.ts";
 
 /** Thresholds in milliseconds (docs/technical-architecture.md §5.5). */
 export interface HealthThresholds {
@@ -13,15 +14,25 @@ export interface HealthThresholds {
   readonly followUpMs: number;
   /** `in_progress` with no activity for this long → failed. */
   readonly inactivityFailMs: number;
+  /** Queued tickets are routed with this (see `WorkerRouting`). */
+  readonly sharedWorkerMaxTickets?: number;
 }
 
 export type HealthAction =
+  | { readonly kind: "assigned"; readonly ticketId: string; readonly workerId: string }
   | { readonly kind: "assignment_flagged"; readonly ticketId: string; readonly reason: string }
   | { readonly kind: "follow_up"; readonly ticketId: string }
   | { readonly kind: "failed"; readonly ticketId: string; readonly reason: string };
 
 const KIND_FLAGGED = "health_assignment_flagged";
 const KIND_FOLLOW_UP = "health_follow_up";
+
+/** Who asked for a ticket: the sender on its `created` event. */
+const Requester = Schema.Struct({
+  channelType: ChannelType,
+  sender: Schema.Struct({ id: Schema.String }),
+});
+const decodeRequester = Schema.decodeUnknownOption(Requester);
 
 const payloadOf = (event: TicketEvent): { kind?: unknown; idleSince?: string } =>
   typeof event.payload === "object" && event.payload !== null ? event.payload : {};
@@ -30,6 +41,10 @@ const payloadOf = (event: TicketEvent): { kind?: unknown; idleSince?: string } =
  * Coordinator health sweep (§5.5). Safe to run repeatedly: a ticket is flagged / followed up
  * at most once per stalled period. Returns the actions taken. Per-ticket repository errors
  * are dropped so one bad ticket cannot stop the sweep.
+ *
+ * Queued tickets (`open`, no worker had room when they came in) are assigned, oldest first,
+ * as soon as a worker can take them: the requester's own device, a free shared device, or a
+ * sandbox from the pool.
  *
  * Worker online/offline is derived from `lastSeenAt` (see `workerStatus`), never stored.
  * Reassignment and retry are not implemented: the ticket state machine has no
@@ -70,6 +85,21 @@ export const healthSweep = (thresholds: HealthThresholds) =>
           createdAt: at,
         }),
       );
+
+    const sweepQueued = (t: Ticket) =>
+      Effect.gen(function* () {
+        const created = (yield* tickets.listEvents(t.id)).find((e) => e.type === "created");
+        const requester = decodeRequester(created?.payload);
+        if (Option.isNone(requester)) return [];
+        const pick = yield* pickWorker(
+          { channelType: requester.value.channelType, id: requester.value.sender.id },
+          t.id,
+          thresholds,
+        );
+        if (!pick) return [];
+        yield* assignToWorker(t.id, pick, at);
+        return [{ kind: "assigned", ticketId: t.id, workerId: pick.workerId } as const];
+      });
 
     const sweepAssigned = (t: Ticket) =>
       Effect.gen(function* () {
@@ -126,12 +156,18 @@ export const healthSweep = (thresholds: HealthThresholds) =>
       });
 
     const guarded =
-      (rule: (t: Ticket) => Effect.Effect<ReadonlyArray<HealthAction>, unknown>) => (t: Ticket) =>
+      <R>(rule: (t: Ticket) => Effect.Effect<ReadonlyArray<HealthAction>, unknown, R>) =>
+      (t: Ticket) =>
         rule(t).pipe(Effect.catch(() => Effect.succeed<ReadonlyArray<HealthAction>>([])));
 
+    // One at a time, oldest first: each assignment fills a slot the next pick must see.
+    const queued = (yield* tickets.listByStatus(["open"]))
+      .filter((t) => t.workerId === null)
+      .sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+    const q = yield* Effect.forEach(queued, guarded(sweepQueued));
     const assigned = yield* tickets.listByStatus(["assigned"]);
     const running = yield* tickets.listByStatus(["in_progress"]);
     const a = yield* Effect.forEach(assigned, guarded(sweepAssigned));
     const b = yield* Effect.forEach(running, guarded(sweepInProgress));
-    return [...a.flat(), ...b.flat()];
+    return [...q.flat(), ...a.flat(), ...b.flat()];
   });

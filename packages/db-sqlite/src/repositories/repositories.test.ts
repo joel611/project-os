@@ -600,6 +600,7 @@ describe("WorkerRepository", () => {
       workerType: "local_claude",
       ownerChannelType: null,
       ownerId: null,
+      registered: false,
       name: null,
       currentTicketId: null,
       lastSeenAt: T0,
@@ -661,5 +662,29 @@ describe("WorkerRepository", () => {
     expect(out.removed).toBe(true);
     expect(out.removedAgain).toBe(false);
     expect(out.afterRemove).toBeUndefined();
+  });
+
+  it("registers a shared device with no owner, still behind its secret", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* WorkerRepository;
+        const shared = yield* repo.register({
+          id: "shared-a",
+          workerType: "local_claude",
+          owner: null,
+          name: "build-box",
+          secretHash: "hs",
+          at: T0,
+        });
+        return { shared, byHash: yield* repo.findBySecretHash("hs") };
+      }),
+    );
+    expect(out.shared).toMatchObject({
+      ownerChannelType: null,
+      ownerId: null,
+      registered: true,
+      name: "build-box",
+    });
+    expect(out.byHash?.id).toBe("shared-a");
   });
 });

@@ -7,7 +7,9 @@ import { type Stack, startStack } from "./stack.ts";
 // The dashboard's live system map reads GET /activity. A Discord message, an MCP worker's
 // claim and completion must all show up there, in order, with the sender's identity.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let WORKER: string;
+let SECRET: string;
 const CHANNEL = "chan-1";
 const speaker: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada" };
 
@@ -15,8 +17,9 @@ let stack: Stack;
 let mcp: Awaited<ReturnType<Stack["worker"]>>;
 
 beforeEach(async () => {
-  stack = await startStack({ classifier: classifierReturning("new_request"), workerId: WORKER });
-  mcp = await stack.worker();
+  stack = await startStack({ classifier: classifierReturning("new_request") });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
+  mcp = await stack.worker(SECRET);
 });
 afterEach(() => stack.stop());
 

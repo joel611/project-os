@@ -9,4 +9,6 @@ export const healthConfig = () => ({
   followUpMs: envNumber("HEALTH_FOLLOW_UP_MIN", 15) * MINUTE_MS,
   inactivityFailMs: envNumber("HEALTH_INACTIVITY_FAIL_MIN", 30) * MINUTE_MS,
   sweepEveryMs: envNumber("HEALTH_SWEEP_EVERY_SEC", 60) * 1000,
+  /** Tickets one shared device holds at once before the next goes elsewhere. */
+  sharedWorkerMaxTickets: envNumber("SHARED_WORKER_MAX_TICKETS", 1),
 });
