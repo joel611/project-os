@@ -1,4 +1,4 @@
-import type { SandboxRunner } from "@project-os/infra-sandbox";
+import type { SandboxRunner } from "@project-os/sandbox-core";
 
 export const BOAT_SIZES = ["small", "default", "large", "xlarge"] as const;
 export type BoatSize = (typeof BOAT_SIZES)[number];

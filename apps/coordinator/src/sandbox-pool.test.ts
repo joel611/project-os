@@ -1,4 +1,4 @@
-import type { SandboxRunner } from "@project-os/infra-sandbox";
+import type { SandboxRunner } from "@project-os/sandbox-core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";

@@ -1,6 +1,6 @@
 import { cloudflareSandboxRunnerLive } from "@project-os/sandbox-cloudflare";
 import { handleBridge, type SandboxStubLike } from "@project-os/sandbox-cloudflare/bridge";
-import { makeSandboxLauncher, type SandboxRunner } from "@project-os/infra-sandbox";
+import { makeSandboxLauncher, type SandboxRunner } from "@project-os/sandbox-core";
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
