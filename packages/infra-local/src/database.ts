@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { migrationsFolder, schema, SqliteRepositories } from "@project-os/db-sqlite";
+import { migrationsFolder, SqliteRepositories } from "@project-os/db-sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect, Layer } from "effect";
@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 export const openLocalDb = (path: string) => {
   const sqlite = new Database(path, { create: true });
   sqlite.run("PRAGMA foreign_keys = ON");
-  const db = drizzle(sqlite, { schema });
+  const db = drizzle({ client: sqlite });
   migrate(db, { migrationsFolder });
   return { sqlite, db };
 };

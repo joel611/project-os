@@ -8,7 +8,6 @@
 // `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
 // stage without OAuth clients deploys with account linking off (same rule as local).
 // See docs/deployment.md.
-import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
@@ -17,23 +16,6 @@ import * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 
 const COMPATIBILITY_DATE = "2026-10-01";
-
-/**
- * Alchemy reads flat `.sql` folders or drizzle-kit v1 folders, but db-sqlite uses the
- * drizzle-kit v0 layout (`meta/_journal.json`), which the local Bun provider's migrator
- * also reads. Copy just the `.sql` files into a flat folder for D1 instead of converting.
- * Names are `NNNN_tag.sql`, so lexical order is migration order.
- */
-const d1Migrations = () => {
-  const from = "packages/db-sqlite/migrations";
-  const to = "dist/d1-migrations";
-  rmSync(to, { recursive: true, force: true });
-  mkdirSync(to, { recursive: true });
-  for (const file of readdirSync(from).filter((f) => f.endsWith(".sql"))) {
-    copyFileSync(`${from}/${file}`, `${to}/${file}`);
-  }
-  return `./${to}`;
-};
 
 /** Plain vars with the same defaults as `.env.example`. */
 const vars = {
@@ -96,7 +78,9 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     // App database. Same Drizzle migrations as the local SQLite provider; Alchemy applies
     // pending ones on each deploy and tracks them in `__alchemy_migrations`.
-    const db = yield* Cloudflare.D1.Database("DB", { migrations: d1Migrations() });
+    const db = yield* Cloudflare.D1.Database("DB", {
+      migrations: "./packages/db-sqlite/migrations",
+    });
     const kv = yield* Cloudflare.KV.Namespace("KV");
 
     const plain = yield* readVars;
