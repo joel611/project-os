@@ -2,7 +2,7 @@
 "@project-os/contracts": minor
 "@project-os/core": minor
 "@project-os/coordinator": minor
-"@project-os/infra-sandbox": minor
+"@project-os/sandbox-core": minor
 "@project-os/sandbox-daytona": minor
 "@project-os/sandbox-cloudflare": minor
 "@project-os/sandbox-boat": minor

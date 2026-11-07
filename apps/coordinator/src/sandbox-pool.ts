@@ -3,7 +3,7 @@ import type { WorkerLauncher } from "@project-os/core";
 import { BOAT_SIZES, type BoatSize, boatSandboxRunner } from "@project-os/sandbox-boat";
 import { cloudflareSandboxRunnerLive } from "@project-os/sandbox-cloudflare";
 import { daytonaSandboxRunner } from "@project-os/sandbox-daytona";
-import { makeSandboxLauncher, resolvePool, type SandboxRunner } from "@project-os/infra-sandbox";
+import { makeSandboxLauncher, resolvePool, type SandboxRunner } from "@project-os/sandbox-core";
 
 type Env = Readonly<Record<string, string | undefined>>;
 

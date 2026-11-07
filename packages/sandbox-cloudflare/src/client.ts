@@ -1,4 +1,4 @@
-import type { SandboxRunner } from "@project-os/infra-sandbox";
+import type { SandboxRunner } from "@project-os/sandbox-core";
 import type { SessionStatus, StartSession } from "./protocol.ts";
 
 export const DEFAULT_POLL_MS = 5_000;

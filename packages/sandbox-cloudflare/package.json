@@ -8,6 +8,6 @@
     "./bridge": "./src/bridge.ts"
   },
   "dependencies": {
-    "@project-os/infra-sandbox": "workspace:*"
+    "@project-os/sandbox-core": "workspace:*"
   }
 }
