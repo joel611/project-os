@@ -1,10 +1,10 @@
 {
-  "dialect": "sqlite",
-  "id": "fe1b3c47-f161-4b21-8a0b-f2b550d04bd7",
-  "prevIds": [
-    "ebb346e3-a54c-4964-855f-c2e05016a547"
-  ],
   "version": "7",
+  "dialect": "sqlite",
+  "id": "12b22786-8bba-4bca-9b71-7d2c4bf08018",
+  "prevIds": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
   "ddl": [
     {
       "name": "orgs",
@@ -293,6 +293,26 @@
       "name": "name",
       "type": "text",
       "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "project_sources",
+      "name": "alias",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "project_sources",
+      "name": "description",
+      "type": "text",
+      "notNull": false,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -730,6 +750,46 @@
     },
     {
       "table": "workers",
+      "name": "owner_channel_type",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workers",
+      "name": "owner_id",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workers",
+      "name": "name",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workers",
+      "name": "secret_hash",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "workers",
       "name": "current_ticket_id",
       "type": "text",
       "notNull": false,
@@ -1149,11 +1209,15 @@
       "entityType": "columns"
     },
     {
-      "table": "users",
-      "name": "users_email_unique",
+      "table": "project_sources",
+      "name": "project_sources_type_external_id_uq",
       "columns": [
         {
-          "value": "email",
+          "value": "type",
+          "isExpression": false
+        },
+        {
+          "value": "external_id",
           "isExpression": false
         }
       ],
@@ -1164,14 +1228,14 @@
     },
     {
       "table": "project_sources",
-      "name": "project_sources_type_external_id_uq",
+      "name": "project_sources_project_alias_uq",
       "columns": [
         {
-          "value": "type",
+          "value": "project_id",
           "isExpression": false
         },
         {
-          "value": "external_id",
+          "value": "alias",
           "isExpression": false
         }
       ],
@@ -1277,6 +1341,38 @@
       "entityType": "indexes"
     },
     {
+      "table": "workers",
+      "name": "workers_owner_idx",
+      "columns": [
+        {
+          "value": "owner_channel_type",
+          "isExpression": false
+        },
+        {
+          "value": "owner_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
+      "table": "workers",
+      "name": "workers_secret_hash_uq",
+      "columns": [
+        {
+          "value": "secret_hash",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
       "table": "ticket_threads",
       "name": "ticket_threads_thread_uq",
       "columns": [
@@ -1310,20 +1406,6 @@
     },
     {
       "table": "auth_sessions",
-      "name": "auth_sessions_token_unique",
-      "columns": [
-        {
-          "value": "token",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "origin": "manual",
-      "entityType": "indexes"
-    },
-    {
-      "table": "auth_sessions",
       "name": "auth_sessions_user_idx",
       "columns": [
         {
@@ -1332,20 +1414,6 @@
         }
       ],
       "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "entityType": "indexes"
-    },
-    {
-      "table": "auth_users",
-      "name": "auth_users_email_unique",
-      "columns": [
-        {
-          "value": "email",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
       "where": null,
       "origin": "manual",
       "entityType": "indexes"
@@ -1366,7 +1434,7 @@
     },
     {
       "table": "users",
-      "name": "users_org_id_orgs_id_fk",
+      "name": "fk_users_org_id_orgs_id_fk",
       "columns": [
         "org_id"
       ],
@@ -1381,7 +1449,7 @@
     },
     {
       "table": "projects",
-      "name": "projects_org_id_orgs_id_fk",
+      "name": "fk_projects_org_id_orgs_id_fk",
       "columns": [
         "org_id"
       ],
@@ -1396,7 +1464,7 @@
     },
     {
       "table": "project_sources",
-      "name": "project_sources_project_id_projects_id_fk",
+      "name": "fk_project_sources_project_id_projects_id_fk",
       "columns": [
         "project_id"
       ],
@@ -1411,7 +1479,7 @@
     },
     {
       "table": "memory_entries",
-      "name": "memory_entries_project_id_projects_id_fk",
+      "name": "fk_memory_entries_project_id_projects_id_fk",
       "columns": [
         "project_id"
       ],
@@ -1426,7 +1494,7 @@
     },
     {
       "table": "tickets",
-      "name": "tickets_project_id_projects_id_fk",
+      "name": "fk_tickets_project_id_projects_id_fk",
       "columns": [
         "project_id"
       ],
@@ -1441,7 +1509,7 @@
     },
     {
       "table": "ticket_events",
-      "name": "ticket_events_ticket_id_tickets_id_fk",
+      "name": "fk_ticket_events_ticket_id_tickets_id_fk",
       "columns": [
         "ticket_id"
       ],
@@ -1456,7 +1524,7 @@
     },
     {
       "table": "ticket_threads",
-      "name": "ticket_threads_ticket_id_tickets_id_fk",
+      "name": "fk_ticket_threads_ticket_id_tickets_id_fk",
       "columns": [
         "ticket_id"
       ],
@@ -1471,7 +1539,7 @@
     },
     {
       "table": "auth_accounts",
-      "name": "auth_accounts_user_id_auth_users_id_fk",
+      "name": "fk_auth_accounts_user_id_auth_users_id_fk",
       "columns": [
         "user_id"
       ],
@@ -1486,7 +1554,7 @@
     },
     {
       "table": "auth_sessions",
-      "name": "auth_sessions_user_id_auth_users_id_fk",
+      "name": "fk_auth_sessions_user_id_auth_users_id_fk",
       "columns": [
         "user_id"
       ],
@@ -1615,6 +1683,33 @@
       ],
       "nameExplicit": false,
       "entityType": "pks"
+    },
+    {
+      "table": "users",
+      "name": "users_email_unique",
+      "columns": [
+        "email"
+      ],
+      "nameExplicit": false,
+      "entityType": "uniques"
+    },
+    {
+      "table": "auth_sessions",
+      "name": "auth_sessions_token_unique",
+      "columns": [
+        "token"
+      ],
+      "nameExplicit": false,
+      "entityType": "uniques"
+    },
+    {
+      "table": "auth_users",
+      "name": "auth_users_email_unique",
+      "columns": [
+        "email"
+      ],
+      "nameExplicit": false,
+      "entityType": "uniques"
     }
   ],
   "renames": []
