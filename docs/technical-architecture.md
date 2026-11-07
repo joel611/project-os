@@ -242,7 +242,7 @@ Daytona Workers don't need a watcher: the Coordinator starts a sandbox when it a
 
 How it works (`packages/sandbox-daytona`, enabled by `DAYTONA_API_KEY`):
 
-- A sandbox ticket is assigned to its own worker id, `sandbox-<provider>-<ticketId>`, so no Watcher ever sees it and `ticket_claim` admits only that sandbox.
+- A sandbox ticket is assigned to its own worker id, `<provider>-<ticketId>` (e.g. `daytona-<ticketId>`), so no Watcher ever sees it and `ticket_claim` admits only that sandbox.
 - `handleInbound` calls `WorkerLauncher.launch` after assigning. The launcher creates an ephemeral sandbox, installs Pi (`@earendil-works/pi-coding-agent`), writes `~/.pi/agent/mcp.json` pointing at the Coordinator, and runs `pi --print` with the session-start prompt plus the worker id. Pi speaks streamable-HTTP MCP natively, so no bridge is needed. The sandbox is deleted when the session ends.
 - The sandbox is in the cloud, so the MCP endpoint must be public: `DAYTONA_MCP_URL` (a tunnel to the Coordinator's `/mcp`), never `MCP_URL`. The LLM key is `OPENROUTER_API_KEY`, passed as sandbox env.
 - Launch failures are logged, not raised. The ticket stays `assigned`, and the health sweep flags it as unpicked.
