@@ -7,7 +7,6 @@ import {
 } from "@project-os/agent-runtime";
 import { DEFAULT_WORKER_ID, env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
-import { daytonaSandboxRunner, makeDaytonaLauncher } from "@project-os/infra-daytona";
 import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import type { WorkerType } from "@project-os/contracts";
@@ -16,6 +15,7 @@ import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp } from "./app.ts";
 import { startHealthSweep } from "./health/start.ts";
+import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
 
 // Local target: Bun + infra-local + Pi/Jev agent runtime (docs/technical-architecture.md §8).
@@ -81,26 +81,12 @@ const AiLive = Layer.orDie(
   ),
 );
 
-// `daytona_pi` tickets start a sandbox only when a key is set; otherwise nothing launches them.
-const daytonaApiKey = process.env.DAYTONA_API_KEY;
-const workerLauncher = daytonaApiKey
-  ? makeDaytonaLauncher({
-      sandbox: daytonaSandboxRunner({
-        apiKey: daytonaApiKey,
-        ...(process.env.DAYTONA_API_URL && { apiUrl: process.env.DAYTONA_API_URL }),
-        ...(process.env.DAYTONA_SNAPSHOT && { snapshot: process.env.DAYTONA_SNAPSHOT }),
-      }),
-      // The sandbox is in the cloud: this must be a public URL (tunnel), not MCP_URL.
-      mcpUrl: env("DAYTONA_MCP_URL"),
-      openrouterApiKey: env("OPENROUTER_API_KEY"),
-      model: env("DAYTONA_PI_MODEL", `openrouter/${env("CHAT_MODEL_ID")}`),
-      prompt: await Bun.file(
-        new URL("../../watcher/prompts/session-start.md", import.meta.url),
-      ).text(),
-      timeoutSeconds: envNumber("DAYTONA_SESSION_TIMEOUT_SECONDS", 30 * 60),
-      log: console.log,
-    })
-  : undefined;
+// The sandbox pool: Daytona and/or Cloudflare Sandbox, in WORKER_PROVIDERS order. Each joins
+// only when its credentials are set; with none, tickets go to the shared Watcher (WORKER_ID).
+const workerLauncher = sandboxLauncherFromEnv(process.env, {
+  prompt: await Bun.file(new URL("../../watcher/prompts/session-start.md", import.meta.url)).text(),
+  log: console.log,
+});
 
 // Discord runs inside this process when a bot token is set. Its reply endpoint binds loopback on
 // a free port: it can post as the bot, so it must not sit on the public port. DISCORD_SPLIT_GATEWAY_URL
@@ -159,9 +145,10 @@ createApp(
         // Personal workers count as online within the health sweep's window.
         workerStaleMs: healthConfig().workerStaleMs,
         // Tickets from someone without an online personal worker go to the shared worker:
-        // Daytona when it's configured, else the shared Watcher (WORKER_ID).
-        defaultWorkerType: (process.env.DEFAULT_WORKER_TYPE ??
-          (daytonaApiKey ? "daytona_pi" : "local_claude")) as WorkerType,
+        // the first sandbox in the pool with room, else the shared Watcher (WORKER_ID).
+        ...(process.env.DEFAULT_WORKER_TYPE && {
+          defaultWorkerType: process.env.DEFAULT_WORKER_TYPE as WorkerType,
+        }),
         // Admin identity (POC): only these Discord user ids may use the admin channel.
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },

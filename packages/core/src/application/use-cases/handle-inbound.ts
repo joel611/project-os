@@ -1,4 +1,9 @@
-import type { InboundMessage, ReplyInstruction, WorkerType } from "@project-os/contracts";
+import {
+  type InboundMessage,
+  isSandboxWorkerType,
+  type ReplyInstruction,
+  type WorkerType,
+} from "@project-os/contracts";
 import { Effect } from "effect";
 import { ACTIVE_STATUSES, isTerminal, type Ticket, workerLabel } from "../../domain/index.ts";
 import {
@@ -13,6 +18,7 @@ import {
   WorkerLauncher,
 } from "../ports/index.ts";
 import { onlinePersonalWorker } from "./personal-workers.ts";
+import { pickSandboxProvider, sandboxWorkerId } from "./sandbox-pool.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { nowIso, updateStatus } from "./tickets.ts";
@@ -27,6 +33,10 @@ export interface HandleInboundConfig {
   readonly adminUserIds?: ReadonlyArray<string>;
   /** Below this the Coordinator asks a clarifying question. Default 0.5. */
   readonly confidenceThreshold?: number;
+  /**
+   * Shared worker for tickets the classifier doesn't route. Unset: a sandbox from the pool when
+   * there is one, else `local_claude`. Any sandbox type means "the pool", whichever provider.
+   */
   readonly defaultWorkerType?: WorkerType;
   /**
    * Worker to assign new tickets to. `ticket_claim` only admits the assigned `worker_id`,
@@ -295,13 +305,22 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     switch (result.intent) {
       case "new_request": {
         // The requester's own online device takes the ticket. Otherwise it goes to a shared
-        // worker: the classifier's pick or the default (Daytona, when configured).
+        // worker: the classifier's pick or the default. A sandbox pick is served from the pool
+        // (first provider in WORKER_PROVIDERS order with room); with none free, or none
+        // configured, it falls back to the shared Watcher.
         const personal = yield* onlinePersonalWorker(
           { channelType: message.channelType, id: message.sender.id },
           config.workerStaleMs ?? DEFAULT_WORKER_STALE_MS,
         );
-        const workerType =
-          personal?.workerType ?? result.workerType ?? config.defaultWorkerType ?? "local_claude";
+        const requested = result.workerType ?? config.defaultWorkerType;
+        const sandbox =
+          personal === undefined && (requested === undefined || isSandboxWorkerType(requested))
+            ? yield* pickSandboxProvider
+            : undefined;
+        const workerType: WorkerType =
+          personal?.workerType ??
+          sandbox?.workerType ??
+          (requested === undefined || isSandboxWorkerType(requested) ? "local_claude" : requested);
         const ticketId = yield* ids.next;
         yield* tickets.insert({
           id: ticketId,
@@ -383,12 +402,12 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           }
           return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
         }
-        // `ticket_claim` only admits the assigned worker. A Daytona session is a fresh worker
+        // `ticket_claim` only admits the assigned worker. A sandbox session is a fresh worker
         // per ticket, so it gets its own id and the host Watcher never sees the ticket.
         const workerId = personal
           ? personal.id
-          : workerType === "daytona_pi"
-            ? `daytona-${ticketId}`
+          : sandbox
+            ? sandboxWorkerId(sandbox.workerType, ticketId)
             : (config.workerId ?? null);
         const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
         yield* tickets.appendEvent({

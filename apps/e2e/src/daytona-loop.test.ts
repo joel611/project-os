@@ -1,4 +1,4 @@
-import { makeDaytonaLauncher, type SandboxRunner } from "@project-os/infra-daytona";
+import { makeSandboxLauncher, type SandboxRunner } from "@project-os/infra-sandbox";
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
@@ -7,7 +7,7 @@ import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import { type Stack, startStack } from "./stack.ts";
 
-// Discord message -> daytona_pi Ticket -> Daytona launcher -> sandbox session -> reply.
+// Discord message -> daytona_pi Ticket -> sandbox launcher (pool: Daytona) -> session -> reply.
 // The Daytona SDK is faked at the SandboxRunner seam. The sandbox's Pi session is played by an
 // SDK MCP client that reads its worker id from the prompt the launcher hands the sandbox.
 
@@ -62,8 +62,8 @@ beforeEach(async () => {
   stack = await startStack({
     classifier: classifierReturning("new_request", 1, "daytona_pi"),
     workerId: LOCAL_WORKER,
-    workerLauncher: makeDaytonaLauncher({
-      sandbox,
+    workerLauncher: makeSandboxLauncher({
+      providers: [{ workerType: "daytona_pi", runner: sandbox }],
       mcpUrl: "https://tunnel.example/mcp",
       openrouterApiKey: "sk-or",
       model: "openrouter/m",

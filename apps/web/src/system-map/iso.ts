@@ -73,6 +73,8 @@ export const WORKER_LABEL: Readonly<Record<WorkerType, string>> = {
   local_claude: "Claude Code",
   local_pi: "Pi (local)",
   daytona_pi: "Pi (Daytona)",
+  cloudflare_pi: "Pi (Cloudflare)",
+  boat_pi: "Pi (boat.dev)",
   sidekick: "Sidekick",
 };
 

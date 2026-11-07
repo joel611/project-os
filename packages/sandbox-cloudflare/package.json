@@ -1,0 +1,13 @@
+{
+  "name": "@project-os/sandbox-cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bridge": "./src/bridge.ts"
+  },
+  "dependencies": {
+    "@project-os/infra-sandbox": "workspace:*"
+  }
+}

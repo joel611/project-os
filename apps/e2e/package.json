@@ -10,8 +10,9 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@project-os/auth": "workspace:*",
     "@project-os/core": "workspace:*",
-    "@project-os/infra-daytona": "workspace:*",
     "@project-os/infra-local": "workspace:*",
+    "@project-os/infra-sandbox": "workspace:*",
+    "@project-os/sandbox-cloudflare": "workspace:*",
     "@project-os/testing": "workspace:*",
     "effect": "4.1.2"
   }

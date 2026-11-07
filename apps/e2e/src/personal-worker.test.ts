@@ -31,6 +31,7 @@ beforeEach(async () => {
     workerId: "shared-1",
     defaultWorkerType: "daytona_pi",
     workerLauncher: {
+      pool: Effect.succeed([{ workerType: "daytona_pi" }]),
       launch: (input) => Effect.sync(() => void launched.push(input)),
     },
   });

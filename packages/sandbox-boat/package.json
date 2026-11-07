@@ -1,0 +1,13 @@
+{
+  "name": "@project-os/sandbox-boat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@boatdev/sdk": "1.13.0",
+    "@project-os/infra-sandbox": "workspace:*"
+  }
+}

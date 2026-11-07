@@ -4,13 +4,14 @@ How to connect project-os to Discord, Google Drive, and GitHub, step by step, wi
 
 You need three things working, in this order:
 
-| Step                                             | What it gives you                                                                                 | Required?         | `.env` keys                                                                                                  |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| [1. Discord bot](#1-discord-bot)                 | The bot hears messages, replies, creates project channels and ticket threads                      | Yes               | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS` |
-| [2. Google Drive](#2-google-drive-oauth-client)  | Each person links their own Google account, so Workers read Drive with that person's access       | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
-| [3. GitHub](#3-github-app)                       | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
-| [4. Account linking](#4-turn-on-account-linking) | Turns on `/connect` for steps 2 and 3                                                             | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                           |
-| [5. Personal workers](#5-personal-workers)       | People run `/register-worker` to use their own computer as their Worker; others get Daytona       | Optional          | `PUBLIC_URL`, `DAYTONA_API_KEY`, `DEFAULT_WORKER_TYPE`, `WATCHER_INSTALL_COMMAND`                            |
+| Step                                                 | What it gives you                                                                                          | Required?         | `.env` keys                                                                                                  |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| [1. Discord bot](#1-discord-bot)                     | The bot hears messages, replies, creates project channels and ticket threads                               | Yes               | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS` |
+| [2. Google Drive](#2-google-drive-oauth-client)      | Each person links their own Google account, so Workers read Drive with that person's access                | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
+| [3. GitHub](#3-github-app)                           | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access          | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
+| [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                                      | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                           |
+| [5. Personal workers](#5-personal-workers)           | People run `/register-worker` to use their own computer as their Worker; others get a sandbox              | Optional          | `PUBLIC_URL`, `DEFAULT_WORKER_TYPE`, `WATCHER_INSTALL_COMMAND`                                               |
+| [6. Cloud sandbox workers](#6-cloud-sandbox-workers) | The Coordinator runs each shared ticket in a Daytona, Cloudflare or boat.dev sandbox, from a pool you pick | Optional          | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `BOAT_API_KEY`           |
 
 Start with:
 
@@ -98,7 +99,7 @@ From [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet): t
 
 ### 1.4 Check it
 
-Start the stack (see [6. Run it](#6-run-it)), then:
+Start the stack (see [7. Run it](#7-run-it)), then:
 
 1. The adapter logs `registered slash commands in guild <id>`.
 2. In the admin channel, run `/project-create name:Demo`. A new `#demo` channel appears.
@@ -240,9 +241,10 @@ Coordinator `.env`:
 # Same value as step 4; must be reachable from their machines, so a tunnel or public host.
 PUBLIC_URL=https://coordinator.example.com
 
-# The shared Worker for everyone else. With DAYTONA_API_KEY set this defaults to daytona_pi;
-# set local_claude to keep using the shared Watcher (WORKER_ID) instead.
-DEFAULT_WORKER_TYPE=daytona_pi
+# The shared Worker for everyone else is a sandbox from the pool (step 6) when you set one up,
+# else the shared Watcher (WORKER_ID). DEFAULT_WORKER_TYPE is used only when the classifier
+# doesn't pick a worker type.
+DEFAULT_WORKER_TYPE=
 
 # Optional: how people install the Watcher. Default: bun install -g @project-os/watcher
 # The package isn't on npm yet, so until it is, point this at something that installs it.
@@ -260,12 +262,72 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 
 ---
 
-## 6. Run it
+## 6. Cloud sandbox workers
+
+Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
+
+You choose the providers. Each one joins the **pool** when its credentials are set, and `WORKER_PROVIDERS` sets which ones and in what order:
+
+```sh
+# Try Cloudflare first, then Daytona, then boat.dev. Unset: every configured provider,
+# in the order daytona, cloudflare, boat.
+WORKER_PROVIDERS=cloudflare,daytona,boat
+
+# Required with any provider: the Coordinator's /mcp as the sandbox's cloud sees it
+# (a tunnel such as https://abc.trycloudflare.com/mcp, never localhost).
+SANDBOX_MCP_URL=https://coordinator.example.com/mcp
+# Optional: Pi model (default openrouter/$CHAT_MODEL_ID) and session limit (default 1800 s).
+SANDBOX_PI_MODEL=
+SANDBOX_SESSION_TIMEOUT_SECONDS=
+```
+
+When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Worker ids are `<provider>-<id>`. Naming one that isn't configured, or an unknown name, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
+
+| Provider           | `WORKER_PROVIDERS` name | Worker type     | Status    | Settings                                                                                           |
+| ------------------ | ----------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
+| Daytona            | `daytona`               | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
+| Cloudflare Sandbox | `cloudflare`            | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
+| boat.dev           | `boat`                  | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
+
+The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SECONDS` still work as fallbacks for the `SANDBOX_*` names.
+
+### Daytona
+
+1. Create an API key at [app.daytona.io](https://app.daytona.io) and set `DAYTONA_API_KEY`.
+2. Optional: `DAYTONA_SNAPSHOT` for a snapshot with Node 22.19 or newer (Pi installs itself at session start).
+
+### boat.dev
+
+1. Create an API key (`boat api-key create project-os --preset ci`, or in the dashboard) and set `BOAT_API_KEY` (keys start with `boat_`).
+2. Optional: `BOAT_SANDBOX_SIZE` (`small`, `default`, `large`, `xlarge`; `xlarge` needs a $100 plan or higher) and `BOAT_MAX_CONCURRENT`. Set the cap at or below your plan's sandboxes-at-once limit (100 on the $20 plan), so the pool moves on instead of failing.
+3. Each ticket gets its own sandbox, created with the session's settings as sandbox env vars and deleted when the session ends. The TTL is the session limit plus 5 minutes, which reclaims it even if the Coordinator stops first. Sandboxes bill per second while they run.
+
+### Cloudflare Sandbox
+
+Cloudflare Sandboxes are Durable Objects backed by Containers, reachable only from a Worker binding. So you deploy a small bridge Worker (`apps/cloudflare-sandbox`) and the Coordinator talks to it over HTTPS with a shared token.
+
+1. Use a Cloudflare account on the Workers Paid plan (Containers need it), and have Docker running locally (the deploy builds the sandbox image).
+2. Deploy the bridge and give it a token:
+
+   ```sh
+   bun run --cwd apps/cloudflare-sandbox deploy
+   openssl rand -hex 32   # the token
+   bunx wrangler@4.153.0 secret put BRIDGE_TOKEN --cwd apps/cloudflare-sandbox
+   ```
+
+3. In the Coordinator `.env`, set `CLOUDFLARE_SANDBOX_URL` to the Worker's URL (`https://project-os-sandbox.<subdomain>.workers.dev`) and `CLOUDFLARE_SANDBOX_TOKEN` to the same token.
+4. Optional: raise `containers[0].max_instances` in `apps/cloudflare-sandbox/wrangler.jsonc` and set `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` to match, so the pool moves on to the next provider instead of waiting for a container.
+
+The sandbox image is Cloudflare's base image (`docker.io/cloudflare/sandbox`, with Node and npm). A sandbox goes to sleep after 10 idle minutes, so one is reclaimed even if the Coordinator stops before deleting it.
+
+---
+
+## 7. Run it
 
 ```sh
 docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
 
-# Shared Watcher, on the host (only if you don't use Daytona or personal workers).
+# Shared Watcher, on the host (only if you don't use sandbox or personal workers).
 # It needs the `claude` CLI installed and signed in.
 set -a; . ./.env; set +a
 bun apps/watcher/src/main.bun.ts
@@ -278,25 +340,28 @@ Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator ref
 
 The dashboard is read-only and expects the Coordinator on `:8080` (override with `COORDINATOR_URL`). `bun run --cwd apps/web build` exports it as a static site.
 
-## 7. Cloudflare
+## 8. Cloudflare
 
 Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `docs/deployment.md`).
 
 ## Troubleshooting
 
-| Symptom                                                     | Likely cause                                                                                                                                |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bot is online but never answers                             | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project |
-| Bot ignores one person, or their slash commands are refused | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                     |
-| Slash commands don't show up                                | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)         |
-| `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                   |
-| Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                          |
-| `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                       |
-| `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                               |
-| Your tickets still go to Daytona after registering          | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                 |
-| Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                       |
-| Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |
-| Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                  |
-| GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                         |
-| Worker can't see a repo                                     | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                    |
-| Google stops working after a week                           | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                       |
+| Symptom                                                     | Likely cause                                                                                                                                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot is online but never answers                             | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project    |
+| Bot ignores one person, or their slash commands are refused | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                        |
+| Slash commands don't show up                                | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)            |
+| `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                      |
+| Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                             |
+| `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                          |
+| `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                  |
+| Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                    |
+| Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `sandbox-<provider>: <worker> failed: …` |
+| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                         |
+| Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                    |
+| Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                          |
+| Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                       |
+| Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                     |
+| GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                            |
+| Worker can't see a repo                                     | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                       |
+| Google stops working after a week                           | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                          |
