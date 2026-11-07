@@ -7,11 +7,14 @@ import { type Stack, startStack } from "./stack.ts";
 // Admin create_project -> HTTP ChannelGateway -> Discord adapter /channels -> linked source,
 // then a message in the new channel becomes a ticket whose reply lands in that channel.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let WORKER: string;
+let SECRET: string;
 let stack: Stack;
 
 beforeEach(async () => {
-  stack = await startStack({ classifier: classifierReturning("new_request"), workerId: WORKER });
+  stack = await startStack({ classifier: classifierReturning("new_request") });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
 });
 afterEach(() => stack.stop());
 
@@ -30,7 +33,7 @@ describe("admin create_project creates the project's Discord channel", () => {
     const tickets = await stack.json("GET", `/projects/${project.id}/tickets`);
     expect(tickets).toMatchObject([{ title: "please add dark mode" }]);
 
-    const mcp = await stack.worker();
+    const mcp = await stack.worker(SECRET);
     const ticketId = tickets[0].id as string;
     await mcp.callTool({ name: "ticket_claim", arguments: { ticketId, workerId: WORKER } });
     await mcp.callTool({

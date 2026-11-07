@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   checkSource,
   detectSource,
+  groupWorkers,
+  workerGroup,
+  workerName,
   relativeTime,
   sourceUrl,
   splitTickets,
@@ -159,5 +162,46 @@ describe("relativeTime", () => {
     ["2026-11-03T12:00:00Z", "2d ago"],
   ])("%s → %s", (iso, expected) => {
     expect(relativeTime(iso, now)).toBe(expected);
+  });
+});
+
+describe("workers", () => {
+  const T = "2026-11-04T00:00:00.000Z";
+  const w = (
+    id: string,
+    over: { registered?: boolean; ownerId?: string; name?: string; online?: boolean } = {},
+  ) => ({
+    id,
+    workerType: "local_claude" as const,
+    ownerChannelType: over.ownerId ? ("discord" as const) : null,
+    ownerId: over.ownerId ?? null,
+    registered: over.registered ?? true,
+    name: over.name ?? null,
+    currentTicketId: null,
+    lastSeenAt: T,
+    createdAt: T,
+    status: over.online === false ? ("offline" as const) : ("online" as const),
+  });
+
+  it("tells shared, personal and sandbox workers apart, and names them", () => {
+    expect(workerGroup(w("shared-1"))).toBe("shared");
+    expect(workerGroup(w("local-1", { ownerId: "u1" }))).toBe("personal");
+    expect(workerGroup(w("daytona-t1", { registered: false }))).toBe("sandbox");
+    expect(workerName(w("shared-1", { name: "build-box" }))).toBe("build-box");
+    expect(workerName(w("shared-1"))).toBe("shared-1");
+  });
+
+  it("groups online first then by name, and keeps only online sandbox sessions", () => {
+    const groups = groupWorkers([
+      w("shared-b", { name: "b" }),
+      w("shared-z", { name: "a", online: false }),
+      w("shared-a", { name: "c" }),
+      w("local-1", { ownerId: "u1" }),
+      w("daytona-1", { registered: false }),
+      w("daytona-2", { registered: false, online: false }),
+    ]);
+    expect(groups.shared.map((x) => x.id)).toEqual(["shared-b", "shared-a", "shared-z"]);
+    expect(groups.personal.map((x) => x.id)).toEqual(["local-1"]);
+    expect(groups.sandbox.map((x) => x.id)).toEqual(["daytona-1"]);
   });
 });

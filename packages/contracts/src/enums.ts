@@ -45,9 +45,6 @@ export const WORKER_TYPES = [
 export const WorkerType = Schema.Literals(WORKER_TYPES);
 export type WorkerType = typeof WorkerType.Type;
 
-export const isSandboxWorkerType = (type: WorkerType): type is SandboxWorkerType =>
-  (SANDBOX_WORKER_TYPES as ReadonlyArray<WorkerType>).includes(type);
-
 /** Sandbox providers by name, as written in `WORKER_PROVIDERS`. */
 export const SANDBOX_PROVIDERS = ["daytona", "cloudflare", "boat"] as const;
 export type SandboxProvider = (typeof SANDBOX_PROVIDERS)[number];

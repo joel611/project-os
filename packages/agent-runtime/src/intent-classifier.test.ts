@@ -48,11 +48,10 @@ describe("catalog", () => {
 });
 
 describe("makeIntentClassifier", () => {
-  it("sends one request with intent, worker_type, executor and returns choices + confidence", async () => {
+  it("sends one request with intent and executor and returns choices + confidence", async () => {
     const s = scripted({
       answers: {
         intent: choice("new_request", 0.9),
-        worker_type: choice("local_claude", 0.8),
         executor: choice("sidekick", 0.95),
       },
     });
@@ -61,12 +60,11 @@ describe("makeIntentClassifier", () => {
     expect(result).toEqual({
       intent: "new_request",
       confidence: 0.9,
-      workerType: "local_claude",
       executor: "sidekick",
     });
     expect(s.requests).toHaveLength(1);
     const [req] = s.requests;
-    expect(Object.keys(req!.questions)).toEqual(["intent", "worker_type", "executor"]);
+    expect(Object.keys(req!.questions)).toEqual(["intent", "executor"]);
     expect(Object.keys((req!.questions.intent as { criteria: object }).criteria)).toEqual([
       "new_request",
       "follow_up",
@@ -78,11 +76,10 @@ describe("makeIntentClassifier", () => {
     expect(req!.state).toEqual({ message: "fix the login bug", project_context: "Acme web app" });
   });
 
-  it("omits workerType unless the intent is new_request", async () => {
+  it("omits the executor unless the intent is new_request", async () => {
     const s = scripted({
       answers: {
         intent: choice("status_question", 0.7),
-        worker_type: choice("local_pi", 0.6),
         executor: choice("sidekick", 0.9),
       },
     });
@@ -92,13 +89,12 @@ describe("makeIntentClassifier", () => {
     });
   });
 
-  it("ignores an unknown worker_type choice", async () => {
+  it("ignores an answer the classifier wasn't asked for", async () => {
     const s = scripted({
-      answers: { intent: choice("new_request", 0.9), worker_type: choice("bogus", 0.9) },
+      answers: { intent: choice("new_request", 0.9), worker_type: choice("local_pi", 0.9) },
     });
     const result = await call(makeIntentClassifier(s));
-    expect(result.workerType).toBeUndefined();
-    expect(result.executor).toBeUndefined();
+    expect(result).toEqual({ intent: "new_request", confidence: 0.9 });
   });
 
   it("describes the executor choice by what the job needs", async () => {

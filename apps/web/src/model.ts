@@ -3,6 +3,8 @@ import {
   type Ticket,
   type TicketEventType,
   type TicketStatus,
+  type Worker,
+  type WorkerStatus,
 } from "@project-os/contracts";
 
 export type Tone = "neutral" | "info" | "progress" | "warn" | "success" | "danger";
@@ -162,3 +164,35 @@ export const sourceUrl = (s: { type: string; externalId: string }): string | nul
     : s.type === "google_drive_folder"
       ? `https://drive.google.com/drive/folders/${s.externalId}`
       : null;
+
+/**
+ * Where a worker sits: a `shared` device an admin registered into the pool, someone's
+ * `personal` device, or a `sandbox` session the Coordinator started for one ticket.
+ */
+export type WorkerGroup = "shared" | "personal" | "sandbox";
+
+export const workerGroup = (w: Worker): WorkerGroup =>
+  !w.registered ? "sandbox" : w.ownerId === null ? "shared" : "personal";
+
+/** How the dashboard names a worker: its registered name, else its id. */
+export const workerName = (w: Worker): string => w.name ?? w.id;
+
+/**
+ * Workers for the sidebar, by group, online first then by name. Registered devices show
+ * whether they are online or not; a sandbox session only while it is online.
+ */
+export const groupWorkers = <W extends Worker & { readonly status: WorkerStatus }>(
+  workers: ReadonlyArray<W>,
+): Readonly<Record<WorkerGroup, ReadonlyArray<W>>> => {
+  const sorted = [...workers].sort(
+    (a, b) =>
+      Number(b.status === "online") - Number(a.status === "online") ||
+      workerName(a).localeCompare(workerName(b)),
+  );
+  const of = (group: WorkerGroup) => sorted.filter((w) => workerGroup(w) === group);
+  return {
+    shared: of("shared"),
+    personal: of("personal"),
+    sandbox: of("sandbox").filter((w) => w.status === "online"),
+  };
+};

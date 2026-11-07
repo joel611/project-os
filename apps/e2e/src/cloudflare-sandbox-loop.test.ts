@@ -83,8 +83,7 @@ const start = async (pool: "cloudflare" | "cloudflare-capped") => {
       handleBridge(req, { token: TOKEN, sandbox: stub, newId: () => `sbx-${++next}` }),
   });
   stack = await startStack({
-    classifier: classifierReturning("new_request", 1, "daytona_pi"),
-    workerId: "local-claude-1",
+    classifier: classifierReturning("new_request"),
     workerLauncher: makeSandboxLauncher({
       providers: [
         {

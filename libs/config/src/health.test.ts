@@ -13,6 +13,7 @@ describe("healthConfig", () => {
       followUpMs: 900_000,
       inactivityFailMs: 1_800_000,
       sweepEveryMs: 60_000,
+      sharedWorkerMaxTickets: 1,
     });
   });
 

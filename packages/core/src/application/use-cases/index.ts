@@ -1,4 +1,5 @@
 export * from "./activity.ts";
+export * from "./assign-worker.ts";
 export * from "./admin.ts";
 export * from "./channels.ts";
 export * from "./handle-inbound.ts";

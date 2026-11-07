@@ -30,12 +30,17 @@ _Avoid_: bot, helper agent, Worker (it never pulls or claims through MCP).
 
 **Claim**: the atomic `assigned → in_progress` transition a Worker makes on a Ticket. Two Workers can never claim the same Ticket.
 
-**Watcher**: a host-run program that polls the Coordinator every 5 minutes for assigned, unclaimed Tickets and starts a local Claude Code Worker session for each.
+**Watcher**: a program on a registered computer that polls the Coordinator every 5 minutes for its assigned, unclaimed Tickets and starts a local Claude Code Worker session for each. It runs only after registering with a `/register-worker` code.
 
-**Personal Worker**: a person's own computer, registered with `/register-worker`, running the Watcher. It gets only the Tickets that person starts, and only while it is online; otherwise their Tickets go to the shared Worker (a Sandbox Pool provider, else the shared Watcher). Authenticates to MCP with a Bearer secret.
+**Personal Worker**: a person's own computer, registered with `/register-worker`, running the Watcher. It gets only the Tickets that person starts, and only while it is online; otherwise their Tickets go to a Shared Worker or the Sandbox Pool. Authenticates to MCP with a Bearer secret.
 _Avoid_: private worker, device worker.
 
-**Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Providers are named `daytona`, `cloudflare` and `boat`, and their Workers are `<provider>-<ticketId>` (`daytona-<ticketId>`). On assigning a shared Ticket the Coordinator reads the pool and starts the first provider with room under its cap.
+**Shared Worker**: a computer an admin registered with `/register-worker shared:True` in the admin channel, running the Watcher. It has no owner and takes anyone's Tickets, up to `SHARED_WORKER_MAX_TICKETS` at a time, before the Sandbox Pool is tried. Authenticates to MCP with a Bearer secret, like a Personal Worker.
+_Avoid_: host Watcher, hosted worker (the old fixed `WORKER_ID` Watcher no longer exists).
+
+**Queued Ticket**: a new Ticket that no Personal Worker, Shared Worker or Sandbox Pool provider had room for. It stays `open` with no worker, its thread is told so, and the health sweep assigns it, oldest first, once one has room.
+
+**Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Providers are named `daytona`, `cloudflare` and `boat`, and their Workers are `<provider>-<ticketId>` (`daytona-<ticketId>`). When no Personal or Shared Worker takes a Ticket, the Coordinator reads the pool and starts the first provider with room under its cap.
 _Avoid_: worker pool (the Watchers are not in it), provider list.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.

@@ -49,7 +49,7 @@ Without `--stage`, the stage is `$ALCHEMY_STAGE` or `live_$USER`, which gives ea
 
 Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never as plain vars, and are redacted in Alchemy's output and state. A key that is unset is not bound at all, so a stage without OAuth clients deploys with account linking off, the same rule as the local target.
 
-- **Vars with defaults:** `WORKER_ID`, `CHAT_MODEL_PROVIDER`, `CHAT_MODEL_ID`, `JEV_MODEL_ID`, `INTENT_CONFIDENCE_THRESHOLD`, `DISCORD_PROJECT_CHANNEL_AUTO_CREATE`.
+- **Vars with defaults:** `CHAT_MODEL_PROVIDER`, `CHAT_MODEL_ID`, `JEV_MODEL_ID`, `INTENT_CONFIDENCE_THRESHOLD`, `DISCORD_PROJECT_CHANNEL_AUTO_CREATE`.
 - **Vars bound when set:** `DISCORD_SPLIT_GATEWAY_URL`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`.
 - **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`.
 
