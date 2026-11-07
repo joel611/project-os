@@ -14,6 +14,7 @@ const toWorker = (row: Row): Worker => ({
   workerType: row.workerType,
   ownerChannelType: row.ownerChannelType,
   ownerId: row.ownerId,
+  registered: row.secretHash !== null,
   name: row.name,
   currentTicketId: row.currentTicketId,
   lastSeenAt: row.lastSeenAt,
@@ -52,8 +53,8 @@ export const makeWorkerRepository = (db: SqliteDb): Impl => ({
         .values({
           id,
           workerType,
-          ownerChannelType: owner.channelType,
-          ownerId: owner.id,
+          ownerChannelType: owner?.channelType ?? null,
+          ownerId: owner?.id ?? null,
           name,
           secretHash,
           currentTicketId: null,

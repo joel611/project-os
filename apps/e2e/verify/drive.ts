@@ -4,7 +4,9 @@
 //   bun drive.ts work "<result body>" [--memory "<fact>"]
 //       A Worker plays session-start.md over real MCP: list assigned -> claim -> read memory
 //       -> (optional memory write) -> append result -> complete. Prints the ticket id.
-// Env: COORD_PORT=18080, WORKER_ID=verify-worker.
+// Env: COORD_PORT=18080, DATA_DIR (holds worker.json, the shared worker serve.ts registered).
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -12,7 +14,16 @@ import { fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
 import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
 
 const url = `http://localhost:${process.env.COORD_PORT ?? 18080}`;
-const workerId = process.env.WORKER_ID ?? "verify-worker";
+const dataDir = process.env.DATA_DIR;
+if (!dataDir) throw new Error("DATA_DIR is required (run.sh sets it)");
+const { workerId, secret } = JSON.parse(readFileSync(join(dataDir, "worker.json"), "utf8")) as {
+  workerId: string;
+  secret: string;
+};
+const transport = () =>
+  new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
+    requestInit: { headers: { authorization: `Bearer ${secret}` } },
+  });
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
@@ -28,7 +39,7 @@ if (!text && cmd !== "heartbeat") throw new Error('usage: drive.ts say|work "<te
 if (cmd === "heartbeat") {
   // What the Watcher does every poll: marks the worker online in GET /workers.
   const mcp = new Client({ name: "verify-worker", version: "0" });
-  await mcp.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+  await mcp.connect(transport());
   const res = (await mcp.callTool({
     name: "worker_heartbeat",
     arguments: { workerId, workerType: "local_claude" },
@@ -46,7 +57,7 @@ if (cmd === "heartbeat") {
   console.log(`said: ${text}`);
 } else if (cmd === "work") {
   const mcp = new Client({ name: "verify-worker", version: "0" });
-  await mcp.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp`)));
+  await mcp.connect(transport());
   const tool = async (name: string, args: Record<string, unknown>) => {
     const res = (await mcp.callTool({ name, arguments: args })) as {
       isError?: boolean;
@@ -56,7 +67,7 @@ if (cmd === "heartbeat") {
     return res.structuredContent;
   };
   const { tickets } = await tool("ticket_list_assigned", { workerId });
-  if (!tickets.length) throw new Error("no assigned ticket (did `say` run? is WORKER_ID right?)");
+  if (!tickets.length) throw new Error("no assigned ticket (did `say` run?)");
   const ticketId = tickets[0].id as string;
   await tool("ticket_claim", { ticketId, workerId });
   const { ticket } = await tool("ticket_get", { ticketId });

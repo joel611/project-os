@@ -15,7 +15,7 @@ Open the dashboard, pick the project in the sidebar, click a ticket title.
 Needs a ticket (`inbound-to-reply.md` step 1 at least).
 
 1. `agent-browser open http://localhost:15173/projects/<id>` · `wait 2000` · `snapshot -i`
-2. Expect tab `Tickets 1`, row `Assigned…please add dark mode…verify-worker…`.
+2. Expect tab `Tickets 1`, row `Assigned…please add dark mode…verify-box…` (the worker by name; a queued ticket shows `queued`).
 3. After `work`: `wait 6000` · `snapshot -i` → row starts `Completed`.
 4. `click @<title link ref>` · `snapshot` → dialog "please add dark mode" contains `Completed`, heading `Activity`, `Result` / `added dark mode toggle`. Screenshot. `press Escape`.
 

@@ -10,7 +10,8 @@ export type Command =
 
 export const USAGE = `Usage:
   project-os-watcher register <code> --server <url> [--name <name>]
-      Register this computer as your personal worker (code from /register-worker), then run.
+      Register this computer (code from /register-worker), then run. An admin's
+      shared code adds it to the pool for everyone; otherwise it is your personal worker.
   project-os-watcher
       Run: poll for your tickets and start a Claude Code session for each.`;
 

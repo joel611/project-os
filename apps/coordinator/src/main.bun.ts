@@ -5,11 +5,10 @@ import {
   newModels,
   openLocalStorage,
 } from "@project-os/agent-runtime";
-import { DEFAULT_WORKER_ID, env, envBool, envNumber, healthConfig } from "@project-os/config";
+import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
-import type { WorkerType } from "@project-os/contracts";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
@@ -81,8 +80,9 @@ const AiLive = Layer.orDie(
   ),
 );
 
-// The sandbox pool: Daytona and/or Cloudflare Sandbox, in WORKER_PROVIDERS order. Each joins
-// only when its credentials are set; with none, tickets go to the shared Watcher (WORKER_ID).
+// The sandbox pool: Daytona, Cloudflare Sandbox and/or boat.dev, in WORKER_PROVIDERS order. Each
+// joins only when its credentials are set. Shared devices that admins register come first; with
+// neither free, new tickets wait queued until the health sweep finds room.
 const workerLauncher = sandboxLauncherFromEnv(process.env, {
   prompt: await Bun.file(new URL("../../watcher/prompts/session-start.md", import.meta.url)).text(),
   log: console.log,
@@ -138,17 +138,12 @@ createApp(
     http: {
       run: (effect) => runtime.runPromise(effect),
       inbound: {
-        workerId: env("WORKER_ID", DEFAULT_WORKER_ID),
         confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
         // Top-level project channel messages must @mention the bot; threads and admin don't.
         requireMention: envBool("DISCORD_REQUIRE_MENTION", true),
-        // Personal workers count as online within the health sweep's window.
+        // Registered devices count as online within the health sweep's window.
         workerStaleMs: healthConfig().workerStaleMs,
-        // Tickets from someone without an online personal worker go to the shared worker:
-        // the first sandbox in the pool with room, else the shared Watcher (WORKER_ID).
-        ...(process.env.DEFAULT_WORKER_TYPE && {
-          defaultWorkerType: process.env.DEFAULT_WORKER_TYPE as WorkerType,
-        }),
+        sharedWorkerMaxTickets: healthConfig().sharedWorkerMaxTickets,
         // Admin identity (POC): only these Discord user ids may use the admin channel.
         ...(adminChannelId && { adminChannelId, adminUserIds }),
       },

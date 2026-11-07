@@ -12,7 +12,8 @@ import { type Stack, startStack } from "./stack.ts";
 // Then a Worker asks `user_token` for the ticket and gets that person's token, refreshed by
 // Better Auth when it is about to expire. Google and GitHub are one fake OAuth server.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let SECRET: string;
 const CHANNEL = "chan-1";
 const ada = { channelId: CHANNEL, userId: "u-ada", name: "Ada" };
 const bob = { channelId: CHANNEL, userId: "u-bob", name: "Bob" };
@@ -21,9 +22,9 @@ let stack: Stack;
 beforeEach(async () => {
   stack = await startStack({
     classifier: classifierReturning("new_request"),
-    workerId: WORKER,
     connections: true,
   });
+  ({ secret: SECRET } = await stack.registerSharedWorker());
   await stack.linkChannel(CHANNEL);
 });
 afterEach(() => stack.stop());
@@ -47,7 +48,7 @@ const say = async (speaker: typeof ada, content: string) => {
 };
 
 const userToken = async (ticketId: string, provider: string) => {
-  const mcp = await stack.worker();
+  const mcp = await stack.worker(SECRET);
   return (await mcp.callTool({ name: "user_token", arguments: { ticketId, provider } })) as {
     isError?: boolean;
     structuredContent?: any;

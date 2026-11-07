@@ -15,10 +15,10 @@ import { createWatcher } from "./poll.ts";
 import { registerDevice } from "./register.ts";
 import { bunSpawner, mcpConfigJson } from "./spawn.ts";
 
-// Runs on the host, not in Compose. Two modes:
-// - personal: `project-os-watcher register <code> --server <url>` saves this computer's
-//   credentials; it then serves only the tickets of whoever ran /register-worker.
-// - shared (no credentials saved): env MCP_URL / WORKER_ID, no auth, as before.
+// Runs on the host, not in Compose. `project-os-watcher register <code> --server <url>` saves
+// this computer's credentials first. A code from /register-worker makes it that person's
+// personal worker; an admin's `/register-worker shared:True` code adds it to the pool as a
+// shared worker for everyone. It won't run unregistered.
 const fail = (message: string): never => {
   console.error(message);
   process.exit(1);
@@ -57,20 +57,21 @@ if (command.kind === "register") {
 }
 
 const credentials = loadCredentials(path);
-const config = loadConfig(credentials);
-console.log(
-  `watcher ${config.workerId} ${credentials ? "(personal)" : "(shared)"} → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`,
-);
+if (!credentials) {
+  fail(`This computer isn't registered yet (no ${path}).\n\n${USAGE}`);
+}
+const config = loadConfig(credentials!);
+console.log(`watcher ${config.workerId} → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`);
 
 // Claude Code reads the MCP config from a file only this user can read, so the secret never
 // shows up in the process list.
-const mcpConfigFile = config.secret ? join(configDir(), "mcp.json") : undefined;
-if (mcpConfigFile) writePrivate(mcpConfigFile, mcpConfigJson(config));
+const mcpConfigFile = join(configDir(), "mcp.json");
+writePrivate(mcpConfigFile, mcpConfigJson(config));
 
 const watcher = createWatcher({
   config,
   client: httpMcpClient(config.mcpUrl, fetch, config.secret),
-  spawner: bunSpawner(config, Bun.spawn, mcpConfigFile ? { mcpConfigFile } : {}),
+  spawner: bunSpawner(config, Bun.spawn, { mcpConfigFile }),
   log: console.log,
 });
 
