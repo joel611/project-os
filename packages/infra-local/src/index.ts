@@ -38,7 +38,10 @@ const KeyValueStoreMemory = Layer.sync(KeyValueStore, () => makeMemoryKeyValueSt
 
 const SchedulerTimer = Layer.succeed(Scheduler, makeTimerScheduler());
 
-const noopLauncher: typeof WorkerLauncher.Service = { launch: () => Effect.void };
+const noopLauncher: typeof WorkerLauncher.Service = {
+  pool: Effect.succeed([]),
+  launch: () => Effect.void,
+};
 
 /** Placeholder until an entry file supplies the agent runtime, which also provides the Sidekick. */
 const SidekickPending = Layer.succeed(Sidekick, {

@@ -29,7 +29,7 @@ Worker type for a new Ticket: classifier `worker_type` answer, else `defaultWork
 `packages/agent-runtime/src/intent-classifier.ts`. One Jev call per message with three questions:
 
 - `intent`: `new_request`, `follow_up`, `status_question`, `admin_command`, `chit_chat`, `none`. Its confidence feeds the threshold.
-- `worker_type`: `local_claude`, `local_pi`, `daytona_pi`. Used only for `new_request`.
+- `worker_type`: `local_claude`, `local_pi`, `daytona_pi` (any cloud sandbox: the Sandbox Pool picks Daytona or Cloudflare). Used only for `new_request`.
 - `needs_worker`: bool. Computed but not yet read by `handleInbound`.
 
 ## Known limits

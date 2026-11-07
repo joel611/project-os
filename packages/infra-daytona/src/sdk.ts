@@ -1,4 +1,4 @@
-import type { SandboxRunner } from "./launcher.ts";
+import type { SandboxRunner } from "@project-os/infra-sandbox";
 
 /** The slice of `@daytona/sdk` the runner uses, so tests can fake it. */
 export interface DaytonaLike {

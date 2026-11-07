@@ -3,6 +3,7 @@ import {
   Clock,
   type Executor,
   IntentClassifier,
+  type SandboxPoolEntry,
   WorkerLauncher,
   type WorkerType,
 } from "@project-os/core";
@@ -51,6 +52,8 @@ export const makeTestLayer = (options?: {
   readonly failSidekick?: string;
   /** Have each Sidekick turn ask for this provider's token, as one of its tools would. */
   readonly sidekickProbe?: ConnectionProvider;
+  /** The launcher's sandbox pool. Default: empty (no sandbox provider configured). */
+  readonly sandboxPool?: ReadonlyArray<SandboxPoolEntry>;
 }) => {
   const launched: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
   const sidekick = makeSidekickRecording({
@@ -77,6 +80,7 @@ export const makeTestLayer = (options?: {
     options?.classifier ?? IntentClassifierFake(),
     AgentRuntimeEcho,
     Layer.succeed(WorkerLauncher, {
+      pool: Effect.succeed(options?.sandboxPool ?? []),
       launch: (input) => Effect.sync(() => void launched.push(input)),
     }),
     sidekick.layer,

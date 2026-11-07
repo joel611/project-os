@@ -31,7 +31,7 @@ const run = <A, E>(
   eff: Effect.Effect<A, E, any>,
   classifier = classifierReturning("new_request"),
 ) => {
-  const t = makeTestLayer({ classifier });
+  const t = makeTestLayer({ classifier, sandboxPool: [{ workerType: "daytona_pi" }] });
   return Effect.runPromise(eff.pipe(Effect.provide(t.layer)) as Effect.Effect<A, E>).then(
     (value) => ({ value, launched: t.launched }),
   );

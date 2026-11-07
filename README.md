@@ -176,7 +176,7 @@ This is still a focused proof-of-concept of the full loop.
 We welcome issues, discussions, and PRs — especially around:
 
 - Additional channel adapters
-- More Worker runtimes beyond local Claude Code and Daytona
+- More Worker runtimes beyond local Claude Code, Daytona and Cloudflare Sandbox (boat.dev is next)
 - Dashboard UX
 - Memory quality / retrieval
 

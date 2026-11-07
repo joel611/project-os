@@ -28,10 +28,38 @@ export type TicketEventType = typeof TicketEventType.Type;
 export const Actor = Schema.Literals(["coordinator", "worker", "system"]);
 export type Actor = typeof Actor.Type;
 
+/**
+ * Pi in a cloud sandbox, one per provider: `daytona_pi` (Daytona), `cloudflare_pi` (Cloudflare
+ * Sandbox). The Coordinator starts these itself, picking from the sandbox pool.
+ */
+export const SANDBOX_WORKER_TYPES = ["daytona_pi", "cloudflare_pi"] as const;
+export type SandboxWorkerType = (typeof SANDBOX_WORKER_TYPES)[number];
+
 /** `sidekick`: the Coordinator's in-process tool-only helper, not a pull-model Worker. */
-export const WORKER_TYPES = ["daytona_pi", "local_claude", "local_pi", "sidekick"] as const;
+export const WORKER_TYPES = [
+  ...SANDBOX_WORKER_TYPES,
+  "local_claude",
+  "local_pi",
+  "sidekick",
+] as const;
 export const WorkerType = Schema.Literals(WORKER_TYPES);
 export type WorkerType = typeof WorkerType.Type;
+
+export const isSandboxWorkerType = (type: WorkerType): type is SandboxWorkerType =>
+  (SANDBOX_WORKER_TYPES as ReadonlyArray<WorkerType>).includes(type);
+
+/**
+ * Sandbox providers by name. `boat` is planned and has no worker type yet; naming it in
+ * `WORKER_PROVIDERS` is a startup error until it ships.
+ */
+export const SANDBOX_PROVIDERS = ["daytona", "cloudflare", "boat"] as const;
+export type SandboxProvider = (typeof SANDBOX_PROVIDERS)[number];
+
+/** The provider each sandbox worker type runs on. Its session ids are `<provider>-<ticketId>`. */
+export const SANDBOX_PROVIDER_OF: Readonly<Record<SandboxWorkerType, SandboxProvider>> = {
+  daytona_pi: "daytona",
+  cloudflare_pi: "cloudflare",
+};
 
 export const MemoryEntryType = Schema.Literals([
   "email_summary",

@@ -1,11 +1,18 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { makeDaytonaLauncher, piMcpJson, SESSION_COMMAND, type SandboxRunner } from "./launcher.ts";
+import { boatSandboxRunner, BOAT_NOT_SUPPORTED } from "./boat.ts";
+import {
+  makeSandboxLauncher,
+  piMcpJson,
+  SESSION_COMMAND,
+  type SandboxProvider,
+  type SandboxRunner,
+} from "./launcher.ts";
 
-const setup = (run: SandboxRunner["run"]) => {
+const setup = (run: SandboxRunner["run"], extra: ReadonlyArray<SandboxProvider> = []) => {
   const logs: string[] = [];
-  const launcher = makeDaytonaLauncher({
-    sandbox: { run },
+  const launcher = makeSandboxLauncher({
+    providers: [{ workerType: "daytona_pi", runner: { run } }, ...extra],
     mcpUrl: "https://tunnel.example/mcp",
     openrouterApiKey: "sk-or",
     model: "openrouter/m",
@@ -16,8 +23,9 @@ const setup = (run: SandboxRunner["run"]) => {
 };
 const settle = () => new Promise((r) => setTimeout(r, 0));
 const daytonaTicket = { ticketId: "t1", workerType: "daytona_pi", workerId: "daytona-t1" } as const;
+const ok = async () => ({ exitCode: 0, output: "" });
 
-describe("daytona launcher", () => {
+describe("sandbox launcher", () => {
   it("runs a Pi session with worker id, MCP config and key as env, not in the shell line", async () => {
     const calls: Parameters<SandboxRunner["run"]>[0][] = [];
     const { launcher } = setup(async (input) => {
@@ -38,7 +46,44 @@ describe("daytona launcher", () => {
     });
   });
 
-  it("ignores other worker types", async () => {
+  it("starts the ticket on the provider it was assigned to", async () => {
+    const ran: string[] = [];
+    const { launcher, logs } = setup(async () => {
+      ran.push("daytona");
+      return { exitCode: 0, output: "" };
+    }, [
+      {
+        workerType: "cloudflare_pi",
+        runner: {
+          run: async () => {
+            ran.push("cloudflare");
+            return { exitCode: 0, output: "" };
+          },
+        },
+      },
+    ]);
+    await Effect.runPromise(
+      launcher.launch({ ticketId: "t2", workerType: "cloudflare_pi", workerId: "cloudflare-t2" }),
+    );
+    await settle();
+    expect(ran).toEqual(["cloudflare"]);
+    expect(logs).toEqual([
+      "cloudflare: launching cloudflare-t2 for ticket t2",
+      "cloudflare: cloudflare-t2 finished",
+    ]);
+  });
+
+  it("reports its providers as the pool, in order, with caps", async () => {
+    const { launcher } = setup(ok, [
+      { workerType: "cloudflare_pi", runner: { run: ok }, maxConcurrent: 3 },
+    ]);
+    expect(await Effect.runPromise(launcher.pool)).toEqual([
+      { workerType: "daytona_pi" },
+      { workerType: "cloudflare_pi", maxConcurrent: 3 },
+    ]);
+  });
+
+  it("ignores worker types outside the pool", async () => {
     let ran = false;
     const { launcher } = setup(async () => {
       ran = true;
@@ -46,6 +91,9 @@ describe("daytona launcher", () => {
     });
     await Effect.runPromise(
       launcher.launch({ ticketId: "t1", workerType: "local_claude", workerId: "w" }),
+    );
+    await Effect.runPromise(
+      launcher.launch({ ticketId: "t1", workerType: "cloudflare_pi", workerId: "cloudflare-t1" }),
     );
     expect(ran).toBe(false);
   });
@@ -69,5 +117,13 @@ describe("daytona launcher", () => {
     await Effect.runPromise(launcher.launch(daytonaTicket));
     await settle();
     expect(logs.at(-1)).toBe("daytona: daytona-t1 exited 2: pi: bad model");
+  });
+});
+
+describe("boat.dev placeholder", () => {
+  it("fails every run until it is built", async () => {
+    await expect(
+      boatSandboxRunner().run({ env: {}, command: "true", timeoutSeconds: 1 }),
+    ).rejects.toThrow(BOAT_NOT_SUPPORTED);
   });
 });

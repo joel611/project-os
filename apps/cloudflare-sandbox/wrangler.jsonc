@@ -1,0 +1,24 @@
+// Cloudflare Sandbox bridge: the Coordinator's way into Cloudflare Sandboxes (see src/main.cloudflare.ts).
+// Deploy: `bun run --cwd apps/cloudflare-sandbox deploy`, then `wrangler secret put BRIDGE_TOKEN`.
+// Kept on wrangler for now: Alchemy's Container resource has its own Durable Object pattern,
+// and @cloudflare/sandbox ships its own Sandbox class. See SETUP.md, "Cloudflare Sandbox".
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "project-os-sandbox",
+  "main": "src/main.cloudflare.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./Dockerfile",
+      // Most sandboxes at once on this account. Match CLOUDFLARE_SANDBOX_MAX_CONCURRENT.
+      "max_instances": 5,
+      "instance_type": "standard-1",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }],
+  },
+  "migrations": [{ "new_sqlite_classes": ["Sandbox"], "tag": "v1" }],
+}

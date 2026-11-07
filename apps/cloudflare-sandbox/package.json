@@ -1,0 +1,17 @@
+{
+  "name": "@project-os/cloudflare-sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx wrangler@4.153.0 dev",
+    "deploy": "bunx wrangler@4.153.0 deploy"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "0.12.14",
+    "@project-os/infra-cloudflare-sandbox": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261104.1"
+  }
+}
