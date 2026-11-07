@@ -30,7 +30,7 @@ writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: piServers
   mode: 0o600,
 });
 
-const model = process.env.PI_MODEL ?? "openrouter/anthropic/claude-sonnet-4.5";
+const model = process.env.PI_MODEL ?? "openrouter/deepseek/deepseek-v4.1-flash-1017";
 const proc = Bun.spawn(["pi", "--print", "--model", model, prompt], {
   stdout: "inherit",
   stderr: "inherit",

@@ -76,7 +76,7 @@ services:
       POLL_INTERVAL_MS: ${WATCHER_POLL_INTERVAL_MS:-10000}
       # The session runs on Pi (see apps/watcher/sim/claude-as-pi.ts).
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      PI_MODEL: ${SANDBOX_PI_MODEL:-openrouter/anthropic/claude-sonnet-4.5}
+      PI_MODEL: ${SANDBOX_PI_MODEL:-openrouter/deepseek/deepseek-v4.1-flash-1017}
     volumes: ["watcher-vm-home:/home/bun/.config"]
     depends_on: [coordinator]
 
