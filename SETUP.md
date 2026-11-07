@@ -357,7 +357,7 @@ Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/dep
 | `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                               |
 | Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                 |
 | Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `<provider>: <worker> failed: …`      |
-| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`),                                                                     |
+| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                      |
 | Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                 |
 | Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                       |
 | Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |
