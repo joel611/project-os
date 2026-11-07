@@ -90,6 +90,7 @@ describe("configured runners", () => {
   const live = {
     daytona: (o: unknown) => ({ ...runner(), o }) as unknown as SandboxRunner,
     cloudflare: (o: unknown) => ({ ...runner(), o }) as unknown as SandboxRunner,
+    boat: (o: unknown) => ({ ...runner(), o }) as unknown as SandboxRunner,
   };
 
   it("builds a runner per provider whose credentials are set", () => {
@@ -107,6 +108,29 @@ describe("configured runners", () => {
       url: "https://bridge.example",
       token: "t",
     });
+  });
+
+  it("builds boat.dev from its API key, with optional URL and size", () => {
+    const boat = configuredRunners(
+      {
+        BOAT_API_KEY: "boat_k",
+        BOAT_API_URL: "https://boat.example/api/v1",
+        BOAT_SANDBOX_SIZE: "small",
+      },
+      live,
+    ).boat as unknown as { o: unknown };
+    expect(boat.o).toEqual({
+      apiKey: "boat_k",
+      apiUrl: "https://boat.example/api/v1",
+      size: "small",
+    });
+    expect(Object.keys(configuredRunners({ BOAT_API_KEY: "k" }, live))).toEqual(["boat"]);
+  });
+
+  it("refuses an unknown boat.dev size", () => {
+    expect(() => configuredRunners({ BOAT_API_KEY: "k", BOAT_SANDBOX_SIZE: "huge" }, live)).toThrow(
+      /BOAT_SANDBOX_SIZE must be one of/,
+    );
   });
 
   it("needs the bridge token with the bridge URL", () => {

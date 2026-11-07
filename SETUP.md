@@ -4,14 +4,14 @@ How to connect project-os to Discord, Google Drive, and GitHub, step by step, wi
 
 You need three things working, in this order:
 
-| Step                                                 | What it gives you                                                                                 | Required?         | `.env` keys                                                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| [1. Discord bot](#1-discord-bot)                     | The bot hears messages, replies, creates project channels and ticket threads                      | Yes               | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`   |
-| [2. Google Drive](#2-google-drive-oauth-client)      | Each person links their own Google account, so Workers read Drive with that person's access       | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                     |
-| [3. GitHub](#3-github-app)                           | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                     |
-| [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                             | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                             |
-| [5. Personal workers](#5-personal-workers)           | People run `/register-worker` to use their own computer as their Worker; others get a sandbox     | Optional          | `PUBLIC_URL`, `DEFAULT_WORKER_TYPE`, `WATCHER_INSTALL_COMMAND`                                                 |
-| [6. Cloud sandbox workers](#6-cloud-sandbox-workers) | The Coordinator runs each shared ticket in a Daytona or Cloudflare Sandbox, from a pool you pick  | Optional          | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN` |
+| Step                                                 | What it gives you                                                                                          | Required?         | `.env` keys                                                                                                  |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| [1. Discord bot](#1-discord-bot)                     | The bot hears messages, replies, creates project channels and ticket threads                               | Yes               | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS` |
+| [2. Google Drive](#2-google-drive-oauth-client)      | Each person links their own Google account, so Workers read Drive with that person's access                | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
+| [3. GitHub](#3-github-app)                           | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access          | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
+| [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                                      | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                           |
+| [5. Personal workers](#5-personal-workers)           | People run `/register-worker` to use their own computer as their Worker; others get a sandbox              | Optional          | `PUBLIC_URL`, `DEFAULT_WORKER_TYPE`, `WATCHER_INSTALL_COMMAND`                                               |
+| [6. Cloud sandbox workers](#6-cloud-sandbox-workers) | The Coordinator runs each shared ticket in a Daytona, Cloudflare or boat.dev sandbox, from a pool you pick | Optional          | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `BOAT_API_KEY`           |
 
 Start with:
 
@@ -264,13 +264,14 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 
 ## 6. Cloud sandbox workers
 
-Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>` or `cloudflare-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
+Tickets that don't go to someone's own computer can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. The host Watcher never sees these tickets.
 
 You choose the providers. Each one joins the **pool** when its credentials are set, and `WORKER_PROVIDERS` sets which ones and in what order:
 
 ```sh
-# Try Cloudflare first, then Daytona. Unset: every configured provider, Daytona first.
-WORKER_PROVIDERS=cloudflare,daytona
+# Try Cloudflare first, then Daytona, then boat.dev. Unset: every configured provider,
+# in the order daytona, cloudflare, boat.
+WORKER_PROVIDERS=cloudflare,daytona,boat
 
 # Required with any provider: the Coordinator's /mcp as the sandbox's cloud sees it
 # (a tunnel such as https://abc.trycloudflare.com/mcp, never localhost).
@@ -280,13 +281,13 @@ SANDBOX_PI_MODEL=
 SANDBOX_SESSION_TIMEOUT_SECONDS=
 ```
 
-When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Naming a provider that isn't configured, or `boat`, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
+When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Naming a provider that isn't configured stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
 
 | Provider           | Worker type     | Status    | Settings                                                                                           |
 | ------------------ | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
 | Daytona            | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
 | Cloudflare Sandbox | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
-| boat.dev           | none yet        | Planned   | Not available; `WORKER_PROVIDERS=boat` is refused                                                  |
+| boat.dev           | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
 
 The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SECONDS` still work as fallbacks for the `SANDBOX_*` names.
 
@@ -294,6 +295,12 @@ The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SEC
 
 1. Create an API key at [app.daytona.io](https://app.daytona.io) and set `DAYTONA_API_KEY`.
 2. Optional: `DAYTONA_SNAPSHOT` for a snapshot with Node 22.19 or newer (Pi installs itself at session start).
+
+### boat.dev
+
+1. Create an API key (`boat api-key create project-os --preset ci`, or in the dashboard) and set `BOAT_API_KEY` (keys start with `boat_`).
+2. Optional: `BOAT_SANDBOX_SIZE` (`small`, `default`, `large`, `xlarge`; `xlarge` needs a $100 plan or higher) and `BOAT_MAX_CONCURRENT`. Set the cap at or below your plan's sandboxes-at-once limit (100 on the $20 plan), so the pool moves on instead of failing.
+3. Each ticket gets its own sandbox, created with the session's settings as sandbox env vars and deleted when the session ends. The TTL is the session limit plus 5 minutes, which reclaims it even if the Coordinator stops first. Sandboxes bill per second while they run.
 
 ### Cloudflare Sandbox
 
@@ -350,7 +357,7 @@ Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/dep
 | `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                               |
 | Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                 |
 | Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `<provider>: <worker> failed: …`      |
-| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`), or it's `boat`, which isn't available yet                           |
+| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`),                                                                     |
 | Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                 |
 | Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                       |
 | Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                    |

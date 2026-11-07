@@ -52,7 +52,8 @@ describe("resolvePool", () => {
     );
   });
 
-  it("refuses boat.dev until it is built", () => {
-    expect(() => resolvePool({ requested: "boat", configured: {} })).toThrow(/boat.dev/);
+  it("builds boat.dev as boat_pi", () => {
+    const boat = runner();
+    expect(types(resolvePool({ requested: "boat", configured: { boat } }))).toEqual(["boat_pi"]);
   });
 });

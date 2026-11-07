@@ -1,5 +1,6 @@
 import type { SandboxProvider } from "@project-os/contracts";
 import type { WorkerLauncher } from "@project-os/core";
+import { BOAT_SIZES, type BoatSize, boatSandboxRunner } from "@project-os/infra-boat";
 import { cloudflareSandboxRunnerLive } from "@project-os/infra-cloudflare-sandbox";
 import { daytonaSandboxRunner } from "@project-os/infra-daytona";
 import { makeSandboxLauncher, resolvePool, type SandboxRunner } from "@project-os/infra-sandbox";
@@ -33,12 +34,23 @@ export const configuredRunners = (
   live: {
     readonly daytona: typeof daytonaSandboxRunner;
     readonly cloudflare: typeof cloudflareSandboxRunnerLive;
-  } = { daytona: daytonaSandboxRunner, cloudflare: cloudflareSandboxRunnerLive },
+    readonly boat: typeof boatSandboxRunner;
+  } = {
+    daytona: daytonaSandboxRunner,
+    cloudflare: cloudflareSandboxRunnerLive,
+    boat: boatSandboxRunner,
+  },
 ): Partial<Record<SandboxProvider, SandboxRunner>> => {
   const daytonaKey = nonEmpty(env, "DAYTONA_API_KEY");
   const cloudflareUrl = nonEmpty(env, "CLOUDFLARE_SANDBOX_URL");
   const apiUrl = nonEmpty(env, "DAYTONA_API_URL");
   const snapshot = nonEmpty(env, "DAYTONA_SNAPSHOT");
+  const boatKey = nonEmpty(env, "BOAT_API_KEY");
+  const boatUrl = nonEmpty(env, "BOAT_API_URL");
+  const boatSize = nonEmpty(env, "BOAT_SANDBOX_SIZE");
+  if (boatSize !== undefined && !(BOAT_SIZES as ReadonlyArray<string>).includes(boatSize)) {
+    throw new Error(`BOAT_SANDBOX_SIZE must be one of ${BOAT_SIZES.join(", ")}`);
+  }
   return {
     ...(daytonaKey && {
       daytona: live.daytona({
@@ -51,6 +63,13 @@ export const configuredRunners = (
       cloudflare: live.cloudflare({
         url: cloudflareUrl,
         token: required(env, "CLOUDFLARE_SANDBOX_TOKEN"),
+      }),
+    }),
+    ...(boatKey && {
+      boat: live.boat({
+        apiKey: boatKey,
+        ...(boatUrl && { apiUrl: boatUrl }),
+        ...(boatSize && { size: boatSize as BoatSize }),
       }),
     }),
   };
@@ -76,6 +95,7 @@ export const sandboxLauncherFromEnv = (
       Object.entries({
         daytona: positiveInt(env, "DAYTONA_MAX_CONCURRENT"),
         cloudflare: positiveInt(env, "CLOUDFLARE_SANDBOX_MAX_CONCURRENT"),
+        boat: positiveInt(env, "BOAT_MAX_CONCURRENT"),
       }).filter((entry): entry is [string, number] => entry[1] !== undefined),
     ),
   });

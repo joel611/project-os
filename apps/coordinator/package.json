@@ -22,6 +22,7 @@
     "@project-os/config": "workspace:*",
     "@project-os/contracts": "workspace:*",
     "@project-os/core": "workspace:*",
+    "@project-os/infra-boat": "workspace:*",
     "@project-os/infra-cloudflare": "workspace:*",
     "@project-os/infra-cloudflare-sandbox": "workspace:*",
     "@project-os/infra-daytona": "workspace:*",

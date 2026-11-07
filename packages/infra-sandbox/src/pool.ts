@@ -5,16 +5,16 @@ import {
   type SandboxProvider as ProviderName,
   type SandboxWorkerType,
 } from "@project-os/contracts";
-import { BOAT_NOT_SUPPORTED } from "./boat.ts";
 import type { SandboxProvider, SandboxRunner } from "./launcher.ts";
 
-const workerTypeOf = (name: ProviderName): SandboxWorkerType | undefined =>
-  SANDBOX_WORKER_TYPES.find((type) => SANDBOX_PROVIDER_OF[type] === name);
+const WORKER_TYPE_OF = Object.fromEntries(
+  SANDBOX_WORKER_TYPES.map((type) => [SANDBOX_PROVIDER_OF[type], type] as const),
+) as Record<ProviderName, SandboxWorkerType>;
 
 /**
  * Builds the sandbox pool from settings. `requested` is WORKER_PROVIDERS: a comma list in
  * preference order. Unset or blank, every configured provider joins, Daytona first. Naming a
- * provider that isn't configured, isn't known, or isn't built yet (boat.dev) throws, so a
+ * provider that isn't configured or isn't known throws, so a
  * typo fails at startup instead of silently sending every ticket to the Watcher.
  */
 export const resolvePool = (input: {
@@ -40,8 +40,7 @@ export const resolvePool = (input: {
       );
     }
     const provider = name as ProviderName;
-    const workerType = workerTypeOf(provider);
-    if (workerType === undefined) throw new Error(`WORKER_PROVIDERS: ${BOAT_NOT_SUPPORTED}`);
+    const workerType = WORKER_TYPE_OF[provider];
     const runner = input.configured[provider];
     if (runner === undefined) {
       throw new Error(`WORKER_PROVIDERS names "${name}" but it isn't configured (see SETUP.md)`);

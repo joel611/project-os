@@ -10,4 +10,3 @@ export {
   type SandboxRunner,
 } from "./launcher.ts";
 export { resolvePool } from "./pool.ts";
-export { BOAT_NOT_SUPPORTED, boatSandboxRunner } from "./boat.ts";

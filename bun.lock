@@ -48,6 +48,7 @@
         "@project-os/config": "workspace:*",
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
+        "@project-os/infra-boat": "workspace:*",
         "@project-os/infra-cloudflare": "workspace:*",
         "@project-os/infra-cloudflare-sandbox": "workspace:*",
         "@project-os/infra-daytona": "workspace:*",
@@ -209,6 +210,14 @@
       },
       "devDependencies": {
         "drizzle-kit": "0.31.11",
+      },
+    },
+    "packages/infra-boat": {
+      "name": "@project-os/infra-boat",
+      "version": "0.0.0",
+      "dependencies": {
+        "@boatdev/sdk": "1.13.0",
+        "@project-os/infra-sandbox": "workspace:*",
       },
     },
     "packages/infra-cloudflare": {
@@ -418,6 +427,8 @@
     "@better-fetch/fetch": ["@better-fetch/fetch@1.3.3", "", {}, "sha512-U6SlDt/GUWtK2JAxS/NhdoYTEim+EL1G5byz2TUj83KjLZBUpYzb5SmX0aXaCnbGkAjFKnV/o/0+cyXMbEcqqg=="],
 
     "@blazediff/core": ["@blazediff/core@1.10.0", "", {}, "sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ=="],
+
+    "@boatdev/sdk": ["@boatdev/sdk@1.13.0", "", {}, "sha512-wSmCyFLDL0QTCLF5NfQR4JTdTccFIvlqBBtCMDLPk61hLj48ZPEH/0nF91j4aiMLBkr+kvmkedfqkyFuokn5dw=="],
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.3", "", {}, "sha512-49CycTz1aAZmvFcwkeFyhud1HUmRIB5Tabf7ALV+VA4Iu85MTfz2cUwzPagMFAdVBvrWdkCxG67I30tUwwpKsw=="],
 
@@ -926,6 +937,8 @@
     "@project-os/discord-gateway": ["@project-os/discord-gateway@workspace:apps/discord-gateway"],
 
     "@project-os/e2e": ["@project-os/e2e@workspace:apps/e2e"],
+
+    "@project-os/infra-boat": ["@project-os/infra-boat@workspace:packages/infra-boat"],
 
     "@project-os/infra-cloudflare": ["@project-os/infra-cloudflare@workspace:packages/infra-cloudflare"],
 

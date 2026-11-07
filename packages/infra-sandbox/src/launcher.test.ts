@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { boatSandboxRunner, BOAT_NOT_SUPPORTED } from "./boat.ts";
 import {
   makeSandboxLauncher,
   piMcpJson,
@@ -117,13 +116,5 @@ describe("sandbox launcher", () => {
     await Effect.runPromise(launcher.launch(daytonaTicket));
     await settle();
     expect(logs.at(-1)).toBe("daytona: daytona-t1 exited 2: pi: bad model");
-  });
-});
-
-describe("boat.dev placeholder", () => {
-  it("fails every run until it is built", async () => {
-    await expect(
-      boatSandboxRunner().run({ env: {}, command: "true", timeoutSeconds: 1 }),
-    ).rejects.toThrow(BOAT_NOT_SUPPORTED);
   });
 });

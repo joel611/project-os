@@ -39,7 +39,10 @@ const INTENTS = {
 
 // One choice for every cloud sandbox: which provider runs it is the sandbox pool's call
 // (WORKER_PROVIDERS), not the classifier's.
-const WORKER_TYPES: Record<Exclude<WorkerType, "sidekick" | "cloudflare_pi">, string> = {
+const WORKER_TYPES: Record<
+  Exclude<WorkerType, "sidekick" | "cloudflare_pi" | "boat_pi">,
+  string
+> = {
   local_claude: "A local Claude Code session on the developer's machine",
   local_pi: "A local Pi coding agent session",
   daytona_pi: "A Pi agent in a cloud sandbox",
