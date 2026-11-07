@@ -270,8 +270,8 @@ You choose the providers. Each one joins the **pool** when its credentials are s
 
 ```sh
 # Try Cloudflare first, then Daytona, then boat.dev. Unset: every configured provider,
-# in the order sandbox-daytona, sandbox-cloudflare, sandbox-boat.
-WORKER_PROVIDERS=sandbox-cloudflare,sandbox-daytona,sandbox-boat
+# in the order daytona, cloudflare, boat.
+WORKER_PROVIDERS=cloudflare,daytona,boat
 
 # Required with any provider: the Coordinator's /mcp as the sandbox's cloud sees it
 # (a tunnel such as https://abc.trycloudflare.com/mcp, never localhost).
@@ -281,13 +281,13 @@ SANDBOX_PI_MODEL=
 SANDBOX_SESSION_TIMEOUT_SECONDS=
 ```
 
-When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Provider names carry the `sandbox-` prefix; worker ids don't. Naming one that isn't configured, or a bare name like `daytona`, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
+When the Coordinator assigns a ticket, it reads the pool and starts the first provider with room. Room means fewer active tickets on it than its `*_MAX_CONCURRENT` (no cap if unset). If every provider is full, or the pool is empty, the ticket goes to the shared Watcher (`WORKER_ID`). The classifier only decides "sandbox or not"; which sandbox is always the pool's call. Worker ids are `<provider>-<id>`. Naming one that isn't configured, or an unknown name, stops the Coordinator at startup so a typo can't silently send everything to the Watcher.
 
 | Provider           | `WORKER_PROVIDERS` name | Worker type     | Status    | Settings                                                                                           |
 | ------------------ | ----------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
-| Daytona            | `sandbox-daytona`       | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
-| Cloudflare Sandbox | `sandbox-cloudflare`    | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
-| boat.dev           | `sandbox-boat`          | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
+| Daytona            | `daytona`               | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
+| Cloudflare Sandbox | `cloudflare`            | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
+| boat.dev           | `boat`                  | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
 
 The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SECONDS` still work as fallbacks for the `SANDBOX_*` names.
 

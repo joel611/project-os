@@ -5,10 +5,10 @@ import { type SandboxPoolEntry, TicketRepository, WorkerLauncher } from "../port
 
 /**
  * The worker id a sandbox session claims as: one fresh worker per ticket, `<provider>-<id>`
- * with the provider's name minus its `sandbox-` prefix, e.g. `daytona-<id>`.
+ * with the provider name, e.g. `daytona-<id>`.
  */
 export const sandboxWorkerId = (workerType: SandboxWorkerType, ticketId: string) =>
-  `${SANDBOX_PROVIDER_OF[workerType].replace(/^sandbox-/, "")}-${ticketId}`;
+  `${SANDBOX_PROVIDER_OF[workerType]}-${ticketId}`;
 
 /**
  * Reads the sandbox pool and returns the first provider, in pool order, with room for one more

@@ -53,20 +53,20 @@ export const configuredRunners = (
   }
   return {
     ...(daytonaKey && {
-      "sandbox-daytona": live.daytona({
+      daytona: live.daytona({
         apiKey: daytonaKey,
         ...(apiUrl && { apiUrl }),
         ...(snapshot && { snapshot }),
       }),
     }),
     ...(cloudflareUrl && {
-      "sandbox-cloudflare": live.cloudflare({
+      cloudflare: live.cloudflare({
         url: cloudflareUrl,
         token: required(env, "CLOUDFLARE_SANDBOX_TOKEN"),
       }),
     }),
     ...(boatKey && {
-      "sandbox-boat": live.boat({
+      boat: live.boat({
         apiKey: boatKey,
         ...(boatUrl && { apiUrl: boatUrl }),
         ...(boatSize && { size: boatSize as BoatSize }),
@@ -93,9 +93,9 @@ export const sandboxLauncherFromEnv = (
     configured: options.runners ?? configuredRunners(env),
     maxConcurrent: Object.fromEntries(
       Object.entries({
-        "sandbox-daytona": positiveInt(env, "DAYTONA_MAX_CONCURRENT"),
-        "sandbox-cloudflare": positiveInt(env, "CLOUDFLARE_SANDBOX_MAX_CONCURRENT"),
-        "sandbox-boat": positiveInt(env, "BOAT_MAX_CONCURRENT"),
+        daytona: positiveInt(env, "DAYTONA_MAX_CONCURRENT"),
+        cloudflare: positiveInt(env, "CLOUDFLARE_SANDBOX_MAX_CONCURRENT"),
+        boat: positiveInt(env, "BOAT_MAX_CONCURRENT"),
       }).filter((entry): entry is [string, number] => entry[1] !== undefined),
     ),
   });
