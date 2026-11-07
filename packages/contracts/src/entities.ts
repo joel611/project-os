@@ -113,11 +113,16 @@ export const Worker = Schema.Struct({
   workerType: WorkerType,
   /**
    * Personal workers (a device someone registered with /register-worker) serve only their
-   * owner's tickets. Null on shared workers (the shared Watcher, Daytona sessions).
+   * owner's tickets. Null on shared workers (devices an admin registered, sandbox sessions).
    */
   ownerChannelType: Schema.NullOr(ChannelType),
   ownerId: Schema.NullOr(Schema.String),
-  /** Label the owner gave the device (defaults to its hostname). */
+  /**
+   * Registered with a one-time /register-worker code, so it holds a bearer secret it must
+   * send. False on sandbox sessions, which the Coordinator starts itself.
+   */
+  registered: Schema.Boolean,
+  /** Label given to the device at registration (defaults to its hostname). */
   name: Schema.NullOr(Schema.String),
   currentTicketId: Schema.NullOr(Schema.String),
   lastSeenAt: Timestamp,

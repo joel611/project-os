@@ -1,11 +1,6 @@
-import {
-  type InboundMessage,
-  isSandboxWorkerType,
-  type ReplyInstruction,
-  type WorkerType,
-} from "@project-os/contracts";
+import type { InboundMessage, ReplyInstruction } from "@project-os/contracts";
 import { Effect } from "effect";
-import { ACTIVE_STATUSES, isTerminal, type Ticket, workerLabel } from "../../domain/index.ts";
+import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -15,10 +10,8 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   TicketRepository,
-  WorkerLauncher,
 } from "../ports/index.ts";
-import { onlinePersonalWorker } from "./personal-workers.ts";
-import { pickSandboxProvider, sandboxWorkerId } from "./sandbox-pool.ts";
+import { assignToWorker, pickWorker, QUEUED_EVENT_KIND, QUEUED_MESSAGE } from "./assign-worker.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { nowIso, updateStatus } from "./tickets.ts";
@@ -33,16 +26,6 @@ export interface HandleInboundConfig {
   readonly adminUserIds?: ReadonlyArray<string>;
   /** Below this the Coordinator asks a clarifying question. Default 0.5. */
   readonly confidenceThreshold?: number;
-  /**
-   * Shared worker for tickets the classifier doesn't route. Unset: a sandbox from the pool when
-   * there is one, else `local_claude`. Any sandbox type means "the pool", whichever provider.
-   */
-  readonly defaultWorkerType?: WorkerType;
-  /**
-   * Worker to assign new tickets to. `ticket_claim` only admits the assigned `worker_id`,
-   * so leave unset only if something else assigns later.
-   */
-  readonly workerId?: string;
   readonly dedupeTtlSeconds?: number;
   /**
    * Ignore top-level Discord project channel messages that don't @mention the bot. Messages
@@ -50,13 +33,15 @@ export interface HandleInboundConfig {
    */
   readonly requireMention?: boolean;
   /**
-   * A personal worker (registered with /register-worker) counts as online if it heartbeat
-   * within this window; only then does it get its owner's new tickets. Default 15 minutes.
+   * A registered device (personal or shared) counts as online if it heartbeat within this
+   * window; only then does it get new tickets. Default 15 minutes.
    */
   readonly workerStaleMs?: number;
+  /** See `WorkerRouting.sharedWorkerMaxTickets`. Default 1. */
+  readonly sharedWorkerMaxTickets?: number;
 }
 
-const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
+export const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
 
 export type InboundOutcome =
   | { readonly kind: "duplicate" }
@@ -94,7 +79,6 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const runtime = yield* AgentRuntime;
     const gateway = yield* ChannelGateway;
     const ids = yield* IdGenerator;
-    const launcher = yield* WorkerLauncher;
 
     const reply = (content: string): Effect.Effect<void> => {
       const instruction: ReplyInstruction = {
@@ -304,23 +288,6 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
 
     switch (result.intent) {
       case "new_request": {
-        // The requester's own online device takes the ticket. Otherwise it goes to a shared
-        // worker: the classifier's pick or the default. A sandbox pick is served from the pool
-        // (first provider in WORKER_PROVIDERS order with room); with none free, or none
-        // configured, it falls back to the shared Watcher.
-        const personal = yield* onlinePersonalWorker(
-          { channelType: message.channelType, id: message.sender.id },
-          config.workerStaleMs ?? DEFAULT_WORKER_STALE_MS,
-        );
-        const requested = result.workerType ?? config.defaultWorkerType;
-        const sandbox =
-          personal === undefined && (requested === undefined || isSandboxWorkerType(requested))
-            ? yield* pickSandboxProvider
-            : undefined;
-        const workerType: WorkerType =
-          personal?.workerType ??
-          sandbox?.workerType ??
-          (requested === undefined || isSandboxWorkerType(requested) ? "local_claude" : requested);
         const ticketId = yield* ids.next;
         yield* tickets.insert({
           id: ticketId,
@@ -402,28 +369,36 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           }
           return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
         }
-        // `ticket_claim` only admits the assigned worker. A sandbox session is a fresh worker
-        // per ticket, so it gets its own id and the host Watcher never sees the ticket.
-        const workerId = personal
-          ? personal.id
-          : sandbox
-            ? sandboxWorkerId(sandbox.workerType, ticketId)
-            : (config.workerId ?? null);
-        const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
-        yield* tickets.appendEvent({
-          id: yield* ids.next,
+        // The requester's own online device, else a free shared device, else a sandbox from
+        // the pool. With none free the ticket stays open, queued; the health sweep assigns it
+        // once one has room.
+        const pick = yield* pickWorker(
+          { channelType: message.channelType, id: message.sender.id },
           ticketId,
-          type: "assigned",
-          actor: "coordinator",
-          actorId: null,
-          body: personal
-            ? `Assigned to the requester's own worker ${workerLabel(personal)}`
-            : `Assigned to ${workerId ?? workerType}`,
-          payload: { workerType, workerId, personal: personal !== undefined },
-          createdAt: at,
-        });
+          {
+            workerStaleMs: config.workerStaleMs ?? DEFAULT_WORKER_STALE_MS,
+            ...(config.sharedWorkerMaxTickets !== undefined && {
+              sharedWorkerMaxTickets: config.sharedWorkerMaxTickets,
+            }),
+          },
+        );
+        if (!pick) {
+          yield* tickets.appendEvent({
+            id: yield* ids.next,
+            ticketId,
+            type: "system",
+            actor: "coordinator",
+            actorId: null,
+            body: "Queued: no worker is free",
+            payload: { kind: QUEUED_EVENT_KIND },
+            createdAt: at,
+          });
+          const threadId = yield* openTicketThread(ticketId, at);
+          yield* replyIn(threadId, QUEUED_MESSAGE);
+          return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
+        }
+        const assigned = yield* assignToWorker(ticketId, pick, at);
         yield* openTicketThread(ticketId, at);
-        if (workerId !== null) yield* launcher.launch({ ticketId, workerType, workerId });
         return { kind: "ticket_created", ticket: assigned } as InboundOutcome;
       }
       case "follow_up": {

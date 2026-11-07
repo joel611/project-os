@@ -1,7 +1,7 @@
 import type { WorkerType } from "@project-os/contracts";
 import { Effect, Option, Schema } from "effect";
 import {
-  isPersonal,
+  isSharedDevice,
   RegistrationInvalid,
   type Worker,
   WorkerUnauthorized,
@@ -24,6 +24,8 @@ const PendingRegistration = Schema.fromJsonString(
   Schema.Struct({
     channelType: Schema.Literals(["discord", "email", "chat"]),
     id: Schema.String,
+    /** An admin's code: the device joins the pool as a shared worker instead of theirs. */
+    shared: Schema.optionalKey(Schema.Boolean),
   }),
 );
 const decodePending = Schema.decodeUnknownOption(PendingRegistration);
@@ -49,18 +51,26 @@ const pendingKey = (hash: string) => `worker-register:${hash}`;
 const usedKey = (hash: string) => `worker-register-used:${hash}`;
 
 /**
- * Starts registering a device for `person`: a one-time code, valid for
- * `REGISTRATION_TTL_SECONDS`, that the Watcher trades for its credentials. Only the code's
- * hash is stored.
+ * Starts registering a device: a one-time code, valid for `REGISTRATION_TTL_SECONDS`, that the
+ * Watcher trades for its credentials. Only the code's hash is stored. By default the device
+ * becomes `person`'s personal worker; with `shared` (admins only, checked by the caller) it
+ * joins the pool as a shared worker that serves everyone.
  */
-export const issueWorkerRegistration = (person: Person) =>
+export const issueWorkerRegistration = (
+  person: Person,
+  options: { readonly shared?: boolean } = {},
+) =>
   Effect.gen(function* () {
     const kv = yield* KeyValueStore;
     const token = yield* randomSecret(24);
     const hash = yield* sha256Hex(token);
     yield* kv.set(
       pendingKey(hash),
-      JSON.stringify({ channelType: person.channelType, id: person.id }),
+      JSON.stringify({
+        channelType: person.channelType,
+        id: person.id,
+        ...(options.shared && { shared: true }),
+      }),
       { ttlSeconds: REGISTRATION_TTL_SECONDS },
     );
     return { token, expiresInSeconds: REGISTRATION_TTL_SECONDS };
@@ -69,8 +79,9 @@ export const issueWorkerRegistration = (person: Person) =>
 const WORKER_NAME_MAX = 60;
 
 /**
- * Trades a /register-worker code for a personal worker bound to whoever ran the command.
- * The code works once. Returns the worker and its bearer secret (shown only here).
+ * Trades a /register-worker code for a registered device: a personal worker bound to whoever
+ * ran the command, or a shared worker (no owner) for an admin's shared code. The code works
+ * once. Returns the worker and its bearer secret (shown only here).
  */
 export const redeemWorkerRegistration = (input: {
   readonly token: string;
@@ -88,8 +99,8 @@ export const redeemWorkerRegistration = (input: {
         "This registration code is unknown, expired, or already used. Run /register-worker again.",
     });
     const hash = yield* sha256Hex(input.token);
-    const owner = decodePending(yield* kv.get(pendingKey(hash)));
-    if (Option.isNone(owner)) return yield* invalid;
+    const pending = decodePending(yield* kv.get(pendingKey(hash)));
+    if (Option.isNone(pending)) return yield* invalid;
     // Two Watchers racing with one code: only the first gets a device.
     const first = yield* kv.setIfAbsent(usedKey(hash), "1", {
       ttlSeconds: REGISTRATION_TTL_SECONDS,
@@ -102,10 +113,11 @@ export const redeemWorkerRegistration = (input: {
       0,
       WORKER_NAME_MAX,
     );
+    const shared = pending.value.shared === true;
     const worker = yield* workers.register({
-      id: `local-${yield* ids.next}`,
+      id: `${shared ? "shared" : "local"}-${yield* ids.next}`,
       workerType: input.workerType ?? "local_claude",
-      owner: { channelType: owner.value.channelType, id: owner.value.id },
+      owner: shared ? null : { channelType: pending.value.channelType, id: pending.value.id },
       name,
       secretHash: yield* sha256Hex(secret),
       at: yield* nowIso,
@@ -113,7 +125,7 @@ export const redeemWorkerRegistration = (input: {
     return { worker, secret };
   });
 
-/** The personal worker a bearer secret belongs to, or undefined. */
+/** The registered worker (personal or shared) a bearer secret belongs to, or undefined. */
 export const authenticateWorker = (secret: string) =>
   Effect.gen(function* () {
     const workers = yield* WorkerRepository;
@@ -129,6 +141,12 @@ export const listPersonalWorkers = (person: Person, staleAfterMs: number) =>
     return mine.map((worker) => ({ worker, status: workerStatus(worker, now, staleAfterMs) }));
   });
 
+/** Matches a worker by id or name, ignoring case. */
+const named = (idOrName: string) => {
+  const wanted = idOrName.trim().toLowerCase();
+  return (w: Worker) => w.id.toLowerCase() === wanted || w.name?.toLowerCase() === wanted;
+};
+
 /**
  * Removes one of this person's devices, matched by id or name. Someone else's device is
  * reported as not found. Returns the removed worker, or undefined.
@@ -136,10 +154,29 @@ export const listPersonalWorkers = (person: Person, staleAfterMs: number) =>
 export const unregisterWorker = (person: Person, idOrName: string) =>
   Effect.gen(function* () {
     const workers = yield* WorkerRepository;
-    const wanted = idOrName.trim().toLowerCase();
     const target = (yield* workers.listByOwner(person.channelType, person.id)).find(
-      (w) => w.id.toLowerCase() === wanted || w.name?.toLowerCase() === wanted,
+      named(idOrName),
     );
+    if (!target) return undefined;
+    yield* workers.remove(target.id);
+    return target;
+  });
+
+/** Shared devices admins registered into the pool, with online/offline. */
+export const listSharedWorkers = (staleAfterMs: number) =>
+  Effect.gen(function* () {
+    const workers = yield* WorkerRepository;
+    const now = yield* Effect.flatMap(Clock, (c) => c.now);
+    return (yield* workers.list)
+      .filter(isSharedDevice)
+      .map((worker) => ({ worker, status: workerStatus(worker, now, staleAfterMs) }));
+  });
+
+/** Removes a shared device, matched by id or name (admins only, checked by the caller). */
+export const unregisterSharedWorker = (idOrName: string) =>
+  Effect.gen(function* () {
+    const workers = yield* WorkerRepository;
+    const target = (yield* workers.list).filter(isSharedDevice).find(named(idOrName));
     if (!target) return undefined;
     yield* workers.remove(target.id);
     return target;
@@ -147,7 +184,7 @@ export const unregisterWorker = (person: Person, idOrName: string) =>
 
 /**
  * The device that should take `person`'s next ticket: their most recently seen personal
- * worker that is online. Undefined sends the ticket to the shared worker instead.
+ * worker that is online. Undefined sends the ticket to the pool instead.
  */
 export const onlinePersonalWorker = (person: Person, staleAfterMs: number) =>
   Effect.gen(function* () {
@@ -168,31 +205,31 @@ const findWorker = (id: string) =>
   );
 
 /**
- * MCP guard for tools that act as `workerId` (list, claim, heartbeat). Shared workers need no
- * credentials, as before. A personal worker must be the caller, and a personal caller may only
- * act as itself.
+ * MCP guard for tools that act as `workerId` (list, claim, heartbeat). A registered device
+ * (personal or shared) must be the caller, and a registered caller may only act as itself.
+ * Sandbox sessions, which the Coordinator starts itself, need no credentials.
  */
 export const guardActingAs = (workerId: string, caller: Worker | undefined) =>
   Effect.gen(function* () {
     if (caller) {
       if (caller.id !== workerId) {
-        return yield* unauthorized(workerId, "A personal worker can only act as itself.");
+        return yield* unauthorized(workerId, "A registered worker can only act as itself.");
       }
       return;
     }
     const target = yield* findWorker(workerId);
-    if (target && isPersonal(target)) {
+    if (target?.registered) {
       return yield* unauthorized(
         workerId,
-        "This is a personal worker: send its secret as a Bearer token.",
+        "This is a registered worker: send its secret as a Bearer token.",
       );
     }
   });
 
 /**
- * MCP guard for tools on one ticket. A ticket assigned to a personal worker is reachable only
- * with that worker's secret (it may carry the owner's OAuth tokens), and a personal worker
- * only reaches its own tickets.
+ * MCP guard for tools on one ticket. A ticket assigned to a registered device (personal or
+ * shared) is reachable only with that device's secret (it may carry the requester's OAuth
+ * tokens), and a registered device only reaches its own tickets.
  */
 export const guardTicketAccess = (ticketId: string, caller: Worker | undefined) =>
   Effect.gen(function* () {
@@ -208,10 +245,10 @@ export const guardTicketAccess = (ticketId: string, caller: Worker | undefined) 
       return;
     }
     const target = assignee === null ? undefined : yield* findWorker(assignee);
-    if (target && isPersonal(target)) {
+    if (target?.registered) {
       return yield* unauthorized(
         target.id,
-        "This ticket belongs to a personal worker: send its secret as a Bearer token.",
+        "This ticket belongs to a registered worker: send its secret as a Bearer token.",
       );
     }
   });

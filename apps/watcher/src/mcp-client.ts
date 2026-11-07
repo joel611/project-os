@@ -6,7 +6,7 @@ interface RpcResponse {
 }
 
 // Minimal MCP streamable-HTTP client: one JSON-RPC tools/call per request.
-// `secret`: a personal worker's Bearer token.
+// `secret`: a registered device's Bearer token (unset only in tests of the anonymous path).
 export const httpMcpClient = (url: string, fetcher: typeof fetch, secret?: string): McpClient => {
   let id = 0;
   return {

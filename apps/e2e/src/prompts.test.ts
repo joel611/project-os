@@ -14,7 +14,9 @@ import { type Stack, startStack } from "./stack.ts";
 // The Coordinator posts it in the ticket's thread with buttons; a click goes back through the
 // adapter to the Coordinator, which closes the prompt and adds the answer to the ticket.
 
-const WORKER = "w1";
+/** The shared worker an admin registered; set once the stack is up. */
+let WORKER: string;
+let SECRET: string;
 const CHANNEL = "chan-1";
 const ada: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada" };
 const bob: FakeSpeaker = { channelId: CHANNEL, userId: "u2", name: "Bob" };
@@ -58,8 +60,9 @@ const click = async (who: FakeSpeaker, choice: number) => {
 };
 
 beforeEach(async () => {
-  stack = await startStack({ classifier, workerId: WORKER });
-  mcp = await stack.worker();
+  stack = await startStack({ classifier });
+  ({ workerId: WORKER, secret: SECRET } = await stack.registerSharedWorker());
+  mcp = await stack.worker(SECRET);
   await stack.linkChannel(CHANNEL);
   const inbound = fakeInbound(ada, "deploy the new pricing page", { id: "msg-1" })!;
   await forwardInbound(stack.url, inbound, fetch);

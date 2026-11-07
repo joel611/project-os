@@ -95,9 +95,9 @@ const define = <I extends Schema.Constraint, O extends Schema.Constraint, E, R>(
 
 /**
  * Worker-facing tool surface (docs/technical-architecture.md section 3.2). No channel tools.
- * `caller` is the personal worker that authenticated with its Bearer secret, if any: personal
- * workers and their tickets are only reachable with that secret, while shared workers keep
- * working without credentials.
+ * `caller` is the registered device (personal or shared) that authenticated with its Bearer
+ * secret, if any: registered devices and their tickets are only reachable with that secret,
+ * while sandbox sessions work without credentials.
  */
 export const makeTools = (caller?: Worker): readonly McpTool<McpServices>[] => {
   const actingAs = (i: { readonly workerId: string }) => guardActingAs(i.workerId, caller);

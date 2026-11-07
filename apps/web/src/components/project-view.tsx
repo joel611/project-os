@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SOURCE_META } from "@/components/source";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
-import { relativeTime, splitTickets } from "@/model";
+import { relativeTime, splitTickets, workerName } from "@/model";
 import { useNow } from "@/use-now";
 
 const Header = ({ project, sources }: ProjectDetail) => (
@@ -62,6 +62,9 @@ const TicketRows = ({
   projectId: string;
 }) => {
   const now = useNow();
+  // Registered devices are shown by name; sandbox sessions and unknown ids by id.
+  const workers = useQuery({ queryKey: ["workers"], queryFn: api.workers });
+  const names = new Map(workers.data?.map((w) => [w.id, workerName(w)]));
   return tickets.map((t) => (
     // The title link stretches over the whole row, so the row is clickable and keyboard-reachable.
     <TableRow key={t.id} className="relative cursor-pointer focus-within:bg-muted/50">
@@ -80,7 +83,16 @@ const TicketRows = ({
           <div className="truncate text-xs text-muted-foreground">{t.inputSummary}</div>
         )}
       </TableCell>
-      <TableCell className="w-40 text-sm text-muted-foreground">{t.workerId ?? "—"}</TableCell>
+      <TableCell
+        className="w-40 truncate text-sm text-muted-foreground"
+        title={t.workerId ?? undefined}
+      >
+        {t.workerId === null
+          ? t.status === "open"
+            ? "queued"
+            : "—"
+          : (names.get(t.workerId) ?? t.workerId)}
+      </TableCell>
       <TableCell className="w-28 text-right text-sm text-muted-foreground tabular-nums">
         {relativeTime(t.lastActivityAt, now)}
       </TableCell>

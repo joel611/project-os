@@ -107,7 +107,14 @@ describe("worker registration", () => {
 
   it("names a worker by its name, else its id", () => {
     const base = { id: "local-1", workerType: "local_claude" as const, ownerChannelType: null };
-    const w = { ...base, ownerId: null, currentTicketId: null, lastSeenAt: T0, createdAt: T0 };
+    const w = {
+      ...base,
+      ownerId: null,
+      registered: true,
+      currentTicketId: null,
+      lastSeenAt: T0,
+      createdAt: T0,
+    };
     expect(workerLabel({ ...w, name: "mbp" })).toBe("mbp");
     expect(workerLabel({ ...w, name: null })).toBe("local-1");
   });
@@ -191,10 +198,7 @@ const linkChannel = Effect.gen(function* () {
 
 const newTicket = (sender: Person, externalId?: string) =>
   Effect.gen(function* () {
-    const out = yield* handleInbound(msg(sender, externalId), {
-      workerId: "shared-1",
-      defaultWorkerType: "daytona_pi",
-    });
+    const out = yield* handleInbound(msg(sender, externalId), {});
     if (out.kind !== "ticket_created") throw new Error(out.kind);
     return out.ticket;
   });
@@ -219,7 +223,7 @@ describe("ticket routing", () => {
     ]);
   });
 
-  it("sends tickets to the shared cloud worker when the device is offline or someone else asks", async () => {
+  it("sends tickets to the sandbox pool when the device is offline or someone else asks", async () => {
     const { value } = await run(
       Effect.gen(function* () {
         yield* linkChannel;
@@ -253,54 +257,95 @@ describe("ticket routing", () => {
 });
 
 describe("MCP guards", () => {
-  it("lets shared workers act without credentials, and personal ones only with their own", async () => {
+  it("lets sandbox sessions act without credentials, and registered devices only with their own", async () => {
     const { value } = await run(
       Effect.gen(function* () {
         yield* linkChannel;
         const ada = yield* device(ADA, true);
         const bob = yield* device(BOB, true);
         const adaTicket = yield* newTicket(ADA, "m1");
-        const sharedTicket = yield* newTicket(
+        const sandboxTicket = yield* newTicket(
           { channelType: "discord", id: "u9", name: "Cy" },
           "m2",
         );
-        // No shared worker id configured: assigned to a worker type, no worker id yet.
-        const unassigned = yield* handleInbound(msg({ channelType: "discord", id: "u9" }, "m3"), {
-          defaultWorkerType: "local_claude",
+        // Not assigned yet (queued): no worker to guard.
+        const queued = sandboxTicket.id;
+        yield* (yield* TicketRepository).insert({
+          ...sandboxTicket,
+          id: "t-queued",
+          status: "open",
+          workerType: null,
+          workerId: null,
         });
-        if (unassigned.kind !== "ticket_created") throw new Error(unassigned.kind);
         const ok = (e: Effect.Effect<void, any, any>) =>
           e.pipe(
             Effect.as("ok"),
             Effect.catch((err: { _tag: string }) => Effect.succeed(err._tag)),
           );
         return {
-          sharedAnon: yield* ok(guardActingAs("shared-1", undefined)),
+          sandboxAnon: yield* ok(guardActingAs(sandboxTicket.workerId!, undefined)),
           personalAnon: yield* ok(guardActingAs(ada.worker.id, undefined)),
           personalSelf: yield* ok(guardActingAs(ada.worker.id, ada.worker)),
           personalOther: yield* ok(guardActingAs(ada.worker.id, bob.worker)),
           ticketAnon: yield* ok(guardTicketAccess(adaTicket.id, undefined)),
           ticketOwner: yield* ok(guardTicketAccess(adaTicket.id, ada.worker)),
           ticketOther: yield* ok(guardTicketAccess(adaTicket.id, bob.worker)),
-          sharedTicketAnon: yield* ok(guardTicketAccess(sharedTicket.id, undefined)),
-          sharedTicketPersonal: yield* ok(guardTicketAccess(sharedTicket.id, ada.worker)),
-          noWorkerAnon: yield* ok(guardTicketAccess(unassigned.ticket.id, undefined)),
+          sandboxTicketAnon: yield* ok(guardTicketAccess(queued, undefined)),
+          sandboxTicketPersonal: yield* ok(guardTicketAccess(queued, ada.worker)),
+          noWorkerAnon: yield* ok(guardTicketAccess("t-queued", undefined)),
           missingTicket: yield* ok(guardTicketAccess("nope", undefined)),
         };
       }),
     );
     expect(value).toEqual({
-      sharedAnon: "ok",
+      sandboxAnon: "ok",
       personalAnon: "WorkerUnauthorized",
       personalSelf: "ok",
       personalOther: "WorkerUnauthorized",
       ticketAnon: "WorkerUnauthorized",
       ticketOwner: "ok",
       ticketOther: "WorkerUnauthorized",
-      sharedTicketAnon: "ok",
-      sharedTicketPersonal: "WorkerUnauthorized",
+      sandboxTicketAnon: "ok",
+      sandboxTicketPersonal: "WorkerUnauthorized",
       noWorkerAnon: "ok",
       missingTicket: "ok",
+    });
+  });
+
+  it("holds a shared device and its tickets behind its secret too", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        yield* linkChannel;
+        const { token } = yield* issueWorkerRegistration(ADA, { shared: true });
+        const shared = yield* redeemWorkerRegistration({ token, hostname: "build-box" });
+        yield* heartbeat({ workerId: shared.worker.id, workerType: "local_claude" });
+        const ticket = yield* newTicket(BOB);
+        const ok = (e: Effect.Effect<void, any, any>) =>
+          e.pipe(
+            Effect.as("ok"),
+            Effect.catch((err: { _tag: string }) => Effect.succeed(err._tag)),
+          );
+        return {
+          worker: shared.worker,
+          ticket,
+          authed: (yield* authenticateWorker(shared.secret))?.id,
+          anon: yield* ok(guardActingAs(shared.worker.id, undefined)),
+          self: yield* ok(guardActingAs(shared.worker.id, shared.worker)),
+          ticketAnon: yield* ok(guardTicketAccess(ticket.id, undefined)),
+          ticketSelf: yield* ok(guardTicketAccess(ticket.id, shared.worker)),
+        };
+      }),
+    );
+    expect(value.worker).toMatchObject({ ownerId: null, ownerChannelType: null, registered: true });
+    expect(value.worker.id).toMatch(/^shared-/);
+    // Bob has no device of his own: the shared device takes his ticket before the sandbox pool.
+    expect(value.ticket.workerId).toBe(value.worker.id);
+    expect(value.authed).toBe(value.worker.id);
+    expect(value).toMatchObject({
+      anon: "WorkerUnauthorized",
+      self: "ok",
+      ticketAnon: "WorkerUnauthorized",
+      ticketSelf: "ok",
     });
   });
 });

@@ -89,7 +89,7 @@ Three main moving parts:
 | Workers pull and execute tickets via MCP | On session start, look for tickets assigned but not yet picked up, claim one, then work it through MCP tools, read/write Project Memory, post status and results **on the ticket**. Never talk to channels directly. |
 | Project Memory is the source of truth | Channel → Project mapping, sources, default reply targets, and durable project knowledge. Accessible by Coordinator, Workers (via MCP), and Web UI. |
 | Pull assignment | Coordinator only marks a ticket `assigned` (to a worker / worker type). Workers find and claim their work; the Coordinator never pushes into a Worker. |
-| Shared Workers need no auth; personal Workers do | Shared Workers (Daytona sandboxes, the shared Watcher) run in a sandbox / trusted network and call MCP without credentials. A personal Worker (someone's own computer, registered with `/register-worker`) authenticates with a Bearer secret, and only it can reach its owner's tickets (§5.8). Per-ticket scoped tokens are still deferred. |
+| Sandbox sessions need no auth; registered devices do | Sandbox sessions, which the Coordinator starts itself, call MCP without credentials. A registered device (a personal Worker someone added with `/register-worker`, or a shared Worker an admin added with `/register-worker shared:True`) authenticates with a Bearer secret, and only it can reach its tickets (§5.8). Per-ticket scoped tokens are still deferred. |
 | 1:1 Channel → Project | One Discord channel belongs to exactly one project. |
 | Admin via conversation + Web UI | Admins configure projects/sources via the dedicated admin Discord channel or the web interface. |
 
@@ -223,10 +223,12 @@ Every Worker session begins with a fixed instruction (system prompt / startup ho
 
 **Local Watcher (how local Workers get started):**
 
-A small program a developer runs on their own machine. It polls for work and launches local Claude Code. It runs in one of two modes:
+A small program that runs on a registered computer. It polls for work and launches local Claude Code. It runs only after registering with a one-time code (§5.8), which makes the computer one of two kinds:
 
-- **Personal** (the usual one, §5.8): someone runs `/register-worker` in Discord and pastes the one-line command it gives them. The computer is then their own Worker: it gets only the tickets they start, while it is online.
-- **Shared** (the original POC setup): no registration, configured from env (`MCP_URL`, `WORKER_ID`), and gets the tickets assigned to `WORKER_ID`.
+- **Personal:** someone runs `/register-worker` in Discord and pastes the one-line command it gives them. The computer is then their own Worker: it gets only the tickets they start, while it is online.
+- **Shared:** an admin runs `/register-worker shared:True` in the admin channel and does the same on a computer for the team. It has no owner and takes anyone's tickets, up to `SHARED_WORKER_MAX_TICKETS` at a time.
+
+The fixed shared Watcher of the original POC (unregistered, polling as `WORKER_ID`) is gone: an unregistered Watcher refuses to start.
 
 - Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local_claude`, poll interval (default 5 min), max concurrent sessions (default 1), working directory.
 - Every 5 minutes: call `ticket_list_assigned` for its `worker_id`.
@@ -240,7 +242,7 @@ Daytona Workers don't need a watcher: the Coordinator starts a sandbox when it a
 
 How it works (`packages/sandbox-daytona`, enabled by `DAYTONA_API_KEY`):
 
-- A `daytona_pi` ticket is assigned to its own worker id, `daytona-<ticketId>`, so the host Watcher (which polls as `WORKER_ID`) never sees it and `ticket_claim` admits only that sandbox.
+- A sandbox ticket is assigned to its own worker id, `<provider>-<ticketId>` (e.g. `daytona-<ticketId>`), so no Watcher ever sees it and `ticket_claim` admits only that sandbox.
 - `handleInbound` calls `WorkerLauncher.launch` after assigning. The launcher creates an ephemeral sandbox, installs Pi (`@earendil-works/pi-coding-agent`), writes `~/.pi/agent/mcp.json` pointing at the Coordinator, and runs `pi --print` with the session-start prompt plus the worker id. Pi speaks streamable-HTTP MCP natively, so no bridge is needed. The sandbox is deleted when the session ends.
 - The sandbox is in the cloud, so the MCP endpoint must be public: `DAYTONA_MCP_URL` (a tunnel to the Coordinator's `/mcp`), never `MCP_URL`. The LLM key is `OPENROUTER_API_KEY`, passed as sandbox env.
 - Launch failures are logged, not raised. The ticket stays `assigned`, and the health sweep flags it as unpicked.
@@ -258,9 +260,9 @@ How it works (`packages/sandbox-daytona`, enabled by `DAYTONA_API_KEY`):
 
 ### 3.1 Auth stance
 
-**Shared Workers: no auth.** Daytona sandboxes and the shared Watcher call MCP with just their `worker_id`, as in the POC.
+**Sandbox sessions: no auth.** Sessions the Coordinator starts in a sandbox call MCP with just their `worker_id`, as in the POC.
 
-**Personal Workers: a Bearer secret** (§5.8). A device registered with `/register-worker` sends `Authorization: Bearer <secret>` on every MCP request; the Coordinator stores only its SHA-256. The rule is symmetric: a personal Worker, and any ticket assigned to one, is reachable only with that Worker's secret, and a personal Worker reaches only its own tickets (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`, `ticket_get`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). An unknown Bearer token gets HTTP 401. Project-scoped tools (`project_memory_*`, `project_sources_list`) are not guarded yet. Per-ticket scoped tokens stay deferred; the tool surface did not change.
+**Registered devices (personal and shared Workers): a Bearer secret** (§5.8). A device registered with `/register-worker` sends `Authorization: Bearer <secret>` on every MCP request; the Coordinator stores only its SHA-256. The rule is symmetric: a registered Worker, and any ticket assigned to one, is reachable only with that Worker's secret, and a registered Worker reaches only its own tickets (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`, `ticket_get`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). An unknown Bearer token gets HTTP 401. Project-scoped tools (`project_memory_*`, `project_sources_list`) are not guarded yet. Per-ticket scoped tokens stay deferred; the tool surface did not change.
 
 ### 3.1a Assignment model: pull
 
@@ -551,6 +553,10 @@ Every minute, Coordinator checks:
 Workers
   • last_seen_at older than 15 min (3 missed watcher polls) → mark Worker offline
 
+Tickets in `open` with no worker (queued: nothing had room when they came in)
+  • oldest first: requester's own device, a free shared device, or a sandbox with room
+      → assign (and launch a sandbox); otherwise leave queued for the next sweep
+
 Tickets in `assigned`
   • assigned Worker offline, or not picked after 30 min
       → append system event, reassign (another worker of same type) or flag to admin
@@ -620,11 +626,13 @@ A developer can make their own computer their Worker, like linking an account. I
 ```
 
 - **Command shape.** `bun install -g` can't pass arguments to the installed program, so the line installs, then runs `project-os-watcher register`, which keeps running. Later starts are just `project-os-watcher`. `WATCHER_INSTALL_COMMAND` changes the install half (the package isn't on npm yet).
-- **Routing.** For a new ticket, `handleInbound` looks for the requester's personal Workers that heartbeat within `HEALTH_WORKER_STALE_MIN` and assigns the most recently seen one (`worker_type` = `local_claude`, nothing launched). With none online, the ticket goes to the shared Worker: `DEFAULT_WORKER_TYPE`, which defaults to `daytona_pi` when `DAYTONA_API_KEY` is set, else the shared Watcher (`WORKER_ID`).
+- **Shared devices.** `/register-worker shared:True` (admin channel, `ADMIN_USER_IDS` only) issues the same kind of code, marked shared. Redeeming it makes Worker `shared-<uuid>` with no owner. `/workers shared:True` lists them and `/unregister-worker shared:True worker:<name>` removes one; `/workers` shows them to everyone below their own devices. The dashboard sidebar lists Workers grouped as Shared pool, Personal and Sandbox sessions.
+- **Routing** (`pickWorker`). For a new ticket: (1) the requester's personal Workers that heartbeat within `HEALTH_WORKER_STALE_MIN`, most recently seen first; (2) an online shared Worker holding fewer than `SHARED_WORKER_MAX_TICKETS` (default 1) assigned or in-progress tickets, least loaded first; (3) the first Sandbox Pool provider with room (§ cloud sandbox workers), which is launched. Registered devices are pull-model, so nothing is launched for (1) and (2).
+- **Queued.** With none of them free the ticket stays `open` with no worker, gets a `system` event `{kind: "queued"}`, and its thread is told it's queued. Each health sweep then tries the queued tickets oldest first with the same routing, using the sender on the ticket's `created` event as the requester, and reports `{kind: "assigned"}`.
 - **Whose ticket.** The requester is the sender of the message that created the ticket. Follow-ups by others stay on the same Worker.
 - **Claude Code's MCP config** carries the secret as an `Authorization` header, written to `~/.config/project-os/mcp.json` (0600) so it never appears in the process list.
 - **Commands.** `/register-worker [name]`, `/workers` (yours, online or offline), `/unregister-worker worker:<name or id>` (deletes it; its secret stops working). All private, server only, behind the member role gate.
-- **Not handled yet.** A ticket assigned to a personal Worker that then goes offline stays `assigned` for the health sweep to flag; it is not moved to the cloud Worker.
+- **Not handled yet.** A ticket assigned to a registered Worker that then goes offline stays `assigned` for the health sweep to flag; it is not moved elsewhere. Nobody is told when a queued ticket finally gets a worker; the Worker's own updates are the first sign.
 
 ---
 
