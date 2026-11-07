@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-// Installed as `claude` in the watcher VM image so the Watcher's session runs on Pi instead.
-// Takes the argv spawn.ts's claudeArgs builds: claude -p <prompt> --mcp-config <file> --allowedTools <glob>
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
