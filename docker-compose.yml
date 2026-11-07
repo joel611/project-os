@@ -65,6 +65,21 @@ services:
       - "4318:4318" # OTLP HTTP
     volumes: ["lgtm-data:/data"]
 
+  # Stand-in for an external VM running the Watcher (`docker compose --profile vm up -d watcher-vm`).
+  # Register it with a /register-worker code, see SETUP.md §5 "Try it in Docker".
+  watcher-vm:
+    profiles: ["vm"]
+    build: { context: ., dockerfile: apps/watcher/Dockerfile }
+    # Reaches the Coordinator through the host's published port, like an external VM would.
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      POLL_INTERVAL_MS: ${WATCHER_POLL_INTERVAL_MS:-10000}
+      # The session runs on Pi (see apps/watcher/sim/claude-as-pi.ts).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      PI_MODEL: ${SANDBOX_PI_MODEL:-openrouter/anthropic/claude-sonnet-4.5}
+    volumes: ["watcher-vm-home:/home/bun/.config"]
+    depends_on: [coordinator]
+
   # Optional split layout: Discord in its own container, for a Coordinator that can't host it
   # or to scale them apart. `docker compose --profile split up`, with DISCORD_SPLIT_GATEWAY_URL set.
   discord-gateway:
@@ -85,3 +100,4 @@ services:
 volumes:
   coordinator-data:
   lgtm-data:
+  watcher-vm-home:

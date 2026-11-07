@@ -264,6 +264,8 @@ Then, for each person's own computer:
 
 For a shared computer, an admin (in `ADMIN_USER_IDS`) does the same in the admin channel with `shared:True`: `/register-worker shared:True name:build-box`, then pastes the command on that computer. `/workers shared:True` lists the shared computers and `/unregister-worker shared:True worker:<name>` removes one. Both kinds show in the dashboard sidebar under Workers.
 
+**Try it in Docker.** `scripts/watcher-vm.sh up` starts the Coordinator and a `watcher-vm` container that stands in for an external VM, and seeds a demo project with tickets. `scripts/watcher-vm.sh register` runs `/register-worker` through `POST /commands` (no Discord) and executes the printed `project-os-watcher register ...` line inside the container. The package isn't on npm, so the image links the Watcher from the repo and skips the install half. The VM reaches the Coordinator at `host.docker.internal:8080` (the script sets `PUBLIC_URL` to that), and its `claude` is a shim that runs the session on Pi, using `OPENROUTER_API_KEY` and `SANDBOX_PI_MODEL`. `scripts/watcher-vm.sh logs` follows the Watcher.
+
 A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (15 minutes by default; it checks in every 5).
 
 ---
