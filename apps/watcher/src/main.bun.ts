@@ -1,8 +1,15 @@
 #!/usr/bin/env bun
-import { hostname } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir, hostname } from "node:os";
 import { parseArgs, USAGE } from "./cli.ts";
 import { loadConfig } from "./config.ts";
-import { credentialsPath, loadCredentials, saveCredentials } from "./credentials.ts";
+import {
+  configDir,
+  credentialsPath,
+  loadCredentials,
+  saveCredentials,
+  writePrivate,
+} from "./credentials.ts";
 import { httpMcpClient } from "./mcp-client.ts";
 import { createWatcher } from "./poll.ts";
 import { registerDevice } from "./register.ts";
@@ -61,7 +68,13 @@ console.log(
 const watcher = createWatcher({
   config,
   client: httpMcpClient(config.mcpUrl, fetch, config.secret),
-  spawner: bunSpawner(config, Bun.spawn),
+  spawner: bunSpawner(config, Bun.spawn, {
+    readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
+    writePrivate,
+    env: process.env,
+    configDir: configDir(),
+    home: homedir(),
+  }),
   log: console.log,
 });
 

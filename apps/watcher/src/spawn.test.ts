@@ -36,7 +36,7 @@ const run = async (cfg: WatcherConfig, io: SpawnerIo) => {
       seen = { cmd, cwd: options.cwd, env: options.env };
       return { exited: Promise.resolve(7) };
     },
-    { io },
+    io,
   );
   const code = await spawner.spawn();
   return { code, seen: seen! };
@@ -88,7 +88,8 @@ describe("bunSpawner", () => {
         cmd = c;
         return { exited: Promise.resolve(0) };
       },
-      { agent: AGENTS.codex, io },
+      io,
+      AGENTS.codex,
     ).spawn();
     expect(cmd[0]).toBe("codex");
   });
