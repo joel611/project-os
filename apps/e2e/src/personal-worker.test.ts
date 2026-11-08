@@ -43,11 +43,6 @@ const slash = (speaker: typeof ada, name: string, options: Record<string, string
 const say = (speaker: typeof ada, content: string) =>
   forwardInbound(stack.url, fakeInbound(speaker, content)!, fetch);
 
-/**
- * Does what the /register-worker reply says to paste: fetches the install script from the
- * Coordinator, then runs the `register` command that script ends with (its install step and
- * agent prompts are covered by the script's own tests).
- */
 const registerFromReply = async (content: string): Promise<WatcherCredentials> => {
   const line = /```sh\n(.+)\n```/.exec(content)![1]!;
   const scriptUrl = /curl -fsSL (\S+) \|/.exec(line)![1]!;

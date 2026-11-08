@@ -11,7 +11,6 @@ export const isAgentName = (value: string): value is AgentName =>
 /** Name of the Coordinator in each agent's MCP config; Claude's tool permissions are keyed on it. */
 export const MCP_SERVER_NAME = "project-os";
 
-/** Env var Codex reads the Coordinator bearer token from, so the secret stays out of `ps`. */
 export const CODEX_TOKEN_ENV = "PROJECT_OS_MCP_TOKEN";
 
 /**
@@ -23,7 +22,6 @@ export interface AgentFile {
   readonly update: (existing: string | undefined) => string;
 }
 
-/** Everything the Watcher needs to run one headless session on an agent CLI. */
 export interface AgentLaunch {
   readonly cmd: readonly string[];
   /** Added on top of the Watcher's own environment. */
@@ -35,12 +33,10 @@ export interface AgentLaunch {
 export interface AgentContext {
   readonly config: WatcherConfig;
   readonly prompt: string;
-  /** Watcher's private config dir (`~/.config/project-os`). */
   readonly configDir: string;
   readonly home: string;
 }
 
-/** One agent CLI the Watcher can drive. Each turns the same config and prompt into its own invocation. */
 export interface Agent {
   readonly name: AgentName;
   readonly launch: (ctx: AgentContext) => AgentLaunch;

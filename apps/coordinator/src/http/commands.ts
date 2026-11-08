@@ -48,7 +48,6 @@ export interface WorkersCommandsConfig {
   readonly run: <A>(effect: Effect.Effect<A, never, WorkersEnv>) => Promise<A>;
   /** Coordinator URL as the person's computer reaches it (the Watcher registers and polls here). */
   readonly publicUrl: string;
-  /** How the install script installs the Watcher. Default `bun install -g @project-os/watcher`. */
   readonly installCommand?: string;
   /** A device that hasn't heartbeat within this reads as offline. */
   readonly staleMs: number;
@@ -208,7 +207,12 @@ const workerCommand = async (
           ? `Run this on the computer that should join the shared pool (the code works once, for ${minutes} minutes):`
           : `Run this on the computer that should work on your tickets (the code works once, for ${minutes} minutes):`,
         "```sh",
-        installLine(watcherScriptConfig(workers), token, { name, agent, model }),
+        installLine(watcherScriptConfig(workers), token, {
+          name,
+          agent,
+          model,
+          yes: agent !== undefined,
+        }),
         "```",
         shared
           ? `It needs Bun and one agent CLI (Claude Code, Pi or Codex). ${choice} It registers the computer as a shared worker, then keeps running and picks up tickets from anyone without their own worker online, one at a time. To start it again later, run \`project-os-watcher\`.`

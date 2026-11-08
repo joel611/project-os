@@ -29,7 +29,6 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-/** Runs a generated script under sh with only the stub CLIs (plus system tools and bun) on PATH. */
 const run = (
   script: string,
   args: string[],
@@ -63,13 +62,13 @@ describe("reply lines", () => {
     );
   });
 
-  it("adds --yes whenever it names an agent, so the script has nothing left to ask", () => {
+  it("passes --agent and --model through, and adds --yes only when asked", () => {
     const config = { server: SERVER };
     const prefix = "curl -fsSL https://coord.example.com/watcher/install.sh | sh -s -- abc";
-    expect(installLine(config, "abc", { agent: "codex" })).toBe(`${prefix} --agent codex --yes`);
-    expect(installLine(config, "abc", { name: "box", agent: "pi", model: "deepseek v4" })).toBe(
-      `${prefix} --name box --agent pi --model 'deepseek v4' --yes`,
-    );
+    expect(installLine(config, "abc", { agent: "codex" })).toBe(`${prefix} --agent codex`);
+    expect(
+      installLine(config, "abc", { name: "box", agent: "pi", model: "deepseek v4", yes: true }),
+    ).toBe(`${prefix} --name box --agent pi --model 'deepseek v4' --yes`);
     expect(installLine(config, "abc", { model: "gpt-5" })).toBe(`${prefix} --model gpt-5`);
     expect(shellQuote("it's")).toBe(`'it'\\''s'`);
   });
