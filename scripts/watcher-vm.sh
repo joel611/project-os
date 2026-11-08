@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 compose=(docker compose --profile vm)
 export PUBLIC_URL=http://host.docker.internal:8080
+# The image already links the Watcher, so the install script's install step is a no-op.
+export WATCHER_INSTALL_COMMAND=true
 url=${COORDINATOR_URL:-http://localhost:8080}
 
 case "${1:-}" in
@@ -15,7 +17,7 @@ case "${1:-}" in
     reply=$(curl -sf -X POST "$url/commands" -H 'content-type: application/json' -d '{
       "channelType":"discord","command":"register-worker","externalId":"sim-1",
       "channelId":"sim-channel","sender":{"id":"sim-user"},"options":{"name":"vm-sim"}}')
-    line=$(printf '%s' "$reply" | sed -E 's/.*(project-os-watcher register [^\\]*)\\n.*/\1/')
+    line=$(printf '%s' "$reply" | sed -E 's/.*(curl -fsSL [^ ]*\/watcher\/install\.sh [^\\]*)\\n.*/\1/')
     echo "in the VM: $line"
     "${compose[@]}" exec -d watcher-vm sh -c "$line > /tmp/watcher.log 2>&1"
     sleep 5

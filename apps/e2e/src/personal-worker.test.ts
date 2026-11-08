@@ -43,11 +43,18 @@ const slash = (speaker: typeof ada, name: string, options: Record<string, string
 const say = (speaker: typeof ada, content: string) =>
   forwardInbound(stack.url, fakeInbound(speaker, content)!, fetch);
 
-/** Runs what the /register-worker reply says to paste, minus the install. */
+/**
+ * Does what the /register-worker reply says to paste: fetches the install script from the
+ * Coordinator, then runs the `register` command that script ends with (its install step and
+ * agent prompts are covered by the script's own tests).
+ */
 const registerFromReply = async (content: string): Promise<WatcherCredentials> => {
   const line = /```sh\n(.+)\n```/.exec(content)![1]!;
-  const argv = line.split(" && ")[1]!.split(" ").slice(1); // drop `project-os-watcher`
-  const command = parseArgs(argv);
+  const scriptUrl = /curl -fsSL (\S+) \|/.exec(line)![1]!;
+  const script = await (await fetch(scriptUrl)).text();
+  expect(script).toContain("project-os-watcher");
+  const token = /sh -s -- (\S+)/.exec(line)![1]!;
+  const command = parseArgs(["register", token, "--server", stack.url, "--agent", "pi"]);
   if (command.kind !== "register") throw new Error(command.kind);
   return registerDevice(
     { server: command.server!, token: command.token, hostname: "ada-mbp" },
@@ -92,10 +99,7 @@ describe("personal worker", () => {
   it("registers Ada's computer from /register-worker and works only her tickets there", async () => {
     const reply = await slash(ada, "register-worker");
     expect(reply.ephemeral).toBe(true);
-    expect(reply.content).toContain(
-      "bun install -g @project-os/watcher && project-os-watcher register",
-    );
-    expect(reply.content).toContain(`--server ${stack.url}`);
+    expect(reply.content).toContain(`curl -fsSL ${stack.url}/watcher/install.sh | sh -s -- `);
 
     const credentials = await registerFromReply(reply.content);
     expect(credentials).toMatchObject({ server: stack.url, name: "ada-mbp" });

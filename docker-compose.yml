@@ -49,8 +49,7 @@ services:
       CLOUDFLARE_SANDBOX_URL: ${CLOUDFLARE_SANDBOX_URL:-}
       CLOUDFLARE_SANDBOX_TOKEN: ${CLOUDFLARE_SANDBOX_TOKEN:-}
       CLOUDFLARE_SANDBOX_MAX_CONCURRENT: ${CLOUDFLARE_SANDBOX_MAX_CONCURRENT:-}
-      WATCHER_INSTALL_COMMAND: ${WATCHER_INSTALL_COMMAND:-}
-      # Pi Durable traces + metrics -> the lgtm service (Grafana at http://localhost:3000).
+      WATCHER_INSTALL_COMMAND: ${WATCHER_INSTALL_COMMAND:-} # Pi Durable traces + metrics -> the lgtm service (Grafana at http://localhost:3000).
       # Forced, like the data paths: a host .env value (localhost:4318) would point at the container itself.
       OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
     volumes: ["coordinator-data:/data"]

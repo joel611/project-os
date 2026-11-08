@@ -23,6 +23,7 @@ import {
   type WorkerRepository,
 } from "@project-os/core";
 import { Effect } from "effect";
+import { installLine, type ScriptConfig } from "./watcher-install.ts";
 
 export interface CommandsConfig {
   /** Discord channel id of the admin channel; admin commands run only there. Unset: refused. */
@@ -46,13 +47,16 @@ export interface WorkersCommandsConfig {
   readonly run: <A>(effect: Effect.Effect<A, never, WorkersEnv>) => Promise<A>;
   /** Coordinator URL as the person's computer reaches it (the Watcher registers and polls here). */
   readonly publicUrl: string;
-  /** How to install the Watcher. Default `bun install -g @project-os/watcher`. */
+  /** How the install script installs the Watcher. Default `bun install -g @project-os/watcher`. */
   readonly installCommand?: string;
   /** A device that hasn't heartbeat within this reads as offline. */
   readonly staleMs: number;
 }
 
-export const DEFAULT_WATCHER_INSTALL = "bun install -g @project-os/watcher";
+export const watcherScriptConfig = (config: WorkersCommandsConfig): ScriptConfig => ({
+  server: config.publicUrl,
+  ...(config.installCommand && { installCommand: config.installCommand }),
+});
 
 const privately = (content: string): CommandReply => ({ content, ephemeral: true });
 
@@ -172,26 +176,6 @@ const personOf = (command: SlashCommand): Person => ({
   id: command.sender.id,
 });
 
-/** Quotes a value for a POSIX shell line (names may contain spaces). */
-const shellQuote = (value: string) =>
-  /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
-
-/** The line a person pastes on their computer: install the Watcher, then register and run it. */
-export const watcherCommandLine = (
-  config: WorkersCommandsConfig,
-  token: string,
-  name?: string,
-): string =>
-  [
-    config.installCommand ?? DEFAULT_WATCHER_INSTALL,
-    "&&",
-    "project-os-watcher register",
-    token,
-    "--server",
-    shellQuote(config.publicUrl.replace(/\/+$/, "")),
-    ...(name ? ["--name", shellQuote(name)] : []),
-  ].join(" ");
-
 const workerCommand = async (
   command: SlashCommand,
   config: CommandsConfig,
@@ -215,11 +199,12 @@ const workerCommand = async (
           ? `Run this on the computer that should join the shared pool (the code works once, for ${minutes} minutes):`
           : `Run this on the computer that should work on your tickets (the code works once, for ${minutes} minutes):`,
         "```sh",
-        watcherCommandLine(workers, token, name),
+        installLine(watcherScriptConfig(workers), token, name),
         "```",
         shared
-          ? "It needs Bun and Claude Code. It registers the computer as a shared worker, then keeps running and picks up tickets from anyone without their own worker online, one at a time. To start it again later, run `project-os-watcher`."
-          : "It needs Bun and Claude Code. It registers the computer to you, then keeps running and picks up only the tickets you start. To start it again later, run `project-os-watcher`.",
+          ? "It needs Bun and one agent CLI (Claude Code, Pi or Codex). The script asks which agent and model to use (Enter keeps the agent's default model), registers the computer as a shared worker, then keeps running and picks up tickets from anyone without their own worker online, one at a time. To start it again later, run `project-os-watcher`."
+          : "It needs Bun and one agent CLI (Claude Code, Pi or Codex). The script asks which agent and model to use (Enter keeps the agent's default model), registers the computer to you, then keeps running and picks up only the tickets you start. To start it again later, run `project-os-watcher`.",
+        "To remove it from that computer later, run `project-os-watcher uninstall`.",
         shared
           ? "Remove it with `/unregister-worker shared:True`."
           : "While it's offline, your tickets go to the shared pool.",

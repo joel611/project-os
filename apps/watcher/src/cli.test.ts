@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { parseArgs } from "./cli.ts";
+import { parseArgs, USAGE } from "./cli.ts";
 
 describe("parseArgs", () => {
   it("runs with no arguments", () => {
@@ -14,6 +14,43 @@ describe("parseArgs", () => {
       name: "my laptop",
     });
     expect(parseArgs(["register", "--server", "https://c", "abc"])).toMatchObject({ token: "abc" });
+  });
+
+  it("parses register's agent and model, and rejects an unknown agent", () => {
+    expect(
+      parseArgs([
+        "register",
+        "abc",
+        "--agent",
+        "codex",
+        "--model",
+        "gpt-5",
+        "--server",
+        "https://c",
+      ]),
+    ).toEqual({
+      kind: "register",
+      token: "abc",
+      server: "https://c",
+      agent: "codex",
+      model: "gpt-5",
+    });
+    expect(() => parseArgs(["register", "abc", "--agent", "gemini"])).toThrow(
+      /--agent must be one of claude, pi, codex/,
+    );
+  });
+
+  it("parses uninstall, asking first unless --yes", () => {
+    expect(parseArgs(["uninstall"])).toEqual({ kind: "uninstall", yes: false });
+    expect(parseArgs(["uninstall", "--yes"])).toEqual({ kind: "uninstall", yes: true });
+    expect(parseArgs(["uninstall", "-y"])).toEqual({ kind: "uninstall", yes: true });
+    expect(() => parseArgs(["uninstall", "--all"])).toThrow(/Unexpected argument "--all"/);
+  });
+
+  it("documents every command in --help", () => {
+    for (const word of ["register", "uninstall", "--help", "--agent", "--model", "--yes"]) {
+      expect(USAGE).toContain(word);
+    }
   });
 
   it("explains what's wrong", () => {
