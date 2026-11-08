@@ -283,7 +283,7 @@ export const startStack = async (options: {
       const mcp = await worker(credentials.secret);
       await mcp.callTool({
         name: "worker_heartbeat",
-        arguments: { workerId: credentials.workerId, workerType: "local_claude" },
+        arguments: { workerId: credentials.workerId, workerType: "local" },
       });
       return { workerId: credentials.workerId, secret: credentials.secret, mcp };
     },

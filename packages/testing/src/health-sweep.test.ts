@@ -37,7 +37,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   intent: null,
   inputSummary: "",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,
@@ -80,7 +80,7 @@ const scenario = <A>(
 
 const beat = (workerId: string, minutes: number) =>
   Effect.flatMap(WorkerRepository, (w) =>
-    w.heartbeat({ workerId, workerType: "local_claude", ticketId: null, at: iso(minutes) }),
+    w.heartbeat({ workerId, workerType: "local", ticketId: null, at: iso(minutes) }),
   );
 
 describe("healthSweep: assigned tickets", () => {
@@ -296,7 +296,7 @@ describe("healthSweep: queued tickets", () => {
     Effect.flatMap(WorkerRepository, (w) =>
       w.register({
         id,
-        workerType: "local_claude",
+        workerType: "local",
         owner,
         name: id,
         secretHash: `h-${id}`,

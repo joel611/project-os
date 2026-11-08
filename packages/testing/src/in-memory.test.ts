@@ -36,7 +36,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   intent: null,
   inputSummary: "x",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,

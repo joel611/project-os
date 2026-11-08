@@ -39,7 +39,7 @@ const seed = Effect.gen(function* () {
     intent: null,
     inputSummary: "x",
     priority: null,
-    workerType: "local_claude",
+    workerType: "local",
     workerId: null,
     result: null,
     error: null,
@@ -50,7 +50,7 @@ const seed = Effect.gen(function* () {
     completedAt: null,
     updatedAt: T0,
   });
-  yield* tickets.assign("t1", { workerType: "local_claude", workerId: "w1" }, T0);
+  yield* tickets.assign("t1", { workerType: "local", workerId: "w1" }, T0);
 });
 
 beforeEach(async () => {
@@ -141,7 +141,7 @@ describe("coordinator MCP server", () => {
     const read = await call("project_memory_read", { projectId: "p1" });
     expect(read.structuredContent.entries.map((e: any) => e.title)).toEqual(["Learned"]);
 
-    const beat = await call("worker_heartbeat", { workerId: "w1", workerType: "local_claude" });
+    const beat = await call("worker_heartbeat", { workerId: "w1", workerType: "local" });
     expect(typeof beat.structuredContent.lastSeenAt).toBe("string");
   });
 

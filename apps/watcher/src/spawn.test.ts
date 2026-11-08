@@ -6,7 +6,7 @@ import { bunSpawner, type SpawnerIo } from "./spawn.ts";
 const config: WatcherConfig = {
   mcpUrl: "http://coord:8080/mcp",
   workerId: "w1",
-  workerType: "local_claude",
+  workerType: "local",
   agent: "claude",
   intervalMs: 1000,
   maxSessions: 1,

@@ -102,7 +102,7 @@ describe("personal worker", () => {
     // The code worked once.
     await expect(registerFromReply(reply.content)).rejects.toThrow(/already used/);
 
-    const config = loadConfig(credentials);
+    const config = loadConfig(credentials, () => true);
     const sessions: Promise<number>[] = [];
     const watcher = createWatcher({
       config,
@@ -124,12 +124,12 @@ describe("personal worker", () => {
     await say(ada, ADA_ASK);
     await say(bob, BOB_ASK);
     const [adaTicket, bobTicket] = await tickets();
-    expect(adaTicket).toMatchObject({ workerType: "local_claude", workerId: config.workerId });
+    expect(adaTicket).toMatchObject({ workerType: "local", workerId: config.workerId });
     expect(bobTicket).toMatchObject({
       workerType: "daytona_pi",
       workerId: `daytona-${bobTicket.id}`,
     });
-    expect(launched.map((l) => l.workerType)).toEqual(["local_claude", "daytona_pi"]);
+    expect(launched.map((l) => l.workerType)).toEqual(["local", "daytona_pi"]);
 
     await watcher.pollOnce();
     await Promise.all(sessions);
@@ -145,7 +145,7 @@ describe("personal worker", () => {
     const own = httpMcpClient(`${stack.url}/mcp`, fetch, credentials.secret);
     await own.callTool("worker_heartbeat", {
       workerId: credentials.workerId,
-      workerType: "local_claude",
+      workerType: "local",
     });
     await say(ada, ADA_ASK);
     const [ticket] = await tickets();

@@ -425,7 +425,7 @@ describe("dashboard reads", () => {
     const beat = (workerId: string, at: string) =>
       runtime.runPromise(
         Effect.flatMap(WorkerRepository, (repo) =>
-          repo.heartbeat({ workerId, workerType: "local_claude", ticketId: null, at }),
+          repo.heartbeat({ workerId, workerType: "local", ticketId: null, at }),
         ),
       );
     await beat("fresh", T0);

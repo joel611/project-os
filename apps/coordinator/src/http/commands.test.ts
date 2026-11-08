@@ -313,7 +313,7 @@ describe("runCommand personal workers", () => {
         const [w] = yield* repo.list;
         yield* repo.heartbeat({
           workerId: w!.id,
-          workerType: "local_claude",
+          workerType: "local",
           ticketId: null,
           at: "2026-11-03T20:15:00.000Z",
         });

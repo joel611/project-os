@@ -41,7 +41,7 @@ describe("LocalLive", () => {
       yield* stop;
       yield* (yield* WorkerLauncher).launch({
         ticketId: "t",
-        workerType: "local_claude",
+        workerType: "local",
         workerId: "w",
       });
       return { now, id, v: yield* kv.get("k") };
@@ -90,7 +90,7 @@ describe("LocalLive", () => {
         intent: null,
         inputSummary: "x",
         priority: null,
-        workerType: "local_claude",
+        workerType: "local",
         workerId: null,
         result: null,
         error: null,
@@ -101,7 +101,7 @@ describe("LocalLive", () => {
         completedAt: null,
         updatedAt: T0,
       });
-      yield* tickets.assign("t1", { workerType: "local_claude", workerId: "w1" }, T0);
+      yield* tickets.assign("t1", { workerType: "local", workerId: "w1" }, T0);
       const claimed = yield* claimTicketUseCase({ ticketId: "t1", workerId: "w1" });
       const done = yield* updateStatus({ ticketId: "t1", status: "completed" });
       return { claimed: claimed.status, done: done.status };

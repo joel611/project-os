@@ -6,7 +6,7 @@ describe("layout", () => {
     const map = layout(
       ["discord", "email"],
       [
-        { id: "w1", workerType: "local_claude" },
+        { id: "w1", workerType: "local" },
         { id: "w2", workerType: "daytona_pi" },
       ],
     );
@@ -47,7 +47,7 @@ describe("layout", () => {
 });
 
 describe("drawing helpers", () => {
-  const map = layout(["discord"], [{ id: "w1", workerType: "local_claude" }]);
+  const map = layout(["discord"], [{ id: "w1", workerType: "local" }]);
   const a = map.byId.get("adapter:discord")!;
   const b = map.byId.get("coordinator")!;
 

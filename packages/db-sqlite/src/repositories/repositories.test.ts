@@ -85,7 +85,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   intent: null,
   inputSummary: "x",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,
@@ -396,11 +396,11 @@ describe("TicketRepository", () => {
         yield* repo.insert(
           ticket({ id: "t2", status: "open", workerId: null, workerType: null, assignedAt: null }),
         );
-        const any = yield* repo.assign("t1", { workerType: "local_pi", workerId: null }, T1);
+        const any = yield* repo.assign("t1", { workerType: "local", workerId: null }, T1);
         const exits = yield* Effect.all(
           [
-            Effect.exit(repo.assign("t2", { workerType: "local_claude", workerId: "w1" }, T1)),
-            Effect.exit(repo.assign("t2", { workerType: "local_claude", workerId: "w2" }, T2)),
+            Effect.exit(repo.assign("t2", { workerType: "local", workerId: "w1" }, T1)),
+            Effect.exit(repo.assign("t2", { workerType: "local", workerId: "w2" }, T2)),
           ],
           { concurrency: "unbounded" },
         );
@@ -408,11 +408,9 @@ describe("TicketRepository", () => {
           any,
           exits,
           t2: yield* repo.get("t2"),
-          again: yield* Effect.flip(
-            repo.assign("t1", { workerType: "local_pi", workerId: "w9" }, T2),
-          ),
+          again: yield* Effect.flip(repo.assign("t1", { workerType: "local", workerId: "w9" }, T2)),
           miss: yield* Effect.flip(
-            repo.assign("nope", { workerType: "local_pi", workerId: null }, T2),
+            repo.assign("nope", { workerType: "local", workerId: null }, T2),
           ),
         };
       }),
@@ -420,7 +418,7 @@ describe("TicketRepository", () => {
     expect(out.any).toMatchObject({
       status: "assigned",
       assignedAt: T1,
-      workerType: "local_pi",
+      workerType: "local",
       workerId: null,
     });
     expect(out.exits.filter(Exit.isSuccess)).toHaveLength(1);
@@ -517,13 +515,13 @@ describe("WorkerRepository", () => {
         const repo = yield* WorkerRepository;
         const first = yield* repo.heartbeat({
           workerId: "w1",
-          workerType: "local_claude",
+          workerType: "local",
           ticketId: null,
           at: T0,
         });
         const second = yield* repo.heartbeat({
           workerId: "w1",
-          workerType: "local_claude",
+          workerType: "local",
           ticketId: "t1",
           at: T1,
         });
@@ -538,7 +536,7 @@ describe("WorkerRepository", () => {
     );
     expect(out.first).toEqual({
       id: "w1",
-      workerType: "local_claude",
+      workerType: "local",
       ownerChannelType: null,
       ownerId: null,
       registered: false,
@@ -560,7 +558,7 @@ describe("WorkerRepository", () => {
         const owner = { channelType: "discord" as const, id: "u1" };
         const mine = yield* repo.register({
           id: "local-a",
-          workerType: "local_claude",
+          workerType: "local",
           owner,
           name: "laptop",
           secretHash: "h1",
@@ -568,7 +566,7 @@ describe("WorkerRepository", () => {
         });
         yield* repo.register({
           id: "local-b",
-          workerType: "local_claude",
+          workerType: "local",
           owner: { channelType: "discord", id: "u2" },
           name: "desktop",
           secretHash: "h2",
@@ -577,7 +575,7 @@ describe("WorkerRepository", () => {
         // A heartbeat keeps the owner.
         const beat = yield* repo.heartbeat({
           workerId: "local-a",
-          workerType: "local_claude",
+          workerType: "local",
           ticketId: null,
           at: T1,
         });
@@ -611,7 +609,7 @@ describe("WorkerRepository", () => {
         const repo = yield* WorkerRepository;
         const shared = yield* repo.register({
           id: "shared-a",
-          workerType: "local_claude",
+          workerType: "local",
           owner: null,
           name: "build-box",
           secretHash: "hs",

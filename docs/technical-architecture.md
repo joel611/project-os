@@ -230,7 +230,7 @@ A small program that runs on a registered computer. It polls for work and launch
 
 The fixed shared Watcher of the original POC (unregistered, polling as `WORKER_ID`) is gone: an unregistered Watcher refuses to start.
 
-- Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local_claude`, poll interval (default 5 min), max concurrent sessions (default 1), working directory.
+- Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local`, poll interval (default 5 min), max concurrent sessions (default 1), working directory.
 - Every 5 minutes: call `ticket_list_assigned` for its `worker_id`.
 - If an unpicked ticket exists and fewer than max sessions are running: start a Claude Code session (e.g. `claude -p "<session-start instruction>"`), with the Coordinator MCP server configured.
 - The Claude Code session claims the ticket itself (`ticket_claim`) and works it. The watcher does not claim, so all ticket state changes happen through the Worker's MCP calls.
@@ -393,7 +393,7 @@ Ticket
   input_summary           // what was asked
   priority                // optional
 
-  worker_type             // daytona_pi | local_claude | local_pi | ...
+  worker_type             // daytona_pi | local | ...
   worker_id               // which worker instance is assigned (if known)
   worker_endpoint         // unused under pull model; kept for a possible push mode later
 
@@ -435,7 +435,7 @@ This is the internal chat / activity stream of the ticket. Coordinator and Worke
 ```text
 Worker
   id                      // worker_id, e.g. joel-local-claude, local-<uuid> for personal
-  worker_type             // daytona_pi | local_claude | local_pi | ...
+  worker_type             // daytona_pi | local | ...
   owner_channel_type      // personal Workers: whose tickets they serve (null = shared)
   owner_id                //   e.g. discord + the Discord user id
   name                    // personal Workers: label, defaults to the hostname
@@ -590,7 +590,7 @@ host (outside Compose)
 ```
 
 - The watcher runs on the host (decided), so Claude Code uses the host's existing login and local repos. It reaches MCP through the coordinator's published port.
-- `local_claude` via the watcher is the first Worker type; `daytona_pi` is opt-in via `DAYTONA_API_KEY` (see the Daytona Workers note above).
+- `local` via the watcher is the first Worker type; `daytona_pi` is opt-in via `DAYTONA_API_KEY` (see the Daytona Workers note above).
 
 ### 5.7 Per-person Google and GitHub access
 
@@ -855,7 +855,7 @@ Enforce these with lint import rules in the Vite+ config.
 - Pin a version (`typesafe/jev-1.14` on OpenRouter), not `~typesafe/jev-latest`.
 - One request per inbound message, all questions evaluated together:
   - `intent` (choice): `new_request`, `follow_up` (on an open ticket), `status_question`, `admin_command`, `chit_chat`, `none`
-  - `worker_type` (choice): `local_claude`, … (only meaningful for `new_request`)
+  - `worker_type` (choice): `local`, … (only meaningful for `new_request`)
   - `executor` (choice): `worker` (needs the whole repo pulled, tests run, or a script run; also anything that changes code, or is unclear) or `sidekick` (read-only tool calls: list Google Drive files, read a GitHub repo's status, history, pipelines or releases). Only meaningful for `new_request`. Below 0.7 confidence it counts as `worker`, because a Worker can do both.
 - The option sets live in code; Jev only chooses between them. Below a confidence threshold (config, start at 0.5) the Coordinator asks a clarifying question instead of creating a ticket.
 - Keep counting, arithmetic, and date logic in code, not in Jev questions.
