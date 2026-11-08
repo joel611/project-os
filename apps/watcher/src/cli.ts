@@ -13,7 +13,8 @@ export const USAGE = `Usage:
       Register this computer (code from /register-worker), then run. An admin's
       shared code adds it to the pool for everyone; otherwise it is your personal worker.
   project-os-watcher
-      Run: poll for your tickets and start a Claude Code session for each.`;
+      Run: poll for your tickets and start an agent session for each.
+      WATCHER_AGENT picks the CLI (claude, pi or codex; default claude), WATCHER_MODEL its model.`;
 
 /** Parses argv after the script name. */
 export const parseArgs = (argv: ReadonlyArray<string>): Command => {
