@@ -13,11 +13,28 @@ export interface ScriptConfig {
   readonly installCommand?: string;
 }
 
-/** The line a person pastes on their computer: fetch the installer and hand it the one-time code. */
-export const installLine = (config: ScriptConfig, token: string, name?: string): string =>
+export interface InstallChoices {
+  readonly name?: string | undefined;
+  /** One of `WATCHER_AGENTS`; the caller checks it. Setting it also skips every question. */
+  readonly agent?: string | undefined;
+  readonly model?: string | undefined;
+}
+
+/**
+ * The line a person pastes on their computer: fetch the installer and hand it the one-time code.
+ * With an `agent` the line carries `--yes`, so the script never stops to ask.
+ */
+export const installLine = (
+  config: ScriptConfig,
+  token: string,
+  { name, agent, model }: InstallChoices = {},
+): string =>
   [
     `curl -fsSL ${shellQuote(`${trimmed(config.server)}/watcher/install.sh`)} | sh -s -- ${token}`,
     ...(name ? ["--name", shellQuote(name)] : []),
+    ...(agent ? ["--agent", shellQuote(agent)] : []),
+    ...(model ? ["--model", shellQuote(model)] : []),
+    ...(agent ? ["--yes"] : []),
   ].join(" ");
 
 // The script reads answers from the terminal, not stdin, because stdin is the curl pipe. The
@@ -38,15 +55,17 @@ ask() {
  */
 export const installScript = (config: ScriptConfig): string => `#!/bin/sh
 # Installs the Project OS Watcher on this computer and registers it.
-# Usage: curl -fsSL ${trimmed(config.server)}/watcher/install.sh | sh -s -- <code> [--name N] [--agent A] [--model M]
+# Usage: curl -fsSL ${trimmed(config.server)}/watcher/install.sh | sh -s -- <code> [--name N] [--agent A] [--model M] [--yes]
+# --yes never asks: it uses --agent (else the first agent found) and --model (else the agent's default).
 set -eu
 
 server=${shellQuote(trimmed(config.server))}
 ${TTY_HELPERS}
 
-code=""; name=""; agent=""; model=""
+code=""; name=""; agent=""; model=""; yes=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --yes|-y) yes=1; shift ;;
     --name|--agent|--model)
       [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
       case "$1" in --name) name=$2 ;; --agent) agent=$2 ;; --model) model=$2 ;; esac
@@ -55,7 +74,8 @@ while [ $# -gt 0 ]; do
     *) code=$1; shift ;;
   esac
 done
-[ -n "$code" ] || { echo "Usage: sh -s -- <code> [--name N] [--agent claude|pi|codex] [--model M]" >&2; exit 2; }
+[ -n "$code" ] || { echo "Usage: sh -s -- <code> [--name N] [--agent claude|pi|codex] [--model M] [--yes]" >&2; exit 2; }
+if [ -n "$yes" ]; then asking=""; fi
 
 found=""
 for candidate in claude pi codex; do
@@ -86,10 +106,10 @@ else
       i=$((i + 1))
     done
     [ -n "$agent" ] || { echo "Not a choice: $pick" >&2; exit 1; }
-  elif [ $# -eq 1 ]; then
+  elif [ $# -eq 1 ] || [ -n "$yes" ]; then
     agent=$1
   else
-    echo "Several agents found:$found. Run this again with --agent <name>." >&2
+    echo "Several agents found:$found. Run this again with --agent <name> (or --yes for the first)." >&2
     exit 1
   fi
 fi

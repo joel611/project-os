@@ -28,6 +28,10 @@ export type TicketEventType = typeof TicketEventType.Type;
 export const Actor = Schema.Literals(["coordinator", "worker", "system"]);
 export type Actor = typeof Actor.Type;
 
+/** Agent CLIs a Watcher can run a session on (`/register-worker agent:`, `register --agent`). */
+export const WATCHER_AGENTS = ["claude", "pi", "codex"] as const;
+export type WatcherAgent = (typeof WATCHER_AGENTS)[number];
+
 /**
  * Pi in a cloud sandbox, one per provider: `daytona_pi` (Daytona), `cloudflare_pi` (Cloudflare
  * Sandbox), `boat_pi` (boat.dev). The Coordinator starts these itself, picking from the pool.

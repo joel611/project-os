@@ -1,8 +1,9 @@
 import { join } from "node:path";
+import { WATCHER_AGENTS, type WatcherAgent } from "@project-os/contracts";
 import type { WatcherConfig } from "./config.ts";
 
-export const AGENT_NAMES = ["claude", "pi", "codex"] as const;
-export type AgentName = (typeof AGENT_NAMES)[number];
+export const AGENT_NAMES = WATCHER_AGENTS;
+export type AgentName = WatcherAgent;
 
 export const isAgentName = (value: string): value is AgentName =>
   (AGENT_NAMES as readonly string[]).includes(value);

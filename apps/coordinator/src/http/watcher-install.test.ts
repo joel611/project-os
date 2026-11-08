@@ -58,9 +58,19 @@ describe("reply lines", () => {
     expect(installLine(config, "abc")).toBe(
       "curl -fsSL https://coord.example.com/watcher/install.sh | sh -s -- abc",
     );
-    expect(installLine(config, "abc", "my laptop")).toBe(
+    expect(installLine(config, "abc", { name: "my laptop" })).toBe(
       "curl -fsSL https://coord.example.com/watcher/install.sh | sh -s -- abc --name 'my laptop'",
     );
+  });
+
+  it("adds --yes whenever it names an agent, so the script has nothing left to ask", () => {
+    const config = { server: SERVER };
+    const prefix = "curl -fsSL https://coord.example.com/watcher/install.sh | sh -s -- abc";
+    expect(installLine(config, "abc", { agent: "codex" })).toBe(`${prefix} --agent codex --yes`);
+    expect(installLine(config, "abc", { name: "box", agent: "pi", model: "deepseek v4" })).toBe(
+      `${prefix} --name box --agent pi --model 'deepseek v4' --yes`,
+    );
+    expect(installLine(config, "abc", { model: "gpt-5" })).toBe(`${prefix} --model gpt-5`);
     expect(shellQuote("it's")).toBe(`'it'\\''s'`);
   });
 
@@ -110,6 +120,34 @@ describe("install script", () => {
     const r = run(install, ["abc"], { agents: ["pi"] });
     expect(r.status).toBe(0);
     expect(r.log.at(-1)).toBe(`watcher register abc --server ${SERVER} --agent pi`);
+  });
+
+  it("--yes never asks, even with a terminal: first agent found, the agent's default model", () => {
+    const r = run(install, ["abc", "--yes"], {
+      agents: ["claude", "codex"],
+      answers: "2\ngpt-5\n",
+    });
+    expect(r.status).toBe(0);
+    expect(r.stderr).not.toContain("Which agent");
+    expect(r.stderr).not.toContain("Model for");
+    expect(r.log.at(-1)).toBe(`watcher register abc --server ${SERVER} --agent claude`);
+  });
+
+  it("--yes keeps an explicit --agent and --model, and -y is the same", () => {
+    const r = run(install, ["abc", "-y", "--agent", "codex", "--model", "gpt-5"], {
+      agents: ["claude", "codex"],
+      answers: "1\n\n",
+    });
+    expect(r.stderr).toBe("");
+    expect(r.log.at(-1)).toBe(
+      `watcher register abc --server ${SERVER} --agent codex --model gpt-5`,
+    );
+  });
+
+  it("--yes still stops when no agent is installed", () => {
+    const r = run(install, ["abc", "--yes"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("No agent CLI found");
   });
 
   it("refuses to guess between several agents without a terminal", () => {
