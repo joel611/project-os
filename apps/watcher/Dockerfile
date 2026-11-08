@@ -1,6 +1,6 @@
-FROM oven/bun:1.4.4 AS pi
+FROM oven/bun:1.4.4 AS agents
 ENV BUN_INSTALL=/opt/bun-global
-RUN bun add -g @earendil-works/pi-coding-agent
+RUN bun add -g @earendil-works/pi-coding-agent @openai/codex
 
 FROM oven/bun:1.4.4 AS manifests
 WORKDIR /repo
@@ -15,9 +15,10 @@ COPY --from=manifests /manifests ./
 RUN bun install --frozen-lockfile --production --ignore-scripts
 
 FROM oven/bun:1.4.4
-COPY --from=pi /opt/bun-global /opt/bun-global
-# `bun add -g` links pi into the base image's bin dir, which this copy doesn't carry over.
-RUN ln -s /opt/bun-global/install/global/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js /usr/local/bin/pi
+COPY --from=agents /opt/bun-global /opt/bun-global
+# `bun add -g` links the agents into the base image's bin dir, which this copy doesn't carry over.
+RUN ln -s /opt/bun-global/install/global/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js /usr/local/bin/pi \
+ && ln -s /opt/bun-global/install/global/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex
 WORKDIR /repo
 COPY --from=deps /repo ./
 COPY . .
