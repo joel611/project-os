@@ -91,12 +91,12 @@ describe("ticket status machine", () => {
 
   it("assign moves open → assigned and sets the worker", async () => {
     const t = await Effect.runPromise(
-      assignTicket(ticket(), { workerId: "w1", workerType: "local_claude" }, T1),
+      assignTicket(ticket(), { workerId: "w1", workerType: "local" }, T1),
     );
     expect(t).toMatchObject({
       status: "assigned",
       workerId: "w1",
-      workerType: "local_claude",
+      workerType: "local",
       assignedAt: T1,
     });
   });

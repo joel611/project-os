@@ -12,7 +12,7 @@ const ticket = (over: Partial<ActivityTicket> = {}): ActivityTicket => ({
   intent: "new_request",
   inputSummary: "",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,
@@ -51,7 +51,7 @@ describe("workerName", () => {
   it("names a worker by its type and id", () => {
     expect(workerName("w1", "daytona_pi")).toBe("Pi (Daytona) (w1)");
     expect(workerName("w1", null)).toBe("w1");
-    expect(workerName(null, "local_pi")).toBe("Pi (local)");
+    expect(workerName(null, "local")).toBe("Local computer");
     expect(workerName(undefined, undefined)).toBe("a worker");
   });
 });
@@ -91,11 +91,11 @@ describe("eventLines", () => {
 
   it("says who a ticket was assigned to", () => {
     const by = (payload: unknown) => text(eventLines(event("assigned", { payload }), ticket())[0]!);
-    expect(by({ workerType: "local_claude", workerId: "w1" })).toBe(
-      "Marked `#0142` assigned to Claude Code (w1). Waiting for it to pull.",
+    expect(by({ workerType: "local", workerId: "w1" })).toBe(
+      "Marked `#0142` assigned to Local computer (w1). Waiting for it to pull.",
     );
-    expect(by({ workerType: "local_pi", workerId: null })).toBe(
-      "Marked `#0142` assigned to Pi (local). Waiting for it to pull.",
+    expect(by({ workerType: "local", workerId: null })).toBe(
+      "Marked `#0142` assigned to Local computer. Waiting for it to pull.",
     );
     expect(by(null)).toBe("Marked `#0142` assigned to a worker. Waiting for it to pull.");
   });
@@ -119,12 +119,12 @@ describe("eventLines", () => {
       "w9 posted a status update on `#0142`: on it",
     );
     expect(text(worker("comment", { actorId: "w1" }))).toBe(
-      "Claude Code (w1) commented on `#0142`",
+      "Local computer (w1) commented on `#0142`",
     );
-    expect(text(worker("comment"))).toBe("Claude Code (w1) commented on `#0142`");
-    expect(text(worker("result"))).toBe("Claude Code (w1) posted the result for `#0142`");
+    expect(text(worker("comment"))).toBe("Local computer (w1) commented on `#0142`");
+    expect(text(worker("result"))).toBe("Local computer (w1) posted the result for `#0142`");
     const error = worker("error");
-    expect(text(error)).toBe("Claude Code (w1) reported an error on `#0142`");
+    expect(text(error)).toBe("Local computer (w1) reported an error on `#0142`");
     expect(error.tone).toBe("failed");
     expect(text(eventLines(event("comment", { actor: "worker" }), undefined)[0]!)).toBe(
       "a worker commented on `#0142`",
@@ -144,8 +144,8 @@ describe("transitionLines", () => {
     const done = ticket({ status: "completed", startedAt: T(3), completedAt: T(6) });
     const lines = transitionLines(done, "assigned");
     expect(lines.map(text)).toEqual([
-      "Claude Code (w1) claimed `#0142`, now in progress",
-      "`#0142` completed by Claude Code (w1)",
+      "Local computer (w1) claimed `#0142`, now in progress",
+      "`#0142` completed by Local computer (w1)",
       "Coordinator replied to @mira.k on Discord",
     ]);
     expect(lines.map((l) => l.at)).toEqual([T(3), T(6), T(6)]);
@@ -154,7 +154,7 @@ describe("transitionLines", () => {
   it("logs a claim on a ticket it has not seen before", () => {
     const working = ticket({ status: "in_progress", startedAt: T(3) });
     expect(transitionLines(working, undefined).map(text)).toEqual([
-      "Claude Code (w1) claimed `#0142`, now in progress",
+      "Local computer (w1) claimed `#0142`, now in progress",
     ]);
     expect(transitionLines(working, "in_progress")).toEqual([]);
     expect(transitionLines(working, "open")).toHaveLength(1);
@@ -163,12 +163,12 @@ describe("transitionLines", () => {
   it("replies without a name when the ticket has no sender", () => {
     const done = ticket({ status: "completed", origin: null, replyChannel: "email" });
     expect(transitionLines(done, "in_progress").map(text)).toEqual([
-      "`#0142` completed by Claude Code (w1)",
+      "`#0142` completed by Local computer (w1)",
       "Coordinator replied by email",
     ]);
     const silent = ticket({ status: "completed", replyChannel: null, workerId: null });
     expect(transitionLines(silent, "in_progress").map(text)).toEqual([
-      "`#0142` completed by Claude Code",
+      "`#0142` completed by Local computer",
     ]);
   });
 

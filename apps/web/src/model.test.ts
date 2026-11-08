@@ -172,7 +172,7 @@ describe("workers", () => {
     over: { registered?: boolean; ownerId?: string; name?: string; online?: boolean } = {},
   ) => ({
     id,
-    workerType: "local_claude" as const,
+    workerType: "local" as const,
     ownerChannelType: over.ownerId ? ("discord" as const) : null,
     ownerId: over.ownerId ?? null,
     registered: over.registered ?? true,

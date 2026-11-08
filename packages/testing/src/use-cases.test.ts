@@ -73,7 +73,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   intent: null,
   inputSummary: "Fix login",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,
@@ -107,13 +107,13 @@ const sharedDevice = (id = "w1") =>
   Effect.gen(function* () {
     yield* (yield* WorkerRepository).register({
       id,
-      workerType: "local_claude",
+      workerType: "local",
       owner: null,
       name: id,
       secretHash: `hash-${id}`,
       at: T0,
     });
-    yield* heartbeat({ workerId: id, workerType: "local_claude" });
+    yield* heartbeat({ workerId: id, workerType: "local" });
   });
 
 type RunOptions = Parameters<typeof makeTestLayer>[0] & {
@@ -162,7 +162,7 @@ describe("handleInbound", () => {
     expect(value.ticket).toMatchObject({
       status: "assigned",
       workerId: "w1",
-      workerType: "local_claude",
+      workerType: "local",
       projectId: "p1",
     });
     expect(value.events.map((e) => e.type)).toEqual(["created", "assigned"]);
@@ -242,10 +242,8 @@ describe("handleInbound", () => {
         classifier: asNew,
         sandboxPool: [{ workerType: "daytona_pi" }],
       });
-      expect(value).toMatchObject({ workerType: "local_claude", workerId: "w1" });
-      expect(launched).toEqual([
-        { ticketId: value.id, workerType: "local_claude", workerId: "w1" },
-      ]);
+      expect(value).toMatchObject({ workerType: "local", workerId: "w1" });
+      expect(launched).toEqual([{ ticketId: value.id, workerType: "local", workerId: "w1" }]);
     });
 
     it("moves on once a shared device holds its cap, to a less loaded one, then the pool", async () => {
@@ -279,7 +277,7 @@ describe("handleInbound", () => {
         Effect.gen(function* () {
           yield* (yield* WorkerRepository).register({
             id: "w-off",
-            workerType: "local_claude",
+            workerType: "local",
             owner: null,
             name: "off",
             secretHash: "hash-off",
@@ -968,7 +966,7 @@ describe("memory use cases", () => {
   it("writeMemory auto-links the worker's current ticket", async () => {
     const { value } = await run(
       Effect.gen(function* () {
-        yield* heartbeat({ workerId: "w1", workerType: "local_claude", ticketId: "t9" });
+        yield* heartbeat({ workerId: "w1", workerType: "local", ticketId: "t9" });
         yield* writeMemory({
           projectId: "p1",
           workerId: "w1",
@@ -1003,8 +1001,8 @@ describe("heartbeat", () => {
   it("upserts the worker and bumps lastSeenAt", async () => {
     const { value } = await run(
       Effect.gen(function* () {
-        const a = yield* heartbeat({ workerId: "w1", workerType: "local_claude" });
-        const b = yield* heartbeat({ workerId: "w1", workerType: "local_claude", ticketId: "t1" });
+        const a = yield* heartbeat({ workerId: "w1", workerType: "local" });
+        const b = yield* heartbeat({ workerId: "w1", workerType: "local", ticketId: "t1" });
         return { a, b };
       }),
     );

@@ -39,13 +39,12 @@ export type WatcherAgent = (typeof WATCHER_AGENTS)[number];
 export const SANDBOX_WORKER_TYPES = ["daytona_pi", "cloudflare_pi", "boat_pi"] as const;
 export type SandboxWorkerType = (typeof SANDBOX_WORKER_TYPES)[number];
 
-/** `sidekick`: the Coordinator's in-process tool-only helper, not a pull-model Worker. */
-export const WORKER_TYPES = [
-  ...SANDBOX_WORKER_TYPES,
-  "local_claude",
-  "local_pi",
-  "sidekick",
-] as const;
+/**
+ * `local`: a registered computer running the Watcher, whatever agent CLI it uses (the Watcher
+ * picks that at each start). `sidekick`: the Coordinator's in-process tool-only helper, not a
+ * pull-model Worker.
+ */
+export const WORKER_TYPES = [...SANDBOX_WORKER_TYPES, "local", "sidekick"] as const;
 export const WorkerType = Schema.Literals(WORKER_TYPES);
 export type WorkerType = typeof WorkerType.Type;
 

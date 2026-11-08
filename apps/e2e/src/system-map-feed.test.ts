@@ -45,7 +45,7 @@ describe("system map activity feed", () => {
     expect(created.events.map((e: { type: string }) => e.type)).toEqual(["created", "assigned"]);
 
     const ticketId = created.tickets[0].id as string;
-    await tool("worker_heartbeat", { workerId: WORKER, workerType: "local_claude", ticketId });
+    await tool("worker_heartbeat", { workerId: WORKER, workerType: "local", ticketId });
     await tool("ticket_claim", { ticketId, workerId: WORKER });
     await tool("ticket_append_event", {
       ticketId,

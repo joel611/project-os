@@ -104,7 +104,10 @@ const credentials = loadCredentials(path);
 if (!credentials) {
   fail(`This computer isn't registered yet (no ${path}).\n\n${USAGE}`);
 }
-const config = loadConfig(credentials!);
+const config = loadConfig(credentials!, (name) => Bun.which(name) !== null);
+if (credentials!.agent && config.agent !== credentials!.agent && !process.env.WATCHER_AGENT) {
+  console.log(`saved agent ${credentials!.agent} isn't installed; using ${config.agent} instead`);
+}
 console.log(
   `watcher ${config.workerId} (${config.agent}) → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`,
 );

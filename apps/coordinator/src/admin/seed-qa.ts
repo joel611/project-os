@@ -38,7 +38,7 @@ const QA_TICKETS: ReadonlyArray<QaTicket> = [
     status: "assigned",
     summary: "Summarize last week's support emails into themes.",
     priority: "high",
-    worker: { type: "local_claude", id: "qa-worker-claude" },
+    worker: { type: "local", id: "qa-worker-claude" },
     ageMinutes: 30,
     events: [
       { type: "created", actor: "coordinator", body: "Summarize last week's support emails." },
@@ -65,7 +65,7 @@ const QA_TICKETS: ReadonlyArray<QaTicket> = [
     status: "blocked",
     summary: "Migrate the staging database to Postgres 17.",
     priority: "medium",
-    worker: { type: "local_pi", id: "qa-worker-pi" },
+    worker: { type: "local", id: "qa-worker-pi" },
     ageMinutes: 240,
     events: [
       { type: "created", actor: "coordinator", body: "Migrate staging DB to Postgres 17." },
@@ -79,7 +79,7 @@ const QA_TICKETS: ReadonlyArray<QaTicket> = [
     status: "completed",
     summary: "Write the changelog for sprint 41 from merged PRs.",
     priority: null,
-    worker: { type: "local_claude", id: "qa-worker-claude" },
+    worker: { type: "local", id: "qa-worker-claude" },
     ageMinutes: 1440,
     result: {
       summary: "Changelog written: 14 entries across 3 sections.",

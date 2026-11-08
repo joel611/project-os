@@ -91,7 +91,7 @@ describe("makeIntentClassifier", () => {
 
   it("ignores an answer the classifier wasn't asked for", async () => {
     const s = scripted({
-      answers: { intent: choice("new_request", 0.9), worker_type: choice("local_pi", 0.9) },
+      answers: { intent: choice("new_request", 0.9), worker_type: choice("local", 0.9) },
     });
     const result = await call(makeIntentClassifier(s));
     expect(result).toEqual({ intent: "new_request", confidence: 0.9 });

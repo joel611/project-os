@@ -107,7 +107,7 @@ describe("makeApi", () => {
   it("decodes worker status alongside the worker", async () => {
     const worker = {
       id: "w1",
-      workerType: "local_claude",
+      workerType: "local",
       ownerChannelType: null,
       ownerId: null,
       registered: false,
