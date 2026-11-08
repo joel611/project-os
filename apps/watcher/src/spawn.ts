@@ -1,9 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { AGENTS, type Agent } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
-import { configDir, writePrivate } from "./credentials.ts";
 
 export interface Spawner {
   /** Runs one agent session; resolves with its exit code. */
@@ -30,21 +27,12 @@ export interface SpawnerIo {
   readonly home: string;
 }
 
-const realIo = (): SpawnerIo => ({
-  readFile: (path) => (existsSync(path) ? readFileSync(path, "utf8") : undefined),
-  writePrivate,
-  env: process.env,
-  configDir: configDir(),
-  home: homedir(),
-});
-
 export const bunSpawner = (
   config: WatcherConfig,
   spawnProcess: SpawnProcess,
-  options: { readonly agent?: Agent; readonly io?: SpawnerIo } = {},
+  io: SpawnerIo,
+  agent: Agent = AGENTS[config.agent],
 ): Spawner => {
-  const agent = options.agent ?? AGENTS[config.agent];
-  const io = options.io ?? realIo();
   return {
     spawn: async () => {
       const prompt = `${await Bun.file(PROMPT_PATH).text()}\nYour worker_id is \`${config.workerId}\`.`;

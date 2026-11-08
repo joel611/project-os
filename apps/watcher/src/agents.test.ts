@@ -52,6 +52,11 @@ describe("claude", () => {
     );
   });
 
+  it("passes the configured model", () => {
+    const withModel = AGENTS.claude.launch({ ...ctx, config: { ...config, model: "opus" } });
+    expect(withModel.cmd.slice(-2)).toEqual(["--model", "opus"]);
+  });
+
   it("pre-approves the coordinator MCP tools by the configured server name", () => {
     const i = launch.cmd.indexOf("--allowedTools");
     expect(launch.cmd[i + 1]).toBe(`mcp__${MCP_SERVER_NAME}__*`);
