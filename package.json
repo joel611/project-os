@@ -13,6 +13,7 @@
     "deploy": "alchemy deploy",
     "plan": "alchemy plan",
     "destroy": "alchemy destroy",
+    "env:sync": "bun scripts/sync-env.ts",
     "seed": "bun apps/coordinator/src/main.seed.ts",
     "build": "vp run -r build",
     "prepare": "vp config",
