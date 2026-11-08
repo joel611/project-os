@@ -82,6 +82,16 @@ const claude: Agent = {
 
 type PiMcpFile = { mcpServers?: Record<string, unknown> };
 
+export const piMcpPath = (home: string): string => join(home, ".pi", "agent", "mcp.json");
+
+/** Pi's MCP file without the Coordinator, keeping everything else; undefined if it had none. */
+export const withoutPiServer = (existing: string): string | undefined => {
+  const current = JSON.parse(existing) as PiMcpFile;
+  if (!current.mcpServers || !(MCP_SERVER_NAME in current.mcpServers)) return undefined;
+  const { [MCP_SERVER_NAME]: _coordinator, ...others } = current.mcpServers;
+  return JSON.stringify({ ...current, mcpServers: others });
+};
+
 const pi: Agent = {
   name: "pi",
   launch: ({ config, prompt, home }) => ({
@@ -89,7 +99,7 @@ const pi: Agent = {
     env: {},
     files: [
       {
-        path: join(home, ".pi", "agent", "mcp.json"),
+        path: piMcpPath(home),
         update: (existing) => {
           const current = existing ? (JSON.parse(existing) as PiMcpFile) : {};
           return JSON.stringify({

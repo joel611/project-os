@@ -42,6 +42,14 @@ describe("loadConfig", () => {
     expect(loadConfig(credentials)).toMatchObject({ agent: "codex", model: "gpt-5" });
   });
 
+  it("uses the agent and model saved at register, and lets env override them", () => {
+    const saved = { ...credentials, agent: "pi" as const, model: "m1" };
+    expect(loadConfig(saved)).toMatchObject({ agent: "pi", model: "m1" });
+    process.env.WATCHER_AGENT = "codex";
+    process.env.WATCHER_MODEL = "m2";
+    expect(loadConfig(saved)).toMatchObject({ agent: "codex", model: "m2" });
+  });
+
   it("rejects an unknown agent", () => {
     process.env.WATCHER_AGENT = "gemini";
     expect(() => loadConfig(credentials)).toThrow(/claude, pi, codex/);
