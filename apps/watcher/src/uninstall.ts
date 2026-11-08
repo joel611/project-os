@@ -12,10 +12,8 @@ export interface UninstallIo {
   readonly writeFile: (path: string, contents: string) => void;
   readonly remove: (path: string) => void;
   readonly removeDirIfEmpty: (path: string) => void;
-  /** Other running `project-os-watcher` processes. */
   readonly watcherPids: () => Promise<readonly number[]>;
   readonly kill: (pid: number) => void;
-  /** Runs a command, resolving with its exit code. */
   readonly run: (cmd: readonly string[]) => Promise<number>;
   /** Asks the person to go ahead; false when they decline or there is nobody to ask. */
   readonly confirm: () => Promise<boolean>;

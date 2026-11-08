@@ -17,11 +17,6 @@ export interface WatcherConfig {
   readonly secret: string;
 }
 
-/**
- * The agent is chosen at each start, because the computer can change after `register`:
- * `WATCHER_AGENT`, else the saved choice if its CLI is still installed, else the first
- * installed one, else the saved choice (so the failure names the missing CLI), else Claude.
- */
 const loadAgent = (
   credentials: WatcherCredentials,
   hasCommand: (command: string) => boolean,
@@ -40,8 +35,7 @@ const loadAgent = (
 
 /**
  * Config for a registered device (credentials saved by `register`): a personal worker serving
- * its owner's tickets, or a shared worker an admin added to the pool. `hasCommand` says whether
- * an agent CLI is on `PATH`.
+ * its owner's tickets, or a shared worker an admin added to the pool.
  */
 export const loadConfig = (
   credentials: WatcherCredentials,
