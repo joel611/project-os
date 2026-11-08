@@ -265,6 +265,29 @@ describe("runCommand personal workers", () => {
     expect(reply.content).toContain("your tickets go to the shared pool");
   });
 
+  it("/register-worker agent: and model: put --agent, --model and --yes in the line, so nothing is asked", async () => {
+    const reply = await runCommand(
+      worker("register-worker", { agent: "codex", model: " gpt 5 " }),
+      workersConfig(),
+    );
+    expect(reply.content).toMatch(/sh -s -- [\w-]+ --agent codex --model 'gpt 5' --yes\n/);
+    expect(reply.content).toContain("runs sessions on codex (model gpt 5) without asking");
+    expect(reply.content).not.toContain("which agent and model");
+
+    const defaults = await runCommand(worker("register-worker", { agent: "pi" }), workersConfig());
+    expect(defaults.content).toContain("--agent pi --yes");
+    expect(defaults.content).toContain("pi (the agent's default model)");
+  });
+
+  it("/register-worker refuses an unknown agent without issuing a code", async () => {
+    const config = workersConfig();
+    const reply = await runCommand(worker("register-worker", { agent: "gemini" }), config);
+    expect(reply).toEqual({
+      content: "agent must be one of claude, pi, codex.",
+      ephemeral: true,
+    });
+  });
+
   it("/workers lists the person's devices; /unregister-worker removes one", async () => {
     const config = workersConfig();
     expect((await runCommand(worker("workers"), config)).content).toContain(

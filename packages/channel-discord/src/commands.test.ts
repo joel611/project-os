@@ -46,6 +46,15 @@ describe("COMMAND_DEFINITIONS", () => {
   it("defines the personal worker commands, server-only", () => {
     const byName = (n: string) => COMMAND_DEFINITIONS.find((c) => c.name === n)!;
     expect(byName("register-worker").options[0]).toMatchObject({ name: "name", required: false });
+    const options = byName("register-worker").options;
+    const agent = options.find((o) => o.name === "agent")!;
+    expect(agent).toMatchObject({ required: false });
+    expect("choices" in agent && agent.choices.map((c) => c.value)).toEqual([
+      "claude",
+      "pi",
+      "codex",
+    ]);
+    expect(options.find((o) => o.name === "model")).toMatchObject({ required: false });
     expect(byName("unregister-worker").options[0]).toMatchObject({
       name: "worker",
       required: true,

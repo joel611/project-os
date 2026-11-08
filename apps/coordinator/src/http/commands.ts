@@ -4,6 +4,7 @@ import {
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
   type SlashCommand,
+  WATCHER_AGENTS,
 } from "@project-os/contracts";
 import {
   type Clock,
@@ -191,19 +192,27 @@ const workerCommand = async (
 
   if (command.command === "register-worker") {
     const name = command.options.name?.trim() || undefined;
+    const agent = command.options.agent?.trim() || undefined;
+    const model = command.options.model?.trim() || undefined;
+    if (agent !== undefined && !(WATCHER_AGENTS as readonly string[]).includes(agent)) {
+      return privately(`agent must be one of ${WATCHER_AGENTS.join(", ")}.`);
+    }
     const { token } = await workers.run(issueWorkerRegistration(person, { shared }));
     const minutes = Math.round(REGISTRATION_TTL_SECONDS / 60);
+    const choice = agent
+      ? `It runs sessions on ${agent} (${model ? `model ${model}` : "the agent's default model"}) without asking.`
+      : `The script asks which agent and model to use (Enter keeps the agent's default model).`;
     return privately(
       [
         shared
           ? `Run this on the computer that should join the shared pool (the code works once, for ${minutes} minutes):`
           : `Run this on the computer that should work on your tickets (the code works once, for ${minutes} minutes):`,
         "```sh",
-        installLine(watcherScriptConfig(workers), token, name),
+        installLine(watcherScriptConfig(workers), token, { name, agent, model }),
         "```",
         shared
-          ? "It needs Bun and one agent CLI (Claude Code, Pi or Codex). The script asks which agent and model to use (Enter keeps the agent's default model), registers the computer as a shared worker, then keeps running and picks up tickets from anyone without their own worker online, one at a time. To start it again later, run `project-os-watcher`."
-          : "It needs Bun and one agent CLI (Claude Code, Pi or Codex). The script asks which agent and model to use (Enter keeps the agent's default model), registers the computer to you, then keeps running and picks up only the tickets you start. To start it again later, run `project-os-watcher`.",
+          ? `It needs Bun and one agent CLI (Claude Code, Pi or Codex). ${choice} It registers the computer as a shared worker, then keeps running and picks up tickets from anyone without their own worker online, one at a time. To start it again later, run \`project-os-watcher\`.`
+          : `It needs Bun and one agent CLI (Claude Code, Pi or Codex). ${choice} It registers the computer to you, then keeps running and picks up only the tickets you start. To start it again later, run \`project-os-watcher\`.`,
         "To remove it from that computer later, run `project-os-watcher uninstall`.",
         shared
           ? "Remove it with `/unregister-worker shared:True`."
