@@ -65,6 +65,17 @@ services:
       - "4318:4318" # OTLP HTTP
     volumes: ["lgtm-data:/data"]
 
+  watcher-vm:
+    profiles: ["vm"]
+    build: { context: ., dockerfile: apps/watcher/Dockerfile }
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      POLL_INTERVAL_MS: ${WATCHER_POLL_INTERVAL_MS:-10000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      PI_MODEL: ${SANDBOX_PI_MODEL:-openrouter/deepseek/deepseek-v4.1-flash-1017}
+    volumes: ["watcher-vm-home:/home/bun/.config"]
+    depends_on: [coordinator]
+
   # Optional split layout: Discord in its own container, for a Coordinator that can't host it
   # or to scale them apart. `docker compose --profile split up`, with DISCORD_SPLIT_GATEWAY_URL set.
   discord-gateway:
@@ -85,3 +96,4 @@ services:
 volumes:
   coordinator-data:
   lgtm-data:
+  watcher-vm-home:
