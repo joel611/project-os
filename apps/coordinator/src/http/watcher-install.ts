@@ -1,40 +1,33 @@
 export const DEFAULT_WATCHER_INSTALL = "bun install -g @project-os/watcher";
 
-/** Quotes a value for a POSIX shell line (names may contain spaces). */
 export const shellQuote = (value: string) =>
   /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 
 const trimmed = (url: string) => url.replace(/\/+$/, "");
 
 export interface ScriptConfig {
-  /** Coordinator URL as the person's computer reaches it. */
   readonly server: string;
-  /** Shell run to install the Watcher. Operator-set, so it goes in as code. */
   readonly installCommand?: string;
 }
 
 export interface InstallChoices {
   readonly name?: string | undefined;
-  /** One of `WATCHER_AGENTS`; the caller checks it. Setting it also skips every question. */
   readonly agent?: string | undefined;
   readonly model?: string | undefined;
+  readonly yes?: boolean | undefined;
 }
 
-/**
- * The line a person pastes on their computer: fetch the installer and hand it the one-time code.
- * With an `agent` the line carries `--yes`, so the script never stops to ask.
- */
 export const installLine = (
   config: ScriptConfig,
   token: string,
-  { name, agent, model }: InstallChoices = {},
+  { name, agent, model, yes }: InstallChoices = {},
 ): string =>
   [
     `curl -fsSL ${shellQuote(`${trimmed(config.server)}/watcher/install.sh`)} | sh -s -- ${token}`,
     ...(name ? ["--name", shellQuote(name)] : []),
     ...(agent ? ["--agent", shellQuote(agent)] : []),
     ...(model ? ["--model", shellQuote(model)] : []),
-    ...(agent ? ["--yes"] : []),
+    ...(yes ? ["--yes"] : []),
   ].join(" ");
 
 // The script reads answers from the terminal, not stdin, because stdin is the curl pipe. The
@@ -49,10 +42,6 @@ ask() {
   IFS= read -r reply <&3 || reply=""
 }`;
 
-/**
- * Installs the Watcher, asking which detected agent CLI (claude, pi, codex) should work tickets
- * and which model (Enter keeps the agent's default), then registers with the one-time code.
- */
 export const installScript = (config: ScriptConfig): string => `#!/bin/sh
 # Installs the Project OS Watcher on this computer and registers it.
 # Usage: curl -fsSL ${trimmed(config.server)}/watcher/install.sh | sh -s -- <code> [--name N] [--agent A] [--model M] [--yes]

@@ -5,7 +5,6 @@ import type { WatcherCredentials } from "./credentials.ts";
 export interface WatcherConfig {
   readonly mcpUrl: string;
   readonly workerId: string;
-  /** What the Coordinator assigns by (the type this device registered as). Same for every agent. */
   readonly workerType: "local_claude";
   /** Which agent CLI runs a session (`WATCHER_AGENT`). */
   readonly agent: AgentName;

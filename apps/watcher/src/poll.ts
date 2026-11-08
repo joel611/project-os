@@ -12,7 +12,6 @@ export interface WatcherDeps {
   readonly log: (message: string) => void;
 }
 
-// The watcher never claims tickets; the spawned agent session does.
 export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => {
   let running = 0;
 

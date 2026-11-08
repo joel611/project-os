@@ -3,7 +3,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 compose=(docker compose --profile vm)
 export PUBLIC_URL=http://host.docker.internal:8080
-# The image already links the Watcher, so the install script's install step is a no-op.
 export WATCHER_INSTALL_COMMAND=true
 url=${COORDINATOR_URL:-http://localhost:8080}
 

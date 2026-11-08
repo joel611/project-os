@@ -184,8 +184,6 @@ export const httpRoutes = ({
         reply(set, toResult(listProjectTickets(params.id))),
       )
       .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
-      // The script /register-worker tells people to pipe into sh. It holds no secrets: the
-      // one-time code is an argument, not part of the script.
       .get("/watcher/install.sh", ({ set }) => {
         const workers = commands?.workers;
         if (!workers) {
