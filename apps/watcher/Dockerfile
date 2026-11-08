@@ -19,6 +19,9 @@ COPY --from=agents /opt/bun-global /opt/bun-global
 # `bun add -g` links the agents into the base image's bin dir, which this copy doesn't carry over.
 RUN ln -s /opt/bun-global/install/global/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js /usr/local/bin/pi \
  && ln -s /opt/bun-global/install/global/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY --from=deps /repo ./
 COPY . .
