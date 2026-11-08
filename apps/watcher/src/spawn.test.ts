@@ -1,68 +1,95 @@
 import { describe, expect, it } from "vite-plus/test";
+import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
-import { bunSpawner, claudeArgs, MCP_SERVER_NAME, mcpConfigJson } from "./spawn.ts";
+import { bunSpawner, type SpawnerIo } from "./spawn.ts";
 
 const config: WatcherConfig = {
   mcpUrl: "http://coord:8080/mcp",
   workerId: "w1",
   workerType: "local_claude",
+  agent: "claude",
   intervalMs: 1000,
   maxSessions: 1,
   cwd: "/work",
   secret: "s3cret",
 };
 
-describe("claudeArgs", () => {
-  const args = claudeArgs(config, "do it");
+const fakeIo = (existing: Record<string, string> = {}) => {
+  const written: Record<string, string> = {};
+  const io: SpawnerIo = {
+    readFile: (path) => existing[path],
+    writePrivate: (path, contents) => {
+      written[path] = contents;
+    },
+    env: { PATH: "/bin" },
+    configDir: "/cfg",
+    home: "/home/me",
+  };
+  return { io, written };
+};
 
-  it("runs headless with the prompt and MCP config", () => {
-    expect(args.slice(0, 4)).toEqual(["claude", "-p", "do it", "--mcp-config"]);
-    expect(JSON.parse(args[4]!)).toEqual(JSON.parse(mcpConfigJson(config)));
-  });
-
-  it("pre-approves the coordinator MCP tools by the configured server name", () => {
-    const i = args.indexOf("--allowedTools");
-    expect(args[i + 1]).toBe(`mcp__${MCP_SERVER_NAME}__*`);
-    expect(Object.keys(JSON.parse(mcpConfigJson(config)).mcpServers)).toEqual([MCP_SERVER_NAME]);
-  });
-});
-
-describe("registered worker MCP config", () => {
-  it("sends the secret as a Bearer header", () => {
-    expect(JSON.parse(mcpConfigJson(config)).mcpServers[MCP_SERVER_NAME]).toEqual({
-      type: "http",
-      url: config.mcpUrl,
-      headers: { Authorization: "Bearer s3cret" },
-    });
-  });
-
-  it("passes a config file path instead of inline JSON, so the secret stays out of ps", async () => {
-    let seen: string[] = [];
-    const spawner = bunSpawner(
-      config,
-      (cmd) => {
-        seen = cmd;
-        return { exited: Promise.resolve(0) };
-      },
-      { mcpConfigFile: "/home/me/.config/project-os/mcp.json" },
-    );
-    await spawner.spawn();
-    expect(seen[seen.indexOf("--mcp-config") + 1]).toBe("/home/me/.config/project-os/mcp.json");
-    expect(seen.join(" ")).not.toContain("s3cret");
-  });
-});
+const run = async (cfg: WatcherConfig, io: SpawnerIo) => {
+  let seen: { cmd: string[]; cwd: string; env: Record<string, string | undefined> } | undefined;
+  const spawner = bunSpawner(
+    cfg,
+    (cmd, options) => {
+      seen = { cmd, cwd: options.cwd, env: options.env };
+      return { exited: Promise.resolve(7) };
+    },
+    { io },
+  );
+  const code = await spawner.spawn();
+  return { code, seen: seen! };
+};
 
 describe("bunSpawner", () => {
-  it("spawns claude in the worker cwd with the worker id in the prompt", async () => {
-    let seen: { cmd: string[]; cwd: string } | undefined;
-    const spawner = bunSpawner(config, (cmd, options) => {
-      seen = { cmd, cwd: options.cwd };
-      return { exited: Promise.resolve(7) };
+  it("spawns the configured agent in the worker cwd with the worker id in the prompt", async () => {
+    const { io } = fakeIo();
+    const { code, seen } = await run(config, io);
+    expect(code).toBe(7);
+    expect(seen.cwd).toBe("/work");
+    expect(seen.cmd[0]).toBe("claude");
+    expect(seen.cmd[2]).toContain("Your worker_id is `w1`.");
+    expect(seen.cmd[2]).toContain("Project OS Worker");
+  });
+
+  it("writes the agent's MCP file before launch, so the secret stays out of ps", async () => {
+    const { io, written } = fakeIo();
+    const { seen } = await run(config, io);
+    expect(seen.cmd[seen.cmd.indexOf("--mcp-config") + 1]).toBe("/cfg/mcp.json");
+    expect(written["/cfg/mcp.json"]).toContain("Bearer s3cret");
+    expect(seen.cmd.join(" ")).not.toContain("s3cret");
+  });
+
+  it("hands the update function the file's current contents (pi merges into the user's)", async () => {
+    const path = "/home/me/.pi/agent/mcp.json";
+    const { io, written } = fakeIo({
+      [path]: JSON.stringify({ mcpServers: { mine: { url: "u" } } }),
     });
-    expect(await spawner.spawn()).toBe(7);
-    expect(seen?.cwd).toBe("/work");
-    expect(seen?.cmd[0]).toBe("claude");
-    expect(seen?.cmd[2]).toContain("Your worker_id is `w1`.");
-    expect(seen?.cmd[2]).toContain("Project OS Worker");
+    const { seen } = await run({ ...config, agent: "pi" }, io);
+    expect(seen.cmd.slice(0, 2)).toEqual(["pi", "--print"]);
+    expect(Object.keys(JSON.parse(written[path]!).mcpServers)).toEqual(["mine", "project-os"]);
+  });
+
+  it("adds the agent's env on top of the Watcher's own", async () => {
+    const { io, written } = fakeIo();
+    const { seen } = await run({ ...config, agent: "codex" }, io);
+    expect(seen.cmd.slice(0, 2)).toEqual(["codex", "exec"]);
+    expect(seen.env).toEqual({ PATH: "/bin", [CODEX_TOKEN_ENV]: "s3cret" });
+    expect(written).toEqual({});
+  });
+
+  it("takes an explicit agent over the config's", async () => {
+    const { io } = fakeIo();
+    let cmd: string[] = [];
+    await bunSpawner(
+      config,
+      (c) => {
+        cmd = c;
+        return { exited: Promise.resolve(0) };
+      },
+      { agent: AGENTS.codex, io },
+    ).spawn();
+    expect(cmd[0]).toBe("codex");
   });
 });

@@ -264,7 +264,7 @@ Then, for each person's own computer:
 
 For a shared computer, an admin (in `ADMIN_USER_IDS`) does the same in the admin channel with `shared:True`: `/register-worker shared:True name:build-box`, then pastes the command on that computer. `/workers shared:True` lists the shared computers and `/unregister-worker shared:True worker:<name>` removes one. Both kinds show in the dashboard sidebar under Workers.
 
-**Try it in Docker.** `scripts/watcher-vm.sh up` starts the Coordinator and a `watcher-vm` container that stands in for an external VM, and seeds a demo project with tickets. `scripts/watcher-vm.sh register` runs `/register-worker` through `POST /commands` (no Discord) and executes the printed `project-os-watcher register ...` line inside the container. The package isn't on npm, so the image links the Watcher from the repo and skips the install half. The VM reaches the Coordinator at `host.docker.internal:8080` (the script sets `PUBLIC_URL` to that), and its `claude` is a shim that runs the session on Pi, using `OPENROUTER_API_KEY` and `SANDBOX_PI_MODEL`. `scripts/watcher-vm.sh logs` follows the Watcher.
+**Try it in Docker.** `scripts/watcher-vm.sh up` starts the Coordinator and a `watcher-vm` container that stands in for an external VM, and seeds a demo project with tickets. `scripts/watcher-vm.sh register` runs `/register-worker` through `POST /commands` (no Discord) and executes the printed `project-os-watcher register ...` line inside the container. The package isn't on npm, so the image links the Watcher from the repo and skips the install half. The VM reaches the Coordinator at `host.docker.internal:8080` (the script sets `PUBLIC_URL` to that), and it runs sessions on Pi (`WATCHER_AGENT=pi`), using `OPENROUTER_API_KEY` and `SANDBOX_PI_MODEL`. `scripts/watcher-vm.sh logs` follows the Watcher.
 
 A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (15 minutes by default; it checks in every 5).
 
@@ -336,14 +336,15 @@ The sandbox image is Cloudflare's base image (`docker.io/cloudflare/sandbox`, wi
 docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
 
 # A Watcher on this computer, if you want it to work tickets (it needs the `claude` CLI
-# installed and signed in). Register it first with the code from /register-worker (yours),
+# installed and signed in, or set WATCHER_AGENT=pi or codex for that CLI, and optionally
+# WATCHER_MODEL). Register it first with the code from /register-worker (yours),
 # or /register-worker shared:True in the admin channel (for everyone):
 bun apps/watcher/src/main.bun.ts register <code> --server http://localhost:8080
 # Later runs need no code:
 bun apps/watcher/src/main.bun.ts
 ```
 
-Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model (Compose defaults `CHAT_MODEL_ID` to `anthropic/claude-sonnet-4.5`). SQLite and agent state live in the `coordinator-data` volume (`/data`). The Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. See the README for running without Docker and for the dashboard.
+Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model (Compose defaults `CHAT_MODEL_ID` to `anthropic/claude-sonnet-4.5`). SQLite and agent state live in the `coordinator-data` volume (`/data`). By default the Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. `WATCHER_AGENT=pi` runs `pi --print` and `WATCHER_AGENT=codex` runs `codex exec` instead, each with the Coordinator added as an MCP server. See the README for running without Docker and for the dashboard.
 
 The dashboard is read-only and expects the Coordinator on `:8080` (override with `COORDINATOR_URL`). `bun run --cwd apps/web build` exports it as a static site.
 

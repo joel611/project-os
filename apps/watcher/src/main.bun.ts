@@ -1,19 +1,12 @@
 #!/usr/bin/env bun
 import { hostname } from "node:os";
-import { join } from "node:path";
 import { parseArgs, USAGE } from "./cli.ts";
 import { loadConfig } from "./config.ts";
-import {
-  configDir,
-  credentialsPath,
-  loadCredentials,
-  saveCredentials,
-  writePrivate,
-} from "./credentials.ts";
+import { credentialsPath, loadCredentials, saveCredentials } from "./credentials.ts";
 import { httpMcpClient } from "./mcp-client.ts";
 import { createWatcher } from "./poll.ts";
 import { registerDevice } from "./register.ts";
-import { bunSpawner, mcpConfigJson } from "./spawn.ts";
+import { bunSpawner } from "./spawn.ts";
 
 // Runs on the host, not in Compose. `project-os-watcher register <code> --server <url>` saves
 // this computer's credentials first. A code from /register-worker makes it that person's
@@ -61,17 +54,14 @@ if (!credentials) {
   fail(`This computer isn't registered yet (no ${path}).\n\n${USAGE}`);
 }
 const config = loadConfig(credentials!);
-console.log(`watcher ${config.workerId} → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`);
-
-// Claude Code reads the MCP config from a file only this user can read, so the secret never
-// shows up in the process list.
-const mcpConfigFile = join(configDir(), "mcp.json");
-writePrivate(mcpConfigFile, mcpConfigJson(config));
+console.log(
+  `watcher ${config.workerId} (${config.agent}) → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`,
+);
 
 const watcher = createWatcher({
   config,
   client: httpMcpClient(config.mcpUrl, fetch, config.secret),
-  spawner: bunSpawner(config, Bun.spawn, { mcpConfigFile }),
+  spawner: bunSpawner(config, Bun.spawn),
   log: console.log,
 });
 

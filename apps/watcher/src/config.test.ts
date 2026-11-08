@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { loadConfig } from "./config.ts";
 
-const KEYS = ["POLL_INTERVAL_MS", "MAX_SESSIONS", "WORKER_CWD"];
+const KEYS = ["POLL_INTERVAL_MS", "MAX_SESSIONS", "WORKER_CWD", "WATCHER_AGENT", "WATCHER_MODEL"];
 const credentials = { server: "https://c", workerId: "local-9", name: "mbp", secret: "s" };
 
 describe("loadConfig", () => {
@@ -17,6 +17,7 @@ describe("loadConfig", () => {
       mcpUrl: "https://c/mcp",
       workerId: "local-9",
       workerType: "local_claude",
+      agent: "claude",
       intervalMs: 300_000,
       maxSessions: 1,
       cwd: process.cwd(),
@@ -33,5 +34,16 @@ describe("loadConfig", () => {
       maxSessions: 3,
       cwd: "/work",
     });
+  });
+
+  it("picks the agent and model from env", () => {
+    process.env.WATCHER_AGENT = "codex";
+    process.env.WATCHER_MODEL = "gpt-5";
+    expect(loadConfig(credentials)).toMatchObject({ agent: "codex", model: "gpt-5" });
+  });
+
+  it("rejects an unknown agent", () => {
+    process.env.WATCHER_AGENT = "gemini";
+    expect(() => loadConfig(credentials)).toThrow(/claude, pi, codex/);
   });
 });

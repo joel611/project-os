@@ -21,9 +21,8 @@ RUN ln -s /opt/bun-global/install/global/node_modules/@earendil-works/pi-coding-
 WORKDIR /repo
 COPY --from=deps /repo ./
 COPY . .
-RUN chmod +x apps/watcher/src/main.bun.ts apps/watcher/sim/claude-as-pi.ts \
+RUN chmod +x apps/watcher/src/main.bun.ts \
  && ln -s /repo/apps/watcher/src/main.bun.ts /usr/local/bin/project-os-watcher \
- && ln -s /repo/apps/watcher/sim/claude-as-pi.ts /usr/local/bin/claude \
  && mkdir -p /work /home/bun/.config && chown bun:bun /work /home/bun/.config
 USER bun
 WORKDIR /work
