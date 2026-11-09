@@ -39,6 +39,8 @@ export default defineConfig({
         "apps/coordinator/src/pi-agent.ts",
         // Bundled and run in workerd by pi-agent.test.ts.
         "apps/e2e/src/pi-agent/**",
+        // Bundled and run in workerd by discord-gateway.test.ts.
+        "apps/e2e/src/discord-gateway/**",
         // Manual scripts, run by hand against live services.
         "**/*.smoke.ts",
         "**/dist/**",
