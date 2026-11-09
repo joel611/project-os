@@ -4,10 +4,12 @@
 //   bun run deploy --stage prod    # a named stage; every resource name gets the stage
 //   bun run plan  / bun run destroy
 //
-// Values come from `.env` (or `--env-file`), then the shell. Plain settings bind as
+// Values come from `.env` (or `--env-file`), then the shell. Every key named in
+// `.env.example` is read. Plain settings bind as
 // `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
 // stage without OAuth clients deploys with account linking off (same rule as local).
 // See docs/deployment.md.
+import { readFileSync } from "node:fs";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
@@ -26,26 +28,23 @@ const vars = {
   DISCORD_PROJECT_CHANNEL_AUTO_CREATE: "true",
 } as const;
 
-/** Plain vars with no default: bound only when set. */
-const optionalVars = [
-  // Where the Coordinator POSTs replies. Discord is a long-running gateway process, so on
-  // Workers it runs off-platform (apps/discord-gateway, docs/technical-architecture.md §8).
-  "DISCORD_SPLIT_GATEWAY_URL",
-  "ADMIN_CHANNEL_ID",
-  "ADMIN_USER_IDS",
-  // Account linking (Better Auth, PR #41): connect links and OAuth callbacks.
-  "PUBLIC_URL",
-  "GOOGLE_CLIENT_ID",
-  "GITHUB_CLIENT_ID",
-] as const;
+/**
+ * Every other key in `.env.example`, set or commented out (`# KEY=value`), so a new key
+ * there is picked up with no edit here. Each is bound only when set.
+ */
+const exampleKeys = [
+  ...new Set(
+    readFileSync(new URL(".env.example", import.meta.url), "utf8")
+      .split("\n")
+      .map((line) => /^(?:#\s?)?([A-Z][A-Z0-9_]*)=/.exec(line)?.[1])
+      .filter((name): name is string => name !== undefined && !(name in vars)),
+  ),
+];
 
-/** Secrets: bound as `secret_text` only when set. */
-const optionalSecrets = [
-  "OPENROUTER_API_KEY",
-  "BETTER_AUTH_SECRET",
-  "GOOGLE_CLIENT_SECRET",
-  "GITHUB_CLIENT_SECRET",
-] as const;
+/** Credential-looking names bind as `secret_text`; the rest as plain vars. */
+const isSecret = (name: string) => /(?:KEY|TOKEN|SECRET)$/.test(name);
+const optionalVars = exampleKeys.filter((name) => !isSecret(name));
+const optionalSecrets = exampleKeys.filter(isSecret);
 
 const readVars = Effect.gen(function* () {
   const env: Record<string, string> = {};
