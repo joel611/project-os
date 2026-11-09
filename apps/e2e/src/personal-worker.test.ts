@@ -23,7 +23,12 @@ const ada = { channelId: CHANNEL, userId: "u-ada", name: "Ada" };
 const bob = { channelId: CHANNEL, userId: "u-bob", name: "Bob" };
 
 let stack: Stack;
-let launched: Array<{ ticketId: string; workerType: string; workerId: string }>;
+let launched: Array<{
+  ticketId: string;
+  workerType: string;
+  workerId: string;
+  mcpToken: string;
+}>;
 beforeEach(async () => {
   launched = [];
   stack = await startStack({
@@ -129,7 +134,8 @@ describe("personal worker", () => {
       workerType: "daytona_pi",
       workerId: `daytona-${bobTicket.id}`,
     });
-    expect(launched.map((l) => l.workerType)).toEqual(["local", "daytona_pi"]);
+    // Only Bob's sandbox is launched; Ada's Watcher pulls hers.
+    expect(launched.map((l) => l.workerType)).toEqual(["daytona_pi"]);
 
     await watcher.pollOnce();
     await Promise.all(sessions);
@@ -153,13 +159,10 @@ describe("personal worker", () => {
     const anon = httpMcpClient(`${stack.url}/mcp`, fetch);
     await expect(
       anon.callTool("ticket_list_assigned", { workerId: credentials.workerId }),
-    ).rejects.toThrow(/WorkerUnauthorized/);
-    await expect(
-      anon.callTool("ticket_claim", { ticketId: ticket.id, workerId: "daytona-x" }),
-    ).rejects.toThrow(/WorkerUnauthorized/);
+    ).rejects.toThrow(/HTTP 401/);
     await expect(
       anon.callTool("user_token", { ticketId: ticket.id, provider: "github" }),
-    ).rejects.toThrow(/WorkerUnauthorized/);
+    ).rejects.toThrow(/HTTP 401/);
 
     const forged = httpMcpClient(`${stack.url}/mcp`, fetch, "not-a-secret");
     await expect(forged.callTool("ticket_list_assigned", { workerId: "x" })).rejects.toThrow(
@@ -172,6 +175,16 @@ describe("personal worker", () => {
     await expect(own.callTool("ticket_get", { ticketId: bobTicket.id })).rejects.toThrow(
       /WorkerUnauthorized/,
     );
+
+    // Nor can Bob's sandbox session, with the token it was launched with, reach Ada's.
+    const sandbox = httpMcpClient(`${stack.url}/mcp`, fetch, launched[0]!.mcpToken);
+    await expect(sandbox.callTool("ticket_get", { ticketId: bobTicket.id })).resolves.toBeDefined();
+    await expect(
+      sandbox.callTool("ticket_claim", { ticketId: ticket.id, workerId: credentials.workerId }),
+    ).rejects.toThrow(/WorkerUnauthorized/);
+    await expect(
+      sandbox.callTool("user_token", { ticketId: ticket.id, provider: "github" }),
+    ).rejects.toThrow(/WorkerUnauthorized/);
   });
 
   it("sends Ada's tickets to the shared pool while her device is offline, and after removal", async () => {

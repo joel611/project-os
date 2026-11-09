@@ -34,7 +34,10 @@ describe("sandbox pool from env", () => {
       },
       { prompt: "p", log: (m) => logs.push(m) },
     );
-    expect(await pool(l)).toEqual([{ workerType: "daytona_pi" }, { workerType: "cloudflare_pi" }]);
+    expect(await pool(l)).toEqual([
+      { workerType: "daytona_pi", sessionTimeoutSeconds: 60 },
+      { workerType: "cloudflare_pi", sessionTimeoutSeconds: 60 },
+    ]);
     expect(logs).toEqual(["sandbox pool: daytona_pi, cloudflare_pi"]);
   });
 
@@ -55,7 +58,10 @@ describe("sandbox pool from env", () => {
           CLOUDFLARE_SANDBOX_MAX_CONCURRENT: "2",
         }),
       ),
-    ).toEqual([{ workerType: "cloudflare_pi", maxConcurrent: 2 }, { workerType: "daytona_pi" }]);
+    ).toEqual([
+      { workerType: "cloudflare_pi", maxConcurrent: 2, sessionTimeoutSeconds: 1800 },
+      { workerType: "daytona_pi", sessionTimeoutSeconds: 1800 },
+    ]);
   });
 
   it("refuses a cap that isn't a whole number above 0", () => {
@@ -73,7 +79,7 @@ describe("sandbox pool from env", () => {
       log: () => {},
       runners: { daytona: runner() },
     });
-    expect(await pool(l)).toEqual([{ workerType: "daytona_pi" }]);
+    expect(await pool(l)).toEqual([{ workerType: "daytona_pi", sessionTimeoutSeconds: 1800 }]);
   });
 
   it("needs a public MCP URL once a provider is in the pool", () => {

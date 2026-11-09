@@ -112,6 +112,47 @@ describe("message ingress", () => {
   });
 });
 
+describe("MCP", () => {
+  const listTools = (token?: string) =>
+    call("/mcp", {
+      method: "POST",
+      ...(token && { token }),
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    });
+
+  it("refuses a caller without a token, or with a dashboard session", async () => {
+    expect((await listTools()).status).toBe(401);
+    expect((await listTools(stack.operatorToken)).status).toBe(401);
+    expect((await listTools(SERVICE_TOKEN)).status).toBe(401);
+  });
+
+  it("keeps a sandbox token to its own worker id and tickets", async () => {
+    const shared = await stack.registerSharedWorker();
+    await stack.linkChannel("chan-1");
+    await forwardInbound(stack.coordinator, inbound, fetch);
+    const [project] = await stack.json("GET", "/projects");
+    const [ticket] = await stack.json("GET", `/projects/${project.id}/tickets`);
+    expect(ticket.workerId).toBe(shared.workerId);
+
+    const sandbox = await stack.worker(await stack.sandboxToken("daytona-other"));
+    const tool = async (name: string, args: Record<string, unknown>) => {
+      const res = (await sandbox.callTool({ name, arguments: args })) as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      return res.isError ? JSON.parse(res.content[0]!.text)._tag : "ok";
+    };
+    expect(await tool("ticket_list_assigned", { workerId: "daytona-other" })).toBe("ok");
+    expect(await tool("ticket_list_assigned", { workerId: shared.workerId })).toBe(
+      "WorkerUnauthorized",
+    );
+    expect(await tool("ticket_get", { ticketId: ticket.id })).toBe("WorkerUnauthorized");
+    expect(await tool("ticket_update_status", { ticketId: ticket.id, status: "completed" })).toBe(
+      "WorkerUnauthorized",
+    );
+  });
+});
+
 describe("open routes", () => {
   it("serves health and device registration without credentials", async () => {
     expect((await call("/health")).status).toBe(200);

@@ -9,8 +9,8 @@ import {
   WorkerLauncher,
   WorkerRepository,
 } from "../ports/index.ts";
-import { onlinePersonalWorker } from "./personal-workers.ts";
-import { pickSandboxProvider, sandboxWorkerId } from "./sandbox-pool.ts";
+import { issueSandboxToken, onlinePersonalWorker } from "./personal-workers.ts";
+import { pickSandboxProvider, sandboxTokenTtlSeconds, sandboxWorkerId } from "./sandbox-pool.ts";
 
 /** Who takes a ticket, and how the `assigned` event names them. */
 export interface WorkerPick {
@@ -97,7 +97,10 @@ export const pickWorker = (requester: Person, ticketId: string, routing: WorkerR
     return undefined;
   });
 
-/** Assigns an `open` ticket to `pick`, logs the `assigned` event, and starts its worker. */
+/**
+ * Assigns an `open` ticket to `pick` and logs the `assigned` event. A sandbox pick also gets its
+ * session launched, with an MCP token that acts as its worker id only.
+ */
 export const assignToWorker = (ticketId: string, pick: WorkerPick, at: string) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
@@ -114,6 +117,11 @@ export const assignToWorker = (ticketId: string, pick: WorkerPick, at: string) =
       payload: { workerType, workerId, personal: pick.kind === "personal", kind: pick.kind },
       createdAt: at,
     });
-    yield* (yield* WorkerLauncher).launch({ ticketId, workerType, workerId });
+    if (pick.kind === "sandbox") {
+      const launcher = yield* WorkerLauncher;
+      const provider = (yield* launcher.pool).find((entry) => entry.workerType === workerType);
+      const mcpToken = yield* issueSandboxToken(workerId, sandboxTokenTtlSeconds(provider));
+      yield* launcher.launch({ ticketId, workerType, workerId, mcpToken });
+    }
     return assigned;
   });

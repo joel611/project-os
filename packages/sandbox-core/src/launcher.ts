@@ -1,5 +1,9 @@
 import { SANDBOX_PROVIDER_OF } from "@project-os/contracts";
-import type { SandboxPoolEntry, WorkerLauncher } from "@project-os/core";
+import {
+  DEFAULT_SANDBOX_SESSION_SECONDS,
+  type SandboxPoolEntry,
+  type WorkerLauncher,
+} from "@project-os/core";
 import { Effect } from "effect";
 
 /**
@@ -36,12 +40,18 @@ export interface SandboxLauncherConfig {
 /** Name of the Coordinator in Pi's `mcp.json`; its tools are `mcp__project-os__*`. */
 export const MCP_SERVER_NAME = "project-os";
 
-export const DEFAULT_TIMEOUT_SECONDS = 30 * 60;
+export const DEFAULT_TIMEOUT_SECONDS = DEFAULT_SANDBOX_SESSION_SECONDS;
 
-export const piMcpJson = (mcpUrl: string): string =>
+export const piMcpJson = (mcpUrl: string, mcpToken: string): string =>
   JSON.stringify({
-    // `direct` declares the tools to the model; the default would hide them behind codemode.
-    mcpServers: { [MCP_SERVER_NAME]: { url: mcpUrl, exposure: "direct" } },
+    mcpServers: {
+      [MCP_SERVER_NAME]: {
+        url: mcpUrl,
+        headers: { Authorization: `Bearer ${mcpToken}` },
+        // `direct` declares the tools to the model; the default would hide them behind codemode.
+        exposure: "direct",
+      },
+    },
   });
 
 // Values arrive as env vars so no ticket-derived text is ever interpolated into the shell line.
@@ -55,12 +65,12 @@ export const SESSION_COMMAND = [
 
 export const sessionEnv = (
   config: Pick<SandboxLauncherConfig, "mcpUrl" | "openrouterApiKey" | "model" | "prompt">,
-  workerId: string,
+  session: { readonly workerId: string; readonly mcpToken: string },
 ): Record<string, string> => ({
   OPENROUTER_API_KEY: config.openrouterApiKey,
-  PROJECT_OS_MCP_JSON: piMcpJson(config.mcpUrl),
+  PROJECT_OS_MCP_JSON: piMcpJson(config.mcpUrl, session.mcpToken),
   PROJECT_OS_MODEL: config.model,
-  PROJECT_OS_PROMPT: `${config.prompt}\nYour worker_id is \`${workerId}\`.`,
+  PROJECT_OS_PROMPT: `${config.prompt}\nYour worker_id is \`${session.workerId}\`.`,
 });
 
 /**
@@ -74,15 +84,17 @@ export const makeSandboxLauncher = (
   const byType = new Map<string, SandboxProvider>(
     config.providers.map((p) => [p.workerType, p] as const),
   );
+  const timeoutSeconds = config.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
   const pool: ReadonlyArray<SandboxPoolEntry> = config.providers.map(
     ({ workerType, maxConcurrent }) => ({
       workerType,
       ...(maxConcurrent === undefined ? {} : { maxConcurrent }),
+      sessionTimeoutSeconds: timeoutSeconds,
     }),
   );
   return {
     pool: Effect.succeed(pool),
-    launch: ({ ticketId, workerType, workerId }) =>
+    launch: ({ ticketId, workerType, workerId, mcpToken }) =>
       Effect.sync(() => {
         const provider = byType.get(workerType);
         if (provider === undefined) return;
@@ -90,9 +102,9 @@ export const makeSandboxLauncher = (
         config.log(`${name}: launching ${workerId} for ticket ${ticketId}`);
         provider.runner
           .run({
-            env: sessionEnv(config, workerId),
+            env: sessionEnv(config, { workerId, mcpToken }),
             command: SESSION_COMMAND,
-            timeoutSeconds: config.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS,
+            timeoutSeconds,
           })
           .then(
             ({ exitCode, output }) =>

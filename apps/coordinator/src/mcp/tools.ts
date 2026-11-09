@@ -15,6 +15,7 @@ import {
   KeyValueStore,
   listAssigned,
   listProjectSources,
+  type McpCaller,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
@@ -23,7 +24,6 @@ import {
   updateStatusAndNotify,
   UserConnections,
   userTokenForTicket,
-  type Worker,
   WorkerRepository,
   writeMemory,
 } from "@project-os/core";
@@ -95,11 +95,10 @@ const define = <I extends Schema.Constraint, O extends Schema.Constraint, E, R>(
 
 /**
  * Worker-facing tool surface (docs/technical-architecture.md section 3.2). No channel tools.
- * `caller` is the registered device (personal or shared) that authenticated with its Bearer
- * secret, if any: registered devices and their tickets are only reachable with that secret,
- * while sandbox sessions work without credentials.
+ * `caller` is the worker the Bearer token belongs to: it acts only as itself and reaches only
+ * the tickets assigned to it. Project memory and sources are open to any authenticated worker.
  */
-export const makeTools = (caller?: Worker): readonly McpTool<McpServices>[] => {
+export const makeTools = (caller: McpCaller): readonly McpTool<McpServices>[] => {
   const actingAs = (i: { readonly workerId: string }) => guardActingAs(i.workerId, caller);
   const onTicket = (i: { readonly ticketId: string }) => guardTicketAccess(i.ticketId, caller);
   return [

@@ -1,9 +1,10 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { authenticateWorker } from "@project-os/core";
+import { authenticateCaller } from "@project-os/core";
 import { Effect, Schema, type ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
+import { bearerToken } from "../access.ts";
 import { makeTools, type McpServices, type McpTool } from "./tools.ts";
 
 export type McpRuntime = ManagedRuntime.ManagedRuntime<McpServices, never>;
@@ -60,29 +61,19 @@ export const makeMcpServer = (runtime: McpRuntime, tools: readonly McpTool<McpSe
   return server;
 };
 
-const bearer = (request: Request): string | undefined => {
-  const header = request.headers.get("authorization");
-  const match = header?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || undefined;
-};
-
 /**
  * Elysia plugin: streamable HTTP MCP at `/mcp`, stateless (a fresh server + transport per request,
- * JSON responses). Shared workers call it without credentials (one trusted network). Personal
- * workers (registered with /register-worker) send their secret as a Bearer token; an unknown
- * token is refused outright.
+ * JSON responses). Every caller sends a Bearer token: a registered device its secret, a sandbox
+ * session the token it was launched with. No token, or an unknown one, is refused outright.
  */
 export const mcpRoutes = (runtime: McpRuntime) =>
   new Elysia({ name: "mcp" }).all(
     "/mcp",
     async ({ request }) => {
-      const secret = bearer(request);
-      const caller = secret ? await runtime.runPromise(authenticateWorker(secret)) : undefined;
-      if (secret && !caller) {
-        return new Response(JSON.stringify({ error: "unknown worker credentials" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
+      const token = bearerToken(request);
+      const caller = token ? await runtime.runPromise(authenticateCaller(token)) : undefined;
+      if (!caller) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
       // Omitting sessionIdGenerator selects stateless mode.
       const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });

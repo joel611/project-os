@@ -4,10 +4,15 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type Auth, type Connections, makeAuth } from "@project-os/auth";
-import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
+import {
+  type IntentClassifier,
+  issueSandboxToken,
+  UserConnections,
+  type WorkerLauncher,
+} from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@project-os/testing";
-import { Layer, ManagedRuntime } from "effect";
+import { type Effect, Layer, ManagedRuntime } from "effect";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
 import type { CoordinatorTarget } from "../../../packages/channel-discord/src/forward.ts";
@@ -84,10 +89,12 @@ export interface Stack {
   /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
   readonly auth: Auth;
   /**
-   * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `secret`: a personal
-   * worker's Bearer token, as the Watcher puts in Claude Code's MCP config.
+   * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `token`: a registered
+   * device's secret, as the Watcher puts in Claude Code's MCP config, or a sandbox session's.
    */
-  readonly worker: (secret?: string) => Promise<Client>;
+  readonly worker: (token: string) => Promise<Client>;
+  /** Mints the MCP token a sandbox session launched as `workerId` would get. */
+  readonly sandboxToken: (workerId: string) => Promise<string>;
   /**
    * Adds a shared worker the way an admin does: `/register-worker shared:True` in the admin
    * channel, the Watcher trading the code at POST /workers/register, then a heartbeat so it
@@ -256,13 +263,12 @@ export const startStack = async (options: {
   const target: CoordinatorTarget = { url, token: SERVICE_TOKEN };
 
   const clients: Client[] = [];
-  const worker = async (secret?: string) => {
+  const worker = async (token: string) => {
     const client = new Client({ name: "integration-worker", version: "0" });
     await client.connect(
-      new StreamableHTTPClientTransport(
-        new URL(`${url}/mcp`),
-        secret ? { requestInit: { headers: { authorization: `Bearer ${secret}` } } } : undefined,
-      ),
+      new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
+        requestInit: { headers: { authorization: `Bearer ${token}` } },
+      }),
     );
     clients.push(client);
     return client;
@@ -307,6 +313,8 @@ export const startStack = async (options: {
       return project.id as string;
     },
     worker,
+    sandboxToken: (workerId) =>
+      runtime.runPromise(issueSandboxToken(workerId, 600) as Effect.Effect<string, never, any>),
     registerSharedWorker: async (name = "shared-box") => {
       const admin = { channelId: ADMIN_CHANNEL, userId: ADMIN_USER, name: "Admin" };
       const command = fakeCommand(admin, "register-worker", { shared: "true" })!;

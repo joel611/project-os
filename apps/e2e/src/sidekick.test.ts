@@ -49,14 +49,9 @@ const say = async (who: FakeSpeaker, content: string, id?: string) => {
 const tickets = (): Promise<
   Array<{ id: string; title: string; status: string; workerType: string; workerId: string }>
 > => stack.json("GET", `/projects/${projectId}/tickets`);
-// Read as an anonymous client: a Sidekick ticket isn't the shared worker's to see.
-const events = async (ticketId: string) => {
-  const mcp = await stack.worker();
-  const out = (await mcp.callTool({ name: "ticket_get", arguments: { ticketId } })) as unknown as {
-    structuredContent: { events: Array<{ type: string; body: string }> };
-  };
-  return out.structuredContent.events;
-};
+// Read as the dashboard does: a Sidekick ticket isn't the shared worker's to see.
+const events = async (ticketId: string): Promise<Array<{ type: string; body: string }>> =>
+  (await stack.json("GET", `/tickets/${ticketId}`)).events;
 const assignedToWorker = async () => {
   const mcp = await stack.worker(SECRET);
   const out = (await mcp.callTool({

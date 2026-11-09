@@ -24,7 +24,9 @@ let hold: boolean;
 
 const playPiSession = async (env: Record<string, string>) => {
   const workerId = /worker_id is `([^`]+)`/.exec(env.PROJECT_OS_PROMPT!)![1]!;
-  const mcp = await stack.worker();
+  // The Bearer token Pi sends, from the mcp.json the bridge hands the container.
+  const { headers } = JSON.parse(env.PROJECT_OS_MCP_JSON!).mcpServers["project-os"];
+  const mcp = await stack.worker(headers.Authorization.replace(/^Bearer /, ""));
   const tool = async (name: string, args: Record<string, unknown>) => {
     const res = (await mcp.callTool({ name, arguments: args })) as {
       isError?: boolean;

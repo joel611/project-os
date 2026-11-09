@@ -134,13 +134,17 @@ describe("shared worker loop", () => {
   });
 
   it("refuses anyone acting as the shared worker without its secret", async () => {
-    const anon = await stack.worker();
-    const res = (await anon.callTool({
+    const anon = httpMcpClient(`${stack.url}/mcp`, fetch);
+    await expect(anon.callTool("ticket_list_assigned", { workerId: WORKER })).rejects.toThrow(
+      /HTTP 401/,
+    );
+    const sandbox = await stack.worker(await stack.sandboxToken("daytona-elsewhere"));
+    const res = (await sandbox.callTool({
       name: "ticket_list_assigned",
       arguments: { workerId: WORKER },
     })) as { isError?: boolean; content: Array<{ text?: string }> };
     expect(res.isError).toBe(true);
-    expect(res.content[0]!.text).toContain("registered worker");
+    expect(res.content[0]!.text).toContain("WorkerUnauthorized");
   });
 
   it("queues a ticket while the shared worker is busy and nothing else has room", async () => {

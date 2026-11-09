@@ -187,7 +187,12 @@ describe("handleInbound", () => {
       workerId: `daytona-${value.id}`,
     });
     expect(launched).toEqual([
-      { ticketId: value.id, workerType: "daytona_pi", workerId: `daytona-${value.id}` },
+      {
+        ticketId: value.id,
+        workerType: "daytona_pi",
+        workerId: `daytona-${value.id}`,
+        mcpToken: expect.stringMatching(/^[\w-]{40,}$/),
+      },
     ]);
   });
 
@@ -215,6 +220,7 @@ describe("handleInbound", () => {
           ticketId: value.id,
           workerType: "cloudflare_pi",
           workerId: `cloudflare-${value.id}`,
+          mcpToken: expect.any(String),
         },
       ]);
     });
@@ -238,13 +244,13 @@ describe("handleInbound", () => {
       expect(value).toEqual(["cloudflare_pi", "daytona_pi"]);
     });
 
-    it("prefers a free shared device over the sandbox pool", async () => {
+    it("prefers a free shared device over the sandbox pool, and launches nothing", async () => {
       const { value, launched } = await run(newTicket(), {
         classifier: asNew,
         sandboxPool: [{ workerType: "daytona_pi" }],
       });
       expect(value).toMatchObject({ workerType: "local", workerId: "w1" });
-      expect(launched).toEqual([{ ticketId: value.id, workerType: "local", workerId: "w1" }]);
+      expect(launched).toEqual([]);
     });
 
     it("moves on once a shared device holds its cap, to a less loaded one, then the pool", async () => {

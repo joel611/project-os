@@ -168,6 +168,8 @@ export interface SandboxPoolEntry {
   readonly workerType: SandboxWorkerType;
   /** Most of its tickets active at once; further tickets go to the next provider. Unset: no cap. */
   readonly maxConcurrent?: number;
+  /** Longest a session runs before the provider stops it. Unset: 30 minutes. */
+  readonly sessionTimeoutSeconds?: number;
 }
 
 export class WorkerLauncher extends Context.Service<
@@ -179,15 +181,17 @@ export class WorkerLauncher extends Context.Service<
      */
     readonly pool: Effect.Effect<ReadonlyArray<SandboxPoolEntry>>;
     /**
-     * Start a worker for a freshly assigned ticket. Returns once the launch is under way, not
-     * when the session ends; failures are the launcher's to report. No-op for pull-model local
-     * workers (the Watcher starts those).
+     * Start a sandbox session for a ticket just assigned to the pool. Returns once the launch is
+     * under way, not when the session ends; failures are the launcher's to report. Registered
+     * devices are never launched: their Watcher pulls the ticket.
      */
     readonly launch: (input: {
       readonly ticketId: string;
       readonly workerType: WorkerType;
       /** The id the ticket is assigned to; the session must claim as this worker. */
       readonly workerId: string;
+      /** The session's Bearer token for MCP: it acts as `workerId` only, until it expires. */
+      readonly mcpToken: string;
     }) => Effect.Effect<void>;
   }
 >()("@project-os/core/WorkerLauncher") {}
