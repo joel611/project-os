@@ -112,34 +112,37 @@ export default Alchemy.Stack(
     const plain = yield* readVars;
     const secrets = yield* readSecrets;
 
+    // Dashboard: the Vite SPA as static assets only, no Worker code. The browser calls the
+    // Coordinator directly at PUBLIC_URL (baked in as VITE_COORDINATOR_URL), which allows this
+    // origin with CORS. PUBLIC_URL is the Coordinator's own URL, known after the first deploy;
+    // until it is set the build falls back to `/api`, which nothing serves here.
+    const publicUrl = plain.PUBLIC_URL;
+    const dashboard = yield* Cloudflare.Website.StaticSite("Dashboard", {
+      cwd: "apps/web",
+      // `new URL().origin` keeps the value free of shell metacharacters.
+      command: publicUrl
+        ? `VITE_COORDINATOR_URL='${new URL(publicUrl).origin}' bun run build`
+        : "bun run build",
+      shell: true,
+      outdir: "dist/client",
+      compatibility: { date: COMPATIBILITY_DATE },
+      assets: { notFoundHandling: "single-page-application" },
+      memo: {
+        include: ["**/*", "../../packages/contracts/src/**"],
+        lockfile: true,
+      },
+    });
+
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
       main: "./apps/coordinator/src/main.cloudflare.ts",
       // nodejs_compat fills `process.env` from the vars and secrets below, which
       // `@project-os/config` reads. It is no longer a default for dates after 2026-08-04.
       compatibility: { date: COMPATIBILITY_DATE, flags: ["nodejs_compat"] },
-      env: { DB: db, KV: kv, ...plain, ...secrets },
+      // WEB_ORIGIN is the dashboard's URL, so the browser may call this API (CORS).
+      env: { DB: db, KV: kv, ...plain, ...secrets, WEB_ORIGIN: dashboard.url.as<string>() },
       // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts
       // exports a `scheduled` handler; today it only exports `fetch`.
-    });
-
-    // Dashboard: the Vite SPA as static assets. A small Worker forwards `/api/*` to the
-    // Coordinator over a service binding, the same rewrite the Vite dev proxy does.
-    const dashboard = yield* Cloudflare.Website.StaticSite("Dashboard", {
-      cwd: "apps/web",
-      command: "bun run build",
-      outdir: "dist/client",
-      main: "./apps/web/worker.ts",
-      compatibility: { date: COMPATIBILITY_DATE },
-      assets: {
-        runWorkerFirst: ["/api/*"],
-        notFoundHandling: "single-page-application",
-      },
-      env: { COORDINATOR: coordinator },
-      memo: {
-        include: ["**/*", "../../packages/contracts/src/**"],
-        lockfile: true,
-      },
     });
 
     return {
