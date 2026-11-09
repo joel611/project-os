@@ -12,17 +12,20 @@ import { env as workerEnv } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
+import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
+
+export { PiAgent } from "./pi-agent.ts";
 
 // Cloudflare target: Workers + D1 + KV (docs/technical-architecture.md §8).
 //
 // What runs here: the HTTP API (/inbound, /commands, ...), the MCP endpoint Watchers poll,
-// and account linking. What does not yet: the agent runtime (Pi Durable needs Durable Object
-// storage, so inbound messages that need it fail), the health sweep (no Cron handler), and
-// the sandbox pool. See "Known gaps" in docs/deployment.md.
+// and account linking. The agent runtime (Pi Durable) runs in the `PiAgent` Durable Object.
+// What does not yet: the health sweep (no Cron handler) and the sandbox pool. See "Known gaps" in docs/deployment.md.
 
 interface Bindings {
   readonly DB: D1Database;
   readonly KV: KVNamespace;
+  readonly PI_AGENT: DurableObjectNamespace<PiAgent>;
 }
 
 const oauthClient = (prefix: string): OAuthClientConfig | undefined => {
@@ -65,6 +68,7 @@ const buildApp = (bindings: Bindings) => {
         db: bindings.DB,
         kv: bindings.KV,
         adapterUrls: gatewayUrl ? { discord: gatewayUrl } : {},
+        agent: durableAgentRuntime(bindings.PI_AGENT),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
       // Projects reference an org (FK) and nothing else creates one.
