@@ -1,7 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { FolderKanban, Network } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { FolderKanban, LogOut, Network } from "lucide-react";
 import { api, type WorkerView } from "@/api";
+import { authClient } from "@/auth";
+import { Button } from "@/components/ui/button";
+import { session } from "@/session";
 import { groupWorkers, relativeTime, type WorkerGroup, workerName } from "@/model";
 import { useNow } from "@/use-now";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -106,6 +109,24 @@ const Workers = () => {
   );
 };
 
+const SignOut = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const signOut = async () => {
+    const token = session.token();
+    session.clear();
+    queryClient.clear();
+    if (token) await authClient.signOut(token);
+    await navigate({ to: "/login" });
+  };
+  return (
+    <Button variant="ghost" size="sm" className="mt-auto justify-start gap-2" onClick={signOut}>
+      <LogOut />
+      Sign out
+    </Button>
+  );
+};
+
 export const Sidebar = () => (
   <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/30 p-3">
     <Link to="/" className="px-2 pt-1 text-sm font-semibold tracking-tight">
@@ -128,5 +149,6 @@ export const Sidebar = () => (
       <SectionTitle>Workers</SectionTitle>
       <Workers />
     </section>
+    <SignOut />
   </aside>
 );

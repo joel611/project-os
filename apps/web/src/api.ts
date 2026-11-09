@@ -10,6 +10,7 @@ import {
 } from "@project-os/contracts";
 import { Schema } from "effect";
 import type { SourceInput } from "@/model";
+import { session, sessionExpired } from "./session.ts";
 
 const WorkerView = Schema.Struct({ ...Worker.fields, status: WorkerStatus });
 export type WorkerView = typeof WorkerView.Type;
@@ -62,6 +63,7 @@ export const describeError = (error: Error): string => {
   if (!(error instanceof ApiError))
     return `Unexpected response from the Coordinator: ${error.message}`;
   if (error.code === "Unreachable") return UNREACHABLE;
+  if (error.status === 401) return "Your session ended. Sign in again.";
   if (error.status === 404) return "Not found.";
   if (error.code === "SourceAlreadyLinked") return "That source is already linked to a project.";
   if (error.status === 400) return "The Coordinator rejected that input.";
@@ -75,25 +77,36 @@ export const describeError = (error: Error): string => {
 export const apiBase = (coordinatorUrl: string | undefined): string =>
   coordinatorUrl ? coordinatorUrl.replace(/\/+$/, "") : "/api";
 
+/** How the client gets its session token, and what happens when the Coordinator refuses it. */
+export interface ApiSession {
+  readonly token: () => string | null;
+  /** A 401: the token is missing, expired, or signed out elsewhere. */
+  readonly expired: () => void;
+}
+
+const browserSession: ApiSession = { token: session.token, expired: sessionExpired };
+
 /** Typed client for the Coordinator read API. Responses are decoded with the contract schemas. */
 export const makeApi = (
   fetchFn: typeof fetch = fetch,
   base: string = apiBase(import.meta.env.VITE_COORDINATOR_URL as string | undefined),
+  auth: ApiSession = browserSession,
 ) => {
   const send = async <S extends Schema.Decoder<unknown>>(
     path: string,
     schema: S,
     init?: { readonly method: "POST" | "PATCH"; readonly json: unknown },
   ) => {
-    const res = await fetchFn(
-      `${base}${path}`,
-      init && {
-        method: init.method,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(init.json),
+    const token = auth.token();
+    const res = await fetchFn(`${base}${path}`, {
+      ...(init && { method: init.method, body: JSON.stringify(init.json) }),
+      headers: {
+        ...(init && { "content-type": "application/json" }),
+        ...(token && { authorization: `Bearer ${token}` }),
       },
-    );
+    });
     const body: unknown = await res.json().catch(() => null);
+    if (res.status === 401) auth.expired();
     if (!res.ok) throw new ApiError(res.status, errorCode(body, res));
     return Schema.decodeUnknownSync(schema)(body);
   };

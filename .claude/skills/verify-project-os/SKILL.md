@@ -40,9 +40,11 @@ Everything below runs from `apps/e2e` (`cd apps/e2e`) with `DATA_DIR=$VERIFY_DIR
 
 The API refuses calls without credentials. Every `curl` read above needs the operator's session: `-H "authorization: Bearer $(cat $VERIFY_DIR/data/operator.token)"`. A hand-made `POST /inbound` needs the service token instead: `$(cat $VERIFY_DIR/data/service.token)`.
 
-Dashboard via `agent-browser` (skill `agent-browser`); URL `http://localhost:15173/projects/<projectId>`. Use snapshot refs, not coordinates:
+Dashboard via `agent-browser` (skill `agent-browser`); URL `http://localhost:15173/projects/<projectId>`. Use snapshot refs, not coordinates. Any page redirects to `/login` until you sign in, so sign in first with the `login=` email and password from the READY line:
 
 ```sh
+agent-browser open http://localhost:15173/login && agent-browser snapshot -i   # textboxes "Email", "Password"; button "Sign in"
+agent-browser fill @<Email ref> verify@project-os.test && agent-browser fill @<Password ref> verify-password && agent-browser click @<Sign in ref>
 agent-browser open http://localhost:15173/projects/<projectId> && agent-browser wait 2000
 agent-browser snapshot -i          # tabs "Tickets N" / "Memory N"; rows "<Status><title><worker><age>"; ticket title is a link
 agent-browser click @<ticket link ref>   # opens dialog "<ticket title>" with Activity timeline + Result
