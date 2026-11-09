@@ -12,7 +12,7 @@ import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infr
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
-import { createApp } from "./app.ts";
+import { createApp, parseOrigins } from "./app.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
@@ -164,6 +164,8 @@ createApp(
       },
     },
     mcp: runtime,
+    // Only needed when the dashboard is served from another origin; locally Vite proxies /api.
+    corsOrigins: parseOrigins(process.env.WEB_ORIGIN),
     ...(connections && { connect: connections }),
   },
 ).listen(port);

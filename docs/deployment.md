@@ -7,7 +7,7 @@
 | D1 database | `DB` | App database. Migrations come from `packages/db-sqlite/migrations` and are applied on every deploy. |
 | KV namespace | `KV` | Bound to the Coordinator as `KV`. |
 | Worker | `Coordinator` | `apps/coordinator/src/main.cloudflare.ts` (Elysia + `CloudflareAdapter`), bound to `DB`, `KV`, vars and secrets. |
-| Worker + static assets | `Dashboard` | Builds `apps/web` and serves `dist/client` with SPA fallback. `apps/web/worker.ts` forwards `/api/*` to the Coordinator over a service binding (`COORDINATOR`), the same rewrite as the Vite dev proxy. |
+| Worker + static assets | `Dashboard` | Builds `apps/web` and serves `dist/client` with SPA fallback. Static assets only, no Worker code. The browser calls the Coordinator directly at `PUBLIC_URL` (baked into the build as `VITE_COORDINATOR_URL`), and the Coordinator allows the dashboard's origin with CORS (`WEB_ORIGIN`, set by the deploy). |
 
 Cloud resource names get the stage, for example `project-os-prod-db`, so stages never share data.
 
@@ -54,7 +54,7 @@ Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never a
 - **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`, `DAYTONA_API_KEY`, `BOAT_API_KEY`, `CLOUDFLARE_SANDBOX_TOKEN`.
 - **Not bound:** host-only keys (`PORT`, `DATABASE_PATH`, `PI_STORAGE_PATH`, `SEED_*`, `MCP_URL`, `POLL_INTERVAL_MS`, `MAX_SESSIONS`, `WORKER_CWD`, `DISCORD_SPLIT_GATEWAY_PORT`, `COORDINATOR_URL`) and `DISCORD_BOT_TOKEN`, since a Worker can't hold the Discord gateway.
 
-The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the **`coordinatorUrl`** from the first deploy, then deploy again. Register `$PUBLIC_URL/api/auth/callback/<provider>` with Google and GitHub. Do not use `dashboardUrl`: the Dashboard Worker strips `/api` before forwarding, so the callback would reach the Coordinator as `/auth/...` and 404, and `/connect/:token` and `/mcp` are not proxied at all.
+The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the **`coordinatorUrl`** from the first deploy, then deploy again. That second deploy also rebuilds the dashboard with the Coordinator URL, so the dashboard shows data only after it. Register `$PUBLIC_URL/api/auth/callback/<provider>` with Google and GitHub. Do not use `dashboardUrl`: it serves only static files, so callbacks, `/connect/:token` and `/mcp` would not reach the Coordinator.
 
 ## Not on Workers
 
