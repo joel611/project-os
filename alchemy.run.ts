@@ -8,6 +8,8 @@
 // `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
 // stage without OAuth clients deploys with account linking off (same rule as local).
 // See docs/deployment.md.
+import { cpSync, rmSync } from "node:fs";
+import { basename } from "node:path";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
@@ -16,6 +18,35 @@ import * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 
 const COMPATIBILITY_DATE = "2026-10-01";
+
+const GATEWAY_CONTEXT = ".alchemy/gateway-context";
+const NOT_IN_IMAGE = new Set([
+  "node_modules",
+  ".git",
+  ".alchemy",
+  ".claude",
+  ".data",
+  "coverage",
+  "dist",
+]);
+
+/**
+ * A clean copy of the repo for the gateway image. `alchemy dev` hashes the whole build context
+ * and restarts the container on any change, but skips contexts under `.alchemy/`. Building from
+ * "." restarted it whenever Alchemy's own state, a build output or a coverage report was
+ * written. The copy leaves out secrets (`.env*`) and build output, so it is also what ships.
+ */
+const stageGatewayContext = () => {
+  rmSync(GATEWAY_CONTEXT, { recursive: true, force: true });
+  cpSync(".", GATEWAY_CONTEXT, {
+    recursive: true,
+    filter: (source) => {
+      const name = basename(source);
+      return !NOT_IN_IMAGE.has(name) && !name.startsWith(".env") && !name.endsWith(".sqlite");
+    },
+  });
+  return GATEWAY_CONTEXT;
+};
 
 /** Plain vars with the same defaults as `.env.example`. */
 const vars = {
@@ -173,7 +204,7 @@ export default Alchemy.Stack(
             env: {
               Gateway: Cloudflare.Container("Gateway", {
                 className: "DiscordGateway",
-                context: ".",
+                context: stageGatewayContext(),
                 dockerfile: "apps/discord-gateway/Dockerfile",
                 instanceType: "lite",
                 maxInstances: 1,
