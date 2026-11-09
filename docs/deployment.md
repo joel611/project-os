@@ -7,6 +7,7 @@
 | D1 database | `DB` | App database. Migrations come from `packages/db-sqlite/migrations` and are applied on every deploy. |
 | KV namespace | `KV` | Bound to the Coordinator as `KV`. |
 | Worker | `Coordinator` | `apps/coordinator/src/main.cloudflare.ts` (Elysia + `CloudflareAdapter`), bound to `DB`, `KV`, vars and secrets. |
+| Worker + Container | `DiscordGateway` + `Gateway` | The Discord gateway (`apps/discord-gateway`, image from its `Dockerfile`) in a `lite` Container behind a Worker with no public URL. Deployed only when `DISCORD_BOT_TOKEN` and `PUBLIC_URL` are set and `DISCORD_SPLIT_GATEWAY_URL` is not. A Cron Trigger restarts the container if it stops. |
 | Worker + static assets | `Dashboard` | Builds `apps/web` and serves `dist/client` with SPA fallback. Static assets only, no Worker code. The browser calls the Coordinator directly at `PUBLIC_URL` (baked into the build as `VITE_COORDINATOR_URL`), and the Coordinator allows the dashboard's origin with CORS (`WEB_ORIGIN`, set by the deploy). |
 
 Cloud resource names get the stage, for example `project-os-prod-db`, so stages never share data.
@@ -26,7 +27,9 @@ Discord needs an outbound Gateway WebSocket that stays open for as long as the b
 
 **Split.** Setting `DISCORD_SPLIT_GATEWAY_URL` on the Coordinator turns the in-process bot off, even if `DISCORD_BOT_TOKEN` is also set, and sends replies to that URL. The Discord process forwards messages, slash commands and button clicks to `COORDINATOR_URL`. To self-host the split in containers, set `DISCORD_SPLIT_GATEWAY_URL=http://discord-gateway:8081` in `.env` and run `docker compose --profile split up`.
 
-The split reply endpoint has no authentication. Keep it on a private network or behind a firewall, and never publish its port. The Cloudflare Coordinator serves the HTTP API and MCP, but cannot run the agent yet (see Known gaps), so the Cloudflare half of the split is not usable end to end.
+The split reply endpoint has no authentication. Keep it on a private network or behind a firewall, and never publish its port.
+
+**Split on Cloudflare (the stack does this).** With `DISCORD_BOT_TOKEN` and `PUBLIC_URL` set, `alchemy.run.ts` also deploys the `DiscordGateway` Worker, whose `Gateway` Durable Object runs `apps/discord-gateway` in a Container. The Worker has `workersDev: false`, so nothing public reaches the reply endpoint. The Coordinator Worker holds a `DISCORD_GATEWAY` service binding and sends replies through it (`adapterFetch` in `CloudflareLive`); the stack sets `DISCORD_SPLIT_GATEWAY_URL` to a placeholder so the in-process bot stays off. The bot token is bound to the gateway only, never the Coordinator. The container forwards messages to `PUBLIC_URL`, so the gateway joins on the second deploy (see below). Building the image needs Docker on the machine or CI runner that runs the deploy.
 
 ## First-time setup
 
@@ -43,6 +46,8 @@ bun run destroy --stage prod   # delete every resource in the stage
 bun run dev:cf                 # alchemy dev: same stack on local workerd (miniflare D1/KV)
 ```
 
+`bun run dev:cf` serves the Coordinator on 8787, the Dashboard on 8788 and the gateway Worker on 8789. Set `COORDINATOR_DEV_PORT`, `DASHBOARD_DEV_PORT` or `DISCORD_GATEWAY_DEV_PORT` to move one, for example in a second worktree. A port that is taken still falls back to the next free one.
+
 Without `--stage`, the stage is `$ALCHEMY_STAGE` or `live_$USER`, which gives each developer a private copy.
 
 ## Vars and secrets
@@ -52,13 +57,13 @@ Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never a
 - **Vars with defaults:** `CHAT_MODEL_PROVIDER`, `CHAT_MODEL_ID`, `JEV_MODEL_ID`, `INTENT_CONFIDENCE_THRESHOLD`, `DISCORD_PROJECT_CHANNEL_AUTO_CREATE`.
 - **Vars bound when set:** `DISCORD_SPLIT_GATEWAY_URL`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `DISCORD_MEMBER_ROLE_IDS`, `DISCORD_REQUIRE_MENTION`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`, `SHARED_WORKER_MAX_TICKETS`, `WATCHER_INSTALL_COMMAND`, `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `SANDBOX_PI_MODEL`, `SANDBOX_SESSION_TIMEOUT_SECONDS`, `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`, `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`, `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_MAX_CONCURRENT`.
 - **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`, `DAYTONA_API_KEY`, `BOAT_API_KEY`, `CLOUDFLARE_SANDBOX_TOKEN`.
-- **Not bound:** host-only keys (`PORT`, `DATABASE_PATH`, `PI_STORAGE_PATH`, `SEED_*`, `MCP_URL`, `POLL_INTERVAL_MS`, `MAX_SESSIONS`, `WORKER_CWD`, `DISCORD_SPLIT_GATEWAY_PORT`, `COORDINATOR_URL`) and `DISCORD_BOT_TOKEN`, since a Worker can't hold the Discord gateway.
+- **Not bound:** host-only keys (`PORT`, `DATABASE_PATH`, `PI_STORAGE_PATH`, `SEED_*`, `MCP_URL`, `POLL_INTERVAL_MS`, `MAX_SESSIONS`, `WORKER_CWD`, `DISCORD_SPLIT_GATEWAY_PORT`, `COORDINATOR_URL`) and `DISCORD_BOT_TOKEN`, which goes to the `DiscordGateway` Worker (as a secret) and not to the Coordinator, since a Worker can't hold the Discord gateway.
 
 The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the **`coordinatorUrl`** from the first deploy, then deploy again. That second deploy also rebuilds the dashboard with the Coordinator URL, so the dashboard shows data only after it. Register `$PUBLIC_URL/api/auth/callback/<provider>` with Google and GitHub. Do not use `dashboardUrl`: it serves only static files, so callbacks, `/connect/:token` and `/mcp` would not reach the Coordinator.
 
 ## Not on Workers
 
-- **Discord:** a Worker can't hold the gateway WebSocket, so Discord runs in a separate process. See [Deployment layouts](#deployment-layouts).
+- **Discord:** a Worker can't hold the gateway WebSocket, so Discord runs in a Container behind its own Worker. To run it elsewhere, set `DISCORD_SPLIT_GATEWAY_URL` and the stack skips the Container. See [Deployment layouts](#deployment-layouts).
 - **Watcher:** runs on the machine that hosts Claude Code, with `MCP_URL=<coordinatorUrl>/mcp`.
 
 ## Known gaps
@@ -67,6 +72,7 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 - **The HTTP API has no authentication.** Any caller can create projects, change ticket status or register workers, and `/inbound` and `/commands` trust the user ids in the request body. Unchanged from the Bun target, but a Workers URL is public by default. Put a shared secret or Cloudflare Access in front before using a deployed stage with real data.
 - **Pi Durable runs in a Durable Object.** `PiAgent` (`apps/coordinator/src/pi-agent.ts`, SQLite-backed, bound as `PI_AGENT`) owns one Pi Harness per session (`project:<id>`, `admin:<channel>`, `sidekick:<ticket>`); the Worker calls it over RPC. `apps/e2e/src/pi-agent.test.ts` runs it in workerd (Miniflare) with a faux model: per-session history, idempotent `requestId`, an admin tool writing to D1, and a conversation that survives a restart. A real OpenRouter answer and an admin turn through the fake Discord adapter were also checked by hand in `alchemy dev`. Not checked: the Sidekick token callback over RPC, or recovery after the object is evicted mid-turn (the next delivery of the same message resumes it by `requestId`; no alarm is armed). Pi telemetry (OTLP) is off on Workers.
 - **Sandbox pool is off on Workers.** No `WorkerLauncher` is wired, so tickets go to registered Watchers only (the `DAYTONA_*`, `BOAT_*` and `CLOUDFLARE_SANDBOX_*` vars bind but are unused).
+- **The gateway Container is not tested end to end.** `apps/e2e/src/discord-gateway.test.ts` runs the real gateway Worker and the Coordinator's service-binding path in workerd, with a Durable Object standing in for the container. `alchemy dev` built the stack with the Container and the service binding. Not checked: the container actually logging in to Discord, and a real reply posted from Cloudflare. The container runs one instance (`maxInstances: 1`), and a cold start after a deploy or crash waits for the next Cron tick (up to a minute) or the next reply.
 - **No deploy against a real account yet.** The Worker was bundled and run in local workerd, not deployed.
 - `KeyValueStore.setIfAbsent` is not atomic on Workers KV, and a TTL under 60 seconds is raised to 60. Inbound dedupe can let a duplicate delivery through.
 - Cron Triggers (the health sweep) are left off until `main.cloudflare.ts` exports a `scheduled` handler. Add `crons: ["* * * * *"]` to the Coordinator then.
@@ -80,7 +86,7 @@ Estimated at about **$5–7 a month** on Cloudflare (Workers Paid plan, prices a
 | Part              | Cost / month | Why                                                                                                                                                                                                                                                   |
 | ----------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workers Paid plan | $5 flat      | Covers the Coordinator, the dashboard, D1, KV and Cron. Cron every minute plus the Watcher polling every 5 minutes is about 52k requests, against 10M included. Static assets are free. D1 includes 25B rows read and 50M rows written.               |
-| Discord gateway   | ~$1.70       | The split layout's `apps/discord-gateway` needs an always-on process. As a `lite` Cloudflare Container (256 MiB), memory is about $1.40 and disk about $0.30, and CPU stays inside the included minutes. A small VM elsewhere costs a few dollars, and running it on your own machine costs $0. |
+| Discord gateway   | ~$1.70       | The split layout's `apps/discord-gateway` needs an always-on process. The stack runs it as a `lite` Cloudflare Container (256 MiB): memory is about $1.40 and disk about $0.30, and CPU stays inside the included minutes. A small VM elsewhere costs a few dollars, and running it on your own machine costs $0. |
 | Watcher           | $0           | Runs on the machine that hosts Claude Code.                                                                                                                                                                                                           |
 
 The Workers free plan ($0) could work, but it caps CPU at 10 ms per request, which Elysia plus MCP will likely exceed sometimes, and it has no Containers.

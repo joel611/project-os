@@ -9,7 +9,7 @@ import {
   type SidekickToken,
 } from "@project-os/core";
 import type { ConnectionProvider } from "@project-os/contracts";
-import { CloudflareLive, DEFAULT_ORG } from "@project-os/infra-cloudflare";
+import { CloudflareLive, DEFAULT_ORG, serviceFetch } from "@project-os/infra-cloudflare";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import { DurableObject } from "cloudflare:workers";
 import { Effect, Layer, ManagedRuntime } from "effect";
@@ -22,6 +22,7 @@ import { makeAdminActions } from "./admin/actions.ts";
 interface Bindings {
   readonly DB: D1Database;
   readonly KV: KVNamespace;
+  readonly DISCORD_GATEWAY?: Fetcher;
 }
 
 /** Errors cross the RPC boundary as values, so the Worker rebuilds the typed error. */
@@ -42,6 +43,7 @@ export class PiAgent extends DurableObject<Bindings> {
         adapterUrls: process.env.DISCORD_SPLIT_GATEWAY_URL
           ? { discord: process.env.DISCORD_SPLIT_GATEWAY_URL }
           : {},
+        ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
       }),
     );
     const adminActions = makeAdminActions({

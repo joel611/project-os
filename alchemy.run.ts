@@ -8,6 +8,8 @@
 // `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
 // stage without OAuth clients deploys with account linking off (same rule as local).
 // See docs/deployment.md.
+import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { basename } from "node:path";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
@@ -16,6 +18,52 @@ import * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
 
 const COMPATIBILITY_DATE = "2026-10-01";
+
+const GATEWAY_CONTEXT = ".alchemy/gateway-context";
+const NOT_IN_IMAGE = new Set([
+  "node_modules",
+  ".git",
+  ".alchemy",
+  ".claude",
+  ".data",
+  "coverage",
+  "dist",
+]);
+
+/**
+ * A clean copy of the repo for the gateway image. `alchemy dev` hashes the whole build context
+ * and restarts the container on any change, but skips contexts under `.alchemy/`. Building from
+ * "." restarted it whenever Alchemy's own state, a build output or a coverage report was
+ * written. The copy leaves out secrets (`.env*`) and build output, so it is also what ships.
+ */
+const stageGatewayContext = () => {
+  const keep = (name: string) =>
+    !NOT_IN_IMAGE.has(name) && !name.startsWith(".env") && !name.endsWith(".sqlite");
+  rmSync(GATEWAY_CONTEXT, { recursive: true, force: true });
+  mkdirSync(GATEWAY_CONTEXT, { recursive: true });
+  // One entry at a time: copying "." into its own subdirectory is an error, filter or not.
+  for (const entry of readdirSync(".").filter(keep)) {
+    cpSync(entry, `${GATEWAY_CONTEXT}/${entry}`, {
+      recursive: true,
+      filter: (source) => keep(basename(source)),
+    });
+  }
+  return GATEWAY_CONTEXT;
+};
+
+/**
+ * `alchemy dev` rewrites a loopback host in a container's env to `host.docker.localhost`, but Bun
+ * resolves every `*.localhost` name to the container itself, so the gateway could not reach the
+ * Coordinator (ECONNREFUSED). Docker Desktop reaches the host as `host.docker.internal`. Linux
+ * keeps Alchemy's own tunnel, and a real URL passes through unchanged.
+ */
+const reachableFromContainer = (url: string) => {
+  const parsed = new URL(url);
+  if (process.platform !== "linux" && ["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+    parsed.hostname = "host.docker.internal";
+  }
+  return parsed.origin;
+};
 
 /** Plain vars with the same defaults as `.env.example`. */
 const vars = {
@@ -28,11 +76,11 @@ const vars = {
 
 /**
  * Plain vars with no default: bound only when set. Host-only keys (PORT, DATABASE_PATH,
- * MCP_URL, WORKER_CWD, ...) and DISCORD_BOT_TOKEN (no gateway on Workers) are left out.
+ * MCP_URL, WORKER_CWD, ...) and DISCORD_BOT_TOKEN (read apart, bound only to the gateway) are left out.
  */
 const optionalVars = [
-  // Where the Coordinator POSTs replies. Discord is a long-running gateway process, so on
-  // Workers it runs off-platform (apps/discord-gateway, docs/technical-architecture.md §8).
+  // Where the Coordinator POSTs replies. Set it to run the gateway off-platform; otherwise a
+  // DISCORD_BOT_TOKEN deploys it as a Container and the stack sets this itself.
   "DISCORD_SPLIT_GATEWAY_URL",
   "DISCORD_GUILD_ID",
   "DISCORD_PROJECT_CATEGORY_ID",
@@ -94,6 +142,26 @@ const readSecrets = Effect.gen(function* () {
   return env;
 });
 
+/** The bot token, read apart from `optionalSecrets` so only the gateway gets it. */
+const readBotToken = Config.option(Config.Redacted("DISCORD_BOT_TOKEN")).pipe(
+  Effect.map(Option.getOrUndefined),
+);
+
+/**
+ * `alchemy dev` serves every Worker on 1337 unless told otherwise, so they bump each other to
+ * the next free port, and so do parallel worktrees. Each gets its own default here. Override per
+ * checkout with the env var; a taken port still falls back to a free one rather than failing.
+ */
+const readDevPorts = Effect.gen(function* () {
+  const port = (name: string, fallback: number) =>
+    Config.Number(name).pipe(Config.withDefault(fallback));
+  return {
+    coordinator: yield* port("COORDINATOR_DEV_PORT", 8787),
+    dashboard: yield* port("DASHBOARD_DEV_PORT", 8788),
+    gateway: yield* port("DISCORD_GATEWAY_DEV_PORT", 8789),
+  };
+});
+
 export default Alchemy.Stack(
   "project-os",
   {
@@ -111,6 +179,7 @@ export default Alchemy.Stack(
 
     const plain = yield* readVars;
     const secrets = yield* readSecrets;
+    const devPorts = yield* readDevPorts;
 
     // Dashboard: the Vite SPA as static assets only, no Worker code. The browser calls the
     // Coordinator directly at PUBLIC_URL (baked in as VITE_COORDINATOR_URL), which allows this
@@ -127,11 +196,52 @@ export default Alchemy.Stack(
       outdir: "dist/client",
       compatibility: { date: COMPATIBILITY_DATE },
       assets: { notFoundHandling: "single-page-application" },
+      dev: { port: devPorts.dashboard },
       memo: {
         include: ["**/*", "../../packages/contracts/src/**"],
         lockfile: true,
       },
     });
+
+    // Discord gateway: a long-lived Bun process in a Cloudflare Container, behind a Worker with
+    // no public URL (the reply endpoint can post as the bot). The Coordinator reaches it through
+    // a service binding. Deployed only when DISCORD_BOT_TOKEN is set and no off-platform
+    // DISCORD_SPLIT_GATEWAY_URL is given. It needs Docker at deploy time to build the image, and
+    // PUBLIC_URL (the Coordinator's URL) to forward messages, so it joins on the second deploy.
+    const botToken = yield* readBotToken;
+    const gateway =
+      botToken && publicUrl && !plain.DISCORD_SPLIT_GATEWAY_URL
+        ? yield* Cloudflare.Worker("DiscordGateway", {
+            main: "./apps/discord-gateway/src/main.cloudflare.ts",
+            compatibility: { date: COMPATIBILITY_DATE },
+            workersDev: false,
+            dev: { port: devPorts.gateway },
+            // Cron Trigger: restarts the container after a crash, a stop or a deploy.
+            crons: ["* * * * *"],
+            env: {
+              Gateway: Cloudflare.Container("Gateway", {
+                className: "DiscordGateway",
+                context: stageGatewayContext(),
+                dockerfile: "apps/discord-gateway/Dockerfile",
+                instanceType: "lite",
+                maxInstances: 1,
+              }),
+              DISCORD_BOT_TOKEN: botToken,
+              COORDINATOR_URL: reachableFromContainer(publicUrl),
+              ...Object.fromEntries(
+                (
+                  [
+                    "DISCORD_GUILD_ID",
+                    "DISCORD_PROJECT_CATEGORY_ID",
+                    "ADMIN_CHANNEL_ID",
+                    "DISCORD_MEMBER_ROLE_IDS",
+                    "ADMIN_USER_IDS",
+                  ] as const
+                ).flatMap((name) => (plain[name] ? [[name, plain[name]]] : [])),
+              ),
+            },
+          })
+        : undefined;
 
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
@@ -139,6 +249,7 @@ export default Alchemy.Stack(
       // nodejs_compat is the runtime default for dates from 2026-08-04, and it fills
       // `process.env` from the vars and secrets below, which `@project-os/config` reads.
       compatibility: { date: COMPATIBILITY_DATE },
+      dev: { port: devPorts.coordinator },
       // WEB_ORIGIN is the dashboard's URL, so the browser may call this API (CORS).
       // PI_AGENT: the `PiAgent` class exported by main.cloudflare.ts, one object per Pi session.
       env: {
@@ -147,6 +258,11 @@ export default Alchemy.Stack(
         PI_AGENT: Cloudflare.DurableObject("PiAgent"),
         ...plain,
         ...secrets,
+        // Any non-empty URL turns the in-process bot off; replies go through the binding.
+        ...(gateway && {
+          DISCORD_GATEWAY: gateway,
+          DISCORD_SPLIT_GATEWAY_URL: "http://discord-gateway",
+        }),
         WEB_ORIGIN: dashboard.url.as<string>(),
       },
       // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts
