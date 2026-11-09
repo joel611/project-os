@@ -26,7 +26,7 @@ Discord needs an outbound Gateway WebSocket that stays open for as long as the b
 
 **Split.** Setting `DISCORD_SPLIT_GATEWAY_URL` on the Coordinator turns the in-process bot off, even if `DISCORD_BOT_TOKEN` is also set, and sends replies to that URL. The Discord process forwards messages, slash commands and button clicks to `COORDINATOR_URL`. To self-host the split in containers, set `DISCORD_SPLIT_GATEWAY_URL=http://discord-gateway:8081` in `.env` and run `docker compose --profile split up`.
 
-The split reply endpoint has no authentication. Keep it on a private network or behind a firewall, and never publish its port. Today `main.cloudflare.ts` serves only `/health` (see Known gaps), so the Cloudflare half of the split is not usable end to end yet.
+The split reply endpoint has no authentication. Keep it on a private network or behind a firewall, and never publish its port. The Cloudflare Coordinator serves the HTTP API and MCP, but cannot run the agent yet (see Known gaps), so the Cloudflare half of the split is not usable end to end.
 
 ## First-time setup
 
@@ -54,7 +54,7 @@ Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never a
 - **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`, `DAYTONA_API_KEY`, `BOAT_API_KEY`, `CLOUDFLARE_SANDBOX_TOKEN`.
 - **Not bound:** host-only keys (`PORT`, `DATABASE_PATH`, `PI_STORAGE_PATH`, `SEED_*`, `MCP_URL`, `POLL_INTERVAL_MS`, `MAX_SESSIONS`, `WORKER_CWD`, `DISCORD_SPLIT_GATEWAY_PORT`, `COORDINATOR_URL`) and `DISCORD_BOT_TOKEN`, since a Worker can't hold the Discord gateway.
 
-The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the URL browsers use for the OAuth callbacks (`$PUBLIC_URL/api/auth/oauth2/callback/<provider>`), usually the dashboard URL from the first deploy, then deploy again.
+The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the **`coordinatorUrl`** from the first deploy, then deploy again. Register `$PUBLIC_URL/api/auth/callback/<provider>` with Google and GitHub. Do not use `dashboardUrl`: the Dashboard Worker strips `/api` before forwarding, so the callback would reach the Coordinator as `/auth/...` and 404, and `/connect/:token` and `/mcp` are not proxied at all.
 
 ## Not on Workers
 
@@ -63,7 +63,12 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 
 ## Known gaps
 
-- `main.cloudflare.ts` serves only `/health` until `packages/infra-cloudflare` provides the D1/KV Layer, so the deployed Coordinator does not use its bindings yet.
+- **Works on Workers:** the HTTP API (`/inbound`, `/commands`, `/projects`, ...), MCP at `/mcp` (Watchers poll it), and account linking when `PUBLIC_URL`, `BETTER_AUTH_SECRET` and a Google or GitHub client are set. Data is in D1, short-lived state in KV. Checked in local workerd: `/health`, MCP initialize and auth, a project create and list, and with dummy OAuth credentials `/connect/done` (200) and `/api/auth/callback/google` (handled by Better Auth). Not checked: a real Google or GitHub round trip.
+- **The HTTP API has no authentication.** Any caller can create projects, change ticket status or register workers, and `/inbound` and `/commands` trust the user ids in the request body. Unchanged from the Bun target, but a Workers URL is public by default. Put a shared secret or Cloudflare Access in front before using a deployed stage with real data.
+- **The agent runtime is not wired.** Pi Durable needs Durable Object storage (`@earendil-works/pi-durable/storage/sqlite/cloudflare`), so on Workers `AgentRuntime` and the Sidekick are placeholders. The intent classifier is real, but an inbound message that needs the agent fails.
+- **Sandbox pool is off on Workers.** No `WorkerLauncher` is wired, so tickets go to registered Watchers only (the `DAYTONA_*`, `BOAT_*` and `CLOUDFLARE_SANDBOX_*` vars bind but are unused).
+- **No deploy against a real account yet.** The Worker was bundled and run in local workerd, not deployed.
+- `KeyValueStore.setIfAbsent` is not atomic on Workers KV, and a TTL under 60 seconds is raised to 60. Inbound dedupe can let a duplicate delivery through.
 - Cron Triggers (the health sweep) are left off until `main.cloudflare.ts` exports a `scheduled` handler. Add `crons: ["* * * * *"]` to the Coordinator then.
 - Alchemy reads the drizzle-kit v1 layout (one folder per migration) straight from `packages/db-sqlite/migrations`, the same folder the local migrator uses.
 - Alchemy v2 is in beta. Versions are pinned exactly (`alchemy`, `@alchemy.run/cloudflare`); expect breaking changes on upgrade.

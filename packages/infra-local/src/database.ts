@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
-import { migrationsFolder, SqliteRepositories } from "@project-os/db-sqlite";
+import { SqliteRepositories } from "@project-os/db-sqlite";
+import { migrationsFolder } from "@project-os/db-sqlite/migrations-folder";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect, Layer } from "effect";

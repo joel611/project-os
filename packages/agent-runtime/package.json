@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./classifier": "./src/classifier.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "1.5.0",
