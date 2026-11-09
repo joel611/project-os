@@ -68,15 +68,25 @@ export const describeError = (error: Error): string => {
   return `Coordinator returned ${error.status} (${error.code}).`;
 };
 
+/**
+ * Where the API lives. A build with `VITE_COORDINATOR_URL` calls the Coordinator directly
+ * (it must allow this origin with CORS). Without it, `/api`, which the Vite dev server proxies.
+ */
+export const apiBase = (coordinatorUrl: string | undefined): string =>
+  coordinatorUrl ? coordinatorUrl.replace(/\/+$/, "") : "/api";
+
 /** Typed client for the Coordinator read API. Responses are decoded with the contract schemas. */
-export const makeApi = (fetchFn: typeof fetch = fetch) => {
+export const makeApi = (
+  fetchFn: typeof fetch = fetch,
+  base: string = apiBase(import.meta.env.VITE_COORDINATOR_URL as string | undefined),
+) => {
   const send = async <S extends Schema.Decoder<unknown>>(
     path: string,
     schema: S,
     init?: { readonly method: "POST" | "PATCH"; readonly json: unknown },
   ) => {
     const res = await fetchFn(
-      `/api${path}`,
+      `${base}${path}`,
       init && {
         method: init.method,
         headers: { "content-type": "application/json" },

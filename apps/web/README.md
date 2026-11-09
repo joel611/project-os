@@ -7,14 +7,14 @@ bun run --cwd apps/web dev     # http://localhost:5173
 bun run --cwd apps/web build   # static export in dist/client
 ```
 
-The dev server proxies `/api/*` to the Coordinator at `COORDINATOR_URL` (default `http://localhost:8080`), so the Coordinator needs no CORS. Data refreshes every 3 seconds.
+The dev server proxies `/api/*` to the Coordinator at `COORDINATOR_URL` (default `http://localhost:8080`), so locally the Coordinator needs no CORS. Data refreshes every 3 seconds.
 
 ## Static export
 
 `dist/client` is a plain static site: `index.html` plus hashed assets. To host it:
 
 - Serve `index.html` for any path that is not a file (`/projects/<id>/tickets/<id>` is a client-side route).
-- Proxy `/api/*` to the Coordinator, stripping the `/api` prefix.
+- Reach the Coordinator one of two ways: proxy `/api/*` to it, stripping the `/api` prefix; or build with `VITE_COORDINATOR_URL=<coordinator origin>` so the browser calls it directly, and list the dashboard's origin in the Coordinator's `WEB_ORIGIN` (CORS).
 
 `dist/server` is a by-product of the Start build and is not needed. The shell holds only `<html>` and `<head>`: the layout renders in the browser (`ClientOnly` in `src/routes/__root.tsx`), because one prerendered shell answers every URL and a prerendered layout would hydrate against the wrong route.
 
