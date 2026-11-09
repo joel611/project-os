@@ -28,6 +28,7 @@
     "@project-os/sandbox-cloudflare": "workspace:*",
     "@project-os/sandbox-core": "workspace:*",
     "@project-os/sandbox-daytona": "workspace:*",
+    "drizzle-orm": "1.0.0-rc.5",
     "effect": "4.1.2",
     "elysia": "1.4.30",
     "zod": "^4.6.7"

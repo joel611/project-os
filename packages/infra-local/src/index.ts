@@ -1,24 +1,21 @@
 import { type ChannelType } from "@project-os/contracts";
-import {
-  AgentRuntime,
-  ConnectionsUnavailable,
-  IdGenerator,
-  KeyValueStore,
-  Scheduler,
-  Sidekick,
-  SidekickError,
-  UserConnections,
-  WorkerLauncher,
-} from "@project-os/core";
+import { KeyValueStore, Scheduler, WorkerLauncher } from "@project-os/core";
 import { ChannelGateway } from "@project-os/core";
-import { Effect, Layer } from "effect";
-import { SystemClockLive } from "./clock.ts";
+import { Layer } from "effect";
 import { openLocalDb, SqliteLive } from "./database.ts";
-import { makeHttpChannelGateway } from "./gateway.ts";
 import { makeMemoryKeyValueStore } from "./kv.ts";
 import { makeTimerScheduler } from "./scheduler.ts";
+import {
+  AgentRuntimePending,
+  IdGeneratorUuid,
+  makeHttpChannelGateway,
+  noopLauncher,
+  SidekickPending,
+  SystemClockLive,
+  UserConnectionsUnavailable,
+} from "./shared.ts";
 
-export { SystemClockLive, openLocalDb };
+export { SystemClockLive, UserConnectionsUnavailable, openLocalDb };
 export { DEFAULT_ORG, ensureOrg } from "./org.ts";
 
 export interface LocalConfig {
@@ -30,38 +27,9 @@ export interface LocalConfig {
   readonly workerLauncher?: typeof WorkerLauncher.Service;
 }
 
-const IdGeneratorUuid = Layer.succeed(IdGenerator, {
-  next: Effect.sync(() => crypto.randomUUID()),
-});
-
 const KeyValueStoreMemory = Layer.sync(KeyValueStore, () => makeMemoryKeyValueStore(Date.now));
 
 const SchedulerTimer = Layer.succeed(Scheduler, makeTimerScheduler());
-
-const noopLauncher: typeof WorkerLauncher.Service = {
-  pool: Effect.succeed([]),
-  launch: () => Effect.void,
-};
-
-/** Placeholder until an entry file supplies the agent runtime, which also provides the Sidekick. */
-const SidekickPending = Layer.succeed(Sidekick, {
-  answer: () => Effect.fail(new SidekickError({ message: "The Sidekick is not wired here." })),
-});
-
-/** Placeholder until the agent-runtime ticket (#14) supplies the in-process implementation. */
-const AgentRuntimePending = Layer.succeed(AgentRuntime, {
-  respond: () => Effect.die(new Error("AgentRuntime not wired yet (see #14)")),
-});
-
-/** Placeholder until an entry file supplies account linking (`@project-os/auth`). */
-const notConfigured = () =>
-  Effect.fail(new ConnectionsUnavailable({ message: "Account linking is not configured." }));
-export const UserConnectionsUnavailable = Layer.succeed(UserConnections, {
-  connectUrl: notConfigured,
-  list: () => Effect.succeed([]),
-  disconnect: () => Effect.succeed(false),
-  accessToken: notConfigured,
-});
 
 /** Every core port for the local target (Bun + bun:sqlite), except IntentClassifier. */
 export const LocalLive = (config: LocalConfig) =>
