@@ -70,8 +70,7 @@ const CHANNEL_LABEL: Readonly<Record<ChannelType, readonly [string, string, stri
 };
 
 export const WORKER_LABEL: Readonly<Record<WorkerType, string>> = {
-  local_claude: "Claude Code",
-  local_pi: "Pi (local)",
+  local: "Local computer",
   daytona_pi: "Pi (Daytona)",
   cloudflare_pi: "Pi (Cloudflare)",
   boat_pi: "Pi (boat.dev)",

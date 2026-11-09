@@ -202,7 +202,7 @@ describe("updateStatusAndNotify", () => {
     intent: "new_request",
     inputSummary: "do it",
     priority: null,
-    workerType: "local_claude",
+    workerType: "local",
     workerId: "w1",
     result: { ok: true },
     error: null,

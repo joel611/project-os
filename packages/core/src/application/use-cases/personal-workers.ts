@@ -116,7 +116,7 @@ export const redeemWorkerRegistration = (input: {
     const shared = pending.value.shared === true;
     const worker = yield* workers.register({
       id: `${shared ? "shared" : "local"}-${yield* ids.next}`,
-      workerType: input.workerType ?? "local_claude",
+      workerType: input.workerType ?? "local",
       owner: shared ? null : { channelType: pending.value.channelType, id: pending.value.id },
       name,
       secretHash: yield* sha256Hex(secret),

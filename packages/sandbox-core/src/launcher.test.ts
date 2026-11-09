@@ -97,7 +97,7 @@ describe("sandbox launcher", () => {
       return { exitCode: 0, output: "" };
     });
     await Effect.runPromise(
-      launcher.launch({ ticketId: "t1", workerType: "local_claude", workerId: "w" }),
+      launcher.launch({ ticketId: "t1", workerType: "local", workerId: "w" }),
     );
     await Effect.runPromise(
       launcher.launch({

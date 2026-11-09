@@ -61,7 +61,7 @@ const assignedToWorker = async () => {
   const mcp = await stack.worker(SECRET);
   const out = (await mcp.callTool({
     name: "ticket_list_assigned",
-    arguments: { workerId: WORKER, workerType: "local_claude" },
+    arguments: { workerId: WORKER, workerType: "local" },
   })) as unknown as { structuredContent: { tickets: unknown[] } };
   return out.structuredContent.tickets;
 };

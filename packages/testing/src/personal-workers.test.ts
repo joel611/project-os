@@ -67,7 +67,7 @@ describe("worker registration", () => {
     expect(value.token).toMatch(/^[\w-]{32}$/);
     expect(value.expiresInSeconds).toBe(600);
     expect(value.worker).toMatchObject({
-      workerType: "local_claude",
+      workerType: "local",
       ownerChannelType: "discord",
       ownerId: "u1",
       name: "ada-mbp",
@@ -106,7 +106,7 @@ describe("worker registration", () => {
   });
 
   it("names a worker by its name, else its id", () => {
-    const base = { id: "local-1", workerType: "local_claude" as const, ownerChannelType: null };
+    const base = { id: "local-1", workerType: "local" as const, ownerChannelType: null };
     const w = {
       ...base,
       ownerId: null,
@@ -214,12 +214,12 @@ describe("ticket routing", () => {
         return { worker, ticket, assigned: events.find((e) => e.type === "assigned") };
       }),
     );
-    expect(value.ticket).toMatchObject({ workerId: value.worker.id, workerType: "local_claude" });
+    expect(value.ticket).toMatchObject({ workerId: value.worker.id, workerType: "local" });
     expect(value.assigned?.body).toBe(
       `Assigned to the requester's own worker ${value.worker.name}`,
     );
     expect(launched).toEqual([
-      { ticketId: value.ticket.id, workerType: "local_claude", workerId: value.worker.id },
+      { ticketId: value.ticket.id, workerType: "local", workerId: value.worker.id },
     ]);
   });
 
@@ -245,7 +245,7 @@ describe("ticket routing", () => {
         const b = yield* device(ADA, true, "b");
         yield* (yield* WorkerRepository).heartbeat({
           workerId: a.worker.id,
-          workerType: "local_claude",
+          workerType: "local",
           ticketId: null,
           at: "2026-11-03T23:59:00.000Z",
         });
@@ -318,7 +318,7 @@ describe("MCP guards", () => {
         yield* linkChannel;
         const { token } = yield* issueWorkerRegistration(ADA, { shared: true });
         const shared = yield* redeemWorkerRegistration({ token, hostname: "build-box" });
-        yield* heartbeat({ workerId: shared.worker.id, workerType: "local_claude" });
+        yield* heartbeat({ workerId: shared.worker.id, workerType: "local" });
         const ticket = yield* newTicket(BOB);
         const ok = (e: Effect.Effect<void, any, any>) =>
           e.pipe(

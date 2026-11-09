@@ -5,7 +5,7 @@ import { boxOf, curveBetween, packetOnCurve, pathOf, schematicViewBox } from "./
 const map = layout(
   ["discord", "email"],
   [
-    { id: "w1", workerType: "local_claude" },
+    { id: "w1", workerType: "local" },
     { id: "w2", workerType: "daytona_pi" },
   ],
 );

@@ -21,7 +21,7 @@ const ticket = (id: string, over: Partial<Ticket> = {}): Ticket => ({
   intent: null,
   inputSummary: "",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,
@@ -82,7 +82,7 @@ describe("readActivity", () => {
           createdAt: OLD,
         });
         yield* tickets.insert(ticket("stale-done", { status: "completed", updatedAt: OLD }));
-        yield* heartbeat({ workerId: "w1", workerType: "local_claude" });
+        yield* heartbeat({ workerId: "w1", workerType: "local" });
         return yield* readActivity({ staleAfterMs: 60_000 });
       }),
     );

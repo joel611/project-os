@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { type AgentName, isAgentName } from "./agents.ts";
 
 /** What `project-os-watcher register` saves: this computer's identity as a personal worker. */
 export interface WatcherCredentials {
@@ -10,6 +11,10 @@ export interface WatcherCredentials {
   readonly name: string;
   /** Bearer secret for `/mcp`. Only this file holds it. */
   readonly secret: string;
+  /** Agent CLI chosen at `register --agent`; `WATCHER_AGENT` overrides it. */
+  readonly agent?: AgentName;
+  /** Model chosen at `register --model`; unset uses the agent's own default. */
+  readonly model?: string;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -38,10 +43,17 @@ export const loadCredentials = (path: string): WatcherCredentials | undefined =>
   if (!raw.server || !raw.workerId || !raw.secret) {
     throw new Error(`${path} is incomplete; run \`project-os-watcher register\` again`);
   }
+  if (raw.agent !== undefined && !isAgentName(raw.agent)) {
+    throw new Error(
+      `${path} names an unknown agent "${raw.agent}"; run \`project-os-watcher register\` again`,
+    );
+  }
   return {
     server: raw.server,
     workerId: raw.workerId,
     name: raw.name ?? raw.workerId,
     secret: raw.secret,
+    ...(raw.agent && { agent: raw.agent }),
+    ...(raw.model && { model: raw.model }),
   };
 };

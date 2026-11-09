@@ -35,7 +35,10 @@ beforeEach(async () => {
 afterEach(() => stack.stop());
 
 const watcherFor = (session: () => Promise<number>) => {
-  const config = loadConfig({ server: stack.url, workerId: WORKER, name: "box", secret: SECRET });
+  const config = loadConfig(
+    { server: stack.url, workerId: WORKER, name: "box", secret: SECRET },
+    () => true,
+  );
   const logs: string[] = [];
   const sessions: Promise<number>[] = [];
   const spawner: Spawner = {
