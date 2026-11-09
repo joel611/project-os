@@ -35,6 +35,8 @@ export default defineConfig({
       exclude: [
         "**/*.test.ts",
         "**/main.*.ts",
+        // Imports `cloudflare:workers`, so it runs only in workerd (checked there, not in vitest).
+        "apps/coordinator/src/pi-agent.ts",
         // Manual scripts, run by hand against live services.
         "**/*.smoke.ts",
         "**/dist/**",
