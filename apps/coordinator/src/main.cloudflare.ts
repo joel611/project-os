@@ -11,7 +11,7 @@ import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
-import { createApp } from "./app.ts";
+import { createApp, parseOrigins } from "./app.ts";
 
 // Cloudflare target: Workers + D1 + KV (docs/technical-architecture.md §8).
 //
@@ -114,6 +114,8 @@ const buildApp = (bindings: Bindings) => {
         },
       },
       mcp: runtime,
+      // The dashboard is served from its own origin and calls this API directly.
+      corsOrigins: parseOrigins(process.env.WEB_ORIGIN),
       ...(connections && { connect: connections }),
     },
   ).compile();

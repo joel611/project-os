@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ApiError, describeError, makeApi } from "./api.ts";
+import { ApiError, apiBase, describeError, makeApi } from "./api.ts";
 
 const T = "2026-11-05T00:00:00.000Z";
 const project = {
@@ -32,6 +32,22 @@ describe("makeApi", () => {
     const { api, calls } = respond(200, [project]);
     expect(await api.projects()).toEqual([project]);
     expect(calls).toEqual(["/api/projects"]);
+  });
+
+  it("picks the API base from the Coordinator URL, else /api", () => {
+    expect(apiBase(undefined)).toBe("/api");
+    expect(apiBase("")).toBe("/api");
+    expect(apiBase("https://coord.example.com/")).toBe("https://coord.example.com");
+  });
+
+  it("calls the Coordinator directly when given a base URL", async () => {
+    const calls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      calls.push(url);
+      return Response.json([]);
+    }) as unknown as typeof fetch;
+    await makeApi(fetchFn, "https://coord.example.com").projects();
+    expect(calls).toEqual(["https://coord.example.com/projects"]);
   });
 
   it("uses the global fetch by default", async () => {
