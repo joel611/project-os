@@ -1,5 +1,12 @@
 import type { ChannelType } from "@project-os/contracts";
-import { ChannelGateway, KeyValueStore, Scheduler, WorkerLauncher } from "@project-os/core";
+import {
+  type AgentRuntime,
+  ChannelGateway,
+  KeyValueStore,
+  Scheduler,
+  type Sidekick,
+  WorkerLauncher,
+} from "@project-os/core";
 import { schema, SqliteRepositories } from "@project-os/db-sqlite";
 import {
   AgentRuntimePending,
@@ -42,6 +49,8 @@ export interface CloudflareConfig {
   readonly adapterUrls: Partial<Record<ChannelType, string>>;
   /** Starts workers for assigned tickets. Default: none (a Watcher pulls the work). */
   readonly workerLauncher?: typeof WorkerLauncher.Service;
+  /** Provides `AgentRuntime` and `Sidekick`. Default: placeholders that fail. */
+  readonly agent?: Layer.Layer<AgentRuntime | Sidekick>;
 }
 
 /**
@@ -62,10 +71,13 @@ export const CloudflareLive = (config: CloudflareConfig) =>
     SchedulerNoop,
     Layer.succeed(
       ChannelGateway,
-      makeHttpChannelGateway({ adapterUrls: config.adapterUrls, fetch }),
+      // workerd throws "Illegal invocation" when the global `fetch` is called detached.
+      makeHttpChannelGateway({
+        adapterUrls: config.adapterUrls,
+        fetch: (input, init) => fetch(input, init),
+      }),
     ),
-    AgentRuntimePending,
-    SidekickPending,
+    config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
   );

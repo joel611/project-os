@@ -140,7 +140,15 @@ export default Alchemy.Stack(
       // `process.env` from the vars and secrets below, which `@project-os/config` reads.
       compatibility: { date: COMPATIBILITY_DATE },
       // WEB_ORIGIN is the dashboard's URL, so the browser may call this API (CORS).
-      env: { DB: db, KV: kv, ...plain, ...secrets, WEB_ORIGIN: dashboard.url.as<string>() },
+      // PI_AGENT: the `PiAgent` class exported by main.cloudflare.ts, one object per Pi session.
+      env: {
+        DB: db,
+        KV: kv,
+        PI_AGENT: Cloudflare.DurableObject("PiAgent"),
+        ...plain,
+        ...secrets,
+        WEB_ORIGIN: dashboard.url.as<string>(),
+      },
       // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts
       // exports a `scheduled` handler; today it only exports `fetch`.
     });
