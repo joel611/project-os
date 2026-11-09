@@ -29,7 +29,7 @@ describe("admin create_project creates the project's Discord channel", () => {
       { channelId: "discord-new-1", userId: "u1", name: "Ada" },
       "please add dark mode",
     );
-    await forwardInbound(stack.url, inbound!, fetch);
+    await forwardInbound(stack.coordinator, inbound!, fetch);
     const tickets = await stack.json("GET", `/projects/${project.id}/tickets`);
     expect(tickets).toMatchObject([{ title: "please add dark mode" }]);
 

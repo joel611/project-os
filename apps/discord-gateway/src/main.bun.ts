@@ -6,7 +6,11 @@ import { env, envNumber } from "@project-os/config";
 // Discord itself and does not need this process.
 const discord = createDiscord({
   token: env("DISCORD_BOT_TOKEN"),
-  coordinatorUrl: env("COORDINATOR_URL", "http://localhost:8080"),
+  coordinator: {
+    url: env("COORDINATOR_URL", "http://localhost:8080"),
+    // The Coordinator accepts messages, commands and clicks only with its service token.
+    token: env("COORDINATOR_SERVICE_TOKEN"),
+  },
   // not PORT: that is the Coordinator's, shared via .env
   replyPort: envNumber("DISCORD_SPLIT_GATEWAY_PORT", 8081),
   replyHost: "0.0.0.0",

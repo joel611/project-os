@@ -1,49 +1,159 @@
+import { makeTestLayer } from "@project-os/testing";
 import { Layer, ManagedRuntime } from "effect";
-import { describe, expect, it } from "vite-plus/test";
-import { createApp, parseOrigins } from "./app.ts";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { type Access, type Caller, ROUTE_POLICY } from "./access.ts";
+import { type AppDeps, createApp, parseOrigins } from "./app.ts";
 import type { McpRuntime } from "./mcp/server.ts";
 
+const web = "https://dash.example.com";
+
+/** Bearer `svc` is the service, `op` an allowed operator, `eve` someone not allowed. */
+const access: Access = {
+  caller: async (request): Promise<Caller> => {
+    const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
+    if (token === "svc") return { kind: "service" };
+    if (token === "op") return { kind: "user", userId: "u-op" };
+    if (token === "eve") return { kind: "outsider" };
+    return { kind: "anonymous" };
+  },
+};
+
+const disposers: Array<() => Promise<unknown>> = [];
+afterEach(async () => {
+  await Promise.all(disposers.splice(0).map((d) => d()));
+});
+
+/** Every route mounted, on an in-memory runtime. */
+const fullApp = (extra: Partial<AppDeps> = {}) => {
+  const runtime = ManagedRuntime.make(makeTestLayer().layer);
+  disposers.push(() => runtime.dispose());
+  return createApp(
+    {},
+    {
+      access,
+      http: { run: (effect) => runtime.runPromise(effect) },
+      mcp: runtime as unknown as McpRuntime,
+      auth: { handler: async () => Response.json({ ok: true }) },
+      connect: { startLink: async () => null },
+      ...extra,
+    },
+  );
+};
+
+const call = (
+  app: { handle: (r: Request) => Promise<Response> },
+  path: string,
+  init: { method?: string; token?: string; body?: unknown; origin?: string } = {},
+) =>
+  app.handle(
+    new Request(`http://localhost${path}`, {
+      method: init.method ?? "GET",
+      headers: {
+        ...(init.token && { authorization: `Bearer ${init.token}` }),
+        ...(init.origin && { origin: init.origin }),
+        ...(init.body !== undefined && { "content-type": "application/json" }),
+      },
+      ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
+    }),
+  );
+
 describe("coordinator app", () => {
-  it("serves GET /health", async () => {
-    const res = await createApp().handle(new Request("http://localhost/health"));
+  it("serves GET /health to anyone", async () => {
+    const res = await createApp({}, { access }).handle(new Request("http://localhost/health"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "ok", service: "coordinator" });
   });
 
-  describe("CORS", () => {
-    const web = "https://dash.example.com";
-    const call = (app: ReturnType<typeof createApp>, init: RequestInit = {}) =>
-      app.handle(new Request("http://localhost/health", init));
+  describe("access", () => {
+    it("names a policy for every route it mounts", () => {
+      const routes = fullApp().routes.map((r: { method: string; path: string }) => {
+        return `${r.method} ${r.path}`;
+      });
+      expect(routes.length).toBeGreaterThan(20);
+      expect(routes.filter((route: string) => !(route in ROUTE_POLICY))).toEqual([]);
+    });
 
+    it("lets only an allowed operator read the dashboard API", async () => {
+      const app = fullApp();
+      expect((await call(app, "/projects")).status).toBe(401);
+      expect(await (await call(app, "/projects")).json()).toEqual({ error: "Unauthorized" });
+      expect((await call(app, "/projects", { token: "nope" })).status).toBe(401);
+      expect((await call(app, "/projects", { token: "eve" })).status).toBe(403);
+      expect((await call(app, "/projects", { token: "svc" })).status).toBe(403);
+      const ok = await call(app, "/projects", { token: "op" });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual([]);
+    });
+
+    it("takes messages, commands and prompt answers only from a Channel Adapter", async () => {
+      const app = fullApp();
+      for (const path of ["/inbound", "/commands", "/prompts/answer"]) {
+        expect((await call(app, path, { method: "POST", body: {} })).status).toBe(401);
+        expect((await call(app, path, { method: "POST", body: {}, token: "op" })).status).toBe(403);
+        // Past the guard, the route itself rejects the empty body.
+        const svc = await call(app, path, { method: "POST", body: {}, token: "svc" });
+        expect(svc.status).toBe(400);
+      }
+    });
+
+    it("keeps sign-in, connect links and device registration open", async () => {
+      const app = fullApp();
+      expect(
+        (await call(app, "/api/auth/sign-in/email", { method: "POST", body: {} })).status,
+      ).toBe(200);
+      expect((await call(app, "/connect/abc")).status).toBe(410);
+      const register = await call(app, "/workers/register", { method: "POST", body: {} });
+      expect(register.status).toBe(400);
+    });
+  });
+
+  describe("CORS", () => {
     it("sends no CORS headers unless origins are configured", async () => {
-      for (const deps of [{}, { corsOrigins: [] }]) {
-        const res = await call(createApp({}, deps), { headers: { origin: web } });
+      for (const corsOrigins of [undefined, []]) {
+        const app = createApp({}, { access, ...(corsOrigins && { corsOrigins }) });
+        const res = await call(app, "/health", { origin: web });
         expect(res.headers.get("access-control-allow-origin")).toBeNull();
       }
     });
 
     it("allows a listed origin and not another", async () => {
-      const app = createApp({}, { corsOrigins: [web] });
-      const ok = await call(app, { headers: { origin: web } });
+      const app = createApp({}, { access, corsOrigins: [web] });
+      const ok = await call(app, "/health", { origin: web });
       expect(ok.headers.get("access-control-allow-origin")).toBe(web);
       expect(ok.headers.get("access-control-allow-credentials")).toBeNull();
-      const other = await call(app, { headers: { origin: "https://evil.example" } });
+      const other = await call(app, "/health", { origin: "https://evil.example" });
       expect(other.headers.get("access-control-allow-origin")).not.toBe("https://evil.example");
     });
 
-    it("answers a preflight for JSON writes", async () => {
-      const res = await call(createApp({}, { corsOrigins: [web] }), {
-        method: "OPTIONS",
-        headers: {
-          origin: web,
-          "access-control-request-method": "PATCH",
-          "access-control-request-headers": "content-type",
-        },
-      });
+    it("answers a preflight for authorized JSON writes", async () => {
+      const app = fullApp({ corsOrigins: [web] });
+      const res = await app.handle(
+        new Request("http://localhost/projects/p1", {
+          method: "OPTIONS",
+          headers: {
+            origin: web,
+            "access-control-request-method": "PATCH",
+            "access-control-request-headers": "authorization, content-type",
+          },
+        }),
+      );
       expect(res.status).toBe(204);
       expect(res.headers.get("access-control-allow-origin")).toBe(web);
       expect(res.headers.get("access-control-allow-methods")).toContain("PATCH");
-      expect(res.headers.get("access-control-allow-headers")).toContain("content-type");
+      expect(res.headers.get("access-control-allow-headers")).toContain("authorization");
+    });
+
+    it("lets the dashboard read a 401 and the sign-in token header", async () => {
+      const app = fullApp({ corsOrigins: [web] });
+      const denied = await call(app, "/projects", { origin: web });
+      expect(denied.status).toBe(401);
+      expect(denied.headers.get("access-control-allow-origin")).toBe(web);
+      const signIn = await call(app, "/api/auth/sign-in/email", {
+        method: "POST",
+        body: {},
+        origin: web,
+      });
+      expect(signIn.headers.get("access-control-expose-headers")).toContain("set-auth-token");
     });
 
     it("parses WEB_ORIGIN", () => {
@@ -57,9 +167,9 @@ describe("coordinator app", () => {
 
   it("mounts /mcp only when given an MCP runtime", async () => {
     const req = () => new Request("http://localhost/mcp", { method: "DELETE" });
-    expect((await createApp().handle(req())).status).toBe(404);
+    expect((await createApp({}, { access }).handle(req())).status).toBe(404);
     const runtime = ManagedRuntime.make(Layer.empty) as McpRuntime;
-    const res = await createApp({}, { mcp: runtime }).handle(req());
+    const res = await createApp({}, { access, mcp: runtime }).handle(req());
     expect(res.status).not.toBe(404);
     await runtime.dispose();
   });

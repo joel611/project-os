@@ -5,11 +5,19 @@ type Env = Readonly<Record<string, string | undefined>>;
 const nonEmpty = (env: Env, key: string) => env[key]?.trim() || undefined;
 
 /** A setting the Coordinator refuses to start without; `why` goes in the error. */
-export const requiredEnv = (env: Env, key: string, why: string): string => {
+const requiredEnv = (env: Env, key: string, why: string): string => {
   const value = nonEmpty(env, key);
   if (value === undefined) throw new Error(`${key} is required: ${why}`);
   return value;
 };
+
+/** COORDINATOR_SERVICE_TOKEN, required: what Channel Adapters call the Coordinator with. */
+export const serviceTokenFromEnv = (env: Env): string =>
+  requiredEnv(
+    env,
+    "COORDINATOR_SERVICE_TOKEN",
+    "Channel Adapters send it on /inbound, /commands and /prompts/answer",
+  );
 
 const oauthClient = (env: Env, prefix: string): OAuthClientConfig | undefined => {
   const clientId = nonEmpty(env, `${prefix}_CLIENT_ID`);

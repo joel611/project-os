@@ -12,7 +12,8 @@ import { env as workerEnv } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
-import { authConfigFromEnv } from "./auth-env.ts";
+import { makeAccess } from "./access.ts";
+import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 
 export { PiAgent } from "./pi-agent.ts";
@@ -54,6 +55,7 @@ const buildApp = (bindings: Bindings) => {
     }),
   );
   const connections = auth.connections;
+  const serviceToken = serviceTokenFromEnv(process.env);
 
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
   const runtime = ManagedRuntime.make(
@@ -89,6 +91,7 @@ const buildApp = (bindings: Bindings) => {
   return createApp(
     { adapter: CloudflareAdapter },
     {
+      access: makeAccess({ serviceToken, auth }),
       http: {
         run: (effect) => runtime.runPromise(effect),
         inbound: {

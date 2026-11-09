@@ -30,7 +30,7 @@ beforeEach(async () => {
 afterEach(() => stack.stop());
 
 const slash = (speaker: typeof ada, name: string, options: Record<string, string> = {}) =>
-  forwardCommand(stack.url, fakeCommand(speaker, name, options)!, fetch);
+  forwardCommand(stack.coordinator, fakeCommand(speaker, name, options)!, fetch);
 
 const connect = async (speaker: typeof ada, provider: string) => {
   const reply = await slash(speaker, "connect", { provider });
@@ -41,7 +41,7 @@ const connect = async (speaker: typeof ada, provider: string) => {
 };
 
 const say = async (speaker: typeof ada, content: string) => {
-  await forwardInbound(stack.url, fakeInbound(speaker, content)!, fetch);
+  await forwardInbound(stack.coordinator, fakeInbound(speaker, content)!, fetch);
   const [project] = await stack.json("GET", "/projects");
   const tickets = await stack.json("GET", `/projects/${project.id}/tickets`);
   return tickets[0].id as string;

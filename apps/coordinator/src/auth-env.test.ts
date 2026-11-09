@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { authConfigFromEnv } from "./auth-env.ts";
+import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 
 const base = { db: {} as never, baseURL: "http://localhost:8080" };
 
@@ -23,6 +23,11 @@ describe("authConfigFromEnv", () => {
     );
     expect(config.admin).toEqual({ email: "ops@example.com", password: "pw-pw-pw-pw" });
     expect(config.allowedEmails).toEqual(["ada@example.com", "bob@example.com"]);
+  });
+
+  it("refuses to start without COORDINATOR_SERVICE_TOKEN", () => {
+    expect(() => serviceTokenFromEnv({})).toThrow(/COORDINATOR_SERVICE_TOKEN is required/);
+    expect(serviceTokenFromEnv({ COORDINATOR_SERVICE_TOKEN: " tok " })).toBe("tok");
   });
 
   it("refuses an admin email without a password", () => {

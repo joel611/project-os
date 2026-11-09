@@ -44,7 +44,7 @@ afterEach(() => stack.stop());
 const say = async (who: FakeSpeaker, content: string, id?: string) => {
   const inbound = fakeInbound(who, content, id ? { id } : {});
   if (!inbound) throw new Error("message was dropped");
-  await forwardInbound(stack.url, inbound, fetch);
+  await forwardInbound(stack.coordinator, inbound, fetch);
 };
 const tickets = (): Promise<
   Array<{ id: string; title: string; status: string; workerType: string; workerId: string }>
@@ -66,7 +66,11 @@ const assignedToWorker = async () => {
   return out.structuredContent.tickets;
 };
 const connect = async (who: FakeSpeaker, provider: string) => {
-  const reply = await forwardCommand(stack.url, fakeCommand(who, "connect", { provider })!, fetch);
+  const reply = await forwardCommand(
+    stack.coordinator,
+    fakeCommand(who, "connect", { provider })!,
+    fetch,
+  );
   const link = /(http:\/\/\S+\/connect\/\S+)/.exec(reply.content)?.[1];
   expect(link, reply.content).toBeDefined();
   expect((await browse(link!)).status).toBe(200);

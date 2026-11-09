@@ -59,7 +59,7 @@ const watcherFor = (session: () => Promise<number>) => {
 
 const say = async (content: string, userId = "u1") => {
   const inbound = fakeInbound({ channelId: CHANNEL, userId, name: "Ada" }, content);
-  await forwardInbound(stack.url, inbound!, fetch);
+  await forwardInbound(stack.coordinator, inbound!, fetch);
 };
 
 /** Plays session-start.md the way a Claude Code Worker would. */
@@ -161,7 +161,7 @@ describe("shared worker loop", () => {
   it("lets only admins, in the admin channel, register a shared worker", async () => {
     const run = (channelId: string, userId: string) =>
       forwardCommand(
-        stack.url,
+        stack.coordinator,
         fakeCommand({ channelId, userId, name: "X" }, "register-worker", { shared: "true" })!,
         fetch,
       );

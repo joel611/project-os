@@ -38,6 +38,8 @@ Everything below runs from `apps/e2e` (`cd apps/e2e`) with `DATA_DIR=$VERIFY_DIR
 
 `work` fails loudly if nothing is assigned. Project id: `curl -s localhost:18080/projects` (or the `project=` in the READY line).
 
+The API refuses calls without credentials. Every `curl` read above needs the operator's session: `-H "authorization: Bearer $(cat $VERIFY_DIR/data/operator.token)"`. A hand-made `POST /inbound` needs the service token instead: `$(cat $VERIFY_DIR/data/service.token)`.
+
 Dashboard via `agent-browser` (skill `agent-browser`); URL `http://localhost:15173/projects/<projectId>`. Use snapshot refs, not coordinates:
 
 ```sh

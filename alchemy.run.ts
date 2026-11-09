@@ -113,7 +113,7 @@ const optionalVars = [
 ] as const;
 
 /** Secrets the Coordinator refuses to start without: the deploy fails when one is unset. */
-const requiredSecrets = ["BETTER_AUTH_SECRET"] as const;
+const requiredSecrets = ["BETTER_AUTH_SECRET", "COORDINATOR_SERVICE_TOKEN"] as const;
 
 /** Secrets: bound as `secret_text` only when set. */
 const optionalSecrets = [
@@ -237,6 +237,7 @@ export default Alchemy.Stack(
               }),
               DISCORD_BOT_TOKEN: botToken,
               COORDINATOR_URL: reachableFromContainer(publicUrl),
+              COORDINATOR_SERVICE_TOKEN: secrets.COORDINATOR_SERVICE_TOKEN!,
               ...Object.fromEntries(
                 (
                   [

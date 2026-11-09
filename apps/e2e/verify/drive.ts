@@ -53,7 +53,8 @@ if (cmd === "heartbeat") {
     text,
   );
   if (!inbound) throw new Error("empty message ignored");
-  await forwardInbound(url, inbound, fetch);
+  const token = readFileSync(join(dataDir, "service.token"), "utf8");
+  await forwardInbound({ url, token }, inbound, fetch);
   console.log(`said: ${text}`);
 } else if (cmd === "work") {
   const mcp = new Client({ name: "verify-worker", version: "0" });

@@ -38,10 +38,10 @@ beforeEach(async () => {
 afterEach(() => stack.stop());
 
 const slash = (speaker: typeof ada, name: string, options: Record<string, string> = {}) =>
-  forwardCommand(stack.url, fakeCommand(speaker, name, options)!, fetch);
+  forwardCommand(stack.coordinator, fakeCommand(speaker, name, options)!, fetch);
 
 const say = (speaker: typeof ada, content: string) =>
-  forwardInbound(stack.url, fakeInbound(speaker, content)!, fetch);
+  forwardInbound(stack.coordinator, fakeInbound(speaker, content)!, fetch);
 
 const registerFromReply = async (content: string): Promise<WatcherCredentials> => {
   const line = /```sh\n(.+)\n```/.exec(content)![1]!;

@@ -8,6 +8,8 @@ services:
       PORT: "8080"
       DATABASE_PATH: /data/project-os.sqlite
       PI_STORAGE_PATH: /data/pi-durable.sqlite
+      # Required: Channel Adapters (Discord, in or out of this process) call with it.
+      COORDINATOR_SERVICE_TOKEN: ${COORDINATOR_SERVICE_TOKEN:-}
       # Discord runs inside the Coordinator when the token is set. For the split layout
       # (`--profile split`), set DISCORD_SPLIT_GATEWAY_URL=http://discord-gateway:8081 and the token is ignored here.
       DISCORD_SPLIT_GATEWAY_URL: ${DISCORD_SPLIT_GATEWAY_URL:-}
@@ -88,6 +90,7 @@ services:
     environment:
       DISCORD_SPLIT_GATEWAY_PORT: "8081"
       COORDINATOR_URL: http://coordinator:8080
+      COORDINATOR_SERVICE_TOKEN: ${COORDINATOR_SERVICE_TOKEN:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}

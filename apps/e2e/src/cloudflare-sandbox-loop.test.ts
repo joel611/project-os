@@ -117,7 +117,7 @@ afterEach(async () => {
 
 const say = async (content: string) => {
   const inbound = fakeInbound({ channelId: CHANNEL, userId: "u1", name: "Ada" }, content);
-  await forwardInbound(stack.url, inbound!, fetch);
+  await forwardInbound(stack.coordinator, inbound!, fetch);
 };
 
 /** Waits until `check` passes; the runner polls the bridge on a timer. */

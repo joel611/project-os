@@ -12,17 +12,20 @@ const msg = {
 } as const;
 
 describe("forwardInbound", () => {
-  it("POSTs JSON to <coordinator>/inbound", async () => {
+  it("POSTs JSON to <coordinator>/inbound with the service token", async () => {
     let seen: Request | undefined;
     const fetcher = async (r: Request) => ((seen = r), new Response("{}", { status: 200 }));
-    await forwardInbound("http://coord:8080/", msg, fetcher);
+    await forwardInbound({ url: "http://coord:8080/", token: "svc-token" }, msg, fetcher);
     expect(seen?.url).toBe("http://coord:8080/inbound");
     expect(seen?.method).toBe("POST");
+    expect(seen?.headers.get("authorization")).toBe("Bearer svc-token");
     expect(await seen?.json()).toEqual(msg);
   });
 
   it("throws on non-2xx", async () => {
     const fetcher = async () => new Response("no", { status: 500 });
-    await expect(forwardInbound("http://c", msg, fetcher)).rejects.toThrow(/500/);
+    await expect(forwardInbound({ url: "http://c", token: "t" }, msg, fetcher)).rejects.toThrow(
+      /500/,
+    );
   });
 });

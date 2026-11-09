@@ -10,9 +10,11 @@ import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@pro
 import { Layer, ManagedRuntime } from "effect";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
+import type { CoordinatorTarget } from "../../../packages/channel-discord/src/forward.ts";
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
+import { makeAccess } from "../../coordinator/src/access.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
@@ -53,6 +55,10 @@ export interface PostedPrompt {
 export interface Stack {
   /** Coordinator base URL, e.g. `http://localhost:54321`. */
   readonly url: string;
+  /** The Coordinator as a Channel Adapter calls it: URL plus the service token. */
+  readonly coordinator: CoordinatorTarget;
+  /** The seeded operator's dashboard session token, signed in at /api/auth/sign-in/email. */
+  readonly operatorToken: string;
   /** Messages the Discord adapter was told to post. */
   readonly posted: Posted[];
   /** Channels the Discord adapter was told to create (ids `discord-new-1`, …). */
@@ -63,6 +69,7 @@ export interface Stack {
   readonly reactions: ReactionCall[];
   /** Prompts (messages with buttons) the Discord adapter was told to post. */
   readonly prompts: PostedPrompt[];
+  /** Calls the dashboard API as the signed-in operator; resolves to the JSON body. */
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
   readonly admin: ReturnType<typeof makeAdminActions>;
@@ -74,6 +81,8 @@ export interface Stack {
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
   readonly oauth?: FakeOAuth;
+  /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
+  readonly auth: Auth;
   /**
    * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `secret`: a personal
    * worker's Bearer token, as the Watcher puts in Claude Code's MCP config.
@@ -96,6 +105,8 @@ export const ADMIN_CHANNEL = "admin-chan";
 export const ADMIN_USER = "admin-1";
 /** The seeded dashboard operator (ADMIN_EMAIL / ADMIN_PASSWORD). */
 export const OPERATOR = { email: "operator@project-os.test", password: "operator-password" };
+/** COORDINATOR_SERVICE_TOKEN: what the Discord adapter calls /inbound and friends with. */
+export const SERVICE_TOKEN = "integration-service-token";
 
 const isLocal = (input: string | URL | Request) => {
   const url = new URL(input instanceof Request ? input.url : input);
@@ -186,6 +197,13 @@ export const startStack = async (options: {
   const coordinator = createApp(
     {},
     {
+      access: makeAccess({
+        serviceToken: SERVICE_TOKEN,
+        auth: {
+          sessionUser: (token) => auth!.sessionUser(token),
+          isAllowed: (email) => auth!.isAllowed(email),
+        },
+      }),
       http: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: {
@@ -228,6 +246,14 @@ export const startStack = async (options: {
     }),
   });
   await auth.ready();
+  const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(OPERATOR),
+  });
+  const operatorToken = signIn.headers.get("set-auth-token");
+  if (!operatorToken) throw new Error(`operator sign-in failed: ${signIn.status}`);
+  const target: CoordinatorTarget = { url, token: SERVICE_TOKEN };
 
   const clients: Client[] = [];
   const worker = async (secret?: string) => {
@@ -245,15 +271,19 @@ export const startStack = async (options: {
   const json = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(`${url}${path}`, {
       method,
-      ...(body === undefined
-        ? {}
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+        ...(body !== undefined && { "content-type": "application/json" }),
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
     });
     return res.json() as Promise<any>;
   };
 
   return {
     url,
+    coordinator: target,
+    operatorToken,
     posted,
     createdChannels,
     createdThreads,
@@ -262,6 +292,7 @@ export const startStack = async (options: {
     sidekickCalls: sidekick.calls,
     dbPath,
     ...(oauth && { oauth }),
+    auth,
     json,
     admin,
     linkChannel: async (channelId) => {
@@ -279,7 +310,7 @@ export const startStack = async (options: {
     registerSharedWorker: async (name = "shared-box") => {
       const admin = { channelId: ADMIN_CHANNEL, userId: ADMIN_USER, name: "Admin" };
       const command = fakeCommand(admin, "register-worker", { shared: "true" })!;
-      const reply = await forwardCommand(url, command, fetch);
+      const reply = await forwardCommand(target, command, fetch);
       const token = /sh -s -- (\S+)/.exec(reply.content)![1]!;
       const credentials = await registerDevice({ server: url, token, name }, fetch);
       const mcp = await worker(credentials.secret);

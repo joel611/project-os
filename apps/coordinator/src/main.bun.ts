@@ -13,7 +13,8 @@ import { type Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
-import { authConfigFromEnv } from "./auth-env.ts";
+import { makeAccess } from "./access.ts";
+import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
@@ -35,6 +36,7 @@ const auth = makeAuth(
 );
 await auth.ready();
 const connections = auth.connections;
+const serviceToken = serviceTokenFromEnv(process.env);
 
 const models = newModels();
 const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
@@ -88,7 +90,7 @@ const discord =
   discordToken && !remoteGatewayUrl
     ? createDiscord({
         token: discordToken,
-        coordinatorUrl: `http://localhost:${port}`,
+        coordinator: { url: `http://localhost:${port}`, token: serviceToken },
         replyPort: 0,
         replyHost: "127.0.0.1",
       })
@@ -126,6 +128,7 @@ const adminUserIds = (process.env.ADMIN_USER_IDS ?? "")
 createApp(
   {},
   {
+    access: makeAccess({ serviceToken, auth }),
     http: {
       run: (effect) => runtime.runPromise(effect),
       inbound: {

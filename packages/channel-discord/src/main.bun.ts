@@ -7,7 +7,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { answerCommand, COMMAND_DEFINITIONS, normalizeCommand } from "./commands.ts";
-import { forwardInbound } from "./forward.ts";
+import { type CoordinatorTarget, forwardInbound } from "./forward.ts";
 import {
   isAllowedMember,
   NOT_A_MEMBER_MESSAGE,
@@ -22,7 +22,7 @@ import { createReplyApp } from "./reply.ts";
 export interface DiscordOptions {
   readonly token: string;
   /** Where inbound messages, commands and prompt clicks are POSTed. */
-  readonly coordinatorUrl: string;
+  readonly coordinator: CoordinatorTarget;
   /** Port for the reply endpoint; 0 picks a free one. */
   readonly replyPort: number;
   /** Interface the reply endpoint binds. Loopback unless the Coordinator is on another host. */
@@ -47,7 +47,7 @@ export interface Discord {
 // `replyUrl` before it exists and start serving before the first message arrives.
 export const createDiscord = ({
   token,
-  coordinatorUrl,
+  coordinator,
   replyPort,
   replyHost,
 }: DiscordOptions): Discord => {
@@ -76,7 +76,7 @@ export const createDiscord = ({
     const inbound = normalizeMessage(message, client.user?.id);
     if (!inbound) return;
     try {
-      await forwardInbound(coordinatorUrl, inbound, fetch);
+      await forwardInbound(coordinator, inbound, fetch);
     } catch (err) {
       console.error("forward to coordinator failed", err);
     }
@@ -135,7 +135,7 @@ export const createDiscord = ({
           whisper: async (content) =>
             void (await interaction.followUp({ content, flags: MessageFlags.Ephemeral })),
         },
-        { coordinatorUrl, fetcher: fetch },
+        { coordinator, fetcher: fetch },
       );
     } catch (err) {
       console.error(`prompt click ${interaction.customId} failed`, err);
@@ -169,7 +169,7 @@ export const createDiscord = ({
               ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
             })),
         },
-        { coordinatorUrl, ...(adminChannelId && { adminChannelId }), fetcher: fetch },
+        { coordinator, ...(adminChannelId && { adminChannelId }), fetcher: fetch },
       );
     } catch (err) {
       console.error(`/${interaction.commandName} failed`, err);
@@ -225,7 +225,7 @@ export const createDiscord = ({
     login: async () => {
       await client.login(token);
       console.log(
-        `discord ready; forwarding to ${coordinatorUrl}, reply endpoint ${replyHost}:${reply.server?.port}`,
+        `discord ready; forwarding to ${coordinator.url}, reply endpoint ${replyHost}:${reply.server?.port}`,
       );
     },
   };

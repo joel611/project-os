@@ -22,7 +22,10 @@ const { values } = parseArgs({
   },
 });
 
-const coordinatorUrl = env("COORDINATOR_URL", "http://localhost:8080");
+const coordinator = {
+  url: env("COORDINATOR_URL", "http://localhost:8080"),
+  token: env("COORDINATOR_SERVICE_TOKEN"),
+};
 const port = envNumber("DISCORD_SPLIT_GATEWAY_PORT", 8081);
 const speaker: FakeSpeaker = {
   channelId: values.channel!,
@@ -84,14 +87,14 @@ const click = async (choice: number) => {
       },
       whisper: async (content) => console.log(`\n[bot -> only you] ${content}`),
     },
-    { coordinatorUrl, fetcher: fetch },
+    { coordinator, fetcher: fetch },
   );
 };
 
 const say = async (content: string) => {
   const inbound = fakeInbound(speaker, content, { mention: !values["no-mention"] });
   if (!inbound) return console.log("(ignored: empty message)");
-  await forwardInbound(coordinatorUrl, inbound, fetch);
+  await forwardInbound(coordinator, inbound, fetch);
 };
 
 if (values.say !== undefined) {
@@ -110,7 +113,7 @@ if (values.say !== undefined) {
 } else {
   console.log(
     `fake discord: #${speaker.channelId} as ${speaker.name} (${speaker.userId}); ` +
-      `coordinator ${coordinatorUrl}, reply endpoint :${port}. Type a message, or !N to click option N of the latest prompt; Ctrl-D quits.`,
+      `coordinator ${coordinator.url}, reply endpoint :${port}. Type a message, or !N to click option N of the latest prompt; Ctrl-D quits.`,
   );
   const rl = createInterface({ input: process.stdin });
   for await (const line of rl) {
