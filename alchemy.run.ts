@@ -119,11 +119,11 @@ export default Alchemy.Stack(
     const publicUrl = plain.PUBLIC_URL;
     const dashboard = yield* Cloudflare.Website.StaticSite("Dashboard", {
       cwd: "apps/web",
-      // `new URL().origin` keeps the value free of shell metacharacters.
+      // The command is spawned without a shell, so `env` sets the variable. `new URL().origin`
+      // also keeps the value free of whitespace and quotes.
       command: publicUrl
-        ? `VITE_COORDINATOR_URL='${new URL(publicUrl).origin}' bun run build`
+        ? `env VITE_COORDINATOR_URL=${new URL(publicUrl).origin} bun run build`
         : "bun run build",
-      shell: true,
       outdir: "dist/client",
       compatibility: { date: COMPATIBILITY_DATE },
       assets: { notFoundHandling: "single-page-application" },
@@ -136,9 +136,9 @@ export default Alchemy.Stack(
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
       main: "./apps/coordinator/src/main.cloudflare.ts",
-      // nodejs_compat fills `process.env` from the vars and secrets below, which
-      // `@project-os/config` reads. It is no longer a default for dates after 2026-08-04.
-      compatibility: { date: COMPATIBILITY_DATE, flags: ["nodejs_compat"] },
+      // nodejs_compat is the runtime default for dates from 2026-08-04, and it fills
+      // `process.env` from the vars and secrets below, which `@project-os/config` reads.
+      compatibility: { date: COMPATIBILITY_DATE },
       // WEB_ORIGIN is the dashboard's URL, so the browser may call this API (CORS).
       env: { DB: db, KV: kv, ...plain, ...secrets, WEB_ORIGIN: dashboard.url.as<string>() },
       // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts
