@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { authorize, makeAccess } from "./access.ts";
+import { authorize, makeAccess, policyFor } from "./access.ts";
 
 const sessions: Record<string, { userId: string; email: string }> = {
   "ops-session": { userId: "u-ops", email: "Ops@Example.com" },
@@ -37,6 +37,14 @@ describe("makeAccess", () => {
   it("reads only the Bearer scheme", async () => {
     expect(await caller()).toEqual({ kind: "anonymous" });
     expect(await caller("Basic ops-session")).toEqual({ kind: "anonymous" });
+  });
+});
+
+describe("policyFor", () => {
+  it("needs a dashboard user for a route nobody classified", () => {
+    expect(policyFor("GET", "/something-new")).toBe("user");
+    expect(policyFor("POST", "/api/auth/*")).toBe("public");
+    expect(policyFor("POST", "/inbound")).toBe("service");
   });
 });
 

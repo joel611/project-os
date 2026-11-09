@@ -44,6 +44,12 @@ describe("makeAuth", () => {
     expect(await auth.sessionUser("not-a-session")).toBeUndefined();
   });
 
+  it("lets nobody in without a seeded admin", async () => {
+    const auth = authWith();
+    await auth.ready();
+    expect((await post(auth, "/sign-in/email", admin)).status).toBe(401);
+  });
+
   it("has no sign-up", async () => {
     const auth = authWith({ admin });
     const res = await post(auth, "/sign-up/email", {

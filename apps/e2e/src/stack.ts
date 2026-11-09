@@ -258,8 +258,7 @@ export const startStack = async (options: {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(OPERATOR),
   });
-  const operatorToken = signIn.headers.get("set-auth-token");
-  if (!operatorToken) throw new Error(`operator sign-in failed: ${signIn.status}`);
+  const operatorToken = signIn.headers.get("set-auth-token")!;
   const target: CoordinatorTarget = { url, token: SERVICE_TOKEN };
 
   const clients: Client[] = [];

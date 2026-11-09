@@ -68,8 +68,6 @@ export interface AuthConfig {
    * token can reach, and the person's own access narrows that further.
    */
   readonly github?: OAuthClientConfig;
-  /** How long a connect link works. Default 10 minutes. */
-  readonly linkTtlSeconds?: number;
 }
 
 const githubUserInfo =
@@ -218,11 +216,7 @@ export const makeAuth = (config: AuthConfig) => {
   const providers = linkingProviders(config).map((p) => p.providerId as ConnectionProvider);
   const connections: Connections | undefined =
     config.baseURL && providers.length > 0
-      ? makeConnections(auth, {
-          baseURL: config.baseURL,
-          providers,
-          ...(config.linkTtlSeconds !== undefined && { linkTtlSeconds: config.linkTtlSeconds }),
-        })
+      ? makeConnections(auth, { baseURL: config.baseURL, providers })
       : undefined;
 
   return {
