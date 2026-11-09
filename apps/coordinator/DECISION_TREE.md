@@ -9,7 +9,7 @@ Two components, two jobs:
 
 ```mermaid
 flowchart TD
-    msg([message.content]) --> clf["<b>Intent classifier</b> (Jev, 1 call)<br/>intent: 6-way<br/>needs_worker: bool, unused<br/>context: project.customInstructions, empty in admin channel<br/>tools: none"]
+    msg([message.content]) --> clf["<b>Intent classifier</b> (Jev, 1 call)<br/>intent: 7-way<br/>needs_worker: bool, unused<br/>context: project.customInstructions, empty in admin channel<br/>tools: none"]
     clf --> conf{"intent confidence >= 0.5?"}
     conf -- no --> clarify["clarify<br/>fixed text, no LLM"]
     conf -- yes --> chan{"which channel?"}
@@ -23,6 +23,7 @@ flowchart TD
     intent -- follow_up --> fu{"active Ticket?"}
     fu -- yes --> fuev["append follow_up event<br/>to newest active Ticket<br/>no LLM"]
     fu -- no --> clarify
+    intent -- remember --> mem["write MemoryEntry (manual)<br/>fixed confirmation, no LLM"]
     intent -- status_question --> statusllm["<b>Chat LLM</b><br/>session project:{id}<br/>prompt: question + active Tickets<br/>tools: none"]
     intent -- "chit_chat / none / admin_command" --> clarify
 ```

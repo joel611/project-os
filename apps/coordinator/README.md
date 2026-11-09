@@ -28,7 +28,7 @@ Who takes a new Ticket: the requester's online personal worker, else an online s
 
 `packages/agent-runtime/src/intent-classifier.ts`. One Jev call per message with two questions:
 
-- `intent`: `new_request`, `follow_up`, `status_question`, `admin_command`, `chit_chat`, `none`. Its confidence feeds the threshold.
+- `intent`: `new_request`, `follow_up`, `status_question`, `remember`, `admin_command`, `chit_chat`, `none`. Its confidence feeds the threshold.
 - `executor`: `worker` or `sidekick` (read-only tool lookups). Used only for `new_request`.
 
 ## Known limits

@@ -69,6 +69,7 @@ describe("makeIntentClassifier", () => {
       "new_request",
       "follow_up",
       "status_question",
+      "remember",
       "admin_command",
       "chit_chat",
       "none",

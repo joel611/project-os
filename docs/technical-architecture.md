@@ -854,7 +854,7 @@ Enforce these with lint import rules in the Vite+ config.
 
 - Pin a version (`typesafe/jev-1.14` on OpenRouter), not `~typesafe/jev-latest`.
 - One request per inbound message, all questions evaluated together:
-  - `intent` (choice): `new_request`, `follow_up` (on an open ticket), `status_question`, `admin_command`, `chit_chat`, `none`
+  - `intent` (choice): `new_request`, `follow_up` (on an open ticket), `status_question`, `remember`, `admin_command`, `chit_chat`, `none`
   - `worker_type` (choice): `local`, … (only meaningful for `new_request`)
   - `executor` (choice): `worker` (needs the whole repo pulled, tests run, or a script run; also anything that changes code, or is unclear) or `sidekick` (read-only tool calls: list Google Drive files, read a GitHub repo's status, history, pipelines or releases). Only meaningful for `new_request`. Below 0.7 confidence it counts as `worker`, because a Worker can do both.
 - The option sets live in code; Jev only chooses between them. Below a confidence threshold (config, start at 0.5) the Coordinator asks a clarifying question instead of creating a ticket.
