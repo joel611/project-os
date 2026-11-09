@@ -7,6 +7,7 @@ import {
   heartbeat,
   listAssigned,
   listProjectSources,
+  MEMORY_SAVED_MESSAGE,
   MemoryRepository,
   onTicketCompleted,
   ProjectRepository,
@@ -424,6 +425,23 @@ describe("handleInbound", () => {
     expect(value.kind).toBe("status_answered");
     expect(sent[0]).toMatchObject({ channelId: "chan-1", threadId: "th1" });
     expect(sent[0]!.content).toContain("Fix login [assigned]");
+  });
+
+  it("remember writes the message to project memory and confirms", async () => {
+    const { value, sent } = await run(
+      Effect.gen(function* () {
+        const out = yield* handleInbound(msg({ content: "remember this project is in POC" }), config);
+        return { out, entries: yield* readMemory({ projectId: "p1" }) };
+      }),
+      inbound("remember"),
+    );
+    expect(value.out.kind).toBe("memory_saved");
+    expect(value.entries).toHaveLength(1);
+    expect(value.entries[0]).toMatchObject({
+      type: "manual",
+      content: "remember this project is in POC",
+    });
+    expect(sent[0]!.content).toBe(MEMORY_SAVED_MESSAGE);
   });
 
   it("admin_command in the admin channel goes to the admin dialogue", async () => {
