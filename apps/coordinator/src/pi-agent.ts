@@ -1,4 +1,5 @@
-import { makeAgentRuntime, newModels } from "@project-os/agent-runtime";
+import type { Models } from "@earendil-works/pi-ai";
+import { type AgentRuntimeOptions, makeAgentRuntime, newModels } from "@project-os/agent-runtime";
 import { env, envBool } from "@project-os/config";
 import {
   AgentRuntime,
@@ -53,17 +54,21 @@ export class PiAgent extends DurableObject<Bindings> {
         Effect.map((storage) =>
           makeAgentRuntime({
             storage,
-            models: newModels(),
-            model: {
-              provider: env("CHAT_MODEL_PROVIDER", "openrouter"),
-              modelId: env("CHAT_MODEL_ID"),
-            },
+            ...this.chat(),
             adminActions,
           }),
         ),
       ),
     );
     this.#runtime = ManagedRuntime.make(Layer.orDie(agent));
+  }
+
+  /** The chat model and its provider. A test subclass swaps in a faux one. */
+  protected chat(): { readonly models: Models; readonly model: AgentRuntimeOptions["model"] } {
+    return {
+      models: newModels(),
+      model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
+    };
   }
 
   respond(input: {

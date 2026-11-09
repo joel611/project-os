@@ -15,5 +15,9 @@
     "@project-os/sandbox-core": "workspace:*",
     "@project-os/testing": "workspace:*",
     "effect": "4.1.2"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.5.0",
+    "miniflare": "^4"
   }
 }
