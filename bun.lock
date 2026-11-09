@@ -72,8 +72,12 @@
       "name": "@project-os/discord-gateway",
       "version": "0.0.0",
       "dependencies": {
+        "@cloudflare/containers": "0.3.7",
         "@project-os/channel-discord": "workspace:*",
         "@project-os/config": "workspace:*",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20261104.1",
       },
     },
     "apps/e2e": {
@@ -83,6 +87,7 @@
         "@modelcontextprotocol/sdk": "^1.32.2",
         "@project-os/auth": "workspace:*",
         "@project-os/core": "workspace:*",
+        "@project-os/infra-cloudflare": "workspace:*",
         "@project-os/infra-local": "workspace:*",
         "@project-os/sandbox-cloudflare": "workspace:*",
         "@project-os/sandbox-core": "workspace:*",

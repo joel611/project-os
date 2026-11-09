@@ -12,6 +12,8 @@
   "exclude": [
     "apps/coordinator/src/main.cloudflare.ts",
     "apps/coordinator/src/pi-agent.ts",
+    "apps/discord-gateway/src/main.cloudflare.ts",
+    "apps/e2e/src/discord-gateway",
     "apps/e2e/src/pi-agent/worker.ts",
     "apps/cloudflare-sandbox/src",
     "packages/infra-cloudflare/src",

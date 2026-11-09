@@ -28,11 +28,11 @@ const vars = {
 
 /**
  * Plain vars with no default: bound only when set. Host-only keys (PORT, DATABASE_PATH,
- * MCP_URL, WORKER_CWD, ...) and DISCORD_BOT_TOKEN (no gateway on Workers) are left out.
+ * MCP_URL, WORKER_CWD, ...) and DISCORD_BOT_TOKEN (read apart, bound only to the gateway) are left out.
  */
 const optionalVars = [
-  // Where the Coordinator POSTs replies. Discord is a long-running gateway process, so on
-  // Workers it runs off-platform (apps/discord-gateway, docs/technical-architecture.md §8).
+  // Where the Coordinator POSTs replies. Set it to run the gateway off-platform; otherwise a
+  // DISCORD_BOT_TOKEN deploys it as a Container and the stack sets this itself.
   "DISCORD_SPLIT_GATEWAY_URL",
   "DISCORD_GUILD_ID",
   "DISCORD_PROJECT_CATEGORY_ID",
@@ -94,6 +94,11 @@ const readSecrets = Effect.gen(function* () {
   return env;
 });
 
+/** The bot token, read apart from `optionalSecrets` so only the gateway gets it. */
+const readBotToken = Config.option(Config.Redacted("DISCORD_BOT_TOKEN")).pipe(
+  Effect.map(Option.getOrUndefined),
+);
+
 export default Alchemy.Stack(
   "project-os",
   {
@@ -133,6 +138,45 @@ export default Alchemy.Stack(
       },
     });
 
+    // Discord gateway: a long-lived Bun process in a Cloudflare Container, behind a Worker with
+    // no public URL (the reply endpoint can post as the bot). The Coordinator reaches it through
+    // a service binding. Deployed only when DISCORD_BOT_TOKEN is set and no off-platform
+    // DISCORD_SPLIT_GATEWAY_URL is given. It needs Docker at deploy time to build the image, and
+    // PUBLIC_URL (the Coordinator's URL) to forward messages, so it joins on the second deploy.
+    const botToken = yield* readBotToken;
+    const gateway =
+      botToken && publicUrl && !plain.DISCORD_SPLIT_GATEWAY_URL
+        ? yield* Cloudflare.Worker("DiscordGateway", {
+            main: "./apps/discord-gateway/src/main.cloudflare.ts",
+            compatibility: { date: COMPATIBILITY_DATE },
+            workersDev: false,
+            // Cron Trigger: restarts the container after a crash, a stop or a deploy.
+            crons: ["* * * * *"],
+            env: {
+              Gateway: Cloudflare.Container("Gateway", {
+                className: "DiscordGateway",
+                context: ".",
+                dockerfile: "apps/discord-gateway/Dockerfile",
+                instanceType: "lite",
+                maxInstances: 1,
+              }),
+              DISCORD_BOT_TOKEN: botToken,
+              COORDINATOR_URL: new URL(publicUrl).origin,
+              ...Object.fromEntries(
+                (
+                  [
+                    "DISCORD_GUILD_ID",
+                    "DISCORD_PROJECT_CATEGORY_ID",
+                    "ADMIN_CHANNEL_ID",
+                    "DISCORD_MEMBER_ROLE_IDS",
+                    "ADMIN_USER_IDS",
+                  ] as const
+                ).flatMap((name) => (plain[name] ? [[name, plain[name]]] : [])),
+              ),
+            },
+          })
+        : undefined;
+
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
       main: "./apps/coordinator/src/main.cloudflare.ts",
@@ -147,6 +191,11 @@ export default Alchemy.Stack(
         PI_AGENT: Cloudflare.DurableObject("PiAgent"),
         ...plain,
         ...secrets,
+        // Any non-empty URL turns the in-process bot off; replies go through the binding.
+        ...(gateway && {
+          DISCORD_GATEWAY: gateway,
+          DISCORD_SPLIT_GATEWAY_URL: "http://discord-gateway",
+        }),
         WEB_ORIGIN: dashboard.url.as<string>(),
       },
       // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts

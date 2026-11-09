@@ -5,7 +5,7 @@ import {
 } from "@project-os/agent-runtime/classifier";
 import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
 import { env, envBool, envNumber, healthConfig } from "@project-os/config";
-import { CloudflareLive, DEFAULT_ORG, ensureOrg } from "@project-os/infra-cloudflare";
+import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv } from "cloudflare:workers";
@@ -26,6 +26,8 @@ interface Bindings {
   readonly DB: D1Database;
   readonly KV: KVNamespace;
   readonly PI_AGENT: DurableObjectNamespace<PiAgent>;
+  /** Service binding to the Discord gateway Worker; absent when the gateway runs off-platform. */
+  readonly DISCORD_GATEWAY?: Fetcher;
 }
 
 const oauthClient = (prefix: string): OAuthClientConfig | undefined => {
@@ -68,6 +70,7 @@ const buildApp = (bindings: Bindings) => {
         db: bindings.DB,
         kv: bindings.KV,
         adapterUrls: gatewayUrl ? { discord: gatewayUrl } : {},
+        ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
         agent: durableAgentRuntime(bindings.PI_AGENT),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),

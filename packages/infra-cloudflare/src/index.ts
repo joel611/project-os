@@ -40,6 +40,12 @@ export const ensureOrg = (
     return org.id;
   });
 
+/** Sends adapter requests through a service binding, so the adapter needs no public URL. */
+export const serviceFetch =
+  (service: Fetcher) =>
+  (input: string, init?: RequestInit): Promise<Response> =>
+    service.fetch(input, init);
+
 export interface CloudflareConfig {
   /** D1 binding. Alchemy applies the migrations on deploy, so this never migrates. */
   readonly db: D1Database;
@@ -47,6 +53,8 @@ export interface CloudflareConfig {
   readonly kv: KVNamespace;
   /** Base URL per Channel Adapter (its `/reply` endpoint host). */
   readonly adapterUrls: Partial<Record<ChannelType, string>>;
+  /** How adapter requests leave the Worker. Default: global `fetch`. A service binding's `fetch` goes here. */
+  readonly adapterFetch?: (input: string, init?: RequestInit) => Promise<Response>;
   /** Starts workers for assigned tickets. Default: none (a Watcher pulls the work). */
   readonly workerLauncher?: typeof WorkerLauncher.Service;
   /** Provides `AgentRuntime` and `Sidekick`. Default: placeholders that fail. */
@@ -74,7 +82,7 @@ export const CloudflareLive = (config: CloudflareConfig) =>
       // workerd throws "Illegal invocation" when the global `fetch` is called detached.
       makeHttpChannelGateway({
         adapterUrls: config.adapterUrls,
-        fetch: (input, init) => fetch(input, init),
+        fetch: config.adapterFetch ?? ((input, init) => fetch(input, init)),
       }),
     ),
     config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
