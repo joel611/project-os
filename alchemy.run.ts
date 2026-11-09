@@ -8,7 +8,7 @@
 // `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
 // stage without OAuth clients deploys with account linking off (same rule as local).
 // See docs/deployment.md.
-import { cpSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
@@ -37,14 +37,17 @@ const NOT_IN_IMAGE = new Set([
  * written. The copy leaves out secrets (`.env*`) and build output, so it is also what ships.
  */
 const stageGatewayContext = () => {
+  const keep = (name: string) =>
+    !NOT_IN_IMAGE.has(name) && !name.startsWith(".env") && !name.endsWith(".sqlite");
   rmSync(GATEWAY_CONTEXT, { recursive: true, force: true });
-  cpSync(".", GATEWAY_CONTEXT, {
-    recursive: true,
-    filter: (source) => {
-      const name = basename(source);
-      return !NOT_IN_IMAGE.has(name) && !name.startsWith(".env") && !name.endsWith(".sqlite");
-    },
-  });
+  mkdirSync(GATEWAY_CONTEXT, { recursive: true });
+  // One entry at a time: copying "." into its own subdirectory is an error, filter or not.
+  for (const entry of readdirSync(".").filter(keep)) {
+    cpSync(entry, `${GATEWAY_CONTEXT}/${entry}`, {
+      recursive: true,
+      filter: (source) => keep(basename(source)),
+    });
+  }
   return GATEWAY_CONTEXT;
 };
 
