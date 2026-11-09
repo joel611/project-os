@@ -11,6 +11,7 @@
   ],
   "exclude": [
     "apps/coordinator/src/main.cloudflare.ts",
+    "apps/coordinator/src/pi-agent.ts",
     "apps/cloudflare-sandbox/src",
     "packages/infra-cloudflare/src",
     "apps/web/src"
