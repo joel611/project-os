@@ -74,7 +74,9 @@ describe("per-person account linking", () => {
     });
     // Tokens are encrypted at rest: the raw tokens never appear in the database.
     const db = new Database(stack.dbPath, { readonly: true });
-    const row = db.query("select access_token, refresh_token from auth_accounts").get() as any;
+    const row = db
+      .query("select access_token, refresh_token from auth_accounts where provider_id = 'google'")
+      .get() as any;
     db.close();
     expect(row.access_token).not.toContain("at-google-1");
     expect(row.refresh_token).not.toContain("rt-google-1");

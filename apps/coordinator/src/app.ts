@@ -1,5 +1,6 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
+import { type AuthDeps, authRoutes } from "./auth/routes.ts";
 import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
@@ -9,7 +10,9 @@ export interface AppDeps {
   readonly http?: HttpDeps;
   /** MCP server (#12). Omitted: `/mcp` is not mounted. */
   readonly mcp?: McpRuntime;
-  /** Account linking (`/connect/*`, `/api/auth/*`). Omitted: not mounted. */
+  /** Sign-in (`/api/auth/*`). Omitted: not mounted. */
+  readonly auth?: AuthDeps;
+  /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
   /**
    * Origins a browser may call this API from (the web dashboard when it is served from
@@ -49,6 +52,7 @@ export const createApp = (
     : base;
   const app = withCors.get("/health", () => ({ status: "ok", service: "coordinator" }));
   const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
-  const withConnect = deps.connect ? withHttp.use(connectRoutes(deps.connect)) : withHttp;
+  const withAuth = deps.auth ? withHttp.use(authRoutes(deps.auth)) : withHttp;
+  const withConnect = deps.connect ? withAuth.use(connectRoutes(deps.connect)) : withAuth;
   return deps.mcp ? withConnect.use(mcpRoutes(deps.mcp)) : withConnect;
 };

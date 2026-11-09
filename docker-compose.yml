@@ -24,8 +24,12 @@ services:
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       DISCORD_REQUIRE_MENTION: ${DISCORD_REQUIRE_MENTION:-true}
       DISCORD_PROJECT_CHANNEL_AUTO_CREATE: ${DISCORD_PROJECT_CHANNEL_AUTO_CREATE:-true}
-      # Account linking (/connect); off unless BETTER_AUTH_SECRET and a client are set. See SETUP.md.
+      # Sign-in (required) and account linking (/connect, off unless a client is set). See SETUP.md.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      WEB_ORIGIN: ${WEB_ORIGIN:-}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}

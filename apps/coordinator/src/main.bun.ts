@@ -7,12 +7,13 @@ import {
 } from "@project-os/agent-runtime";
 import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
-import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
+import { makeAuth } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
+import { authConfigFromEnv } from "./auth-env.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
@@ -24,26 +25,16 @@ const dbPath = dataPath("project-os.sqlite", process.env.DATABASE_PATH ?? proces
 // Projects reference an org (FK), and nothing else creates one.
 const orgId = ensureOrg(dbPath, DEFAULT_ORG);
 
-// Account linking (Better Auth): people link Google / GitHub with /connect, and Workers use
-// that person's own token. Off unless a secret and at least one OAuth client are set.
-const oauthClient = (prefix: string): OAuthClientConfig | undefined => {
-  const clientId = process.env[`${prefix}_CLIENT_ID`];
-  const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
-  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
-};
-const google = oauthClient("GOOGLE");
-const github = oauthClient("GITHUB");
-const authSecret = process.env.BETTER_AUTH_SECRET;
-const connections =
-  authSecret && (google || github)
-    ? makeConnections({
-        db: openLocalDb(dbPath).db,
-        baseURL: env("PUBLIC_URL", `http://localhost:${port}`),
-        secret: authSecret,
-        ...(google && { google }),
-        ...(github && { github }),
-      })
-    : undefined;
+const publicUrl = env("PUBLIC_URL", `http://localhost:${port}`);
+const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
+
+// Better Auth: dashboard sign-in, and account linking (people link Google / GitHub with /connect,
+// and Workers use that person's own token) when an OAuth client is set.
+const auth = makeAuth(
+  authConfigFromEnv(process.env, { db: openLocalDb(dbPath).db, baseURL: publicUrl, webOrigins }),
+);
+await auth.ready();
+const connections = auth.connections;
 
 const models = newModels();
 const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
@@ -155,7 +146,7 @@ createApp(
         // /register-worker: the Watcher on a person's computer registers and polls at PUBLIC_URL.
         workers: {
           run: (effect) => runtime.runPromise(effect),
-          publicUrl: env("PUBLIC_URL", `http://localhost:${port}`),
+          publicUrl,
           ...(process.env.WATCHER_INSTALL_COMMAND && {
             installCommand: process.env.WATCHER_INSTALL_COMMAND,
           }),
@@ -165,7 +156,8 @@ createApp(
     },
     mcp: runtime,
     // Only needed when the dashboard is served from another origin; locally Vite proxies /api.
-    corsOrigins: parseOrigins(process.env.WEB_ORIGIN),
+    corsOrigins: webOrigins,
+    auth,
     ...(connections && { connect: connections }),
   },
 ).listen(port);
@@ -181,4 +173,4 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   });
 }
 console.log(`coordinator listening on :${port} (MCP at /mcp)`);
-if (!connections) console.log("account linking off: set BETTER_AUTH_SECRET and an OAuth client");
+if (!connections) console.log("account linking off: set an OAuth client (GOOGLE_* / GITHUB_*)");

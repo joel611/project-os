@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { makeConnections, type OAuthClientConfig } from "./connections.ts";
+import { makeAuth, type OAuthClientConfig } from "./auth.ts";
 
 // The OAuth round trip runs in apps/e2e (connect-accounts) against a fake provider.
 // These cover what happens without one: unconfigured providers and unknown people.
@@ -14,12 +14,12 @@ const client: OAuthClientConfig = { clientId: "id", clientSecret: "secret" };
 const connectionsWith = (providers: { google?: OAuthClientConfig; github?: OAuthClientConfig }) => {
   const db = drizzle({ client: new Database(":memory:") });
   migrate(db, { migrationsFolder });
-  return makeConnections({
+  return makeAuth({
     db,
     baseURL: "http://localhost:8080",
     secret: "unit-test-secret-unit-test-secret",
     ...providers,
-  }).service;
+  }).connections!.service;
 };
 
 const nameless = { channelType: "discord" as const, id: "u1" };

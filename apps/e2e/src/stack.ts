@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { type Connections, makeConnections } from "@project-os/auth";
+import { type Auth, type Connections, makeAuth } from "@project-os/auth";
 import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@project-os/testing";
@@ -94,6 +94,8 @@ export const ORG_ID = "o1";
 /** Admin channel and the one admin allowed to run slash commands there. */
 export const ADMIN_CHANNEL = "admin-chan";
 export const ADMIN_USER = "admin-1";
+/** The seeded dashboard operator (ADMIN_EMAIL / ADMIN_PASSWORD). */
+export const OPERATOR = { email: "operator@project-os.test", password: "operator-password" };
 
 const isLocal = (input: string | URL | Request) => {
   const url = new URL(input instanceof Request ? input.url : input);
@@ -149,10 +151,10 @@ export const startStack = async (options: {
   ).listen(0);
 
   // Better Auth needs the Coordinator's URL, known only once it listens: the Layer and the
-  // routes delegate to `connections`, built right after `listen(0)`.
+  // routes delegate to `auth`, built right after `listen(0)`.
   const oauth = options.connections ? startFakeOAuth() : undefined;
-  let connections: Connections | undefined;
-  const lazy = (): Connections => connections!;
+  let auth: Auth | undefined;
+  const lazy = (): Connections => auth!.connections!;
   const connectionsLayer = Layer.succeed(UserConnections, {
     connectUrl: (person, provider) => lazy().service.connectUrl(person, provider),
     list: (person) => lazy().service.list(person),
@@ -207,25 +209,25 @@ export const startStack = async (options: {
         },
       },
       mcp: runtime,
+      auth: { handler: (request: Request) => auth!.handler(request) },
       ...(oauth && {
-        connect: {
-          startLink: (token: string) => lazy().startLink(token),
-          handler: (request: Request) => lazy().handler(request),
-        },
+        connect: { startLink: (token: string) => lazy().startLink(token) },
       }),
     },
   ).listen(0);
   const url: string = `http://localhost:${coordinator.server!.port}`;
-  const authDb = oauth ? openLocalDb(dbPath) : undefined;
-  if (oauth && authDb) {
-    connections = makeConnections({
-      db: authDb.db,
-      baseURL: url,
-      secret: "integration-secret-integration-secret",
+  const authDb = openLocalDb(dbPath);
+  auth = makeAuth({
+    db: authDb.db,
+    baseURL: url,
+    secret: "integration-secret-integration-secret",
+    admin: OPERATOR,
+    ...(oauth && {
       google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
       github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
-    });
-  }
+    }),
+  });
+  await auth.ready();
 
   const clients: Client[] = [];
   const worker = async (secret?: string) => {
@@ -292,7 +294,7 @@ export const startStack = async (options: {
       await coordinator.stop();
       await adapter.stop();
       oauth?.stop();
-      authDb?.sqlite.close();
+      authDb.sqlite.close();
       await runtime.dispose();
       globalThis.fetch = realFetch;
       rmSync(dir, { recursive: true, force: true });
