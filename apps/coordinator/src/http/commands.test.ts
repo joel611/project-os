@@ -122,6 +122,32 @@ describe("POST /commands", () => {
   it("501s when commands are not configured", async () => {
     expect((await post(appWith(), command())).status).toBe(501);
   });
+
+  it("serves the install script /register-worker points at, with the configured install step", async () => {
+    const runtime = ManagedRuntime.make(makeTestLayer().layer);
+    disposers.push(() => runtime.dispose());
+    const { config } = recording({
+      workers: {
+        run: (effect) => runtime.runPromise(effect),
+        publicUrl: "https://coord.example.com/",
+        installCommand: "npm i -g watcher",
+        staleMs: 1,
+      },
+    });
+    const res = await appWith(config).handle(new Request("http://localhost/watcher/install.sh"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/x-shellscript");
+    const script = await res.text();
+    expect(script).toContain("server=https://coord.example.com\n");
+    expect(script).toContain("\nnpm i -g watcher\n");
+  });
+
+  it("501s the install script when registered workers are not configured", async () => {
+    const res = await appWith(recording().config).handle(
+      new Request("http://localhost/watcher/install.sh"),
+    );
+    expect(res.status).toBe(501);
+  });
 });
 
 describe("runCommand account commands", () => {
@@ -224,17 +250,42 @@ describe("runCommand personal workers", () => {
   const worker = (name: "register-worker" | "workers" | "unregister-worker", options = {}) =>
     command({ command: name, channelId: "general", options });
 
-  it("/register-worker answers privately with a one-line install + register command", async () => {
+  it("/register-worker answers privately with the install script line, and how to uninstall", async () => {
     const reply = await runCommand(
       worker("register-worker", { name: "my laptop" }),
       workersConfig(),
     );
     expect(reply.ephemeral).toBe(true);
     expect(reply.content).toMatch(
-      /bun install -g @project-os\/watcher && project-os-watcher register [\w-]+ --server https:\/\/coord\.example\.com --name 'my laptop'/,
+      /curl -fsSL https:\/\/coord\.example\.com\/watcher\/install\.sh \| sh -s -- [\w-]+ --name 'my laptop'/,
     );
+    expect(reply.content).toContain("which agent and model");
+    expect(reply.content).toContain("`project-os-watcher uninstall`");
     expect(reply.content).toContain("10 minutes");
     expect(reply.content).toContain("your tickets go to the shared pool");
+  });
+
+  it("/register-worker agent: and model: put --agent, --model and --yes in the line, so nothing is asked", async () => {
+    const reply = await runCommand(
+      worker("register-worker", { agent: "codex", model: " gpt 5 " }),
+      workersConfig(),
+    );
+    expect(reply.content).toMatch(/sh -s -- [\w-]+ --agent codex --model 'gpt 5' --yes\n/);
+    expect(reply.content).toContain("runs sessions on codex (model gpt 5) without asking");
+    expect(reply.content).not.toContain("which agent and model");
+
+    const defaults = await runCommand(worker("register-worker", { agent: "pi" }), workersConfig());
+    expect(defaults.content).toContain("--agent pi --yes");
+    expect(defaults.content).toContain("pi (the agent's default model)");
+  });
+
+  it("/register-worker refuses an unknown agent without issuing a code", async () => {
+    const config = workersConfig();
+    const reply = await runCommand(worker("register-worker", { agent: "gemini" }), config);
+    expect(reply).toEqual({
+      content: "agent must be one of claude, pi, codex.",
+      ephemeral: true,
+    });
   });
 
   it("/workers lists the person's devices; /unregister-worker removes one", async () => {
@@ -244,7 +295,7 @@ describe("runCommand personal workers", () => {
     );
 
     const registered = await runCommand(worker("register-worker"), config);
-    const token = registered.content.match(/register ([\w-]+) --server/)![1]!;
+    const token = registered.content.match(/sh -s -- ([\w-]+)/)![1]!;
     const { redeemWorkerRegistration } = await import("@project-os/core");
     await config.workers!.run(
       Effect.orDie(redeemWorkerRegistration({ token, hostname: "ada-mbp" })),
@@ -262,7 +313,7 @@ describe("runCommand personal workers", () => {
         const [w] = yield* repo.list;
         yield* repo.heartbeat({
           workerId: w!.id,
-          workerType: "local_claude",
+          workerType: "local",
           ticketId: null,
           at: "2026-11-03T20:15:00.000Z",
         });
@@ -323,7 +374,7 @@ describe("runCommand personal workers", () => {
       const registered = await runCommand(shared("register-worker"), config);
       expect(registered.content).toContain("should join the shared pool");
       expect(registered.content).toContain("/unregister-worker shared:True");
-      const token = registered.content.match(/register ([\w-]+) --server/)![1]!;
+      const token = registered.content.match(/sh -s -- ([\w-]+)/)![1]!;
       const { redeemWorkerRegistration } = await import("@project-os/core");
       const { worker: device } = await config.workers!.run(
         Effect.orDie(redeemWorkerRegistration({ token, hostname: "build-box" })),
@@ -358,9 +409,7 @@ describe("runCommand personal workers", () => {
         [shared("register-worker"), "build-box"],
         [worker("register-worker"), "ada-mbp"],
       ] as const) {
-        const token = (await runCommand(cmd, config)).content.match(
-          /register ([\w-]+) --server/,
-        )![1]!;
+        const token = (await runCommand(cmd, config)).content.match(/sh -s -- ([\w-]+)/)![1]!;
         await config.workers!.run(Effect.orDie(redeemWorkerRegistration({ token, hostname })));
       }
       const listed = (await runCommand(worker("workers"), config)).content.split("\n");

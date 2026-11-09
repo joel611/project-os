@@ -42,7 +42,7 @@ if (cmd === "heartbeat") {
   await mcp.connect(transport());
   const res = (await mcp.callTool({
     name: "worker_heartbeat",
-    arguments: { workerId, workerType: "local_claude" },
+    arguments: { workerId, workerType: "local" },
   })) as { isError?: boolean; structuredContent?: any };
   if (res.isError) throw new Error(`worker_heartbeat failed: ${JSON.stringify(res)}`);
   await mcp.close();

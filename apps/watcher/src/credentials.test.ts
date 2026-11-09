@@ -29,6 +29,22 @@ describe("credentials", () => {
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
+  it("keeps the agent and model chosen at register, and refuses an unknown agent", () => {
+    const path = join(dir, "watcher.json");
+    const creds = {
+      server: "https://c",
+      workerId: "local-1",
+      name: "mbp",
+      secret: "s",
+      agent: "codex" as const,
+      model: "gpt-5",
+    };
+    saveCredentials(path, creds);
+    expect(loadCredentials(path)).toEqual(creds);
+    writeFileSync(path, JSON.stringify({ ...creds, agent: "gemini" }));
+    expect(() => loadCredentials(path)).toThrow(/unknown agent "gemini"/);
+  });
+
   it("names the device by its id when the file has no name", () => {
     const path = join(dir, "watcher.json");
     writeFileSync(path, JSON.stringify({ server: "https://c", workerId: "local-1", secret: "s" }));

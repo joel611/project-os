@@ -278,12 +278,12 @@ export const startStack = async (options: {
       const admin = { channelId: ADMIN_CHANNEL, userId: ADMIN_USER, name: "Admin" };
       const command = fakeCommand(admin, "register-worker", { shared: "true" })!;
       const reply = await forwardCommand(url, command, fetch);
-      const token = /project-os-watcher register (\S+)/.exec(reply.content)![1]!;
+      const token = /sh -s -- (\S+)/.exec(reply.content)![1]!;
       const credentials = await registerDevice({ server: url, token, name }, fetch);
       const mcp = await worker(credentials.secret);
       await mcp.callTool({
         name: "worker_heartbeat",
-        arguments: { workerId: credentials.workerId, workerType: "local_claude" },
+        arguments: { workerId: credentials.workerId, workerType: "local" },
       });
       return { workerId: credentials.workerId, secret: credentials.secret, mcp };
     },

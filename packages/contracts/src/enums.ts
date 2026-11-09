@@ -28,6 +28,10 @@ export type TicketEventType = typeof TicketEventType.Type;
 export const Actor = Schema.Literals(["coordinator", "worker", "system"]);
 export type Actor = typeof Actor.Type;
 
+/** Agent CLIs a Watcher can run a session on (`/register-worker agent:`, `register --agent`). */
+export const WATCHER_AGENTS = ["claude", "pi", "codex"] as const;
+export type WatcherAgent = (typeof WATCHER_AGENTS)[number];
+
 /**
  * Pi in a cloud sandbox, one per provider: `daytona_pi` (Daytona), `cloudflare_pi` (Cloudflare
  * Sandbox), `boat_pi` (boat.dev). The Coordinator starts these itself, picking from the pool.
@@ -35,13 +39,12 @@ export type Actor = typeof Actor.Type;
 export const SANDBOX_WORKER_TYPES = ["daytona_pi", "cloudflare_pi", "boat_pi"] as const;
 export type SandboxWorkerType = (typeof SANDBOX_WORKER_TYPES)[number];
 
-/** `sidekick`: the Coordinator's in-process tool-only helper, not a pull-model Worker. */
-export const WORKER_TYPES = [
-  ...SANDBOX_WORKER_TYPES,
-  "local_claude",
-  "local_pi",
-  "sidekick",
-] as const;
+/**
+ * `local`: a registered computer running the Watcher, whatever agent CLI it uses (the Watcher
+ * picks that at each start). `sidekick`: the Coordinator's in-process tool-only helper, not a
+ * pull-model Worker.
+ */
+export const WORKER_TYPES = [...SANDBOX_WORKER_TYPES, "local", "sidekick"] as const;
 export const WorkerType = Schema.Literals(WORKER_TYPES);
 export type WorkerType = typeof WorkerType.Type;
 

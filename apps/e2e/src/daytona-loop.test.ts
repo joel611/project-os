@@ -102,7 +102,7 @@ describe("daytona worker loop", () => {
 
     // Registered after the ticket went to Daytona, so the ticket isn't its to take.
     const shared = await stack.registerSharedWorker();
-    const config = loadConfig({ server: stack.url, name: "box", ...shared });
+    const config = loadConfig({ server: stack.url, name: "box", ...shared }, () => true);
     const spawns: number[] = [];
     const watcher = createWatcher({
       config,

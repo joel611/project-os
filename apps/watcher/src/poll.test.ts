@@ -6,7 +6,8 @@ import type { Spawner } from "./spawn.ts";
 const config: WatcherConfig = {
   mcpUrl: "http://mcp",
   workerId: "w1",
-  workerType: "local_claude",
+  workerType: "local",
+  agent: "claude",
   intervalMs: 1000,
   maxSessions: 1,
   cwd: "/tmp",

@@ -27,7 +27,7 @@ const CHANNEL_NAME: Readonly<Record<ChannelType, string>> = {
   chat: "in chat",
 };
 
-/** "Claude Code (w1)", "Claude Code" for any worker of that type, or just the id. */
+/** "Local computer (w1)", "Local computer" for any worker of that type, or just the id. */
 export const workerName = (id: string | null | undefined, type: WorkerType | null | undefined) =>
   id ? (type ? `${WORKER_LABEL[type]} (${id})` : id) : type ? WORKER_LABEL[type] : "a worker";
 

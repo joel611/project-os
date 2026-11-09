@@ -20,7 +20,7 @@ const ticket = (over: Partial<ActivityTicket> = {}): ActivityTicket => ({
   intent: "new_request",
   inputSummary: "",
   priority: null,
-  workerType: "local_claude",
+  workerType: "local",
   workerId: "w1",
   result: null,
   error: null,
@@ -63,7 +63,7 @@ const feed = (
   workers: [
     {
       id: "w1",
-      workerType: "local_claude",
+      workerType: "local",
       ownerChannelType: null,
       ownerId: null,
       registered: false,

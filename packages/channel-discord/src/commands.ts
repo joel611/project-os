@@ -1,5 +1,10 @@
 import { Schema } from "effect";
-import { CommandReply, type SlashCommand, type SlashCommandName } from "@project-os/contracts";
+import {
+  CommandReply,
+  type SlashCommand,
+  type SlashCommandName,
+  WATCHER_AGENTS,
+} from "@project-os/contracts";
 
 type Fetcher = (req: Request) => Promise<Response>;
 
@@ -79,6 +84,20 @@ export const COMMAND_DEFINITIONS = [
         type: 3,
         required: false,
         max_length: 60,
+      },
+      {
+        name: "agent",
+        description: "Skip the install script's questions: which agent CLI that computer runs",
+        type: 3,
+        required: false,
+        choices: WATCHER_AGENTS.map((agent) => ({ name: agent, value: agent })),
+      },
+      {
+        name: "model",
+        description: "The agent's model (default: the agent's own); use with agent",
+        type: 3,
+        required: false,
+        max_length: 100,
       },
       SHARED_OPTION,
     ],

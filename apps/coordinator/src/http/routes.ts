@@ -49,8 +49,9 @@ import {
   updateProject,
   UpdateStatusBody,
 } from "./admin.ts";
-import { type CommandsConfig, runCommand } from "./commands.ts";
+import { type CommandsConfig, runCommand, watcherScriptConfig } from "./commands.ts";
 import { toResult, type HttpResult } from "./result.ts";
+import { installScript } from "./watcher-install.ts";
 
 const decodeCommand = Schema.decodeUnknownOption(SlashCommand);
 
@@ -183,6 +184,15 @@ export const httpRoutes = ({
         reply(set, toResult(listProjectTickets(params.id))),
       )
       .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
+      .get("/watcher/install.sh", ({ set }) => {
+        const workers = commands?.workers;
+        if (!workers) {
+          set.status = 501;
+          return { error: "registered workers are not configured" };
+        }
+        set.headers["content-type"] = "text/x-shellscript; charset=utf-8";
+        return installScript(watcherScriptConfig(workers));
+      })
       // A Watcher trading its /register-worker code for device credentials. The code is the
       // only proof: it is bound to whoever ran the command, short-lived, and works once.
       .post("/workers/register", ({ body, set }) =>

@@ -43,11 +43,13 @@ const slash = (speaker: typeof ada, name: string, options: Record<string, string
 const say = (speaker: typeof ada, content: string) =>
   forwardInbound(stack.url, fakeInbound(speaker, content)!, fetch);
 
-/** Runs what the /register-worker reply says to paste, minus the install. */
 const registerFromReply = async (content: string): Promise<WatcherCredentials> => {
   const line = /```sh\n(.+)\n```/.exec(content)![1]!;
-  const argv = line.split(" && ")[1]!.split(" ").slice(1); // drop `project-os-watcher`
-  const command = parseArgs(argv);
+  const scriptUrl = /curl -fsSL (\S+) \|/.exec(line)![1]!;
+  const script = await (await fetch(scriptUrl)).text();
+  expect(script).toContain("project-os-watcher");
+  const token = /sh -s -- (\S+)/.exec(line)![1]!;
+  const command = parseArgs(["register", token, "--server", stack.url, "--agent", "pi"]);
   if (command.kind !== "register") throw new Error(command.kind);
   return registerDevice(
     { server: command.server!, token: command.token, hostname: "ada-mbp" },
@@ -92,10 +94,7 @@ describe("personal worker", () => {
   it("registers Ada's computer from /register-worker and works only her tickets there", async () => {
     const reply = await slash(ada, "register-worker");
     expect(reply.ephemeral).toBe(true);
-    expect(reply.content).toContain(
-      "bun install -g @project-os/watcher && project-os-watcher register",
-    );
-    expect(reply.content).toContain(`--server ${stack.url}`);
+    expect(reply.content).toContain(`curl -fsSL ${stack.url}/watcher/install.sh | sh -s -- `);
 
     const credentials = await registerFromReply(reply.content);
     expect(credentials).toMatchObject({ server: stack.url, name: "ada-mbp" });
@@ -103,7 +102,7 @@ describe("personal worker", () => {
     // The code worked once.
     await expect(registerFromReply(reply.content)).rejects.toThrow(/already used/);
 
-    const config = loadConfig(credentials);
+    const config = loadConfig(credentials, () => true);
     const sessions: Promise<number>[] = [];
     const watcher = createWatcher({
       config,
@@ -125,12 +124,12 @@ describe("personal worker", () => {
     await say(ada, ADA_ASK);
     await say(bob, BOB_ASK);
     const [adaTicket, bobTicket] = await tickets();
-    expect(adaTicket).toMatchObject({ workerType: "local_claude", workerId: config.workerId });
+    expect(adaTicket).toMatchObject({ workerType: "local", workerId: config.workerId });
     expect(bobTicket).toMatchObject({
       workerType: "daytona_pi",
       workerId: `daytona-${bobTicket.id}`,
     });
-    expect(launched.map((l) => l.workerType)).toEqual(["local_claude", "daytona_pi"]);
+    expect(launched.map((l) => l.workerType)).toEqual(["local", "daytona_pi"]);
 
     await watcher.pollOnce();
     await Promise.all(sessions);
@@ -146,7 +145,7 @@ describe("personal worker", () => {
     const own = httpMcpClient(`${stack.url}/mcp`, fetch, credentials.secret);
     await own.callTool("worker_heartbeat", {
       workerId: credentials.workerId,
-      workerType: "local_claude",
+      workerType: "local",
     });
     await say(ada, ADA_ASK);
     const [ticket] = await tickets();
