@@ -17,6 +17,7 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
 import { makeAccess } from "../../coordinator/src/access.ts";
 import { createApp } from "../../coordinator/src/app.ts";
+import { startFakeOAuth } from "../src/fake-oauth.ts";
 
 /** Dashboard sign-in for the verify stack (the dashboard's /login page takes these). */
 const OPERATOR = { email: "verify@project-os.test", password: "verify-password" };
@@ -46,11 +47,17 @@ const runtime = ManagedRuntime.make(
 );
 
 const url = `http://localhost:${coordPort}`;
+// "Continue with Google" signs in as ada@example.com through a fake Google on localhost, and
+// lands back on the dashboard at WEB_PORT.
+const google = startFakeOAuth();
 const auth = makeAuth({
   db: openLocalDb(dbPath).db,
   baseURL: url,
   secret: "verify-secret-verify-secret-verify",
   admin: OPERATOR,
+  allowedEmails: ["ada@example.com"],
+  webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
+  google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
 });
 await auth.ready();
 

@@ -86,6 +86,8 @@ export interface Stack {
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
   readonly oauth?: FakeOAuth;
+  /** The stand-in dashboard's origin Google sign-in returns to, when started with `connections`. */
+  readonly webUrl?: string;
   /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
   readonly auth: Auth;
   /**
@@ -122,8 +124,13 @@ const isLocal = (input: string | URL | Request) => {
 
 export const startStack = async (options: {
   readonly classifier: Layer.Layer<IntentClassifier>;
-  /** Account linking on Better Auth against a fake OAuth server (Google + GitHub). */
+  /**
+   * Google and GitHub against a fake OAuth server: account linking, and Google sign-in for a
+   * stand-in dashboard (`webUrl`).
+   */
   readonly connections?: boolean;
+  /** ADMIN_EMAILS: who besides the seeded operator may use the dashboard. */
+  readonly allowedEmails?: ReadonlyArray<string>;
   readonly workerLauncher?: typeof WorkerLauncher.Service;
   /**
    * Tickets one shared device may hold. Default here 100, so suites that open several
@@ -171,6 +178,8 @@ export const startStack = async (options: {
   // Better Auth needs the Coordinator's URL, known only once it listens: the Layer and the
   // routes delegate to `auth`, built right after `listen(0)`.
   const oauth = options.connections ? startFakeOAuth() : undefined;
+  // Stands where the dashboard is served, so Google sign-in has somewhere to return to.
+  const web = oauth ? Bun.serve({ port: 0, fetch: () => new Response("dashboard") }) : undefined;
   let auth: Auth | undefined;
   const lazy = (): Connections => auth!.connections!;
   const connectionsLayer = Layer.succeed(UserConnections, {
@@ -234,7 +243,15 @@ export const startStack = async (options: {
         },
       },
       mcp: runtime,
-      auth: { handler: (request: Request) => auth!.handler(request) },
+      auth: {
+        handler: (request: Request) => auth!.handler(request),
+        ...(oauth && {
+          googleSignIn: {
+            start: () => auth!.googleSignIn!.start(),
+            handoff: (request: Request) => auth!.googleSignIn!.handoff(request),
+          },
+        }),
+      },
       ...(oauth && {
         connect: { startLink: (token: string) => lazy().startLink(token) },
       }),
@@ -247,6 +264,8 @@ export const startStack = async (options: {
     baseURL: url,
     secret: "integration-secret-integration-secret",
     admin: OPERATOR,
+    ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
+    ...(web && { webOrigins: [web.url.origin] }),
     ...(oauth && {
       google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
       github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
@@ -297,6 +316,7 @@ export const startStack = async (options: {
     sidekickCalls: sidekick.calls,
     dbPath,
     ...(oauth && { oauth }),
+    ...(web && { webUrl: web.url.origin }),
     auth,
     json,
     admin,
@@ -332,6 +352,7 @@ export const startStack = async (options: {
       await coordinator.stop();
       await adapter.stop();
       oauth?.stop();
+      await web?.stop(true);
       authDb.sqlite.close();
       await runtime.dispose();
       globalThis.fetch = realFetch;

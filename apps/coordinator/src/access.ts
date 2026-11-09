@@ -23,6 +23,9 @@ export type RoutePolicy = "public" | "user" | "service" | "worker";
 export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /health": "public",
   "ALL /api/auth/*": "public",
+  "GET /sign-in/providers": "public",
+  "GET /sign-in/google": "public",
+  "GET /sign-in/done": "public",
   "GET /connect/done": "public",
   "GET /connect/:token": "public",
   // The one-time code is the proof; the install script holds nothing secret.

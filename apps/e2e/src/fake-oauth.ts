@@ -18,6 +18,8 @@ export interface FakeOAuth {
   failRefresh: boolean;
   /** Fail the userinfo call, so linking can't learn who the account is. */
   failUserInfo: boolean;
+  /** What Google says about whether it verified the account's email. */
+  emailVerified: boolean;
   readonly stop: () => void;
 }
 
@@ -59,7 +61,7 @@ export const startFakeOAuth = (): FakeOAuth => {
         : Response.json({
             sub: "google-ada",
             email: "ada@example.com",
-            email_verified: true,
+            email_verified: fake.emailVerified,
             name: "Ada Lovelace",
           });
     },
@@ -76,6 +78,7 @@ export const startFakeOAuth = (): FakeOAuth => {
     expiresIn: 3600,
     failRefresh: false,
     failUserInfo: false,
+    emailVerified: true,
     stop: () => server.stop(true),
   };
   return fake;

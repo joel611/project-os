@@ -40,7 +40,7 @@ Everything below runs from `apps/e2e` (`cd apps/e2e`) with `DATA_DIR=$VERIFY_DIR
 
 The API refuses calls without credentials. Every `curl` read above needs the operator's session: `-H "authorization: Bearer $(cat $VERIFY_DIR/data/operator.token)"`. A hand-made `POST /inbound` needs the service token instead: `$(cat $VERIFY_DIR/data/service.token)`.
 
-Dashboard via `agent-browser` (skill `agent-browser`); URL `http://localhost:15173/projects/<projectId>`. Use snapshot refs, not coordinates. Any page redirects to `/login` until you sign in, so sign in first with the `login=` email and password from the READY line:
+Dashboard via `agent-browser` (skill `agent-browser`); URL `http://localhost:15173/projects/<projectId>`. Use snapshot refs, not coordinates. Any page redirects to `/login` until you sign in, so sign in first with the `login=` email and password from the READY line. "Continue with Google" also works: it signs in as `ada@example.com` through a fake Google that serve.ts runs on localhost.
 
 ```sh
 agent-browser open http://localhost:15173/login && agent-browser snapshot -i   # textboxes "Email", "Password"; button "Sign in"

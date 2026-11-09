@@ -2,8 +2,13 @@ import type { ConnectionProvider } from "@project-os/contracts";
 import { schema } from "@project-os/db-sqlite";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer, genericOAuth, type GenericOAuthConfig } from "better-auth/plugins";
-import { type Connections, makeConnections } from "./connections.ts";
+import { bearer, genericOAuth, type GenericOAuthConfig, oneTimeToken } from "better-auth/plugins";
+import {
+  type Connections,
+  isChannelIdentityEmail,
+  type LinkStart,
+  makeConnections,
+} from "./connections.ts";
 
 /** OAuth endpoints; tests point these at a fake provider on localhost. */
 export interface ProviderEndpoints {
@@ -96,6 +101,42 @@ const githubUserInfo =
     };
   };
 
+/** Google's userinfo, refused unless Google has verified the email. */
+const verifiedGoogleUser =
+  (userInfoUrl: string): GenericOAuthConfig["getUserInfo"] =>
+  async (tokens) => {
+    const res = await fetch(userInfoUrl, {
+      headers: { authorization: `Bearer ${tokens.accessToken}` },
+    });
+    if (!res.ok) return null;
+    // The `profile` scope always brings the name.
+    const u = (await res.json()) as {
+      sub: string;
+      email: string;
+      email_verified?: boolean;
+      name: string;
+    };
+    if (u.email_verified !== true) return null;
+    return { id: u.sub, email: u.email, emailVerified: true, name: u.name };
+  };
+
+/** Dashboard sign-in with Google: identity scopes only, apart from the linking client. */
+export const GOOGLE_SIGN_IN = "google-signin";
+
+/** Where Google sign-in lands on the Coordinator, to hand the session to the dashboard. */
+export const SIGN_IN_DONE_PATH = "/sign-in/done";
+
+/** The dashboard page that takes a one-time token (`?ott=`) or shows an error (`?error=`). */
+const DASHBOARD_LOGIN_PATH = "/login";
+
+/** Google sign-in needs the Coordinator's URL for the callback and the dashboard's to return to. */
+const googleSignInConfig = (config: AuthConfig) => {
+  const webOrigin = config.webOrigins?.[0];
+  return config.google && config.baseURL && webOrigin
+    ? { client: { ...GOOGLE_ENDPOINTS, ...config.google }, baseURL: config.baseURL, webOrigin }
+    : undefined;
+};
+
 /** OAuth clients for account linking (`/connect`): never sign-in, never sign-up. */
 const linkingProviders = (config: AuthConfig): GenericOAuthConfig[] => {
   const out: GenericOAuthConfig[] = [];
@@ -136,7 +177,25 @@ const linkingProviders = (config: AuthConfig): GenericOAuthConfig[] => {
   return out;
 };
 
-const betterAuthFor = (config: AuthConfig) =>
+const signInProviders = (config: AuthConfig): GenericOAuthConfig[] => {
+  const google = googleSignInConfig(config);
+  if (!google) return [];
+  const { client } = google;
+  return [
+    {
+      providerId: GOOGLE_SIGN_IN,
+      clientId: client.clientId,
+      clientSecret: client.clientSecret,
+      authorizationUrl: client.authorizationUrl,
+      tokenUrl: client.tokenUrl,
+      userInfoUrl: client.userInfoUrl,
+      scopes: ["openid", "email", "profile"],
+      getUserInfo: verifiedGoogleUser(client.userInfoUrl),
+    },
+  ];
+};
+
+const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
   betterAuth({
     ...(config.baseURL && { baseURL: config.baseURL }),
     secret: config.secret,
@@ -165,10 +224,34 @@ const betterAuthFor = (config: AuthConfig) =>
     },
     // A dashboard session lasts a week and renews itself while in use.
     session: { expiresIn: 7 * 24 * 60 * 60, updateAge: 24 * 60 * 60 },
-    plugins: [genericOAuth({ config: linkingProviders(config) }), bearer()],
+    databaseHooks: {
+      user: {
+        create: {
+          // Users are operators on the allowlist, or people's channel identities for linking.
+          before: async (user) =>
+            allowed.has(lower(user.email)) || isChannelIdentityEmail(user.email)
+              ? undefined
+              : false,
+        },
+      },
+    },
+    plugins: [
+      genericOAuth({ config: [...linkingProviders(config), ...signInProviders(config)] }),
+      bearer(),
+      // Hands a Google sign-in's session from the Coordinator's origin to the dashboard's.
+      oneTimeToken({ disableClientRequest: true, storeToken: "hashed" }),
+    ],
   });
 
 export type BetterAuth = ReturnType<typeof betterAuthFor>;
+
+/** Dashboard sign-in with Google, when Google, PUBLIC_URL and WEB_ORIGIN are all set. */
+export interface GoogleSignIn {
+  /** The redirect to Google, with the state cookies the browser must carry back. */
+  readonly start: () => Promise<LinkStart>;
+  /** Where the browser goes once Google is done: the dashboard, holding a one-time token. */
+  readonly handoff: (request: Request) => Promise<string>;
+}
 
 /** The user behind a session token. */
 export interface SessionUser {
@@ -183,10 +266,10 @@ const lower = (email: string) => email.trim().toLowerCase();
  * tokens sent as `Authorization: Bearer`), and account linking when an OAuth client is set.
  */
 export const makeAuth = (config: AuthConfig) => {
-  const auth = betterAuthFor(config);
-  const allowed = new Set(
+  const allowed: ReadonlySet<string> = new Set(
     [...(config.allowedEmails ?? []), ...(config.admin ? [config.admin.email] : [])].map(lower),
   );
+  const auth = betterAuthFor(config, allowed);
 
   /** Creates the admin and its password login unless they exist. Safe to run on every boot. */
   const ensureAdmin = async (): Promise<void> => {
@@ -219,6 +302,33 @@ export const makeAuth = (config: AuthConfig) => {
       ? makeConnections(auth, { baseURL: config.baseURL, providers })
       : undefined;
 
+  const google = googleSignInConfig(config);
+  const googleSignIn: GoogleSignIn | undefined = google && {
+    start: async () => {
+      const { headers, response } = await auth.api.signInSocial({
+        body: {
+          provider: GOOGLE_SIGN_IN,
+          callbackURL: `${google.baseURL}${SIGN_IN_DONE_PATH}`,
+          // Better Auth adds `?error=<code>`: not allowed, email unverified, and so on.
+          errorCallbackURL: `${google.webOrigin}${DASHBOARD_LOGIN_PATH}`,
+          disableRedirect: true,
+        },
+        returnHeaders: true,
+      });
+      return { redirect: response.url!, setCookies: headers.getSetCookie() };
+    },
+    handoff: async (request) => {
+      const login = new URL(DASHBOARD_LOGIN_PATH, google.webOrigin);
+      // The session cookie Better Auth just set on this origin is the one thing read here.
+      const ott = await auth.api
+        .generateOneTimeToken({ headers: request.headers })
+        .catch(() => undefined);
+      if (ott) login.searchParams.set("ott", ott.token);
+      else login.searchParams.set("error", "no_session");
+      return login.toString();
+    },
+  };
+
   return {
     auth,
     /** Seeds the admin (see `ensureAdmin`); later calls reuse the first run. */
@@ -239,6 +349,8 @@ export const makeAuth = (config: AuthConfig) => {
     isAllowed: (email: string) => allowed.has(lower(email)),
     /** Account linking; undefined without `baseURL` or an OAuth client. */
     connections,
+    /** Google sign-in for the dashboard; undefined without Google, `baseURL` and a web origin. */
+    googleSignIn,
   };
 };
 

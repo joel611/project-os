@@ -64,6 +64,7 @@ export const describeError = (error: Error): string => {
     return `Unexpected response from the Coordinator: ${error.message}`;
   if (error.code === "Unreachable") return UNREACHABLE;
   if (error.status === 401) return "Your session ended. Sign in again.";
+  if (error.status === 403) return "This account isn't allowed to use the dashboard.";
   if (error.status === 404) return "Not found.";
   if (error.code === "SourceAlreadyLinked") return "That source is already linked to a project.";
   if (error.status === 400) return "The Coordinator rejected that input.";

@@ -217,6 +217,7 @@ describe("describeError", () => {
     [new TypeError("Failed to fetch"), unreachable],
     [new ApiError(502, "Unreachable"), unreachable],
     [new ApiError(401, "Unauthorized"), "Your session ended. Sign in again."],
+    [new ApiError(403, "Forbidden"), "This account isn't allowed to use the dashboard."],
     [new ApiError(404, "TicketNotFound"), "Not found."],
     [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
     [new ApiError(400, "SchemaError"), "The Coordinator rejected that input."],
