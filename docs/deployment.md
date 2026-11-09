@@ -46,6 +46,8 @@ bun run destroy --stage prod   # delete every resource in the stage
 bun run dev:cf                 # alchemy dev: same stack on local workerd (miniflare D1/KV)
 ```
 
+`bun run dev:cf` serves the Coordinator on 8787, the Dashboard on 8788 and the gateway Worker on 8789. Set `COORDINATOR_DEV_PORT`, `DASHBOARD_DEV_PORT` or `DISCORD_GATEWAY_DEV_PORT` to move one, for example in a second worktree. A port that is taken still falls back to the next free one.
+
 Without `--stage`, the stage is `$ALCHEMY_STAGE` or `live_$USER`, which gives each developer a private copy.
 
 ## Vars and secrets

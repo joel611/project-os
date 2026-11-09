@@ -99,6 +99,21 @@ const readBotToken = Config.option(Config.Redacted("DISCORD_BOT_TOKEN")).pipe(
   Effect.map(Option.getOrUndefined),
 );
 
+/**
+ * `alchemy dev` serves every Worker on 1337 unless told otherwise, so they bump each other to
+ * the next free port, and so do parallel worktrees. Each gets its own default here. Override per
+ * checkout with the env var; a taken port still falls back to a free one rather than failing.
+ */
+const readDevPorts = Effect.gen(function* () {
+  const port = (name: string, fallback: number) =>
+    Config.Number(name).pipe(Config.withDefault(fallback));
+  return {
+    coordinator: yield* port("COORDINATOR_DEV_PORT", 8787),
+    dashboard: yield* port("DASHBOARD_DEV_PORT", 8788),
+    gateway: yield* port("DISCORD_GATEWAY_DEV_PORT", 8789),
+  };
+});
+
 export default Alchemy.Stack(
   "project-os",
   {
@@ -116,6 +131,7 @@ export default Alchemy.Stack(
 
     const plain = yield* readVars;
     const secrets = yield* readSecrets;
+    const devPorts = yield* readDevPorts;
 
     // Dashboard: the Vite SPA as static assets only, no Worker code. The browser calls the
     // Coordinator directly at PUBLIC_URL (baked in as VITE_COORDINATOR_URL), which allows this
@@ -132,6 +148,7 @@ export default Alchemy.Stack(
       outdir: "dist/client",
       compatibility: { date: COMPATIBILITY_DATE },
       assets: { notFoundHandling: "single-page-application" },
+      dev: { port: devPorts.dashboard },
       memo: {
         include: ["**/*", "../../packages/contracts/src/**"],
         lockfile: true,
@@ -150,6 +167,7 @@ export default Alchemy.Stack(
             main: "./apps/discord-gateway/src/main.cloudflare.ts",
             compatibility: { date: COMPATIBILITY_DATE },
             workersDev: false,
+            dev: { port: devPorts.gateway },
             // Cron Trigger: restarts the container after a crash, a stop or a deploy.
             crons: ["* * * * *"],
             env: {
@@ -183,6 +201,7 @@ export default Alchemy.Stack(
       // nodejs_compat is the runtime default for dates from 2026-08-04, and it fills
       // `process.env` from the vars and secrets below, which `@project-os/config` reads.
       compatibility: { date: COMPATIBILITY_DATE },
+      dev: { port: devPorts.coordinator },
       // WEB_ORIGIN is the dashboard's URL, so the browser may call this API (CORS).
       // PI_AGENT: the `PiAgent` class exported by main.cloudflare.ts, one object per Pi session.
       env: {
