@@ -50,8 +50,7 @@ Without `--stage`, the stage is `$ALCHEMY_STAGE` or `live_$USER`, which gives ea
 Plain settings bind as `plain_text` vars. Secrets bind as `secret_text`, never as plain vars, and are redacted in Alchemy's output and state. A key that is unset is not bound at all, so a stage without OAuth clients deploys with account linking off, the same rule as the local target.
 
 - **Vars with defaults:** `CHAT_MODEL_PROVIDER`, `CHAT_MODEL_ID`, `JEV_MODEL_ID`, `INTENT_CONFIDENCE_THRESHOLD`, `DISCORD_PROJECT_CHANNEL_AUTO_CREATE`.
-- **Vars bound when set:** `DISCORD_SPLIT_GATEWAY_URL`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS`, `PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`.
-- **Secrets bound when set:** `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`.
+- **Every other key in `.env.example`** (set or commented out) is bound when set. Names ending in `KEY`, `TOKEN` or `SECRET` bind as secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `DISCORD_BOT_TOKEN`, `DAYTONA_API_KEY`, ...); the rest bind as plain vars. A key added to `.env.example` is picked up with no edit to `alchemy.run.ts`. Host-only keys (`PORT`, `DATABASE_PATH`, ...) bind too and the Worker ignores them.
 
 The deploy output lists which secrets were bound (`boundSecrets`). For account linking, set `PUBLIC_URL` to the URL browsers use for the OAuth callbacks (`$PUBLIC_URL/api/auth/oauth2/callback/<provider>`), usually the dashboard URL from the first deploy, then deploy again.
 
