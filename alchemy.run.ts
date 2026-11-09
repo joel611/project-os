@@ -51,6 +51,20 @@ const stageGatewayContext = () => {
   return GATEWAY_CONTEXT;
 };
 
+/**
+ * `alchemy dev` rewrites a loopback host in a container's env to `host.docker.localhost`, but Bun
+ * resolves every `*.localhost` name to the container itself, so the gateway could not reach the
+ * Coordinator (ECONNREFUSED). Docker Desktop reaches the host as `host.docker.internal`. Linux
+ * keeps Alchemy's own tunnel, and a real URL passes through unchanged.
+ */
+const reachableFromContainer = (url: string) => {
+  const parsed = new URL(url);
+  if (process.platform !== "linux" && ["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+    parsed.hostname = "host.docker.internal";
+  }
+  return parsed.origin;
+};
+
 /** Plain vars with the same defaults as `.env.example`. */
 const vars = {
   CHAT_MODEL_PROVIDER: "openrouter",
@@ -213,7 +227,7 @@ export default Alchemy.Stack(
                 maxInstances: 1,
               }),
               DISCORD_BOT_TOKEN: botToken,
-              COORDINATOR_URL: new URL(publicUrl).origin,
+              COORDINATOR_URL: reachableFromContainer(publicUrl),
               ...Object.fromEntries(
                 (
                   [
