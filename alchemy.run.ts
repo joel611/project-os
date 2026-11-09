@@ -4,12 +4,10 @@
 //   bun run deploy --stage prod    # a named stage; every resource name gets the stage
 //   bun run plan  / bun run destroy
 //
-// Values come from `.env` (or `--env-file`), then the shell. Every key named in
-// `.env.example` is read. Plain settings bind as
+// Values come from `.env` (or `--env-file`), then the shell. Plain settings bind as
 // `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
 // stage without OAuth clients deploys with account linking off (same rule as local).
 // See docs/deployment.md.
-import { readFileSync } from "node:fs";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
@@ -29,22 +27,51 @@ const vars = {
 } as const;
 
 /**
- * Every other key in `.env.example`, set or commented out (`# KEY=value`), so a new key
- * there is picked up with no edit here. Each is bound only when set.
+ * Plain vars with no default: bound only when set. Host-only keys (PORT, DATABASE_PATH,
+ * MCP_URL, WORKER_CWD, ...) and DISCORD_BOT_TOKEN (no gateway on Workers) are left out.
  */
-const exampleKeys = [
-  ...new Set(
-    readFileSync(new URL(".env.example", import.meta.url), "utf8")
-      .split("\n")
-      .map((line) => /^(?:#\s?)?([A-Z][A-Z0-9_]*)=/.exec(line)?.[1])
-      .filter((name): name is string => name !== undefined && !(name in vars)),
-  ),
-];
+const optionalVars = [
+  // Where the Coordinator POSTs replies. Discord is a long-running gateway process, so on
+  // Workers it runs off-platform (apps/discord-gateway, docs/technical-architecture.md §8).
+  "DISCORD_SPLIT_GATEWAY_URL",
+  "DISCORD_GUILD_ID",
+  "DISCORD_PROJECT_CATEGORY_ID",
+  "DISCORD_MEMBER_ROLE_IDS",
+  "DISCORD_REQUIRE_MENTION",
+  "ADMIN_CHANNEL_ID",
+  "ADMIN_USER_IDS",
+  "OTEL_EXPORTER_OTLP_ENDPOINT",
+  // Account linking (Better Auth, PR #41): connect links and OAuth callbacks.
+  "PUBLIC_URL",
+  "GOOGLE_CLIENT_ID",
+  "GITHUB_CLIENT_ID",
+  // Registered workers and the cloud sandbox pool.
+  "SHARED_WORKER_MAX_TICKETS",
+  "WATCHER_INSTALL_COMMAND",
+  "WORKER_PROVIDERS",
+  "SANDBOX_MCP_URL",
+  "SANDBOX_PI_MODEL",
+  "SANDBOX_SESSION_TIMEOUT_SECONDS",
+  "DAYTONA_API_URL",
+  "DAYTONA_SNAPSHOT",
+  "DAYTONA_MAX_CONCURRENT",
+  "BOAT_API_URL",
+  "BOAT_SANDBOX_SIZE",
+  "BOAT_MAX_CONCURRENT",
+  "CLOUDFLARE_SANDBOX_URL",
+  "CLOUDFLARE_SANDBOX_MAX_CONCURRENT",
+] as const;
 
-/** Credential-looking names bind as `secret_text`; the rest as plain vars. */
-const isSecret = (name: string) => /(?:KEY|TOKEN|SECRET)$/.test(name);
-const optionalVars = exampleKeys.filter((name) => !isSecret(name));
-const optionalSecrets = exampleKeys.filter(isSecret);
+/** Secrets: bound as `secret_text` only when set. */
+const optionalSecrets = [
+  "OPENROUTER_API_KEY",
+  "BETTER_AUTH_SECRET",
+  "GOOGLE_CLIENT_SECRET",
+  "GITHUB_CLIENT_SECRET",
+  "DAYTONA_API_KEY",
+  "BOAT_API_KEY",
+  "CLOUDFLARE_SANDBOX_TOKEN",
+] as const;
 
 const readVars = Effect.gen(function* () {
   const env: Record<string, string> = {};
