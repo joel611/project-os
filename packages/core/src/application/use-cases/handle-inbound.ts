@@ -13,6 +13,7 @@ import {
 } from "../ports/index.ts";
 import { assignToWorker, pickWorker, QUEUED_EVENT_KIND, QUEUED_MESSAGE } from "./assign-worker.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
+import { writeMemory } from "./memory.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { nowIso, updateStatus } from "./tickets.ts";
 
@@ -51,6 +52,7 @@ export type InboundOutcome =
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
   | { readonly kind: "ticket_closed"; readonly ticketId: string }
   | { readonly kind: "status_answered" }
+  | { readonly kind: "memory_saved" }
   | { readonly kind: "sidekick_answered"; readonly ticketId: string }
   | { readonly kind: "admin_handled" }
   | { readonly kind: "admin_forbidden" }
@@ -65,6 +67,8 @@ export const THREAD_OPENED_MESSAGE =
   "I opened a ticket for this. Keep the conversation for it in this thread.";
 export const TICKET_CLOSED_MESSAGE =
   "This ticket is finished. Post in the channel to start something new.";
+
+export const MEMORY_SAVED_MESSAGE = "Noted. I saved that to the project memory.";
 
 export const sidekickFailedMessage = (reason: string) =>
   `Sorry, I couldn't look that up: ${reason}`;
@@ -419,6 +423,17 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         });
         yield* reply(text);
         return { kind: "status_answered" } as InboundOutcome;
+      }
+      case "remember": {
+        yield* writeMemory({
+          projectId: project.id,
+          type: "manual",
+          title: message.content.slice(0, TITLE_MAX),
+          content: message.content,
+          sourceMetadata: { sender: message.sender, channelType: message.channelType },
+        });
+        yield* reply(MEMORY_SAVED_MESSAGE);
+        return { kind: "memory_saved" } as InboundOutcome;
       }
       default:
         return yield* clarify();

@@ -31,6 +31,7 @@ const INTENTS = {
   new_request: "The user asks for new work to be done",
   follow_up: "The user adds to or changes an open request",
   status_question: "The user asks about the progress or result of existing work",
+  remember: "The user asks to remember a fact about the project, to be kept in its memory",
   admin_command: "The user wants to configure projects, channels or sources",
   chit_chat: "Greeting, thanks or small talk",
   none: "None of the above",
