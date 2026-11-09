@@ -430,7 +430,10 @@ describe("handleInbound", () => {
   it("remember writes the message to project memory and confirms", async () => {
     const { value, sent } = await run(
       Effect.gen(function* () {
-        const out = yield* handleInbound(msg({ content: "remember this project is in POC" }), config);
+        const out = yield* handleInbound(
+          msg({ content: "remember this project is in POC" }),
+          config,
+        );
         return { out, entries: yield* readMemory({ projectId: "p1" }) };
       }),
       inbound("remember"),
