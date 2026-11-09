@@ -10,4 +10,4 @@ bun run --cwd packages/channel-discord fake        # REPL: type a message, repli
 bun run --cwd packages/channel-discord fake --say "fix the login bug" --wait 120   # one-shot, exits on first reply
 ```
 
-Flags: `--channel`, `--thread`, `--user`, `--name`. Messages @mention the bot like a person would; `--no-mention` sends one without, which the Coordinator ignores at the top of a project channel. Set `--channel`/`--user` to `ADMIN_CHANNEL_ID`/an id in `ADMIN_USER_IDS` to exercise the admin channel.
+The fake reads `COORDINATOR_SERVICE_TOKEN` from `.env`, the same value the Coordinator checks; the Coordinator refuses its messages without it. Flags: `--channel`, `--thread`, `--user`, `--name`. Messages @mention the bot like a person would; `--no-mention` sends one without, which the Coordinator ignores at the top of a project channel. Set `--channel`/`--user` to `ADMIN_CHANNEL_ID`/an id in `ADMIN_USER_IDS` to exercise the admin channel.

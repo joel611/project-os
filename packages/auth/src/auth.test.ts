@@ -44,6 +44,30 @@ describe("makeAuth", () => {
     expect(await auth.sessionUser("not-a-session")).toBeUndefined();
   });
 
+  it("signs in from the dashboard's own origin, cross-site, and from no other", async () => {
+    const auth = authWith({ admin, webOrigins: ["https://dash.example"] });
+    const fromBrowser = (origin: string) =>
+      auth.handler(
+        new Request(`${BASE}/api/auth/sign-in/email`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin,
+            "sec-fetch-site": "cross-site",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "empty",
+          },
+          body: JSON.stringify(admin),
+        }),
+      );
+    const dashboard = await fromBrowser("https://dash.example");
+    expect(dashboard.status).toBe(200);
+    expect(dashboard.headers.get("set-auth-token")).toBeTruthy();
+    const elsewhere = await fromBrowser("https://evil.example");
+    expect(elsewhere.status).toBe(403);
+    expect(elsewhere.headers.get("set-auth-token")).toBeNull();
+  });
+
   it("lets nobody in without a seeded admin", async () => {
     const auth = authWith();
     await auth.ready();

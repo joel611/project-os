@@ -52,7 +52,7 @@ bun run --cwd apps/web dev
 # → http://localhost:5173
 ```
 
-You should see projects, live tickets, Project Memory, and worker health refreshing every few seconds.
+Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env` (see [SETUP.md](SETUP.md)). You should see projects, live tickets, Project Memory, and worker health refreshing every few seconds.
 
 Without Docker:
 

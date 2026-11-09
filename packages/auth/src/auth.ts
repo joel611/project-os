@@ -209,6 +209,8 @@ const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
         verification: schema.authVerifications,
       },
     }),
+    // Better Auth skips its origin check when NODE_ENV=test or TEST is set; never skip it.
+    advanced: { disableOriginCheck: false },
     // Operators are seeded (`admin`), never signed up.
     emailAndPassword: { enabled: true, disableSignUp: true },
     account: {
