@@ -9,7 +9,7 @@ You need three things working, in this order:
 | [1. Discord bot](#1-discord-bot)                     | The bot hears messages, replies, creates project channels and ticket threads                               | Yes               | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS` |
 | [2. Google Drive](#2-google-drive-oauth-client)      | Each person links their own Google account, so Workers read Drive with that person's access                | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
 | [3. GitHub](#3-github-app)                           | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access          | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
-| [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                                      | If you did 2 or 3 | `BETTER_AUTH_SECRET`, `PUBLIC_URL`                                                                           |
+| [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                                      | If you did 2 or 3 | `PUBLIC_URL`                                                                                                 |
 | [5. Registered workers](#5-registered-workers)       | People run `/register-worker` to use their own computer; admins add shared computers for everyone          | Optional          | `PUBLIC_URL`, `SHARED_WORKER_MAX_TICKETS`, `WATCHER_INSTALL_COMMAND`                                         |
 | [6. Cloud sandbox workers](#6-cloud-sandbox-workers) | The Coordinator runs each shared ticket in a Daytona, Cloudflare or boat.dev sandbox, from a pool you pick | Optional          | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `BOAT_API_KEY`           |
 
@@ -21,6 +21,23 @@ cp .env.example .env
 ```
 
 Every value below goes into `.env`. Docker Compose reads it for the Coordinator, which runs the Discord bot in the same process, and the Watcher reads it from your shell.
+
+The Coordinator refuses to start without two secrets, and the dashboard needs someone to sign in as. Set these first:
+
+```sh
+# Signs dashboard sessions and encrypts stored OAuth tokens. Keep it stable: changing it
+# signs everyone out and makes every linked account unreadable.
+BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+# What Channel Adapters (the Discord bot) call /inbound, /commands and /prompts/answer with.
+# apps/discord-gateway needs the same value when it runs on its own.
+COORDINATOR_SERVICE_TOKEN=$(openssl rand -base64 32)
+# The dashboard operator, created on first start. Sign-up is off: without these, nobody can
+# sign in. The password needs at least 8 characters.
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=...
+# Optional: more emails allowed into the dashboard, comma-separated. They sign in with Google.
+# ADMIN_EMAILS=teammate@example.com
+```
 
 Workers never use a shared Google or GitHub credential. They call the `user_token` MCP tool, which returns the token of the person who asked, so Google's and GitHub's own permissions decide what a Worker can reach.
 
@@ -139,9 +156,10 @@ Go to **Google Auth Platform** (APIs & Services → OAuth consent screen):
 
 1. Go to **Clients → Create client** (APIs & Services → Credentials → Create credentials → OAuth client ID).
 2. **Application type**: **Web application**.
-3. **Authorized redirect URIs**: add `<PUBLIC_URL>/api/auth/callback/google`. Locally that is:
+3. **Authorized redirect URIs**: add `<PUBLIC_URL>/api/auth/callback/google` for account linking, and `<PUBLIC_URL>/api/auth/callback/google-signin` for signing in to the dashboard with Google. Locally that is:
    ```text
    http://localhost:8080/api/auth/callback/google
+   http://localhost:8080/api/auth/callback/google-signin
    ```
    No JavaScript origins are needed.
 4. Click **Create** and copy the values into `.env`:
@@ -149,6 +167,8 @@ Go to **Google Auth Platform** (APIs & Services → OAuth consent screen):
    GOOGLE_CLIENT_ID=...apps.googleusercontent.com
    GOOGLE_CLIENT_SECRET=...
    ```
+
+The same client also adds **Continue with Google** to the dashboard's sign-in page once `WEB_ORIGIN` is set to where the dashboard is served (`http://localhost:5173` for `bun run --cwd apps/web dev`). Google returns there after sign-in. Only `ADMIN_EMAIL` and the emails in `ADMIN_EMAILS` get in, and only when Google has verified the address. An email signs in one way, so the `ADMIN_EMAIL` operator keeps using the password even with a Google account of the same address.
 
 ---
 
@@ -208,13 +228,9 @@ On the app page, click **Install App**, choose the account or organization that 
 
 ## 4. Turn on account linking
 
-Account linking stays off until `BETTER_AUTH_SECRET` and at least one of the Google or GitHub clients are set. The Coordinator logs `account linking off: ...` while it is off.
+Account linking stays off until at least one of the Google or GitHub clients is set, besides the `BETTER_AUTH_SECRET` every Coordinator needs. The Coordinator logs `account linking off: ...` while it is off.
 
 ```sh
-# Signs cookies and encrypts stored OAuth tokens. Keep it stable: changing it
-# makes every linked account unreadable, and people have to /connect again.
-BETTER_AUTH_SECRET=$(openssl rand -base64 32)
-
 # Where browsers reach the Coordinator. Used for connect links and OAuth callbacks,
 # and must match the redirect / callback URLs you registered in steps 2 and 3.
 PUBLIC_URL=http://localhost:8080
@@ -347,32 +363,36 @@ bun apps/watcher/src/main.bun.ts
 
 Also set `OPENROUTER_API_KEY` and `CHAT_MODEL_ID` in `.env`; the Coordinator refuses to start without a model (Compose defaults `CHAT_MODEL_ID` to `anthropic/claude-sonnet-4.5`). SQLite and agent state live in the `coordinator-data` volume (`/data`). By default the Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. `WATCHER_AGENT=pi` runs `pi --print` and `WATCHER_AGENT=codex` runs `codex exec` instead, each with the Coordinator added as an MCP server. See the README for running without Docker and for the dashboard.
 
-The dashboard is read-only and expects the Coordinator on `:8080` (override with `COORDINATOR_URL`). `bun run --cwd apps/web build` exports it as a static site.
+The dashboard expects the Coordinator on `:8080` (override with `COORDINATOR_URL`) and opens on a sign-in page. Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or with Google (step 2). `bun run --cwd apps/web build` exports it as a static site.
 
 ## 8. Cloudflare
 
-Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets), and `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `docs/deployment.md`).
+Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `COORDINATOR_SERVICE_TOKEN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets). The deploy fails without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and the Discord gateway container gets the service token too. `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `docs/deployment.md`).
 
 ## Troubleshooting
 
-| Symptom                                                     | Likely cause                                                                                                                                   |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bot is online but never answers                             | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project    |
-| Bot ignores one person, or their slash commands are refused | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                        |
-| Slash commands don't show up                                | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)            |
-| `/project-create` says it failed to create the channel      | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                      |
-| Tickets don't get threads                                   | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                             |
-| `/connect` says linking is off                              | `BETTER_AUTH_SECRET` or the provider's client id/secret is missing from the Coordinator's environment                                          |
-| `/register-worker` code says "expired, or already used"     | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                  |
-| Your tickets still go to a sandbox after registering        | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                    |
-| Tickets say they're queued and stay `open`                  | No personal or shared computer is online with room and no sandbox provider has room. Start a Watcher, or set up a provider (step 6)            |
-| Watcher exits with "isn't registered yet"                   | It no longer runs unregistered. Run `/register-worker` (or `shared:True` as an admin) and paste the command                                    |
-| Sandbox tickets stay `assigned` and nothing claims them     | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `sandbox-<provider>: <worker> failed: …` |
-| Coordinator exits with `WORKER_PROVIDERS names "…"`         | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                         |
-| Cloudflare sandbox calls fail with 401                      | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                    |
-| Watcher gets HTTP 401 from `/mcp`                           | The computer was removed with `/unregister-worker`. Register it again                                                                          |
-| Google says `redirect_uri_mismatch`                         | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                       |
-| Google says "access blocked"                                | The person isn't a test user on an External app in Testing                                                                                     |
-| GitHub says the redirect URI isn't associated               | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                            |
-| Worker can't see a repo                                     | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                       |
-| Google stops working after a week                           | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                          |
+| Symptom                                                      | Likely cause                                                                                                                                      |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot is online but never answers                              | Message Content Intent is off, or the message didn't @mention the bot (`DISCORD_REQUIRE_MENTION`), or the channel isn't linked to a project       |
+| Bot ignores one person, or their slash commands are refused  | `DISCORD_MEMBER_ROLE_IDS` is set and they don't hold one of those roles                                                                           |
+| Slash commands don't show up                                 | Invite missed `applications.commands`, or `DISCORD_GUILD_ID` is unset and global registration hasn't propagated yet (up to an hour)               |
+| `/project-create` says it failed to create the channel       | Bot lacks Manage Channels, or `DISCORD_GUILD_ID` is wrong, or the category denies the bot                                                         |
+| Tickets don't get threads                                    | Bot lacks Create Public Threads, Send Messages in Threads, or Read Message History in that channel                                                |
+| Coordinator exits with `... is required`                     | `BETTER_AUTH_SECRET` or `COORDINATOR_SERVICE_TOKEN` is unset or blank in the Coordinator's environment                                            |
+| Discord messages reach nothing, gateway logs `responded 401` | `apps/discord-gateway` has no `COORDINATOR_SERVICE_TOKEN`, or a different one from the Coordinator's                                              |
+| Dashboard sign-in says the email and password don't match    | `ADMIN_EMAIL` / `ADMIN_PASSWORD` were unset on the Coordinator's first start, or the password changed since. The seed never overwrites a password |
+| Google sign-in says it didn't work for that account          | The email isn't `ADMIN_EMAIL` or in `ADMIN_EMAILS`, Google hasn't verified it, or that email already signs in with a password                     |
+| `/connect` says linking is off                               | The provider's client id/secret is missing from the Coordinator's environment                                                                     |
+| `/register-worker` code says "expired, or already used"      | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                     |
+| Your tickets still go to a sandbox after registering         | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                       |
+| Tickets say they're queued and stay `open`                   | No personal or shared computer is online with room and no sandbox provider has room. Start a Watcher, or set up a provider (step 6)               |
+| Watcher exits with "isn't registered yet"                    | It no longer runs unregistered. Run `/register-worker` (or `shared:True` as an admin) and paste the command                                       |
+| Sandbox tickets stay `assigned` and nothing claims them      | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `sandbox-<provider>: <worker> failed: …`    |
+| Coordinator exits with `WORKER_PROVIDERS names "…"`          | That provider's credentials aren't set (e.g. `CLOUDFLARE_SANDBOX_URL`)                                                                            |
+| Cloudflare sandbox calls fail with 401                       | `CLOUDFLARE_SANDBOX_TOKEN` doesn't match the bridge's `BRIDGE_TOKEN` secret                                                                       |
+| Watcher gets HTTP 401 from `/mcp`                            | The computer was removed with `/unregister-worker`. Register it again                                                                             |
+| Google says `redirect_uri_mismatch`                          | The redirect URI in Google doesn't exactly equal `<PUBLIC_URL>/api/auth/callback/google`                                                          |
+| Google says "access blocked"                                 | The person isn't a test user on an External app in Testing                                                                                        |
+| GitHub says the redirect URI isn't associated                | The GitHub App's callback URL doesn't match `<PUBLIC_URL>/api/auth/callback/github`                                                               |
+| Worker can't see a repo                                      | The GitHub App isn't installed on that repo, or the person who asked has no access to it                                                          |
+| Google stops working after a week                            | Testing-mode refresh tokens expire after 7 days; run `/connect provider:Google` again                                                             |
