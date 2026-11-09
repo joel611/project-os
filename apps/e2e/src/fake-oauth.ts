@@ -18,8 +18,12 @@ export interface FakeOAuth {
   failRefresh: boolean;
   /** Fail the userinfo call, so linking can't learn who the account is. */
   failUserInfo: boolean;
+  /** The Google account's email. */
+  email: string;
   /** What Google says about whether it verified the account's email. */
   emailVerified: boolean;
+  /** The GitHub account's public email; null when it keeps it private. */
+  githubEmail: string | null;
   readonly stop: () => void;
 }
 
@@ -57,10 +61,10 @@ export const startFakeOAuth = (): FakeOAuth => {
       // userinfo
       if (fake.failUserInfo) return new Response("unauthorized", { status: 401 });
       return provider === "github"
-        ? Response.json({ id: 42, login: "ada-gh", name: null, email: null })
+        ? Response.json({ id: 42, login: "ada-gh", name: null, email: fake.githubEmail })
         : Response.json({
             sub: "google-ada",
-            email: "ada@example.com",
+            email: fake.email,
             email_verified: fake.emailVerified,
             name: "Ada Lovelace",
           });
@@ -78,7 +82,9 @@ export const startFakeOAuth = (): FakeOAuth => {
     expiresIn: 3600,
     failRefresh: false,
     failUserInfo: false,
+    email: "ada@example.com",
     emailVerified: true,
+    githubEmail: null,
     stop: () => server.stop(true),
   };
   return fake;

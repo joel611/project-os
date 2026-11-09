@@ -100,6 +100,26 @@ describe("makeAuth", () => {
     expect(res.status).toBe(200);
   });
 
+  it("adds the admin password to a user who signed in with Google first", async () => {
+    const db = drizzle({ client: new Database(":memory:") });
+    migrate(db, { migrationsFolder });
+    const config = { db, baseURL: BASE, secret: "unit-test-secret-unit-test-secret" };
+    const ctx = await makeAuth({ ...config, allowedEmails: [admin.email] }).auth.$context;
+    const google = await ctx.internalAdapter.createUser(
+      { email: "ops@example.com", name: "Ops", emailVerified: true },
+      { method: "oauth", oauth: { providerId: "google-signin" } },
+    );
+    await ctx.internalAdapter.linkAccount({
+      providerId: "google-signin",
+      accountId: "google-ops",
+      userId: google.id,
+    });
+
+    const auth = makeAuth({ ...config, admin });
+    const token = (await post(auth, "/sign-in/email", admin)).headers.get("set-auth-token")!;
+    expect((await auth.sessionUser(token))?.userId).toBe(google.id);
+  });
+
   it("signs out: the token stops working", async () => {
     const auth = authWith({ admin });
     const token = (await post(auth, "/sign-in/email", admin)).headers.get("set-auth-token")!;

@@ -168,7 +168,7 @@ Go to **Google Auth Platform** (APIs & Services → OAuth consent screen):
    GOOGLE_CLIENT_SECRET=...
    ```
 
-The same client also adds **Continue with Google** to the dashboard's sign-in page once `WEB_ORIGIN` is set to where the dashboard is served (`http://localhost:5173` for `bun run --cwd apps/web dev`). Google returns there after sign-in. Only `ADMIN_EMAIL` and the emails in `ADMIN_EMAILS` get in, and only when Google has verified the address. An email signs in one way, so the `ADMIN_EMAIL` operator keeps using the password even with a Google account of the same address.
+The same client also adds **Continue with Google** to the dashboard's sign-in page once `WEB_ORIGIN` is set to where the dashboard is served (`http://localhost:5173` for `bun run --cwd apps/web dev`). Google returns there after sign-in. Only `ADMIN_EMAIL` and the emails in `ADMIN_EMAILS` get in, and only when Google has verified the address. A Google account with the same address as the `ADMIN_EMAIL` operator signs in as that operator, so the password and Google both work.
 
 ---
 
@@ -381,7 +381,7 @@ Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/dep
 | Coordinator exits with `... is required`                     | `BETTER_AUTH_SECRET` or `COORDINATOR_SERVICE_TOKEN` is unset or blank in the Coordinator's environment                                            |
 | Discord messages reach nothing, gateway logs `responded 401` | `apps/discord-gateway` has no `COORDINATOR_SERVICE_TOKEN`, or a different one from the Coordinator's                                              |
 | Dashboard sign-in says the email and password don't match    | `ADMIN_EMAIL` / `ADMIN_PASSWORD` were unset on the Coordinator's first start, or the password changed since. The seed never overwrites a password |
-| Google sign-in says it didn't work for that account          | The email isn't `ADMIN_EMAIL` or in `ADMIN_EMAILS`, Google hasn't verified it, or that email already signs in with a password                     |
+| Google sign-in says it didn't work for that account          | The email isn't `ADMIN_EMAIL` or in `ADMIN_EMAILS`, or Google hasn't verified it                                                                  |
 | `/connect` says linking is off                               | The provider's client id/secret is missing from the Coordinator's environment                                                                     |
 | `/register-worker` code says "expired, or already used"      | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                     |
 | Your tickets still go to a sandbox after registering         | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                       |

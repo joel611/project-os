@@ -1,4 +1,4 @@
-import type { ConnectionProvider } from "@project-os/contracts";
+import { CONNECTION_PROVIDERS, type ConnectionProvider } from "@project-os/contracts";
 import { schema } from "@project-os/db-sqlite";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -215,13 +215,14 @@ const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
     emailAndPassword: { enabled: true, disableSignUp: true },
     account: {
       encryptOAuthTokens: true,
-      // Linking only ever starts from a person's own one-time connect link, so the provider's
-      // email doesn't need to match (or be verified); sign-in never links implicitly.
       accountLinking: {
         enabled: true,
+        // A connect link already says whose account it is, so the provider's email needn't match.
         allowDifferentEmails: true,
-        disableImplicitLinking: true,
-        trustedProviders: ["google", "github"],
+        // Linking needs a trusted provider or a verified email, and GitHub never reports its
+        // email verified. Sign-in joins an existing user only on a verified email, since
+        // `google-signin` isn't trusted; the account hook keeps the linking clients off operators.
+        trustedProviders: ["github"],
       },
     },
     // A dashboard session lasts a week and renews itself while in use.
@@ -234,6 +235,19 @@ const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
             allowed.has(lower(user.email)) || isChannelIdentityEmail(user.email)
               ? undefined
               : false,
+        },
+      },
+      account: {
+        create: {
+          // `/connect` links only to a channel identity. Refusing these on an operator keeps a
+          // GitHub account claiming the operator's (unverified) email from taking it over.
+          before: async (account, ctx) => {
+            if (!(CONNECTION_PROVIDERS as ReadonlyArray<string>).includes(account.providerId)) {
+              return undefined;
+            }
+            const user = await ctx!.context.internalAdapter.findUserById(account.userId);
+            return isChannelIdentityEmail(user!.email) ? undefined : false;
+          },
         },
       },
     },

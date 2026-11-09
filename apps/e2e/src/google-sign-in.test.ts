@@ -34,13 +34,43 @@ const exchange = (ott: string) =>
 const projects = (token: string) =>
   fetch(`${stack.url}/projects`, { headers: { authorization: `Bearer ${token}` } });
 
-const usersWithEmail = (email: string) => {
+const query = <T>(sql: string, ...params: string[]): T[] => {
   const db = new Database(stack.dbPath, { readonly: true });
-  const row = db.query("select count(*) as n from auth_users where email = ?").get(email) as {
-    n: number;
-  };
+  const rows = db.query(sql).all(...params) as T[];
   db.close();
-  return row.n;
+  return rows;
+};
+
+const usersWithEmail = (email: string) =>
+  query<{ n: number }>("select count(*) as n from auth_users where email = ?", email)[0]!.n;
+
+/** How each sign-in method and linked account hangs off the user(s) with this email. */
+const accountsOf = (email: string) =>
+  query<{ userId: string; providerId: string }>(
+    `select u.id as userId, a.provider_id as providerId from auth_users u
+     join auth_accounts a on a.user_id = u.id where u.email = ? order by a.provider_id`,
+    email,
+  );
+
+const sessionsOf = (email: string) =>
+  query<{ n: number }>(
+    `select count(*) as n from auth_sessions s join auth_users u on u.id = s.user_id
+     where u.email = ?`,
+    email,
+  )[0]!.n;
+
+const signInWithPassword = () =>
+  fetch(`${stack.url}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(OPERATOR),
+  });
+
+const sessionUserId = async (token: string) => {
+  const res = await fetch(`${stack.url}/api/auth/get-session`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  return ((await res.json()) as { user: { id: string } }).user.id;
 };
 
 describe("Google sign-in", () => {
@@ -99,14 +129,57 @@ describe("Google sign-in", () => {
     expect(landed.searchParams.get("error")).toBe("no_session");
   });
 
-  it("still signs the password operator in alongside Google", async () => {
-    stack = await start({ allowedEmails: [ADA] });
-    const res = await fetch(`${stack.url}/api/auth/sign-in/email`, {
+  it("signs the password operator in with Google of the same verified email, as the same user", async () => {
+    stack = await start();
+    stack.oauth!.email = OPERATOR.email;
+    const [operator] = accountsOf(OPERATOR.email);
+
+    const landed = await signInWithGoogle();
+    const verified = await exchange(landed.searchParams.get("ott")!);
+    const token = verified.headers.get("set-auth-token")!;
+    expect((await projects(token)).status).toBe(200);
+    expect(await sessionUserId(token)).toBe(operator!.userId);
+    expect(usersWithEmail(OPERATOR.email)).toBe(1);
+    expect(accountsOf(OPERATOR.email)).toEqual([
+      { userId: operator!.userId, providerId: "credential" },
+      { userId: operator!.userId, providerId: "google-signin" },
+    ]);
+
+    const password = await signInWithPassword();
+    expect(await sessionUserId(password.headers.get("set-auth-token")!)).toBe(operator!.userId);
+  });
+
+  it("won't join the operator on an email Google hasn't verified", async () => {
+    stack = await start();
+    stack.oauth!.email = OPERATOR.email;
+    stack.oauth!.emailVerified = false;
+    const landed = await signInWithGoogle();
+    expect(landed.searchParams.get("ott")).toBeNull();
+    expect(landed.searchParams.get("error")).toBeTruthy();
+    expect(accountsOf(OPERATOR.email).map((a) => a.providerId)).toEqual(["credential"]);
+  });
+
+  it("never lets a GitHub account claiming the operator's email sign in as the operator", async () => {
+    stack = await start();
+    stack.oauth!.githubEmail = OPERATOR.email;
+    const sessions = sessionsOf(OPERATOR.email);
+
+    const started = await fetch(`${stack.url}/api/auth/sign-in/social`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(OPERATOR),
+      headers: { "content-type": "application/json", origin: stack.url },
+      body: JSON.stringify({
+        provider: "github",
+        callbackURL: `${stack.webUrl}/`,
+        errorCallbackURL: `${stack.webUrl}/login`,
+        disableRedirect: true,
+      }),
     });
-    expect((await projects(res.headers.get("set-auth-token")!)).status).toBe(200);
+    const { url } = (await started.json()) as { url: string };
+    const page = await browse(url, { url: stack.url, setCookies: started.headers.getSetCookie() });
+
+    expect(new URL(page.url).searchParams.get("error")).toBeTruthy();
+    expect(accountsOf(OPERATOR.email).map((a) => a.providerId)).toEqual(["credential"]);
+    expect(sessionsOf(OPERATOR.email)).toBe(sessions);
   });
 });
 

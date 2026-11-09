@@ -283,7 +283,7 @@ dashboard /login → GET /sign-in/google (Coordinator: state cookies, redirect)
   → <first WEB_ORIGIN>/login?ott=… → POST /api/auth/one-time-token/verify → Bearer token
 ```
 
-Only allowlisted emails and channel identities can become users (a `create.before` hook), and Google must have verified the email. Implicit account linking stays off, and emails are unique, so one email signs in one way. The seeded password operator can't also sign in with a Google account of the same address.
+Only allowlisted emails and channel identities can become users (a `create.before` hook), and Google must have verified the email. Emails are unique, and a Google sign-in whose verified email matches an existing user links to that user, so the seeded password operator can also sign in with Google. It also works in the other order. A Google user who later becomes `ADMIN_EMAIL` gets the password added on the next seed. Only a verified email links. `google-signin` is not a trusted provider. `github` is trusted, because GitHub never reports an email verified and `/connect` needs it. An account hook therefore refuses `google` and `github` accounts on anyone but a channel identity, so a GitHub account claiming an operator's email can't take the operator over.
 
 **Fail closed.** The Coordinator refuses to start without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and so does `alchemy deploy`.
 
