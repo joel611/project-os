@@ -115,7 +115,9 @@ export default Alchemy.Stack(
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
       main: "./apps/coordinator/src/main.cloudflare.ts",
-      compatibility: { date: COMPATIBILITY_DATE },
+      // nodejs_compat fills `process.env` from the vars and secrets below, which
+      // `@project-os/config` reads. It is no longer a default for dates after 2026-08-04.
+      compatibility: { date: COMPATIBILITY_DATE, flags: ["nodejs_compat"] },
       env: { DB: db, KV: kv, ...plain, ...secrets },
       // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts
       // exports a `scheduled` handler; today it only exports `fetch`.
