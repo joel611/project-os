@@ -71,7 +71,11 @@ export const CloudflareLive = (config: CloudflareConfig) =>
     SchedulerNoop,
     Layer.succeed(
       ChannelGateway,
-      makeHttpChannelGateway({ adapterUrls: config.adapterUrls, fetch }),
+      // workerd throws "Illegal invocation" when the global `fetch` is called detached.
+      makeHttpChannelGateway({
+        adapterUrls: config.adapterUrls,
+        fetch: (input, init) => fetch(input, init),
+      }),
     ),
     config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
