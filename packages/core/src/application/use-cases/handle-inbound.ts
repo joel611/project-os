@@ -11,6 +11,7 @@ import {
   ProjectSourceRepository,
   TicketRepository,
 } from "../ports/index.ts";
+import { attachmentsPayload } from "./attachments.ts";
 import { assignToWorker, pickWorker, QUEUED_EVENT_KIND, QUEUED_MESSAGE } from "./assign-worker.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { writeMemory } from "./memory.ts";
@@ -241,7 +242,11 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           actor: "coordinator",
           actorId: message.sender.id,
           body: message.content,
-          payload: { sender: message.sender, channelType: message.channelType },
+          payload: {
+            sender: message.sender,
+            channelType: message.channelType,
+            ...attachmentsPayload(message),
+          },
           createdAt: at,
         });
         return { kind: "follow_up_added", ticketId } as InboundOutcome;
@@ -319,7 +324,11 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           actor: "coordinator",
           actorId: null,
           body: message.content,
-          payload: { sender: message.sender, channelType: message.channelType },
+          payload: {
+            sender: message.sender,
+            channelType: message.channelType,
+            ...attachmentsPayload(message),
+          },
           createdAt: at,
         });
         if (result.executor === "sidekick") {

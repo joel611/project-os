@@ -11,6 +11,16 @@ export interface DiscordMessageLike {
   channel: { isThread(): boolean; parentId?: string | null };
   /** Direct user mentions (not @everyone or roles). */
   mentions?: { users: { has(id: string): boolean } };
+  /** discord.js `Collection<Snowflake, Attachment>`; only the values are read. */
+  attachments?: {
+    values(): Iterable<{
+      id: string;
+      name?: string | null;
+      contentType?: string | null;
+      size: number;
+      url: string;
+    }>;
+  };
 }
 
 /** Removes `<@id>` / `<@!id>` mentions of `botUserId` so the classifier sees only the ask. */
@@ -21,14 +31,22 @@ const stripMention = (content: string, botUserId: string): string =>
     .trim();
 
 /**
- * Normalizes a human Discord message; returns null for bots and empty messages.
+ * Normalizes a human Discord message; returns null for bots and for messages with neither text
+ * nor attachments.
  * With `botUserId`, sets `mentionsBot` and strips the bot's mention from the content.
  */
 export const normalizeMessage = (
   m: DiscordMessageLike,
   botUserId?: string,
 ): InboundMessage | null => {
-  if (m.author.bot || m.content.trim() === "") return null;
+  const attachments = [...(m.attachments?.values() ?? [])].map((a) => ({
+    id: a.id,
+    filename: a.name ?? a.id,
+    contentType: a.contentType ?? null,
+    size: a.size,
+    url: a.url,
+  }));
+  if (m.author.bot || (m.content.trim() === "" && attachments.length === 0)) return null;
   const inThread = m.channel.isThread();
   const mentionsBot =
     botUserId !== undefined &&
@@ -40,6 +58,7 @@ export const normalizeMessage = (
     ...(inThread ? { threadId: m.channelId } : {}),
     sender: { id: m.author.id, name: m.member?.displayName ?? m.author.username },
     content: mentionsBot ? stripMention(m.content, botUserId!) : m.content,
+    ...(attachments.length === 0 ? {} : { attachments }),
     ...(botUserId === undefined ? {} : { mentionsBot }),
     raw: {
       id: m.id,
