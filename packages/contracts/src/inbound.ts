@@ -1,6 +1,28 @@
 import { Schema } from "effect";
 import { ChannelType } from "./enums.ts";
 
+/**
+ * A file sent with a message. `url` is a signed, expiring CDN link, good for the inbound turn
+ * only; the Coordinator keeps `id` and re-resolves a fresh link when a Worker asks.
+ */
+export const InboundAttachment = Schema.Struct({
+  id: Schema.String,
+  filename: Schema.String,
+  contentType: Schema.NullOr(Schema.String),
+  size: Schema.Number,
+  url: Schema.String,
+});
+export type InboundAttachment = typeof InboundAttachment.Type;
+
+/** What the Coordinator keeps of an attachment on a TicketEvent payload (no expiring URL). */
+export const AttachmentRef = Schema.Struct({
+  id: Schema.String,
+  filename: Schema.String,
+  contentType: Schema.NullOr(Schema.String),
+  size: Schema.Number,
+});
+export type AttachmentRef = typeof AttachmentRef.Type;
+
 export const InboundMessage = Schema.Struct({
   channelType: ChannelType,
   externalId: Schema.String,
@@ -11,7 +33,9 @@ export const InboundMessage = Schema.Struct({
     name: Schema.optionalKey(Schema.String),
     email: Schema.optionalKey(Schema.String),
   }),
+  /** Empty when the message is only attachments. */
   content: Schema.String,
+  attachments: Schema.optionalKey(Schema.Array(InboundAttachment)),
   /**
    * True when the message @mentions the bot. Set by adapters that know it (Discord); the
    * Coordinator only acts on top-level project channel messages that mention the bot.
