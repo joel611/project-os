@@ -14,6 +14,7 @@
     "plan": "alchemy plan",
     "destroy": "alchemy destroy",
     "env:sync": "bun scripts/sync-env.ts",
+    "env:gh": "bun scripts/gh-env.ts",
     "seed": "bun apps/coordinator/src/main.seed.ts",
     "build": "vp run -r build",
     "prepare": "vp config",
