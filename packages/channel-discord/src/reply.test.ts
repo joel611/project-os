@@ -301,3 +301,54 @@ describe("prompts endpoint", () => {
     });
   });
 });
+
+describe("attachments endpoint", () => {
+  const ask = (app: ReturnType<typeof createReplyApp>, body: unknown) =>
+    app.handle(
+      new Request("http://localhost/attachments", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  const request = { channelType: "discord", channelId: "t1", messageId: "m1" };
+  const noop = async () => {};
+
+  it("returns the message's files from the resolver", async () => {
+    const files = [{ id: "a1", filename: "x.png", contentType: null, size: 1, url: "u" }];
+    const seen: unknown[] = [];
+    const app = createReplyApp(noop, undefined, undefined, undefined, undefined, async (input) => {
+      seen.push(input);
+      return files;
+    });
+    const res = await ask(app, request);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ attachments: files });
+    expect(seen).toEqual([{ channelId: "t1", messageId: "m1" }]);
+  });
+
+  it("answers 501 without a resolver, 400 on bad bodies", async () => {
+    const app = createReplyApp(noop);
+    expect((await ask(app, request)).status).toBe(501);
+    expect((await ask(app, { channelType: "discord" })).status).toBe(400);
+    expect((await ask(app, { ...request, channelType: "email" })).status).toBe(400);
+  });
+
+  it("returns 502 with Discord's reason when the message can't be read", async () => {
+    const app = createReplyApp(noop, undefined, undefined, undefined, undefined, async () => {
+      throw new Error("Unknown Message");
+    });
+    const res = await ask(app, request);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Unknown Message" });
+  });
+
+  it("returns a generic 502 when the failure isn't an Error", async () => {
+    const app = createReplyApp(noop, undefined, undefined, undefined, undefined, async () => {
+      throw "boom";
+    });
+    expect(await (await ask(app, request)).json()).toEqual({
+      error: "discord attachments read failed",
+    });
+  });
+});

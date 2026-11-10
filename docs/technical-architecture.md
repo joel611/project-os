@@ -270,7 +270,7 @@ Every caller of the Coordinator proves who it is with `Authorization: Bearer <to
 | Channel Adapter (Discord, in-process or `apps/discord-gateway`) | `COORDINATOR_SERVICE_TOKEN`, compared in constant time | `/inbound`, `/commands`, `/prompts/answer` |
 | Anyone | none | `/health`, `/api/auth/*`, `/sign-in/*`, `/connect/*`, `/workers/register` (the one-time code is the proof), `/watcher/install.sh` |
 
-**MCP.** No token, an unknown one, or a dashboard or service token gets HTTP 401. A Worker, registered or sandboxed, acts only as its own worker id (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`) and reaches only tickets assigned to it (`ticket_get`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). A sandbox worker id is `<provider>-<ticketId>`, easy to guess, so the token is what keeps one session out of another's ticket. Project-scoped tools (`project_memory_*`, `project_sources_list`) and `ticket_get_prompt` take any authenticated Worker; they are not narrowed to the Worker's own projects yet.
+**MCP.** No token, an unknown one, or a dashboard or service token gets HTTP 401. A Worker, registered or sandboxed, acts only as its own worker id (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`) and reaches only tickets assigned to it (`ticket_get`, `ticket_attachments`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). A sandbox worker id is `<provider>-<ticketId>`, easy to guess, so the token is what keeps one session out of another's ticket. Project-scoped tools (`project_memory_*`, `project_sources_list`) and `ticket_get_prompt` take any authenticated Worker; they are not narrowed to the Worker's own projects yet.
 
 **HTTP API.** No token, or an unknown one, gets 401. A valid session for someone off the allowlist gets 403, and so does the wrong kind of token for the route. That includes a person's channel identity. Account linking creates one auth user per channel identity (§5.7), which can end up holding a session, but its placeholder email is never on the allowlist. The guard reads only the Bearer header, never cookies, so a cookie Better Auth leaves on the Coordinator's origin does not authenticate API calls. Admin identity in a `/commands` or `/prompts/answer` body is trusted because only a Channel Adapter can post there.
 
@@ -303,6 +303,7 @@ Workers talk to Project Memory and Tickets **only** through MCP tools. No direct
 - `ticket_list_assigned` — tickets with `status = assigned` for this `worker_id` (or its `worker_type`), oldest first
 - `ticket_claim` — atomic `assigned → in_progress`, sets `worker_id` + `started_at`; fails if already claimed
 - `ticket_get` — current ticket + recent events
+- `ticket_attachments` — files people sent on the ticket (Discord attachments), each with a fresh download link. The Coordinator keeps only refs on the `created` / `follow_up` event payload and re-reads the Discord message for newly signed CDN links when asked; a deleted message yields `url: null`
 - `worker_heartbeat` — Worker (watcher or session) reports it is alive: `worker_id`, `worker_type`, current `ticket_id` if any
 - `ticket_append_event` — status_update | comment | result | error | …
 - `ticket_update_status` — open | assigned | in_progress | blocked | completed | failed | cancelled
@@ -684,6 +685,7 @@ A developer can make their own computer their Worker, like linking an account. I
 | `ticket_list_assigned` | Tickets assigned to this worker but not yet picked up |
 | `ticket_claim` | Atomically take an assigned ticket (→ in_progress) |
 | `ticket_get` | Full ticket + recent events |
+| `ticket_attachments` | Files sent on the ticket, with fresh download links |
 | `worker_heartbeat` | Report Worker alive (+ current ticket) |
 | `ticket_append_event` | Append status_update, comment, result, error, … |
 | `ticket_update_status` | Update ticket status |
