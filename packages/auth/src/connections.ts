@@ -169,19 +169,24 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
     };
     const session = await ctx.internalAdapter.createSession(userId);
     const done = `${config.baseURL}${CONNECT_DONE_PATH}?provider=${provider}`;
-    const { headers, response } = await auth.api.linkSocialAccount({
-      body: {
-        provider,
-        callbackURL: done,
-        errorCallbackURL: done,
-        disableRedirect: true,
-      },
-      headers: new Headers({ authorization: `Bearer ${session.token}` }),
-      returnHeaders: true,
-    });
-    // The provider flow no longer needs the session: the link target travels in the state.
-    await ctx.internalAdapter.deleteSession(session.token);
-    return { redirect: response.url, setCookies: headers.getSetCookie() };
+    try {
+      const { headers, response } = await auth.api.linkSocialAccount({
+        body: {
+          provider,
+          callbackURL: done,
+          errorCallbackURL: done,
+          disableRedirect: true,
+        },
+        headers: new Headers({ authorization: `Bearer ${session.token}` }),
+        returnHeaders: true,
+      });
+      return { redirect: response.url, setCookies: headers.getSetCookie() };
+    } finally {
+      // The provider flow no longer needs the session: the link target travels in the state.
+      // Also on failure, so a link that never reached the provider leaves no live session.
+      // The token stays used either way; the person runs /connect again.
+      await ctx.internalAdapter.deleteSession(session.token);
+    }
   };
 
   return {
