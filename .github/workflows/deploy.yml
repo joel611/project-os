@@ -1,0 +1,45 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment (and Alchemy stage) to deploy
+        type: choice
+        options: [uat, prod]
+        default: prod
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'prod' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run deploy --stage ${{ inputs.environment || 'prod' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Add more (PUBLIC_URL, OAuth, BETTER_AUTH_SECRET...) only once they are set in
+          # the repo: an unset var expands to "" here, which is not the same as unset.
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
+          ADMIN_CHANNEL_ID: ${{ vars.ADMIN_CHANNEL_ID }}
+          ADMIN_USER_IDS: ${{ vars.ADMIN_USER_IDS }}
+          CHAT_MODEL_PROVIDER: ${{ vars.CHAT_MODEL_PROVIDER }}
+          CHAT_MODEL_ID: ${{ vars.CHAT_MODEL_ID }}
+          JEV_MODEL_ID: ${{ vars.JEV_MODEL_ID }}
+          INTENT_CONFIDENCE_THRESHOLD: ${{ vars.INTENT_CONFIDENCE_THRESHOLD }}
+          # Secrets
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

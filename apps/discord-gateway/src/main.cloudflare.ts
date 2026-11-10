@@ -1,5 +1,8 @@
 import { Container, getContainer } from "@cloudflare/containers";
-import { CONTAINER_ENV, containerEnv, REPLY_PORT } from "./container-env.ts";
+import { CONTAINER_ENV, containerEnv, envFingerprint, REPLY_PORT } from "./container-env.ts";
+
+/** Storage key for the hash of the env the running container started with. */
+const ENV_KEY = "container-env";
 
 // Cloudflare target for the Discord gateway (docs/deployment.md). The gateway is a long-lived
 // Bun process holding Discord's outbound WebSocket, so it runs in a Cloudflare Container behind
@@ -30,9 +33,19 @@ export class DiscordGateway extends Container<GatewayEnv> {
     console.error(`discord gateway container stopped: ${params.reason} (${params.exitCode})`);
   }
 
-  /** Starts the container if it is not running, and waits for the reply endpoint. */
+  /**
+   * Starts the container if it is not running, and waits for the reply endpoint. A running
+   * container whose env differs from this Worker's (a redeploy changed COORDINATOR_URL or a
+   * token, or it predates this check) is stopped first, since it only reads env at start.
+   */
   async ensureStarted(): Promise<void> {
-    if (!this.ctx.container?.running) await this.startAndWaitForPorts(REPLY_PORT);
+    const wanted = await envFingerprint(this.envVars as Record<string, string>);
+    if (this.ctx.container?.running) {
+      if ((await this.ctx.storage.get<string>(ENV_KEY)) === wanted) return;
+      await this.stop();
+    }
+    await this.startAndWaitForPorts(REPLY_PORT);
+    await this.ctx.storage.put(ENV_KEY, wanted);
   }
 }
 
