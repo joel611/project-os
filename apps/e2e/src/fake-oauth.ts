@@ -1,10 +1,10 @@
-// A fake OAuth 2.0 provider on localhost, standing in for Google and GitHub in the
+// A fake OAuth 2.0 provider on localhost, standing in for Google, GitHub and ClickUp in the
 // integration stack. It approves every authorize request at once and hands out numbered
 // tokens, so tests can see which token a Worker got and when a refresh happened.
 
 export interface FakeOAuth {
   readonly url: string;
-  /** Endpoints for one provider id (`google` or `github`). */
+  /** Endpoints for one provider id (`google`, `github` or `clickup`). */
   readonly endpoints: (provider: string) => {
     authorizationUrl: string;
     tokenUrl: string;
@@ -43,13 +43,26 @@ export const startFakeOAuth = (): FakeOAuth => {
         return Response.redirect(back.toString(), 302);
       }
       if (action === "token" && req.method === "POST") {
-        const form = new URLSearchParams(await req.text());
-        const grantType = form.get("grant_type")!;
+        // ClickUp exchanges the code with a JSON body and has no grant_type; the rest post a form.
+        const grantType =
+          provider === "clickup"
+            ? "authorization_code"
+            : new URLSearchParams(await req.text()).get("grant_type")!;
+        if (provider === "clickup") {
+          const body = (await req.json()) as Record<string, string>;
+          if (!body.client_id || !body.client_secret || !body.code) {
+            return Response.json({ err: "OAUTH_017" }, { status: 400 });
+          }
+        }
         tokenRequests.push({ provider: provider!, grantType });
         if (grantType === "refresh_token" && fake.failRefresh) {
           return Response.json({ error: "invalid_grant" }, { status: 400 });
         }
         n += 1;
+        // ClickUp tokens come bare: no refresh token, expiry or scope.
+        if (provider === "clickup") {
+          return Response.json({ access_token: `at-clickup-${n}`, token_type: "Bearer" });
+        }
         return Response.json({
           access_token: `at-${provider}-${n}`,
           refresh_token: `rt-${provider}-${n}`,
@@ -60,6 +73,9 @@ export const startFakeOAuth = (): FakeOAuth => {
       }
       // userinfo
       if (fake.failUserInfo) return new Response("unauthorized", { status: 401 });
+      if (provider === "clickup") {
+        return Response.json({ user: { id: 7, username: "ada-cu", email: "ada@example.com" } });
+      }
       return provider === "github"
         ? Response.json({ id: 42, login: "ada-gh", name: null, email: fake.githubEmail })
         : Response.json({

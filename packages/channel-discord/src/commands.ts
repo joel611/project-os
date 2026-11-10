@@ -15,6 +15,7 @@ const PROVIDER_OPTION = {
   choices: [
     { name: "Google (Drive)", value: "google" },
     { name: "GitHub", value: "github" },
+    { name: "ClickUp (task files)", value: "clickup" },
   ],
 } as const;
 
@@ -52,14 +53,14 @@ export const COMMAND_DEFINITIONS = [
   },
   {
     name: "connect",
-    description: "Link your Google or GitHub account so I work with your own access",
+    description: "Link your Google, GitHub or ClickUp account so I work with your own access",
     type: 1,
     dm_permission: false,
     options: [PROVIDER_OPTION],
   },
   {
     name: "disconnect",
-    description: "Unlink your Google or GitHub account",
+    description: "Unlink your Google, GitHub or ClickUp account",
     type: 1,
     dm_permission: false,
     options: [PROVIDER_OPTION],

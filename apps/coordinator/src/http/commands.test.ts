@@ -176,7 +176,7 @@ describe("runCommand account commands", () => {
     const { runtime, config } = setup();
     const reply = await runCommand(account("connect", "dropbox"), config);
     expect(reply).toEqual({
-      content: "Usage: /connect provider:<google|github>",
+      content: "Usage: /connect provider:<google|github|clickup>",
       ephemeral: true,
     });
     await runtime.dispose();
