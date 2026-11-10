@@ -96,6 +96,19 @@ describe("coordinator app", () => {
       }
     });
 
+    it("says a connect link is used up when starting the provider flow fails", async () => {
+      const app = fullApp({
+        connect: {
+          startLink: async () => {
+            throw new Error("provider down");
+          },
+        },
+      });
+      const res = await call(app, "/connect/abc", { method: "POST" });
+      expect(res.status).toBe(502);
+      expect(await res.text()).toContain("Run /connect again");
+    });
+
     it("keeps sign-in, connect links and device registration open", async () => {
       const app = fullApp();
       expect(

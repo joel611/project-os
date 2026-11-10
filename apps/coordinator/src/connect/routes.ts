@@ -56,7 +56,19 @@ export const connectRoutes = ({ startLink }: ConnectDeps) =>
       ),
     )
     .post("/connect/:token", async ({ params }) => {
-      const start = await startLink(params.token);
+      // A failure after the token is redeemed (provider misconfigured, unreachable) leaves it
+      // used, like a success would; say so instead of a bare 500.
+      const start = await startLink(params.token).catch((error: unknown) => {
+        console.error("connect: starting the provider flow failed", error);
+        return undefined;
+      });
+      if (start === undefined) {
+        return page(
+          502,
+          "Couldn't start linking",
+          "Something went wrong reaching the provider. This link is now used up. Run /connect again in Discord for a new one.",
+        );
+      }
       if (!start) {
         return page(
           410,
