@@ -2,7 +2,9 @@ import { Schema } from "effect";
 import {
   CreateChannelInstruction,
   CreateThreadInstruction,
+  InboundAttachment,
   ReactInstruction,
+  ResolveAttachmentsInstruction,
   PromptInstruction,
   ReplyInstruction,
 } from "@project-os/contracts";
@@ -29,6 +31,11 @@ export type ReactInDiscord = (input: {
   messageId: string;
   emoji: string;
 }) => Promise<void>;
+/** Re-reads a message and returns its files with fresh download links. */
+export type ResolveDiscordAttachments = (input: {
+  channelId: string;
+  messageId: string;
+}) => Promise<ReadonlyArray<InboundAttachment>>;
 /** Posts a message with components (a prompt's buttons); resolves to the message's id. */
 export type PostDiscordPrompt = (
   target: ReplyTarget,
@@ -39,14 +46,17 @@ const decode = Schema.decodeUnknownOption(ReplyInstruction);
 const decodeCreate = Schema.decodeUnknownOption(CreateChannelInstruction);
 const decodeThread = Schema.decodeUnknownOption(CreateThreadInstruction);
 const decodeReact = Schema.decodeUnknownOption(ReactInstruction);
+const decodeResolve = Schema.decodeUnknownOption(ResolveAttachmentsInstruction);
 
 const decodePrompt = Schema.decodeUnknownOption(PromptInstruction);
 
 /**
  * Coordinator-facing endpoints: `/reply` posts a message, `/channels` creates a channel,
  * `/threads` opens a thread on a message, `/reactions` reacts to one, `/prompts` posts a
- * question with buttons. All execute Coordinator instructions; no decisions are made here.
- * Without `createChannel` / `createThread` / `react` / `postPrompt`, that endpoint answers 501.
+ * question with buttons, `/attachments` re-reads a message for fresh file links. All execute
+ * Coordinator instructions; no decisions are made here.
+ * Without `createChannel` / `createThread` / `react` / `postPrompt` / `resolveAttachments`,
+ * that endpoint answers 501.
  */
 export const createReplyApp = (
   post: PostToDiscord,
@@ -54,8 +64,27 @@ export const createReplyApp = (
   createThread?: CreateDiscordThread,
   react?: ReactInDiscord,
   postPrompt?: PostDiscordPrompt,
+  resolveAttachments?: ResolveDiscordAttachments,
 ) =>
   new Elysia()
+    .post("/attachments", async ({ body, set }) => {
+      const parsed = decodeResolve(body);
+      if (parsed._tag === "None" || parsed.value.channelType !== "discord") {
+        set.status = 400;
+        return { error: "invalid attachments instruction" };
+      }
+      if (!resolveAttachments) {
+        set.status = 501;
+        return { error: "this adapter can't read attachments" };
+      }
+      try {
+        const { channelId, messageId } = parsed.value;
+        return { attachments: await resolveAttachments({ channelId, messageId }) };
+      } catch (err) {
+        set.status = 502;
+        return { error: err instanceof Error ? err.message : "discord attachments read failed" };
+      }
+    })
     .post("/reactions", async ({ body, set }) => {
       const parsed = decodeReact(body);
       if (parsed._tag === "None" || parsed.value.channelType !== "discord") {

@@ -1,4 +1,11 @@
-import type { AttachmentRef, InboundMessage } from "@project-os/contracts";
+import {
+  ChannelType,
+  type AttachmentRef,
+  type InboundMessage,
+  type TicketAttachment,
+} from "@project-os/contracts";
+import { Effect, Schema } from "effect";
+import { ChannelGateway, TicketRepository } from "../ports/index.ts";
 
 /** Where a message with files lives, so its fresh download links can be fetched again later. */
 export interface AttachmentMessageRef {
@@ -42,3 +49,43 @@ export const readAttachmentsPayload = (payload: unknown): AttachmentsPayload | u
     message: { channelId, messageId },
   };
 };
+
+/**
+ * Every file people sent on a ticket, oldest first, each with a fresh download link read from
+ * the message that carried it. A message that can't be read (deleted, no access) still lists
+ * its files, with `url: null` and the reason.
+ */
+export const listTicketAttachments = (ticketId: string) =>
+  Effect.gen(function* () {
+    const tickets = yield* TicketRepository;
+    const gateway = yield* ChannelGateway;
+    const events = yield* tickets.listEvents(ticketId);
+    const out: Array<typeof TicketAttachment.Type> = [];
+    for (const event of events) {
+      const found = readAttachmentsPayload(event.payload);
+      const channelType = (event.payload as { channelType?: unknown } | null)?.channelType;
+      if (!found || !Schema.is(ChannelType)(channelType)) continue;
+      const resolved = yield* gateway
+        .resolveAttachments({ channelType, ...found.message })
+        .pipe(Effect.result);
+      const fresh =
+        resolved._tag === "Success"
+          ? new Map(resolved.success.attachments.map((a) => [a.id, a.url]))
+          : undefined;
+      for (const ref of found.attachments) {
+        const url = fresh?.get(ref.id);
+        out.push({
+          eventId: event.id,
+          ...ref,
+          url: url ?? null,
+          ...(url === undefined && {
+            error:
+              resolved._tag === "Failure"
+                ? `Could not read the message: ${resolved.failure.message}`
+                : "The file is no longer on the message.",
+          }),
+        });
+      }
+    }
+    return out;
+  });
