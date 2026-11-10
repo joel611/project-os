@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { makeAssetStore } from "@project-os/infra-local/shared";
+import { Effect } from "effect";
 import { Miniflare } from "miniflare";
 import { afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
 
@@ -16,6 +18,7 @@ const migration = readFileSync(
 
 const ADMIN = { email: "ops@project-os.test", password: "ops-password" };
 const SERVICE_TOKEN = "workers-service-token";
+const SECRET = "workers-secret-workers-secret-workers";
 
 let script: string;
 const instances: Miniflare[] = [];
@@ -45,7 +48,7 @@ const boot = async (unset: ReadonlyArray<string> = []) => {
     compatibilityDate: "2026-08-01",
     compatibilityFlags: ["nodejs_compat"],
     bindings: without(unset, {
-      BETTER_AUTH_SECRET: "workers-secret-workers-secret-workers",
+      BETTER_AUTH_SECRET: SECRET,
       COORDINATOR_SERVICE_TOKEN: SERVICE_TOKEN,
       ADMIN_EMAIL: ADMIN.email,
       ADMIN_PASSWORD: ADMIN.password,
@@ -53,6 +56,7 @@ const boot = async (unset: ReadonlyArray<string> = []) => {
     }),
     d1Databases: ["DB"],
     kvNamespaces: ["KV"],
+    r2Buckets: ["ASSETS"],
     durableObjects: { PI_AGENT: { className: "PiAgent", useSQLite: true } },
     outboundService: () =>
       new Response("blocked: the test makes no outbound requests", { status: 502 }),
@@ -71,7 +75,7 @@ const boot = async (unset: ReadonlyArray<string> = []) => {
       },
       ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
     });
-  return { call };
+  return { call, mf };
 };
 
 describe("Coordinator on Workers", () => {
@@ -93,6 +97,47 @@ describe("Coordinator on Workers", () => {
     for (const secret of ["BETTER_AUTH_SECRET", "COORDINATOR_SERVICE_TOKEN"]) {
       await expect(boot([secret])).rejects.toThrow();
     }
+  }, 30_000);
+
+  it("serves /assets without a login, and refuses a link whose signature is wrong", async () => {
+    const { call } = await boot();
+    // Public like /connect: the signature is the credential. A wrong one is 403, not 401.
+    const res = await call("/assets/t1/a1/hero.png?exp=9999999999&sig=wrong");
+    expect(res.status).toBe(403);
+  }, 30_000);
+
+  it("streams a stored file from R2 for a validly signed link", async () => {
+    const { mf } = await boot();
+    const bytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+    await (
+      await mf.getR2Bucket("ASSETS")
+    ).put("t1/a1/hero.png", bytes, {
+      httpMetadata: { contentType: "image/png" },
+    });
+    // A link minted the way the Coordinator does, with the Worker's BETTER_AUTH_SECRET.
+    const link = await Effect.runPromise(
+      makeAssetStore({
+        backend: { put: async () => {}, get: async () => undefined },
+        links: { publicUrl: "http://coordinator.test", secret: SECRET },
+      }).link("t1/a1/hero.png"),
+    );
+
+    const res = await mf.dispatchFetch(link!);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-length")).toBe(String(bytes.byteLength));
+    expect(res.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''hero.png");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+
+    // A correctly signed link to a key nobody stored: past the check, nothing there.
+    const missing = await Effect.runPromise(
+      makeAssetStore({
+        backend: { put: async () => {}, get: async () => undefined },
+        links: { publicUrl: "http://coordinator.test", secret: SECRET },
+      }).link("t1/a1/missing.png"),
+    );
+    expect((await mf.dispatchFetch(missing!)).status).toBe(404);
   }, 30_000);
 
   it("takes commands only with the service token", async () => {

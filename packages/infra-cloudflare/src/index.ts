@@ -1,6 +1,7 @@
 import type { ChannelType } from "@project-os/contracts";
 import {
   type AgentRuntime,
+  AssetStore,
   ChannelGateway,
   KeyValueStore,
   Scheduler,
@@ -12,6 +13,7 @@ import {
   AgentRuntimePending,
   AssetStoreUnavailable,
   DEFAULT_ORG,
+  makeAssetStore,
   IdGeneratorUuid,
   makeHttpChannelGateway,
   noopLauncher,
@@ -22,8 +24,9 @@ import {
 import { drizzle } from "drizzle-orm/d1";
 import { Effect, Layer } from "effect";
 import { makeWorkersKeyValueStore } from "./kv.ts";
+import { makeR2Backend } from "./r2.ts";
 
-export { DEFAULT_ORG, makeWorkersKeyValueStore };
+export { DEFAULT_ORG, makeR2Backend, makeWorkersKeyValueStore };
 
 /**
  * Creates the org if missing. Idempotent. Projects reference `orgs.id`, and nothing else
@@ -58,6 +61,15 @@ export interface CloudflareConfig {
   readonly adapterFetch?: (input: string, init?: RequestInit) => Promise<Response>;
   /** Starts workers for assigned tickets. Default: none (a Watcher pulls the work). */
   readonly workerLauncher?: typeof WorkerLauncher.Service;
+  /**
+   * R2 bucket for files people attach, and how Workers are told to download them: signed links
+   * to `<publicUrl>/assets/...`. Omitted: attachments stay on their Discord links.
+   */
+  readonly assets?: {
+    readonly bucket: R2Bucket;
+    readonly publicUrl: string;
+    readonly secret: string;
+  };
   /** Provides `AgentRuntime` and `Sidekick`. Default: placeholders that fail. */
   readonly agent?: Layer.Layer<AgentRuntime | Sidekick>;
 }
@@ -89,5 +101,13 @@ export const CloudflareLive = (config: CloudflareConfig) =>
     config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
-    AssetStoreUnavailable,
+    config.assets
+      ? Layer.succeed(
+          AssetStore,
+          makeAssetStore({
+            backend: makeR2Backend(config.assets.bucket),
+            links: { publicUrl: config.assets.publicUrl, secret: config.assets.secret },
+          }),
+        )
+      : AssetStoreUnavailable,
   );
