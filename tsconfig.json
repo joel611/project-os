@@ -6,6 +6,7 @@
     "libs/*/src",
     "vite.config.ts",
     "alchemy.run.ts",
+    "stacks",
     "apps/web/worker.ts",
     "scripts"
   ],
