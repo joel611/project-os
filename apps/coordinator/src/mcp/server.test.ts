@@ -99,7 +99,7 @@ const call = async (name: string, args: Record<string, unknown>) => {
 };
 
 describe("coordinator MCP server", () => {
-  it("lists the twelve worker tools with JSON input schemas and no channel tools", async () => {
+  it("lists the thirteen worker tools with JSON input schemas and no channel tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).toSorted()).toEqual([
       "project_memory_read",
@@ -107,6 +107,7 @@ describe("coordinator MCP server", () => {
       "project_sources_list",
       "ticket_append_event",
       "ticket_ask",
+      "ticket_attachments",
       "ticket_claim",
       "ticket_get",
       "ticket_get_prompt",

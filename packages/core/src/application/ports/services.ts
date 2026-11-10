@@ -6,6 +6,8 @@ import type {
   CreatedThread,
   CreateThreadInstruction,
   ReactInstruction,
+  ResolveAttachmentsInstruction,
+  ResolvedAttachments,
   PostedPrompt,
   PromptInstruction,
   ReplyInstruction,
@@ -48,6 +50,10 @@ export class ChannelGateway extends Context.Service<
     ) => Effect.Effect<CreatedThread, ThreadCreateFailed>;
     /** Ask the matching Channel Adapter to react to a message (the 👀 acknowledgement). */
     readonly react: (request: ReactInstruction) => Effect.Effect<void, ReactionFailed>;
+    /** Ask the matching Channel Adapter for a message's files with fresh download links. */
+    readonly resolveAttachments: (
+      request: ResolveAttachmentsInstruction,
+    ) => Effect.Effect<ResolvedAttachments, AttachmentsResolveFailed>;
     /** Ask the matching Channel Adapter to post a question answered with a click (buttons). */
     readonly ask: (request: PromptInstruction) => Effect.Effect<PostedPrompt, PromptSendFailed>;
   }
@@ -79,6 +85,12 @@ export class ThreadCreateFailed extends Data.TaggedError("ThreadCreateFailed")<{
 
 /** A Channel Adapter could not react to a message (no permission, message gone, ...). */
 export class ReactionFailed extends Data.TaggedError("ReactionFailed")<{
+  readonly channelType: string;
+  readonly message: string;
+}> {}
+
+/** A Channel Adapter could not read a message's files (message deleted, no access, ...). */
+export class AttachmentsResolveFailed extends Data.TaggedError("AttachmentsResolveFailed")<{
   readonly channelType: string;
   readonly message: string;
 }> {}

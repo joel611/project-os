@@ -30,6 +30,15 @@ import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 // Faked: discord.js (a recording `post`), both AI ports (classifier, agent runtime), and,
 // with `connections`, Google and GitHub (one fake OAuth server), so no test reaches a provider. `fetch` to any non-localhost host throws.
 
+/** A file on a fake Discord message, as the adapter reports it. */
+export interface MessageFile {
+  readonly id: string;
+  readonly filename: string;
+  readonly contentType: string | null;
+  readonly size: number;
+  readonly url: string;
+}
+
 export interface Posted {
   readonly target: ReplyTarget;
   readonly content: string;
@@ -74,6 +83,11 @@ export interface Stack {
   readonly reactions: ReactionCall[];
   /** Prompts (messages with buttons) the Discord adapter was told to post. */
   readonly prompts: PostedPrompt[];
+  /**
+   * Files on the messages fake Discord still holds, by `<channelId>/<messageId>`. Re-reading a
+   * message returns its entry (the fresh links); a message with no entry is "deleted".
+   */
+  readonly messageFiles: Map<string, MessageFile[]>;
   /** Calls the dashboard API as the signed-in operator; resolves to the JSON body. */
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
@@ -153,6 +167,7 @@ export const startStack = async (options: {
   const createdThreads: CreatedThreadCall[] = [];
   const reactions: ReactionCall[] = [];
   const prompts: PostedPrompt[] = [];
+  const messageFiles = new Map<string, MessageFile[]>();
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
     async (name) => {
@@ -172,6 +187,11 @@ export const startStack = async (options: {
       const messageId = `discord-prompt-${prompts.length + 1}`;
       prompts.push({ target, ...message, messageId });
       return { messageId };
+    },
+    async ({ channelId, messageId }) => {
+      const files = messageFiles.get(`${channelId}/${messageId}`);
+      if (!files) throw new Error("Unknown Message");
+      return files;
     },
   ).listen(0);
 
@@ -313,6 +333,7 @@ export const startStack = async (options: {
     createdThreads,
     reactions,
     prompts,
+    messageFiles,
     sidekickCalls: sidekick.calls,
     dbPath,
     ...(oauth && { oauth }),

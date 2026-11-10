@@ -376,6 +376,7 @@ export const makeChannelGatewayRecording = (options?: {
               return { threadId: `thread-${threads.length}` };
             }),
       send: (reply) => Effect.sync(() => void sent.push(reply)),
+      resolveAttachments: () => Effect.succeed({ attachments: [] }),
       createChannel: (request) =>
         options?.failCreate !== undefined
           ? Effect.fail(
