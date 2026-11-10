@@ -101,7 +101,8 @@ describe("coordinator app", () => {
       expect(
         (await call(app, "/api/auth/sign-in/email", { method: "POST", body: {} })).status,
       ).toBe(200);
-      expect((await call(app, "/connect/abc")).status).toBe(410);
+      expect((await call(app, "/connect/abc")).status).toBe(200);
+      expect((await call(app, "/connect/abc", { method: "POST" })).status).toBe(410);
       const register = await call(app, "/workers/register", { method: "POST", body: {} });
       expect(register.status).toBe(400);
     });

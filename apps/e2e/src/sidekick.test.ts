@@ -68,7 +68,7 @@ const connect = async (who: FakeSpeaker, provider: string) => {
   );
   const link = /(http:\/\/\S+\/connect\/\S+)/.exec(reply.content)?.[1];
   expect(link, reply.content).toBeDefined();
-  expect((await browse(link!)).status).toBe(200);
+  expect((await browse(link!, undefined, "POST")).status).toBe(200);
 };
 
 describe("Sidekick", () => {
