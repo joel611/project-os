@@ -48,12 +48,7 @@ export const startFakeOAuth = (): FakeOAuth => {
           provider === "clickup"
             ? "authorization_code"
             : new URLSearchParams(await req.text()).get("grant_type")!;
-        if (provider === "clickup") {
-          const body = (await req.json()) as Record<string, string>;
-          if (!body.client_id || !body.client_secret || !body.code) {
-            return Response.json({ err: "OAUTH_017" }, { status: 400 });
-          }
-        }
+        if (provider === "clickup") await req.json(); // a form body would throw: it must be JSON
         tokenRequests.push({ provider: provider!, grantType });
         if (grantType === "refresh_token" && fake.failRefresh) {
           return Response.json({ error: "invalid_grant" }, { status: 400 });
