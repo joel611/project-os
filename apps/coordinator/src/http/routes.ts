@@ -9,6 +9,7 @@ import {
   answerPrompt,
   getTicket,
   handleInbound,
+  listTicketAttachments,
   readActivity,
   redeemWorkerRegistration,
   workerLabel,
@@ -231,6 +232,15 @@ export const httpRoutes = ({
       })
       .get("/tickets/:id", ({ params, set }) =>
         reply(set, toResult(getTicket({ ticketId: params.id }))),
+      )
+      // The files sent on a ticket, each with a download link the browser can use in an <img>.
+      .get("/tickets/:id/attachments", ({ params, set }) =>
+        reply(
+          set,
+          toResult(
+            Effect.map(listTicketAttachments(params.id), (attachments) => ({ attachments })),
+          ),
+        ),
       )
       .post("/tickets/:id/status", ({ params, body, set }) =>
         reply(

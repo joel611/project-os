@@ -8,6 +8,12 @@ export interface AssetDeps {
 }
 
 /**
+ * Types a browser may show in place. SVG, HTML and the rest are always downloads, since opened
+ * from this origin they could run script.
+ */
+const INLINE_TYPES = /^image\/(png|jpeg|gif|webp|avif)$/;
+
+/**
  * Downloads for files people attached to a request. The signature in the link is the only
  * credential, so a Worker can fetch with a plain GET; it covers one file and expires.
  */
@@ -44,8 +50,9 @@ export const assetRoutes = ({ run }: AssetDeps) =>
         headers: {
           "content-type": outcome.contentType,
           "content-length": String(outcome.size),
-          // Stored bytes are someone else's file: never render them in this origin.
-          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(params.filename)}`,
+          // Stored bytes are someone else's file: only plain raster images are shown in place
+          // (the dashboard's <img>); anything else is saved, never rendered in this origin.
+          "content-disposition": `${INLINE_TYPES.test(outcome.contentType) ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(params.filename)}`,
           "x-content-type-options": "nosniff",
           "cache-control": "private, no-store",
         },

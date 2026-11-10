@@ -1,12 +1,13 @@
 // Drives the running verification stack the way production actors do.
-//   bun drive.ts say "<message>" [--channel verify-chan] [--user u1] [--name Ada]
+//   bun drive.ts say "<message>" [--channel verify-chan] [--user u1] [--name Ada] [--attach <file>]
 //       A Discord user speaks: real normalizeMessage -> POST /inbound (what the Discord adapter does).
+//       --attach sends a file with the message, served to the Coordinator by serve.ts's fake CDN.
 //   bun drive.ts work "<result body>" [--memory "<fact>"]
 //       A Worker plays session-start.md over real MCP: list assigned -> claim -> read memory
 //       -> (optional memory write) -> append result -> complete. Prints the ticket id.
 // Env: COORD_PORT=18080, DATA_DIR (holds worker.json, the shared worker serve.ts registered).
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, readFileSync, statSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -31,8 +32,30 @@ const { positionals, values } = parseArgs({
     user: { type: "string", default: "u1" },
     name: { type: "string", default: "Ada" },
     memory: { type: "string" },
+    attach: { type: "string" },
   },
 });
+const TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+};
+/** Puts `path` on serve.ts's fake CDN and describes it as Discord would on the message. */
+const attachmentFor = (path: string) => {
+  const name = basename(path);
+  copyFileSync(path, join(dataDir, "cdn", name));
+  return {
+    id: `att-${Date.now()}`,
+    name,
+    contentType: TYPES[extname(name).toLowerCase()] ?? "application/octet-stream",
+    size: statSync(path).size,
+    url: `http://localhost:${process.env.ADAPTER_PORT ?? 18081}/cdn/${name}`,
+  };
+};
 const [cmd, text] = positionals;
 if (!text && cmd !== "heartbeat") throw new Error('usage: drive.ts say|work "<text>" | heartbeat');
 
@@ -48,9 +71,11 @@ if (cmd === "heartbeat") {
   await mcp.close();
   console.log(`heartbeat ${workerId} lastSeenAt=${res.structuredContent.lastSeenAt}`);
 } else if (cmd === "say") {
+  const attachments = values.attach ? [attachmentFor(values.attach)] : undefined;
   const inbound = fakeInbound(
     { channelId: values.channel!, userId: values.user!, name: values.name! },
     text,
+    attachments ? { attachments } : {},
   );
   if (!inbound) throw new Error("empty message ignored");
   const token = readFileSync(join(dataDir, "service.token"), "utf8");

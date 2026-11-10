@@ -63,7 +63,7 @@ describe("attachment storage", () => {
     expect(res.status).toBe(200);
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(PNG);
     expect(res.headers.get("content-type")).toBe("image/png");
-    expect(res.headers.get("content-disposition")).toContain("attachment");
+    expect(res.headers.get("content-disposition")).toContain("inline");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
@@ -130,5 +130,40 @@ describe("attachment storage", () => {
     for (const ticket of tickets) {
       expect((await filesOf(ticket.id)).every((file) => file.url === null)).toBe(true);
     }
+  });
+});
+
+describe("attachments in the dashboard", () => {
+  it("lists a ticket's files for the signed-in operator, with links an <img> can load", async () => {
+    await start();
+    await say(attach(stack.hostFile("hero.png", PNG, "image/png")));
+    const [ticket] = await allTickets();
+
+    const body = await stack.json("GET", `/tickets/${ticket!.id}/attachments`);
+
+    expect(body.attachments).toEqual([
+      expect.objectContaining({
+        id: "att-1",
+        filename: "hero image.png",
+        contentType: "image/png",
+        url: expect.stringContaining("/assets/"),
+      }),
+    ]);
+    // An <img> sends no Authorization header: the signed link alone must load, and show inline.
+    const image = await fetch(body.attachments[0].url);
+    expect(image.status).toBe(200);
+    expect(image.headers.get("content-disposition")).toContain("inline");
+  });
+
+  it("needs a dashboard session, and 404s for an unknown ticket", async () => {
+    await start();
+    await say(attach(stack.hostFile("hero.png", PNG, "image/png")));
+    const [ticket] = await allTickets();
+
+    expect((await fetch(`${stack.url}/tickets/${ticket!.id}/attachments`)).status).toBe(401);
+    const missing = await fetch(`${stack.url}/tickets/nope/attachments`, {
+      headers: { authorization: `Bearer ${stack.operatorToken}` },
+    });
+    expect(missing.status).toBe(404);
   });
 });

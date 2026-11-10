@@ -67,6 +67,7 @@ describe("makeApi", () => {
       api.tickets("a/b"),
       api.memory("a/b"),
       api.ticket("t 1"),
+      api.ticketAttachments("t 1"),
       api.workers(),
     ];
     await Promise.allSettled(all);
@@ -75,6 +76,7 @@ describe("makeApi", () => {
       "/api/projects/a%2Fb/tickets",
       "/api/projects/a%2Fb/memory",
       "/api/tickets/t%201",
+      "/api/tickets/t%201/attachments",
       "/api/workers",
     ]);
   });

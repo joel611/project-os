@@ -4,6 +4,7 @@ import {
   Project,
   ProjectSource,
   Ticket,
+  TicketAttachmentsOutput,
   TicketEvent,
   Worker,
   WorkerStatus,
@@ -121,6 +122,8 @@ export const makeApi = (
     memory: (projectId: string) =>
       get(`/projects/${id(projectId)}/memory`, Schema.Array(MemoryEntry)),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
+    ticketAttachments: (ticketId: string) =>
+      get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),
     workers: () => get("/workers", Schema.Array(WorkerView)),
     activity: (since: string | null) =>
       get(since === null ? "/activity" : `/activity?since=${id(since)}`, ActivityFeed),
