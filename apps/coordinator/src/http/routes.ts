@@ -13,6 +13,7 @@ import {
   redeemWorkerRegistration,
   workerLabel,
   type AgentRuntime,
+  type AssetStore,
   type ChannelGateway,
   type Clock,
   type HandleInboundConfig,
@@ -60,6 +61,7 @@ export type { CommandsConfig, HandleInboundConfig };
 /** Ports the HTTP routes need from the provider Layer. */
 export type HttpEnv =
   | AgentRuntime
+  | AssetStore
   | ChannelGateway
   | Clock
   | IdGenerator

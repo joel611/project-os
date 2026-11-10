@@ -5,7 +5,7 @@ import {
   type TicketAttachment,
 } from "@project-os/contracts";
 import { Effect, Schema } from "effect";
-import { ChannelGateway, TicketRepository } from "../ports/index.ts";
+import { AssetStore, ChannelGateway, TicketRepository } from "../ports/index.ts";
 
 /** Where a message with files lives, so its fresh download links can be fetched again later. */
 export interface AttachmentMessageRef {
@@ -18,11 +18,45 @@ export interface AttachmentsPayload {
   readonly message: AttachmentMessageRef;
 }
 
+/** Hosts the Coordinator will download a message's files from (Discord's CDN). */
+export const DEFAULT_ATTACHMENT_HOSTS: ReadonlyArray<string> = [
+  "cdn.discordapp.com",
+  "media.discordapp.net",
+];
+
+/** Largest file copied into storage; bigger ones stay on the Discord link only. */
+export const DEFAULT_MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+
+export interface AttachmentStorageConfig {
+  /** Hosts a file may be downloaded from. Default: Discord's CDN. */
+  readonly hosts?: ReadonlyArray<string>;
+  /** Default 100 MB. */
+  readonly maxBytes?: number;
+}
+
+const safeName = (filename: string): string => {
+  const cleaned = filename
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^[._]+/, "")
+    .slice(0, 100);
+  return cleaned === "" ? "file" : cleaned;
+};
+
+/** Storage key of an attachment: `<ticketId>/<attachmentId>/<safe filename>`. */
+export const assetKey = (
+  ticketId: string,
+  attachment: { readonly id: string; readonly filename: string },
+): string => `${ticketId}/${attachment.id}/${safeName(attachment.filename)}`;
+
 /**
  * The TicketEvent payload fields for a message's files: refs without the expiring CDN link, plus
- * the message that holds them. Empty when the message has none.
+ * the message that holds them. Empty when the message has none. `stored` lists the ids already
+ * copied into storage.
  */
-export const attachmentsPayload = (message: InboundMessage): Partial<AttachmentsPayload> => {
+export const attachmentsPayload = (
+  message: InboundMessage,
+  stored: ReadonlySet<string> = new Set(),
+): Partial<AttachmentsPayload> => {
   if (!message.attachments || message.attachments.length === 0) return {};
   return {
     attachments: message.attachments.map(({ id, filename, contentType, size }) => ({
@@ -30,6 +64,7 @@ export const attachmentsPayload = (message: InboundMessage): Partial<Attachments
       filename,
       contentType,
       size,
+      ...(stored.has(id) && { stored: true }),
     })),
     // In a thread the message lives in the thread, whose id is a channel id to the platform.
     message: { channelId: message.threadId ?? message.channelId, messageId: message.externalId },
@@ -50,37 +85,92 @@ export const readAttachmentsPayload = (payload: unknown): AttachmentsPayload | u
   };
 };
 
+const hostOf = (url: string): string | undefined => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
- * Every file people sent on a ticket, oldest first, each with a fresh download link read from
- * the message that carried it. A message that can't be read (deleted, no access) still lists
- * its files, with `url: null` and the reason.
+ * Copies a message's files into storage, three at a time. A file is skipped (and stays on its
+ * Discord link) when its host isn't allowed, it is over the size limit, or the copy fails; one
+ * bad file never stops the ticket. Returns the ids that were stored.
+ */
+export const storeAttachments = (
+  ticketId: string,
+  message: InboundMessage,
+  config: AttachmentStorageConfig = {},
+) =>
+  Effect.gen(function* () {
+    const store = yield* AssetStore;
+    const hosts = config.hosts ?? DEFAULT_ATTACHMENT_HOSTS;
+    const maxBytes = config.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
+    const stored = new Set<string>();
+    yield* Effect.forEach(
+      message.attachments ?? [],
+      (file) => {
+        const host = hostOf(file.url);
+        if (host === undefined || !hosts.includes(host) || file.size > maxBytes) return Effect.void;
+        return store
+          .ingest({
+            key: assetKey(ticketId, file),
+            url: file.url,
+            contentType: file.contentType,
+            size: file.size,
+            maxBytes,
+          })
+          .pipe(
+            Effect.map(() => void stored.add(file.id)),
+            Effect.catchTag("AssetStoreFailed", (err) =>
+              Effect.logWarning(`could not store attachment ${file.id}`, err.message),
+            ),
+          );
+      },
+      { concurrency: 3 },
+    );
+    return stored as ReadonlySet<string>;
+  });
+
+/**
+ * Every file people sent on a ticket, oldest first, each with a download link. A file copied
+ * into storage gets a signed Coordinator link that outlives the Discord message. The rest get a
+ * fresh link read from the message that carried them; a message that can't be read (deleted, no
+ * access) still lists its files, with `url: null` and the reason.
  */
 export const listTicketAttachments = (ticketId: string) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
     const gateway = yield* ChannelGateway;
+    const store = yield* AssetStore;
     const events = yield* tickets.listEvents(ticketId);
     const out: Array<typeof TicketAttachment.Type> = [];
     for (const event of events) {
       const found = readAttachmentsPayload(event.payload);
       const channelType = (event.payload as { channelType?: unknown } | null)?.channelType;
       if (!found || !Schema.is(ChannelType)(channelType)) continue;
-      const resolved = yield* gateway
-        .resolveAttachments({ channelType, ...found.message })
-        .pipe(Effect.result);
+      const links = new Map<string, string>();
+      for (const ref of found.attachments) {
+        const link = ref.stored ? yield* store.link(assetKey(ticketId, ref)) : undefined;
+        if (link !== undefined) links.set(ref.id, link);
+      }
+      const resolved = found.attachments.every((ref) => links.has(ref.id))
+        ? undefined
+        : yield* gateway.resolveAttachments({ channelType, ...found.message }).pipe(Effect.result);
       const fresh =
-        resolved._tag === "Success"
+        resolved?._tag === "Success"
           ? new Map(resolved.success.attachments.map((a) => [a.id, a.url]))
           : undefined;
-      for (const ref of found.attachments) {
-        const url = fresh?.get(ref.id);
+      for (const { stored: _stored, ...ref } of found.attachments) {
+        const url = links.get(ref.id) ?? fresh?.get(ref.id);
         out.push({
           eventId: event.id,
           ...ref,
           url: url ?? null,
           ...(url === undefined && {
             error:
-              resolved._tag === "Failure"
+              resolved?._tag === "Failure"
                 ? `Could not read the message: ${resolved.failure.message}`
                 : "The file is no longer on the message.",
           }),
