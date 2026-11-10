@@ -1,4 +1,5 @@
-// Uploads the non-empty keys of .env.cf to a GitHub Environment (`bun run env:gh`).
+// Uploads the non-empty keys of an env file (default .env.cf) to a GitHub Environment
+// (`bun run env:gh`). Flags take `--name value` or `--name=value`.
 //
 // Secret-looking keys become environment secrets, everything else an environment variable,
 // matching what .github/workflows/deploy.yml reads from `secrets.*` and `vars.*`. Empty and
@@ -6,6 +7,7 @@
 //
 //   bun run env:gh -- --env prod            upload to the `prod` environment
 //   bun run env:gh -- --env uat --dry-run   print what would be set (names only)
+//   bun run env:gh -- --env uat --file .env.cf.uat   upload any env file instead of .env.cf
 //   bun run env:gh -- --env uat [--file <path>] [--repo owner/name]
 import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
@@ -48,9 +50,17 @@ export function entriesOf(text: string): Entry[] {
     }));
 }
 
+/** The value of `--name value` or `--name=value`; undefined when absent, exits when valueless. */
 function flag(name: string): string | undefined {
-  const i = process.argv.indexOf(name);
-  return i === -1 ? undefined : process.argv[i + 1];
+  const args = process.argv;
+  const i = args.findIndex((a) => a === name || a.startsWith(`${name}=`));
+  if (i === -1) return undefined;
+  const value = args[i]!.includes("=") ? args[i]!.slice(name.length + 1) : args[i + 1];
+  if (!value || value.startsWith("--")) {
+    console.error(`${name} needs a value`);
+    process.exit(2);
+  }
+  return value;
 }
 
 async function gh(args: string[], stdin?: string): Promise<void> {
