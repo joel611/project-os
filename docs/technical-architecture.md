@@ -303,7 +303,7 @@ Workers talk to Project Memory and Tickets **only** through MCP tools. No direct
 - `ticket_list_assigned` — tickets with `status = assigned` for this `worker_id` (or its `worker_type`), oldest first
 - `ticket_claim` — atomic `assigned → in_progress`, sets `worker_id` + `started_at`; fails if already claimed
 - `ticket_get` — current ticket + recent events
-- `ticket_attachments` — files people sent on the ticket (Discord attachments), each with a fresh download link. The Coordinator keeps only refs on the `created` / `follow_up` event payload and re-reads the Discord message for newly signed CDN links when asked; a deleted message yields `url: null`
+- `ticket_attachments` — files people sent on the ticket (Discord attachments), each with a download link. At intake the Coordinator copies each file (Discord's CDN only, up to 100 MB, streamed) into the `AssetStore` and marks it `stored` on the `created` / `follow_up` event payload; a stored file gets a signed `GET /assets/<ticketId>/<attachmentId>/<name>?exp&sig` link (1 hour, HMAC-SHA-256, plain GET) that outlives the Discord message. A file that wasn't copied (other host, too big, copy failed) gets a fresh CDN link read from the message; if that message is gone the entry has `url: null`
 - `worker_heartbeat` — Worker (watcher or session) reports it is alive: `worker_id`, `worker_type`, current `ticket_id` if any
 - `ticket_append_event` — status_update | comment | result | error | …
 - `ticket_update_status` — open | assigned | in_progress | blocked | completed | failed | cancelled
@@ -779,6 +779,7 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `Sidekick` | tool-only turns on a ticket: read-only Drive and GitHub tools, acting as the requester (§8.6) | Same Harness as `AgentRuntime` | Same Harness as `AgentRuntime` |
 | `WorkerLauncher` | start a Daytona sandbox for `daytona_pi` tickets | Daytona API | Daytona API when `DAYTONA_API_KEY` is set, else no-op |
 | `UserConnections` | per-person Google / GitHub / ClickUp links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
+| `AssetStore` | files people attach, copied at intake; signed download links | off until an R2 bucket is bound | files under `ASSET_DIR` |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
 
 Repository ports are defined per aggregate rather than as a generic `Db`, so a non-SQL provider can implement them too.

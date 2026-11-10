@@ -88,6 +88,11 @@ export interface Stack {
    * message returns its entry (the fresh links); a message with no entry is "deleted".
    */
   readonly messageFiles: Map<string, MessageFile[]>;
+  /**
+   * Serves `bytes` from a fake CDN on localhost and returns the URL, for an attachment the
+   * Coordinator should copy (the stack allows downloads from `localhost` only).
+   */
+  readonly hostFile: (name: string, bytes: Uint8Array | string, type?: string) => string;
   /** Calls the dashboard API as the signed-in operator; resolves to the JSON body. */
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
@@ -151,6 +156,8 @@ export const startStack = async (options: {
    * tickets on one shared worker don't queue them; production defaults to 1.
    */
   readonly sharedWorkerMaxTickets?: number;
+  /** Largest file copied into storage. Default: the production limit. */
+  readonly maxAttachmentBytes?: number;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -168,6 +175,16 @@ export const startStack = async (options: {
   const reactions: ReactionCall[] = [];
   const prompts: PostedPrompt[] = [];
   const messageFiles = new Map<string, MessageFile[]>();
+  const cdnFiles = new Map<string, { bytes: Uint8Array | string; type: string }>();
+  const cdn = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      const file = cdnFiles.get(new URL(req.url).pathname);
+      return file
+        ? new Response(file.bytes, { headers: { "content-type": file.type } })
+        : new Response("gone", { status: 404 });
+    },
+  });
   const adapter = createReplyApp(
     async (target, content) => void posted.push({ target, content }),
     async (name) => {
@@ -218,6 +235,14 @@ export const startStack = async (options: {
         dbPath,
         adapterUrls: { discord: `http://localhost:${adapter.server!.port}` },
         ...(options.workerLauncher && { workerLauncher: options.workerLauncher }),
+        assets: {
+          dir: join(dir, "assets"),
+          // Known once the Coordinator listens; read only when a link is made.
+          get publicUrl(): string {
+            return url;
+          },
+          secret: "asset-secret-asset-secret-asset-secret",
+        },
       }),
       options.classifier,
       AgentRuntimeEcho,
@@ -244,6 +269,10 @@ export const startStack = async (options: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: {
           requireMention: true,
+          attachments: {
+            hosts: ["localhost"],
+            ...(options.maxAttachmentBytes && { maxBytes: options.maxAttachmentBytes }),
+          },
           sharedWorkerMaxTickets: options.sharedWorkerMaxTickets ?? 100,
         },
         prompts: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER] },
@@ -263,6 +292,7 @@ export const startStack = async (options: {
         },
       },
       mcp: runtime,
+      assets: { run: (effect) => runtime.runPromise(effect as any) },
       auth: {
         handler: (request: Request) => auth!.handler(request),
         ...(oauth && {
@@ -335,6 +365,11 @@ export const startStack = async (options: {
     reactions,
     prompts,
     messageFiles,
+    hostFile: (name, bytes, type = "application/octet-stream") => {
+      const path = `/files/${name}`;
+      cdnFiles.set(path, { bytes, type });
+      return `http://localhost:${cdn.port}${path}`;
+    },
     sidekickCalls: sidekick.calls,
     dbPath,
     ...(oauth && { oauth }),
@@ -374,6 +409,7 @@ export const startStack = async (options: {
       await coordinator.stop();
       await adapter.stop();
       oauth?.stop();
+      await cdn.stop(true);
       await web?.stop(true);
       authDb.sqlite.close();
       await runtime.dispose();

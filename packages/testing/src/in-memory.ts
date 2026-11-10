@@ -5,6 +5,8 @@ import {
   claimTicket,
   IdGenerator,
   IntentClassifier,
+  AssetStore,
+  AssetStoreFailed,
   KeyValueStore,
   MemoryRepository,
   NotConnected,
@@ -389,6 +391,26 @@ export const makeChannelGatewayRecording = (options?: {
               created.push(request);
               return { channelId: `chan-${created.length}`, name: request.name };
             }),
+    }),
+  };
+};
+
+/**
+ * `AssetStore` that records what `ingest` was asked to copy (key to source URL) and links
+ * whatever it holds as `https://assets.test/<key>`. `fail` makes every `ingest` fail with it.
+ */
+export const makeAssetStoreRecording = (options?: { readonly fail?: string }) => {
+  const stored = new Map<string, string>();
+  return {
+    stored,
+    layer: Layer.succeed(AssetStore, {
+      ingest: ({ key, url }) =>
+        options?.fail === undefined
+          ? Effect.sync(() => void stored.set(key, url))
+          : Effect.fail(new AssetStoreFailed({ message: options.fail })),
+      get: () => Effect.succeed(undefined),
+      link: (key) => Effect.succeed(stored.has(key) ? `https://assets.test/${key}` : undefined),
+      verify: () => Effect.succeed(false),
     }),
   };
 };
