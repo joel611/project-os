@@ -12,6 +12,7 @@ import {
   IdGeneratorSequential,
   IntentClassifierFake,
   KeyValueStoreInMemory,
+  makeAssetStoreRecording,
   makeChannelGatewayRecording,
   makeSidekickRecording,
   makeUserConnectionsInMemory,
@@ -47,6 +48,8 @@ export const makeTestLayer = (options?: {
   readonly failReact?: string;
   /** Make `ChannelGateway.ask` fail with this message. */
   readonly failPrompt?: string;
+  /** Make every `AssetStore.ingest` fail with this message. */
+  readonly failAssetStore?: string;
   /** Make every Sidekick turn fail with this message. */
   readonly failSidekick?: string;
   /** Have each Sidekick turn ask for this provider's token, as one of its tools would. */
@@ -66,6 +69,9 @@ export const makeTestLayer = (options?: {
     ...(options?.failPrompt === undefined ? {} : { failPrompt: options.failPrompt }),
   });
   const connections = makeUserConnectionsInMemory();
+  const assets = makeAssetStoreRecording(
+    options?.failAssetStore === undefined ? {} : { fail: options.failAssetStore },
+  );
   const layer = Layer.mergeAll(
     fixedClock(options?.now ?? new Date("2026-11-04T00:00:00.000Z")),
     TicketRepositoryInMemory,
@@ -85,9 +91,12 @@ export const makeTestLayer = (options?: {
     sidekick.layer,
     IdGeneratorSequential,
     connections.layer,
+    assets.layer,
   );
   return {
     layer,
+    /** Files `AssetStore.ingest` copied: storage key to source URL. */
+    storedAssets: assets.stored,
     /** Turns the Sidekick took. */
     sidekickCalls: sidekick.calls,
     sent: gateway.sent,

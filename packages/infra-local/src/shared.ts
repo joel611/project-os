@@ -13,6 +13,13 @@ import { Effect, Layer } from "effect";
 
 export { SystemClockLive } from "./clock.ts";
 export { makeHttpChannelGateway } from "./gateway.ts";
+export {
+  AssetStoreUnavailable,
+  type AssetLinksConfig,
+  type AssetStoreConfig,
+  type BlobBackend,
+  makeAssetStore,
+} from "./assets.ts";
 
 /** The single org of the POC. Projects need one (FK), and no use case creates orgs. */
 export const DEFAULT_ORG = { id: "default-org", name: "Default Org" } as const;

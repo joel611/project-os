@@ -11,7 +11,11 @@ import {
   ProjectSourceRepository,
   TicketRepository,
 } from "../ports/index.ts";
-import { attachmentsPayload } from "./attachments.ts";
+import {
+  type AttachmentStorageConfig,
+  attachmentsPayload,
+  storeAttachments,
+} from "./attachments.ts";
 import { assignToWorker, pickWorker, QUEUED_EVENT_KIND, QUEUED_MESSAGE } from "./assign-worker.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { writeMemory } from "./memory.ts";
@@ -41,6 +45,8 @@ export interface HandleInboundConfig {
   readonly workerStaleMs?: number;
   /** See `WorkerRouting.sharedWorkerMaxTickets`. Default 1. */
   readonly sharedWorkerMaxTickets?: number;
+  /** Which files are copied into storage at intake, and how big. Default: Discord's CDN, 100 MB. */
+  readonly attachments?: AttachmentStorageConfig;
 }
 
 export const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
@@ -235,6 +241,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
 
     const addFollowUp = (ticketId: string) =>
       Effect.gen(function* () {
+        const stored = yield* storeAttachments(ticketId, message, config.attachments);
         yield* tickets.appendEvent({
           id: yield* ids.next,
           ticketId,
@@ -245,7 +252,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           payload: {
             sender: message.sender,
             channelType: message.channelType,
-            ...attachmentsPayload(message),
+            ...attachmentsPayload(message, stored),
           },
           createdAt: at,
         });
@@ -317,6 +324,11 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           completedAt: null,
           updatedAt: at,
         });
+        // A tool-only Sidekick ticket never opens its files, so they are not copied.
+        const stored =
+          result.executor === "sidekick"
+            ? (new Set() as ReadonlySet<string>)
+            : yield* storeAttachments(ticketId, message, config.attachments);
         yield* tickets.appendEvent({
           id: yield* ids.next,
           ticketId,
@@ -327,7 +339,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           payload: {
             sender: message.sender,
             channelType: message.channelType,
-            ...attachmentsPayload(message),
+            ...attachmentsPayload(message, stored),
           },
           createdAt: at,
         });
