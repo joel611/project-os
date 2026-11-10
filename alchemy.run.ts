@@ -187,6 +187,17 @@ export default Alchemy.Stack(
       migrations: "./packages/db-sqlite/migrations",
     });
     const kv = yield* Cloudflare.KV.Namespace("KV");
+    // Files people attach in Discord, copied here at intake. Kept 90 days; links are minted
+    // fresh on each ticket_attachments call, so only old tickets lose their files.
+    const assets = yield* Cloudflare.R2.Bucket("ASSETS", {
+      lifecycleRules: [
+        {
+          id: "expire-attachments",
+          enabled: true,
+          deleteObjectsTransition: { condition: { type: "Age", maxAge: 90 * 24 * 60 * 60 } },
+        },
+      ],
+    });
 
     const plain = yield* readVars;
     const secrets = yield* readSecrets;
@@ -267,6 +278,7 @@ export default Alchemy.Stack(
       env: {
         DB: db,
         KV: kv,
+        ASSETS: assets,
         PI_AGENT: Cloudflare.DurableObject("PiAgent"),
         ...plain,
         ...secrets,

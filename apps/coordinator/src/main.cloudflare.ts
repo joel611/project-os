@@ -28,6 +28,8 @@ interface Bindings {
   readonly DB: D1Database;
   readonly KV: KVNamespace;
   readonly PI_AGENT: DurableObjectNamespace<PiAgent>;
+  /** R2 bucket for files people attach; absent: attachments stay on their Discord links. */
+  readonly ASSETS?: R2Bucket;
   /** Service binding to the Discord gateway Worker; absent when the gateway runs off-platform. */
   readonly DISCORD_GATEWAY?: Fetcher;
 }
@@ -66,6 +68,15 @@ const buildApp = (bindings: Bindings) => {
         adapterUrls: gatewayUrl ? { discord: gatewayUrl } : {},
         ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
         agent: durableAgentRuntime(bindings.PI_AGENT),
+        // Signed links point at PUBLIC_URL, so storage stays off without it.
+        ...(bindings.ASSETS &&
+          publicUrl && {
+            assets: {
+              bucket: bindings.ASSETS,
+              publicUrl,
+              secret: process.env.BETTER_AUTH_SECRET!,
+            },
+          }),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
       // Projects reference an org (FK) and nothing else creates one.
@@ -116,6 +127,7 @@ const buildApp = (bindings: Bindings) => {
         },
       },
       mcp: runtime,
+      assets: { run: (effect) => runtime.runPromise(effect) },
       // The dashboard is served from its own origin and calls this API directly.
       corsOrigins: webOrigins,
       auth,
