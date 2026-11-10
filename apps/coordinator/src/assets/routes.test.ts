@@ -43,8 +43,32 @@ describe("asset routes", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("png");
     expect(res.headers.get("content-length")).toBe("3");
-    expect(res.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''hero.png");
+    expect(res.headers.get("content-disposition")).toBe("inline; filename*=UTF-8''hero.png");
   });
+
+  it.each(["image/svg+xml", "text/html", "application/pdf", "video/mp4", "image/png2"])(
+    "saves %s instead of showing it in place",
+    async (contentType) => {
+      const res = await get(
+        appWith({
+          get: () => Effect.succeed({ body: body("x"), contentType, size: 1 }),
+        }),
+      );
+      expect(res.headers.get("content-disposition")).toMatch(/^attachment;/);
+    },
+  );
+
+  it.each(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"])(
+    "shows %s in place, for the dashboard's image tag",
+    async (contentType) => {
+      const res = await get(
+        appWith({
+          get: () => Effect.succeed({ body: body("x"), contentType, size: 1 }),
+        }),
+      );
+      expect(res.headers.get("content-disposition")).toMatch(/^inline;/);
+    },
+  );
 
   it("answers 403 for a bad signature, without reading the store", async () => {
     const app = appWith({

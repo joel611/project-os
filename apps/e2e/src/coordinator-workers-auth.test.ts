@@ -127,7 +127,7 @@ describe("Coordinator on Workers", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(res.headers.get("content-length")).toBe(String(bytes.byteLength));
-    expect(res.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''hero.png");
+    expect(res.headers.get("content-disposition")).toBe("inline; filename*=UTF-8''hero.png");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
 
     // A correctly signed link to a key nobody stored: past the check, nothing there.

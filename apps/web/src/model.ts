@@ -1,6 +1,7 @@
 import {
   TERMINAL_STATUSES,
   type Ticket,
+  type TicketEvent,
   type TicketEventType,
   type TicketStatus,
   type Worker,
@@ -195,4 +196,31 @@ export const groupWorkers = <W extends Worker & { readonly status: WorkerStatus 
     personal: of("personal"),
     sandbox: of("sandbox").filter((w) => w.status === "online"),
   };
+};
+
+/**
+ * Whether anyone sent files on this ticket (its `created` or `follow_up` events carry a list),
+ * so the dashboard only asks for download links when there is something to show.
+ */
+export const hasAttachments = (events: ReadonlyArray<Pick<TicketEvent, "payload">>): boolean =>
+  events.some((e) => {
+    const attachments = (e.payload as { attachments?: unknown } | null)?.attachments;
+    return Array.isArray(attachments) && attachments.length > 0;
+  });
+
+/** Types the browser draws as a picture. SVG is left out: it is a document, not a bitmap. */
+export const isShownInline = (contentType: string | null): boolean =>
+  contentType !== null && /^image\/(png|jpeg|gif|webp|avif)$/.test(contentType);
+
+/** `1536` as `1.5 KB`. */
+export const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unit]}`;
 };

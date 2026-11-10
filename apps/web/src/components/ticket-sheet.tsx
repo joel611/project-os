@@ -10,7 +10,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/states";
 import { StatusBadge, ToneDot } from "@/components/tone";
-import { EVENT, relativeTime } from "@/model";
+import { TicketFiles } from "@/components/ticket-files";
+import { EVENT, hasAttachments, relativeTime } from "@/model";
 import { useNow } from "@/use-now";
 import { api, type TicketDetail } from "@/api";
 
@@ -53,6 +54,7 @@ const Body = ({ ticket, events }: TicketDetail) => {
           </pre>
         </section>
       )}
+      {hasAttachments(events) && <TicketFiles ticketId={ticket.id} />}
       <Separator />
       <section className="flex flex-col gap-1">
         <h3 className="pb-2 text-sm font-medium">Activity</h3>
