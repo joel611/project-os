@@ -28,6 +28,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           # Add more (PUBLIC_URL, OAuth, BETTER_AUTH_SECRET...) only once they are set in
           # the repo: an unset var expands to "" here, which is not the same as unset.
+          ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
           ADMIN_CHANNEL_ID: ${{ vars.ADMIN_CHANNEL_ID }}
           ADMIN_USER_IDS: ${{ vars.ADMIN_USER_IDS }}
           CHAT_MODEL_PROVIDER: ${{ vars.CHAT_MODEL_PROVIDER }}

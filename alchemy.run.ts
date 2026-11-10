@@ -163,6 +163,13 @@ const readBotToken = Config.option(Config.Redacted("DISCORD_BOT_TOKEN")).pipe(
  * the next free port, and so do parallel worktrees. Each gets its own default here. Override per
  * checkout with the env var; a taken port still falls back to a free one rather than failing.
  */
+/** A stage name as a DNS label: `live_joel` -> `live-joel`. */
+const hostLabel = (stage: string) =>
+  stage
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
 const readDevPorts = Effect.gen(function* () {
   const port = (name: string, fallback: number) =>
     Config.Number(name).pipe(Config.withDefault(fallback));
@@ -203,6 +210,23 @@ export default Alchemy.Stack(
     const secrets = yield* readSecrets;
     const devPorts = yield* readDevPorts;
 
+    // Custom domains: with ROOT_DOMAIN set, each service is served at
+    // `<service>-<stage>-project-os.<ROOT_DOMAIN>` (api, dashboard, gateway). The zone must
+    // already be on this Cloudflare account. Unset: workers.dev URLs, as before.
+    const stage = yield* Alchemy.Stage;
+    const rootDomain = yield* Config.option(Config.NonEmptyString("ROOT_DOMAIN"));
+    const hostFor = (service: "api" | "dashboard" | "gateway") =>
+      Option.isSome(rootDomain)
+        ? `${service}-${hostLabel(stage)}-project-os.${rootDomain.value}`
+        : undefined;
+    const hosts = {
+      api: hostFor("api"),
+      dashboard: hostFor("dashboard"),
+      gateway: hostFor("gateway"),
+    };
+    // The Coordinator is `api`, so its public URL is known up front: an explicit PUBLIC_URL wins.
+    if (hosts.api && !plain.PUBLIC_URL) plain.PUBLIC_URL = `https://${hosts.api}`;
+
     // Dashboard: the Vite SPA as static assets only, no Worker code. The browser calls the
     // Coordinator directly at PUBLIC_URL (baked in as VITE_COORDINATOR_URL), which allows this
     // origin with CORS. PUBLIC_URL is the Coordinator's own URL, known after the first deploy;
@@ -217,6 +241,7 @@ export default Alchemy.Stack(
         : "bun run build",
       outdir: "dist/client",
       compatibility: { date: COMPATIBILITY_DATE },
+      ...(hosts.dashboard && { domain: { name: hosts.dashboard } }),
       assets: { notFoundHandling: "single-page-application" },
       dev: { port: devPorts.dashboard },
       memo: {
@@ -237,6 +262,7 @@ export default Alchemy.Stack(
             main: "./apps/discord-gateway/src/main.cloudflare.ts",
             compatibility: { date: COMPATIBILITY_DATE },
             workersDev: false,
+            ...(hosts.gateway && { domain: { name: hosts.gateway } }),
             dev: { port: devPorts.gateway },
             // Cron Trigger: restarts the container after a crash, a stop or a deploy.
             crons: ["* * * * *"],
@@ -273,6 +299,7 @@ export default Alchemy.Stack(
       // `process.env` from the vars and secrets below, which `@project-os/config` reads.
       compatibility: { date: COMPATIBILITY_DATE },
       dev: { port: devPorts.coordinator },
+      ...(hosts.api && { domain: { name: hosts.api } }),
       // WEB_ORIGIN is the dashboard's URL, so the browser may call this API (CORS).
       // PI_AGENT: the `PiAgent` class exported by main.cloudflare.ts, one object per Pi session.
       env: {
