@@ -13,6 +13,8 @@ const store = (cookies: Map<string, string>, setCookies: ReadonlyArray<string>) 
 export const browse = async (
   start: string,
   seed?: { url: string; setCookies: ReadonlyArray<string> },
+  /** Method of the first request; redirects after it are followed with GET. */
+  method = "GET",
 ) => {
   const jar = new Map<string, Map<string, string>>();
   if (seed) {
@@ -25,6 +27,7 @@ export const browse = async (
     const host = new URL(url).host;
     const cookies = jar.get(host) ?? new Map<string, string>();
     const res = await fetch(url, {
+      method: hop === 0 ? method : "GET",
       redirect: "manual",
       headers: { cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") },
     });
