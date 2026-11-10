@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
-import { containerEnv } from "./container-env.ts";
+import { containerEnv, envFingerprint } from "./container-env.ts";
+
+describe("envFingerprint", () => {
+  it("ignores key order and changes when any value changes", async () => {
+    const a = await envFingerprint({ A: "1", B: "2" });
+    expect(await envFingerprint({ B: "2", A: "1" })).toBe(a);
+    expect(await envFingerprint({ A: "1", B: "3" })).not.toBe(a);
+  });
+});
 
 describe("containerEnv", () => {
   it("passes the set Discord keys and the reply port, and nothing else", () => {
