@@ -22,7 +22,18 @@ export interface FakeSpeaker {
 export const fakeInbound = (
   speaker: FakeSpeaker,
   content: string,
-  options: { id?: string; at?: Date; mention?: boolean } = {},
+  options: {
+    id?: string;
+    at?: Date;
+    mention?: boolean;
+    attachments?: ReadonlyArray<{
+      id: string;
+      name: string;
+      contentType?: string;
+      size: number;
+      url: string;
+    }>;
+  } = {},
 ): InboundMessage | null => {
   const at = options.at ?? new Date();
   const mention = options.mention ?? true;
@@ -37,6 +48,7 @@ export const fakeInbound = (
       ? { isThread: () => true, parentId: speaker.channelId }
       : { isThread: () => false },
     mentions: { users: { has: (id) => mention && id === FAKE_BOT_ID } },
+    ...(options.attachments && { attachments: { values: () => options.attachments!.values() } }),
   };
   return normalizeMessage(message, FAKE_BOT_ID);
 };

@@ -91,4 +91,41 @@ describe("normalizeMessage", () => {
     );
     expect(out).toMatchObject({ mentionsBot: false, content: "hey <@u2>" });
   });
+
+  describe("attachments", () => {
+    const file = {
+      id: "a1",
+      name: "hero.png",
+      contentType: "image/png",
+      size: 1234,
+      url: "https://cdn.discordapp.com/attachments/1/2/hero.png?ex=1&is=2&hm=3",
+    };
+
+    it("carries each attachment, defaulting a missing name to the id", () => {
+      const out = normalizeMessage({
+        ...base,
+        attachments: { values: () => [file, { id: "a2", size: 5, url: "u" }].values() },
+      });
+      expect(out?.attachments).toEqual([
+        { id: "a1", filename: "hero.png", contentType: "image/png", size: 1234, url: file.url },
+        { id: "a2", filename: "a2", contentType: null, size: 5, url: "u" },
+      ]);
+      expect(() => Schema.decodeUnknownSync(InboundMessage)(out)).not.toThrow();
+    });
+
+    it("keeps a message that is only attachments", () => {
+      const out = normalizeMessage({
+        ...base,
+        content: "",
+        attachments: { values: () => [file].values() },
+      });
+      expect(out).toMatchObject({ content: "" });
+      expect(out?.attachments).toHaveLength(1);
+    });
+
+    it("omits the field when there are none", () => {
+      const out = normalizeMessage({ ...base, attachments: { values: () => [].values() } });
+      expect(out).not.toHaveProperty("attachments");
+    });
+  });
 });
