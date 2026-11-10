@@ -1,6 +1,7 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { type Access, deny } from "./access.ts";
+import { type AssetDeps, assetRoutes } from "./assets/routes.ts";
 import { type AuthDeps, authRoutes } from "./auth/routes.ts";
 import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
@@ -15,6 +16,8 @@ export interface AppDeps {
   readonly mcp?: McpRuntime;
   /** Sign-in (`/api/auth/*`). Omitted: not mounted. */
   readonly auth?: AuthDeps;
+  /** Signed downloads of attached files (`/assets/*`). Omitted: not mounted. */
+  readonly assets?: AssetDeps;
   /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
   /**
@@ -62,5 +65,6 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
   const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
   const withAuth = deps.auth ? withHttp.use(authRoutes(deps.auth)) : withHttp;
   const withConnect = deps.connect ? withAuth.use(connectRoutes(deps.connect)) : withAuth;
-  return deps.mcp ? withConnect.use(mcpRoutes(deps.mcp)) : withConnect;
+  const withAssets = deps.assets ? withConnect.use(assetRoutes(deps.assets)) : withConnect;
+  return deps.mcp ? withAssets.use(mcpRoutes(deps.mcp)) : withAssets;
 };

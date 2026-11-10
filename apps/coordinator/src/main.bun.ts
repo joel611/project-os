@@ -13,6 +13,7 @@ import { type Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
+import { assetBaseUrl } from "./assets/base-url.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { startHealthSweep } from "./health/start.ts";
@@ -111,6 +112,13 @@ const runtime = ManagedRuntime.make(
       dbPath,
       adapterUrls: { discord: discord?.replyUrl ?? remoteGatewayUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
+      // Files people attach are copied here at intake and served as signed links. Sandbox
+      // workers are in the cloud, so links use their reachable URL when one is set.
+      assets: {
+        dir: dataPath("assets", process.env.ASSET_DIR),
+        publicUrl: assetBaseUrl(process.env, publicUrl),
+        secret: process.env.BETTER_AUTH_SECRET!,
+      },
     }),
     AiLive,
     ...(connections ? [connections.layer] : []),
@@ -158,6 +166,7 @@ createApp(
       },
     },
     mcp: runtime,
+    assets: { run: (effect) => runtime.runPromise(effect) },
     // Only needed when the dashboard is served from another origin; locally Vite proxies /api.
     corsOrigins: webOrigins,
     auth,

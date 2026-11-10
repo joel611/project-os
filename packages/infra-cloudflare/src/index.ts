@@ -10,6 +10,7 @@ import {
 import { schema, SqliteRepositories } from "@project-os/db-sqlite";
 import {
   AgentRuntimePending,
+  AssetStoreUnavailable,
   DEFAULT_ORG,
   IdGeneratorUuid,
   makeHttpChannelGateway,
@@ -88,4 +89,5 @@ export const CloudflareLive = (config: CloudflareConfig) =>
     config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
+    AssetStoreUnavailable,
   );

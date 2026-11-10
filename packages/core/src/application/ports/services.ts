@@ -59,6 +59,45 @@ export class ChannelGateway extends Context.Service<
   }
 >()("@project-os/core/ChannelGateway") {}
 
+/** A stored file, streamed back. */
+export interface AssetObject {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly contentType: string;
+  readonly size: number;
+}
+
+/**
+ * Files people sent with their requests, copied out of the channel at intake so a Worker can
+ * still fetch them after the message is deleted. Keys are `<ticketId>/<attachmentId>/<name>`.
+ */
+export class AssetStore extends Context.Service<
+  AssetStore,
+  {
+    /**
+     * Downloads `url` and stores it under `key`, streaming. Fails when the download is refused,
+     * the file turns out bigger than `maxBytes`, or the write fails.
+     */
+    readonly ingest: (input: {
+      readonly key: string;
+      readonly url: string;
+      readonly contentType: string | null;
+      readonly size: number;
+      readonly maxBytes: number;
+    }) => Effect.Effect<void, AssetStoreFailed>;
+    /** The stored file; undefined when nothing is stored under `key`. */
+    readonly get: (key: string) => Effect.Effect<AssetObject | undefined, AssetStoreFailed>;
+    /** A short-lived signed download URL for `key`; undefined when links aren't configured. */
+    readonly link: (key: string) => Effect.Effect<string | undefined>;
+    /** Whether `sig` is a valid, unexpired signature for `key`. */
+    readonly verify: (key: string, expires: number, sig: string) => Effect.Effect<boolean>;
+  }
+>()("@project-os/core/AssetStore") {}
+
+/** The download, size check or write of a stored file failed. */
+export class AssetStoreFailed extends Data.TaggedError("AssetStoreFailed")<{
+  readonly message: string;
+}> {}
+
 export class Scheduler extends Context.Service<
   Scheduler,
   {

@@ -41,7 +41,10 @@ export const TicketAttachment = Schema.Struct({
   filename: Schema.String,
   contentType: Schema.NullOr(Schema.String),
   size: Schema.Number,
-  /** Fresh download link, valid for about a day; plain GET, no auth header. */
+  /**
+   * Download link; plain GET, no auth header. A copy the Coordinator stored lasts an hour from
+   * this call; otherwise it is a fresh Discord link, good for about a day.
+   */
   url: Schema.NullOr(Schema.String),
   /** Why `url` is null, e.g. the message was deleted. */
   error: Schema.optionalKey(Schema.String),

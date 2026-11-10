@@ -20,6 +20,8 @@ export const AttachmentRef = Schema.Struct({
   filename: Schema.String,
   contentType: Schema.NullOr(Schema.String),
   size: Schema.Number,
+  /** True when the Coordinator copied the file into its own storage at intake. */
+  stored: Schema.optionalKey(Schema.Boolean),
 });
 export type AttachmentRef = typeof AttachmentRef.Type;
 

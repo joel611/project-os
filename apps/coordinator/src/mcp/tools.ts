@@ -1,6 +1,7 @@
 import * as C from "@project-os/contracts";
 import {
   AgentRuntime,
+  AssetStore,
   appendEvent,
   askOnTicket,
   ChannelGateway,
@@ -33,6 +34,7 @@ import { Effect, Schema } from "effect";
 /** Services the tool use cases need; the entry file's runtime must provide them. */
 export type McpServices =
   | AgentRuntime
+  | AssetStore
   | ChannelGateway
   | Clock
   | IdGenerator
