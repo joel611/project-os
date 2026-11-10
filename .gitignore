@@ -7,7 +7,7 @@ dist/
 *.sqlite
 *.sqlite-*
 .env
-.env.cf
+.env.*
+!.env.example
 coverage/
 .alchemy/
-.env.bak
