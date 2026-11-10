@@ -41,6 +41,8 @@ export default defineConfig({
         "apps/e2e/src/pi-agent/**",
         // Bundled and run in workerd by discord-gateway.test.ts.
         "apps/e2e/src/discord-gateway/**",
+        // Bundled and run in workerd by r2-assets.test.ts, with the R2 backend it wraps.
+        "apps/e2e/src/r2/**",
         // Manual scripts, run by hand against live services.
         "**/*.smoke.ts",
         "**/dist/**",

@@ -26,6 +26,7 @@ flowchart LR
       DO["PiAgent Durable Object<br/>SQLite, 1 per Pi session"]
       D1[("D1 database")]
       KV[("KV namespace")]
+      R2[("R2 bucket ASSETS<br/>attached files, 90 days")]
       State[("Alchemy state Worker")]
     end
 
@@ -41,6 +42,7 @@ flowchart LR
 
   Coord -- "binding" --> D1
   Coord -- "binding" --> KV
+  Coord -- "binding ASSETS" --> R2
   Coord -- "RPC via PI_AGENT binding" --> DO
   Coord -- "service binding DISCORD_GATEWAY (/reply)" --> GW
   GW -- "Container binding" --> Cont
@@ -70,6 +72,7 @@ No public URL; reachable only through a binding from another Worker in the same 
 | --- | --- | --- |
 | Coordinator → D1 | `DB` binding | Data never leaves the account. |
 | Coordinator → KV | `KV` binding | Same. |
+| Coordinator → R2 | `ASSETS` binding | The bucket has no public URL or custom domain. Workers download through the Coordinator's signed `/assets/...` links, and the Coordinator reads the bucket by binding. |
 | Coordinator → Pi sessions | `PI_AGENT` Durable Object RPC | DO has no route of its own. |
 | Coordinator → DiscordGateway | `DISCORD_GATEWAY` **service binding** | The reply endpoint can post as the bot and has no auth, so `workersDev: false` and the binding is the only way in. |
 | DiscordGateway Worker → Container | Container / DO binding | Container is not addressable from outside. |
