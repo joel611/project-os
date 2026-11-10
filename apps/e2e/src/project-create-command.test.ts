@@ -16,7 +16,7 @@ afterEach(() => stack.stop());
 
 const admin = { channelId: ADMIN_CHANNEL, userId: ADMIN_USER, name: "Joel" };
 const run = (speaker: typeof admin, options: Record<string, string>) =>
-  forwardCommand(stack.url, fakeCommand(speaker, "project-create", options)!, fetch);
+  forwardCommand(stack.coordinator, fakeCommand(speaker, "project-create", options)!, fetch);
 
 describe("/project-create slash command", () => {
   it("creates the project and its channel from the admin channel", async () => {
@@ -30,7 +30,7 @@ describe("/project-create slash command", () => {
 
     // The new channel is live: a message there becomes a ticket of the project.
     const inbound = fakeInbound({ channelId: "discord-new-1", userId: "u1", name: "Ada" }, "hi");
-    await forwardInbound(stack.url, inbound!, fetch);
+    await forwardInbound(stack.coordinator, inbound!, fetch);
     expect(await stack.json("GET", `/projects/${project.id}/tickets`)).toHaveLength(1);
   });
 

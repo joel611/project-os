@@ -5,8 +5,6 @@ import { Elysia } from "elysia";
 export interface ConnectDeps {
   /** Redeems a one-time connect link; null when unknown, used, or expired. */
   readonly startLink: (token: string) => Promise<LinkStart | null>;
-  /** Better Auth's own routes under `/api/auth`, including the OAuth callbacks. */
-  readonly handler: (request: Request) => Promise<Response>;
 }
 
 const LABELS: Record<string, string> = { google: "Google", github: "GitHub" };
@@ -24,9 +22,8 @@ const page = (status: number, title: string, body: string) =>
  * `/connect/:token` link, which signs the browser in as that person and redirects to the
  * provider; the provider returns to Better Auth's callback, which lands on `/connect/done`.
  */
-export const connectRoutes = ({ startLink, handler }: ConnectDeps) =>
+export const connectRoutes = ({ startLink }: ConnectDeps) =>
   new Elysia({ name: "connect-routes" })
-    .all("/api/auth/*", ({ request }) => handler(request))
     .get("/connect/done", ({ query }) => {
       const label = LABELS[String(query.provider)] ?? "Your";
       return query.error

@@ -3,16 +3,25 @@
 // endpoint, all on fixed localhost ports. Mirrors apps/e2e/src/stack.ts, but long-running.
 // Usage: DATA_DIR=<dir> bun serve.ts   (env: COORD_PORT=18080, ADAPTER_PORT=18081)
 // Registers a shared worker "verify-box" (as an admin's `/register-worker shared:True` would) and
-// saves its credentials to $DATA_DIR/worker.json for drive.ts. Prints "READY ..." once a
-// project + default Discord channel `verify-chan` exist.
+// saves its credentials to $DATA_DIR/worker.json for drive.ts. Signs the operator in and saves
+// the session token to $DATA_DIR/operator.token (send it as `Authorization: Bearer` to read the
+// API) and the service token to $DATA_DIR/service.token. Prints "READY ..." once a project +
+// default Discord channel `verify-chan` exist.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { makeAuth } from "@project-os/auth";
 import { issueWorkerRegistration, redeemWorkerRegistration } from "@project-os/core";
-import { ensureOrg, LocalLive } from "@project-os/infra-local";
+import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho, classifierReturning, makeSidekickRecording } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
+import { makeAccess } from "../../coordinator/src/access.ts";
 import { createApp } from "../../coordinator/src/app.ts";
+import { startFakeOAuth } from "../src/fake-oauth.ts";
+
+/** Dashboard sign-in for the verify stack (the dashboard's /login page takes these). */
+const OPERATOR = { email: "verify@project-os.test", password: "verify-password" };
+const SERVICE_TOKEN = "verify-service-token";
 
 const dataDir = process.env.DATA_DIR;
 if (!dataDir) throw new Error("DATA_DIR is required");
@@ -37,19 +46,45 @@ const runtime = ManagedRuntime.make(
   ) as Layer.Layer<any, never>,
 );
 
+const url = `http://localhost:${coordPort}`;
+// "Continue with Google" signs in as ada@example.com through a fake Google on localhost, and
+// lands back on the dashboard at WEB_PORT.
+const google = startFakeOAuth();
+const auth = makeAuth({
+  db: openLocalDb(dbPath).db,
+  baseURL: url,
+  secret: "verify-secret-verify-secret-verify",
+  admin: OPERATOR,
+  allowedEmails: ["ada@example.com"],
+  webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
+  google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
+});
+await auth.ready();
+
 createApp(
   {},
   {
+    access: makeAccess({ serviceToken: SERVICE_TOKEN, auth }),
+    auth,
     http: { run: (e) => runtime.runPromise(e as any), inbound: {} },
     mcp: runtime as any,
   },
 ).listen(coordPort);
 
-const url = `http://localhost:${coordPort}`;
+const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(OPERATOR),
+});
+const operatorToken = signIn.headers.get("set-auth-token");
+if (!operatorToken) throw new Error(`operator sign-in failed: ${signIn.status}`);
+writeFileSync(join(dataDir, "operator.token"), operatorToken);
+writeFileSync(join(dataDir, "service.token"), SERVICE_TOKEN);
+
 const post = (path: string, body: unknown) =>
   fetch(url + path, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization: `Bearer ${operatorToken}` },
     body: JSON.stringify(body),
   }).then((r) => r.json() as Promise<any>);
 
@@ -79,5 +114,5 @@ writeFileSync(
 // A personal device for someone else, never online: shows up in the dashboard, takes nothing.
 await register(false, "u9", "bob-laptop");
 console.log(
-  `READY coordinator=${url} adapter=http://localhost:${adapterPort} project=${project.id} worker=${shared.worker.id}`,
+  `READY coordinator=${url} adapter=http://localhost:${adapterPort} project=${project.id} worker=${shared.worker.id} login=${OPERATOR.email}/${OPERATOR.password}`,
 );

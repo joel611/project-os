@@ -4,7 +4,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { makeConnections, type OAuthClientConfig } from "./connections.ts";
+import { makeAuth, type OAuthClientConfig } from "./auth.ts";
+import { emailFor, isChannelIdentityEmail } from "./connections.ts";
 
 // The OAuth round trip runs in apps/e2e (connect-accounts) against a fake provider.
 // These cover what happens without one: unconfigured providers and unknown people.
@@ -14,15 +15,25 @@ const client: OAuthClientConfig = { clientId: "id", clientSecret: "secret" };
 const connectionsWith = (providers: { google?: OAuthClientConfig; github?: OAuthClientConfig }) => {
   const db = drizzle({ client: new Database(":memory:") });
   migrate(db, { migrationsFolder });
-  return makeConnections({
+  return makeAuth({
     db,
     baseURL: "http://localhost:8080",
     secret: "unit-test-secret-unit-test-secret",
     ...providers,
-  }).service;
+  }).connections!.service;
 };
 
 const nameless = { channelType: "discord" as const, id: "u1" };
+
+describe("channel identities", () => {
+  it("get a stable placeholder email that no operator can have", () => {
+    const email = emailFor({ channelType: "discord", id: "U1" });
+    expect(email).toBe("discord-u1@people.project-os.invalid");
+    expect(isChannelIdentityEmail(email)).toBe(true);
+    expect(isChannelIdentityEmail("DISCORD-U1@People.Project-OS.invalid")).toBe(true);
+    expect(isChannelIdentityEmail("ops@example.com")).toBe(false);
+  });
+});
 
 describe("makeConnections", () => {
   it("refuses providers with no OAuth client", async () => {

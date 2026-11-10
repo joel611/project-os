@@ -5,8 +5,9 @@
 //   bun run plan  / bun run destroy
 //
 // Values come from `.env` (or `--env-file`), then the shell. Plain settings bind as
-// `plain_text` vars, secrets as `secret_text`. Anything unset is simply not bound, so a
-// stage without OAuth clients deploys with account linking off (same rule as local).
+// `plain_text` vars, secrets as `secret_text`. Required secrets fail the deploy when unset;
+// anything else unset is simply not bound, so a stage without OAuth clients deploys with
+// account linking off (same rule as local).
 // See docs/deployment.md.
 import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
@@ -15,7 +16,7 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import type * as Redacted from "effect/Redacted";
+import * as Redacted from "effect/Redacted";
 
 const COMPATIBILITY_DATE = "2026-10-01";
 
@@ -89,8 +90,9 @@ const optionalVars = [
   "ADMIN_CHANNEL_ID",
   "ADMIN_USER_IDS",
   "OTEL_EXPORTER_OTLP_ENDPOINT",
-  // Account linking (Better Auth, PR #41): connect links and OAuth callbacks.
+  // Better Auth: OAuth callbacks and connect links, and more dashboard operators.
   "PUBLIC_URL",
+  "ADMIN_EMAILS",
   "GOOGLE_CLIENT_ID",
   "GITHUB_CLIENT_ID",
   // Registered workers and the cloud sandbox pool.
@@ -110,10 +112,14 @@ const optionalVars = [
   "CLOUDFLARE_SANDBOX_MAX_CONCURRENT",
 ] as const;
 
+/** Secrets the Coordinator refuses to start without: the deploy fails when one is unset. */
+const requiredSecrets = ["BETTER_AUTH_SECRET", "COORDINATOR_SERVICE_TOKEN"] as const;
+
 /** Secrets: bound as `secret_text` only when set. */
 const optionalSecrets = [
   "OPENROUTER_API_KEY",
-  "BETTER_AUTH_SECRET",
+  "ADMIN_EMAIL",
+  "ADMIN_PASSWORD",
   "GOOGLE_CLIENT_SECRET",
   "GITHUB_CLIENT_SECRET",
   "DAYTONA_API_KEY",
@@ -135,6 +141,9 @@ const readVars = Effect.gen(function* () {
 
 const readSecrets = Effect.gen(function* () {
   const env: Record<string, Redacted.Redacted<string>> = {};
+  for (const name of requiredSecrets) {
+    env[name] = yield* Config.NonEmptyString(name).pipe(Config.map(Redacted.make));
+  }
   for (const name of optionalSecrets) {
     const value = yield* Config.option(Config.Redacted(name));
     if (Option.isSome(value)) env[name] = value.value;
@@ -228,6 +237,7 @@ export default Alchemy.Stack(
               }),
               DISCORD_BOT_TOKEN: botToken,
               COORDINATOR_URL: reachableFromContainer(publicUrl),
+              COORDINATOR_SERVICE_TOKEN: secrets.COORDINATOR_SERVICE_TOKEN!,
               ...Object.fromEntries(
                 (
                   [

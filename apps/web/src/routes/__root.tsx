@@ -1,5 +1,14 @@
-import { ClientOnly, createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import {
+  ClientOnly,
+  createRootRoute,
+  HeadContent,
+  Navigate,
+  Outlet,
+  Scripts,
+  useLocation,
+} from "@tanstack/react-router";
 import { Sidebar } from "@/components/sidebar";
+import { LOGIN_PATH, session } from "@/session";
 import appCss from "../index.css?url";
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
@@ -14,14 +23,20 @@ const Shell = ({ children }: { children: React.ReactNode }) => (
   </html>
 );
 
-const Layout = () => (
-  <div className="flex h-svh">
-    <Sidebar />
-    <main className="min-w-0 flex-1 overflow-y-auto p-8">
-      <Outlet />
-    </main>
-  </div>
-);
+// The login page stands alone: the sidebar's polling queries would only 401 there.
+const Layout = () => {
+  const { pathname } = useLocation();
+  if (pathname === LOGIN_PATH) return <Outlet />;
+  if (!session.token()) return <Navigate to={LOGIN_PATH} replace />;
+  return (
+    <div className="flex h-svh">
+      <Sidebar />
+      <main className="min-w-0 flex-1 overflow-y-auto p-8">
+        <Outlet />
+      </main>
+    </div>
+  );
+};
 
 // The static shell serves every URL, so the layout renders only in the browser. Prerendered, it
 // would hydrate against whatever route the shell was built at.

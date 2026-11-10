@@ -35,9 +35,9 @@ case "${1:-}" in
     chk "coordinator pid alive" 'kill -0 "$(cat "$VERIFY_DIR/coordinator.pid")"'
     chk "coordinator port $COORD_PORT owned by our pid" '[ "$(listener $COORD_PORT)" = "$(cat "$VERIFY_DIR/coordinator.pid")" ]'
     chk "GET /health" "curl -sf http://localhost:$COORD_PORT/health | grep -q '\"status\":\"ok\"'"
-    chk "seed project exists (name Verify Project)" "curl -sf http://localhost:$COORD_PORT/projects | grep -q 'Verify Project'"
-    chk "MCP lists tools" "curl -s -X POST http://localhost:$COORD_PORT/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' | grep -q ticket_claim"
-    chk "web serves + proxies /api" "curl -sf http://localhost:$WEB_PORT/api/projects | grep -q 'Verify Project'"
+    chk "seed project exists (name Verify Project)" "curl -sf -H \"authorization: Bearer $(cat "$DATA_DIR/operator.token")\" http://localhost:$COORD_PORT/projects | grep -q 'Verify Project'"
+    chk "MCP lists tools" "curl -s -X POST http://localhost:$COORD_PORT/mcp -H \"authorization: Bearer $(sed -n 's/.*\"secret\":\"\([^\"]*\)\".*/\1/p' "$DATA_DIR/worker.json")\" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' | grep -q ticket_claim"
+    chk "web serves + proxies /api" "curl -sf -H \"authorization: Bearer $(cat "$DATA_DIR/operator.token")\" http://localhost:$WEB_PORT/api/projects | grep -q 'Verify Project'"
     exit $ok
     ;;
   down)

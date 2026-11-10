@@ -1,9 +1,11 @@
 import {
+  authenticateCaller,
   authenticateWorker,
   guardActingAs,
   guardTicketAccess,
   handleInbound,
   heartbeat,
+  issueSandboxToken,
   issueWorkerRegistration,
   KeyValueStore,
   listPersonalWorkers,
@@ -20,7 +22,7 @@ import {
 } from "@project-os/core";
 import type { InboundMessage } from "@project-os/contracts";
 import { Effect } from "effect";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { classifierReturning, makeTestLayer } from "./index.ts";
 
 const T0 = "2026-11-04T00:00:00.000Z";
@@ -218,9 +220,7 @@ describe("ticket routing", () => {
     expect(value.assigned?.body).toBe(
       `Assigned to the requester's own worker ${value.worker.name}`,
     );
-    expect(launched).toEqual([
-      { ticketId: value.ticket.id, workerType: "local", workerId: value.worker.id },
-    ]);
+    expect(launched).toEqual([]);
   });
 
   it("sends tickets to the sandbox pool when the device is offline or someone else asks", async () => {
@@ -256,20 +256,64 @@ describe("ticket routing", () => {
   });
 });
 
-describe("MCP guards", () => {
-  it("lets sandbox sessions act without credentials, and registered devices only with their own", async () => {
-    const { value } = await run(
+describe("MCP credentials", () => {
+  it("knows a device by its secret and a sandbox session by its launch token", async () => {
+    const t = makeTestLayer({
+      classifier: classifierReturning("new_request"),
+      sandboxPool: [{ workerType: "daytona_pi" }],
+    });
+    const value = await Effect.runPromise(
       Effect.gen(function* () {
         yield* linkChannel;
         const ada = yield* device(ADA, true);
-        const bob = yield* device(BOB, true);
+        const sandboxTicket = yield* newTicket(BOB);
+        const [launch] = t.launched;
+        return {
+          ada: ada.worker.id,
+          sandboxWorker: sandboxTicket.workerId,
+          byDevice: yield* authenticateCaller(ada.secret),
+          bySandbox: yield* authenticateCaller(launch!.mcpToken),
+          unknown: yield* authenticateCaller("not-a-token"),
+        };
+      }).pipe(Effect.provide(t.layer)) as Effect.Effect<any>,
+    );
+    expect(value.byDevice).toEqual({ id: value.ada });
+    expect(value.bySandbox).toEqual({ id: value.sandboxWorker });
+    expect(value.sandboxWorker).toMatch(/^daytona-/);
+    expect(value.unknown).toBeUndefined();
+  });
+
+  it("forgets a sandbox token once it expires", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { value } = await run(
+        Effect.gen(function* () {
+          const token = yield* issueSandboxToken("daytona-t1", 60);
+          const live = yield* authenticateCaller(token);
+          vi.setSystemTime(Date.now() + 61_000);
+          return { live, expired: yield* authenticateCaller(token) };
+        }),
+      );
+      expect(value).toEqual({ live: { id: "daytona-t1" }, expired: undefined });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("MCP guards", () => {
+  it("keeps every worker to its own id and the tickets assigned to it", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        yield* linkChannel;
+        const ada = { id: (yield* device(ADA, true)).worker.id };
+        const bob = { id: (yield* device(BOB, true)).worker.id };
         const adaTicket = yield* newTicket(ADA, "m1");
         const sandboxTicket = yield* newTicket(
           { channelType: "discord", id: "u9", name: "Cy" },
           "m2",
         );
-        // Not assigned yet (queued): no worker to guard.
-        const queued = sandboxTicket.id;
+        const sandbox = { id: sandboxTicket.workerId! };
         yield* (yield* TicketRepository).insert({
           ...sandboxTicket,
           id: "t-queued",
@@ -283,36 +327,36 @@ describe("MCP guards", () => {
             Effect.catch((err: { _tag: string }) => Effect.succeed(err._tag)),
           );
         return {
-          sandboxAnon: yield* ok(guardActingAs(sandboxTicket.workerId!, undefined)),
-          personalAnon: yield* ok(guardActingAs(ada.worker.id, undefined)),
-          personalSelf: yield* ok(guardActingAs(ada.worker.id, ada.worker)),
-          personalOther: yield* ok(guardActingAs(ada.worker.id, bob.worker)),
-          ticketAnon: yield* ok(guardTicketAccess(adaTicket.id, undefined)),
-          ticketOwner: yield* ok(guardTicketAccess(adaTicket.id, ada.worker)),
-          ticketOther: yield* ok(guardTicketAccess(adaTicket.id, bob.worker)),
-          sandboxTicketAnon: yield* ok(guardTicketAccess(queued, undefined)),
-          sandboxTicketPersonal: yield* ok(guardTicketAccess(queued, ada.worker)),
-          noWorkerAnon: yield* ok(guardTicketAccess("t-queued", undefined)),
-          missingTicket: yield* ok(guardTicketAccess("nope", undefined)),
+          adaSelf: yield* ok(guardActingAs(ada.id, ada)),
+          adaAsBob: yield* ok(guardActingAs(bob.id, ada)),
+          sandboxSelf: yield* ok(guardActingAs(sandbox.id, sandbox)),
+          sandboxAsAda: yield* ok(guardActingAs(ada.id, sandbox)),
+          adaOnHers: yield* ok(guardTicketAccess(adaTicket.id, ada)),
+          bobOnAdas: yield* ok(guardTicketAccess(adaTicket.id, bob)),
+          sandboxOnAdas: yield* ok(guardTicketAccess(adaTicket.id, sandbox)),
+          sandboxOnItsOwn: yield* ok(guardTicketAccess(sandboxTicket.id, sandbox)),
+          adaOnSandboxes: yield* ok(guardTicketAccess(sandboxTicket.id, ada)),
+          queued: yield* ok(guardTicketAccess("t-queued", ada)),
+          missingTicket: yield* ok(guardTicketAccess("nope", ada)),
         };
       }),
     );
     expect(value).toEqual({
-      sandboxAnon: "ok",
-      personalAnon: "WorkerUnauthorized",
-      personalSelf: "ok",
-      personalOther: "WorkerUnauthorized",
-      ticketAnon: "WorkerUnauthorized",
-      ticketOwner: "ok",
-      ticketOther: "WorkerUnauthorized",
-      sandboxTicketAnon: "ok",
-      sandboxTicketPersonal: "WorkerUnauthorized",
-      noWorkerAnon: "ok",
+      adaSelf: "ok",
+      adaAsBob: "WorkerUnauthorized",
+      sandboxSelf: "ok",
+      sandboxAsAda: "WorkerUnauthorized",
+      adaOnHers: "ok",
+      bobOnAdas: "WorkerUnauthorized",
+      sandboxOnAdas: "WorkerUnauthorized",
+      sandboxOnItsOwn: "ok",
+      adaOnSandboxes: "WorkerUnauthorized",
+      queued: "WorkerUnauthorized",
       missingTicket: "ok",
     });
   });
 
-  it("holds a shared device and its tickets behind its secret too", async () => {
+  it("authenticates a shared device by its secret and keeps it to its own tickets", async () => {
     const { value } = await run(
       Effect.gen(function* () {
         yield* linkChannel;
@@ -320,6 +364,7 @@ describe("MCP guards", () => {
         const shared = yield* redeemWorkerRegistration({ token, hostname: "build-box" });
         yield* heartbeat({ workerId: shared.worker.id, workerType: "local" });
         const ticket = yield* newTicket(BOB);
+        const caller = (yield* authenticateCaller(shared.secret))!;
         const ok = (e: Effect.Effect<void, any, any>) =>
           e.pipe(
             Effect.as("ok"),
@@ -328,11 +373,9 @@ describe("MCP guards", () => {
         return {
           worker: shared.worker,
           ticket,
-          authed: (yield* authenticateWorker(shared.secret))?.id,
-          anon: yield* ok(guardActingAs(shared.worker.id, undefined)),
-          self: yield* ok(guardActingAs(shared.worker.id, shared.worker)),
-          ticketAnon: yield* ok(guardTicketAccess(ticket.id, undefined)),
-          ticketSelf: yield* ok(guardTicketAccess(ticket.id, shared.worker)),
+          caller,
+          self: yield* ok(guardActingAs(shared.worker.id, caller)),
+          ticketSelf: yield* ok(guardTicketAccess(ticket.id, caller)),
         };
       }),
     );
@@ -340,12 +383,7 @@ describe("MCP guards", () => {
     expect(value.worker.id).toMatch(/^shared-/);
     // Bob has no device of his own: the shared device takes his ticket before the sandbox pool.
     expect(value.ticket.workerId).toBe(value.worker.id);
-    expect(value.authed).toBe(value.worker.id);
-    expect(value).toMatchObject({
-      anon: "WorkerUnauthorized",
-      self: "ok",
-      ticketAnon: "WorkerUnauthorized",
-      ticketSelf: "ok",
-    });
+    expect(value.caller).toEqual({ id: value.worker.id });
+    expect(value).toMatchObject({ self: "ok", ticketSelf: "ok" });
   });
 });

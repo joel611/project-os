@@ -6,7 +6,7 @@ Project-centric AI agent (see `docs/product-brief.md`). A Coordinator receives m
 
 **Coordinator**: the single service that owns the agent loop, intent classification, Project Memory, the Ticket lifecycle, the MCP server, and all outbound messages to channels. Only the Coordinator talks to channels or the database.
 
-**Channel Adapter**: a thin process that normalizes an external event (Discord message, email) into the common inbound message shape, forwards it to the Coordinator, and posts replies when the Coordinator tells it to. No business logic.
+**Channel Adapter**: a thin process that normalizes an external event (Discord message, email) into the common inbound message shape, forwards it to the Coordinator, and posts replies when the Coordinator tells it to. No business logic. It calls the Coordinator with the service token, `COORDINATOR_SERVICE_TOKEN`, which nothing else holds.
 _Avoid_: bot, integration (alone).
 
 **Project**: the unit of context. Owns sources, custom instructions, memory, and tickets. One Discord channel maps to exactly one Project.
@@ -42,6 +42,12 @@ _Avoid_: host Watcher, hosted worker (the old fixed `WORKER_ID` Watcher no longe
 
 **Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Providers are named `daytona`, `cloudflare` and `boat`, and their Workers are `<provider>-<ticketId>` (`daytona-<ticketId>`). When no Personal or Shared Worker takes a Ticket, the Coordinator reads the pool and starts the first provider with room under its cap.
 _Avoid_: worker pool (the Watchers are not in it), provider list.
+
+**Sandbox token**: the Bearer token the Coordinator mints when it starts a sandbox session, handed to Pi in its MCP config. It acts as that session's worker id only and expires with the session (the provider's timeout plus 5 minutes). It is what keeps one sandbox out of another's Ticket, since sandbox worker ids are easy to guess.
+_Avoid_: worker secret (that is a registered computer's), session token (that is the dashboard's).
+
+**Operator**: a person allowed into the web dashboard: `ADMIN_EMAIL`, signing in with the seeded password, or an email in `ADMIN_EMAILS`, signing in with Google. Not the same as a Discord admin (`ADMIN_USER_IDS`), who acts in the admin channel.
+_Avoid_: admin (alone), user.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.
 _Avoid_: integration, OAuth app.

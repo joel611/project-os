@@ -6,6 +6,7 @@ describe("containerEnv", () => {
     const env = containerEnv({
       DISCORD_BOT_TOKEN: "tok",
       COORDINATOR_URL: "https://coordinator.example",
+      COORDINATOR_SERVICE_TOKEN: "svc",
       DISCORD_GUILD_ID: "g1",
       Gateway: { not: "a string" },
       OPENROUTER_API_KEY: "must-not-leak",
@@ -14,6 +15,7 @@ describe("containerEnv", () => {
     expect(env).toEqual({
       DISCORD_BOT_TOKEN: "tok",
       COORDINATOR_URL: "https://coordinator.example",
+      COORDINATOR_SERVICE_TOKEN: "svc",
       DISCORD_GUILD_ID: "g1",
       DISCORD_SPLIT_GATEWAY_PORT: "8081",
     });

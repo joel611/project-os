@@ -141,7 +141,7 @@ describe("answerPromptClick", () => {
   it("closes the prompt when the Coordinator accepts the answer", async () => {
     const { calls, replier } = recorder();
     await answerPromptClick(answer, replier, {
-      coordinatorUrl: "http://co/",
+      coordinator: { url: "http://co/", token: "svc" },
       fetcher: respond({ accepted: true, content: "done" }),
     });
     expect(calls).toEqual(["defer", "close:done"]);
@@ -150,14 +150,14 @@ describe("answerPromptClick", () => {
   it("whispers a refusal, or a failure to reach the Coordinator", async () => {
     const refused = recorder();
     await answerPromptClick(answer, refused.replier, {
-      coordinatorUrl: "http://co",
+      coordinator: { url: "http://co", token: "svc" },
       fetcher: respond({ accepted: false, content: "nope" }),
     });
     expect(refused.calls).toEqual(["defer", "whisper:nope"]);
 
     const down = recorder();
     await answerPromptClick(answer, down.replier, {
-      coordinatorUrl: "http://co",
+      coordinator: { url: "http://co", token: "svc" },
       fetcher: respond({}, 500),
     });
     expect(down.calls[1]).toMatch(/^whisper:Something went wrong/);

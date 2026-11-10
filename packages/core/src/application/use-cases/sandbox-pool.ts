@@ -10,6 +10,16 @@ import { type SandboxPoolEntry, TicketRepository, WorkerLauncher } from "../port
 export const sandboxWorkerId = (workerType: SandboxWorkerType, ticketId: string) =>
   `${SANDBOX_PROVIDER_OF[workerType]}-${ticketId}`;
 
+/** How long a sandbox session runs when its provider doesn't say. */
+export const DEFAULT_SANDBOX_SESSION_SECONDS = 30 * 60;
+
+/** A sandbox's MCP token outlives its session by this much, for its last calls. */
+const SANDBOX_TOKEN_MARGIN_SECONDS = 5 * 60;
+
+/** How long the MCP token for a session on this provider works. */
+export const sandboxTokenTtlSeconds = (entry: SandboxPoolEntry | undefined) =>
+  (entry?.sessionTimeoutSeconds ?? DEFAULT_SANDBOX_SESSION_SECONDS) + SANDBOX_TOKEN_MARGIN_SECONDS;
+
 /**
  * Reads the sandbox pool and returns the first provider, in pool order, with room for one more
  * active ticket. Undefined when the pool is empty or every provider is at its cap.

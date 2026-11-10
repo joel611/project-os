@@ -110,17 +110,21 @@ describe("forwardCommand", () => {
       (seen = r),
       Response.json({ content: "ok", ephemeral: false })
     );
-    expect(await forwardCommand("http://c:8080/", command, fetcher)).toEqual({
-      content: "ok",
-      ephemeral: false,
-    });
+    expect(await forwardCommand({ url: "http://c:8080/", token: "svc" }, command, fetcher)).toEqual(
+      {
+        content: "ok",
+        ephemeral: false,
+      },
+    );
     expect(seen?.url).toBe("http://c:8080/commands");
     expect(await seen?.json()).toEqual(command);
   });
 
   it("throws on non-2xx", async () => {
     const fetcher = async () => new Response("no", { status: 400 });
-    await expect(forwardCommand("http://c", command, fetcher)).rejects.toThrow(/400/);
+    await expect(
+      forwardCommand({ url: "http://c", token: "svc" }, command, fetcher),
+    ).rejects.toThrow(/400/);
   });
 });
 
@@ -141,7 +145,7 @@ describe("answerCommand", () => {
   it("answers publicly in the admin channel", async () => {
     const { calls, replier } = recorder();
     await answerCommand(command, replier, {
-      coordinatorUrl: "http://c",
+      coordinator: { url: "http://c", token: "svc" },
       adminChannelId: "admin",
       fetcher: replying("Created", false),
     });
@@ -154,7 +158,7 @@ describe("answerCommand", () => {
   it("turns a refusal in the admin channel into a private follow-up", async () => {
     const { calls, replier } = recorder();
     await answerCommand(command, replier, {
-      coordinatorUrl: "http://c",
+      coordinator: { url: "http://c", token: "svc" },
       adminChannelId: "admin",
       fetcher: replying("Not authorized", true),
     });
@@ -165,7 +169,7 @@ describe("answerCommand", () => {
     for (const adminChannelId of ["elsewhere", undefined]) {
       const { calls, replier } = recorder();
       await answerCommand(command, replier, {
-        coordinatorUrl: "http://c",
+        coordinator: { url: "http://c", token: "svc" },
         ...(adminChannelId && { adminChannelId }),
         fetcher: replying("admin channel only", true),
       });
@@ -179,7 +183,7 @@ describe("answerCommand", () => {
   it("tells the user privately when the Coordinator can't be reached", async () => {
     const { calls, replier } = recorder();
     await answerCommand(command, replier, {
-      coordinatorUrl: "http://c",
+      coordinator: { url: "http://c", token: "svc" },
       adminChannelId: "admin",
       fetcher: async () => new Response("", { status: 500 }),
     });

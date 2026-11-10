@@ -3,16 +3,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { type Connections, makeConnections } from "@project-os/auth";
-import { type IntentClassifier, UserConnections, type WorkerLauncher } from "@project-os/core";
+import { type Auth, type Connections, makeAuth } from "@project-os/auth";
+import {
+  type IntentClassifier,
+  issueSandboxToken,
+  UserConnections,
+  type WorkerLauncher,
+} from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@project-os/testing";
-import { Layer, ManagedRuntime } from "effect";
+import { type Effect, Layer, ManagedRuntime } from "effect";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
+import type { CoordinatorTarget } from "../../../packages/channel-discord/src/forward.ts";
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
+import { makeAccess } from "../../coordinator/src/access.ts";
 import { createApp } from "../../coordinator/src/app.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
@@ -53,6 +60,10 @@ export interface PostedPrompt {
 export interface Stack {
   /** Coordinator base URL, e.g. `http://localhost:54321`. */
   readonly url: string;
+  /** The Coordinator as a Channel Adapter calls it: URL plus the service token. */
+  readonly coordinator: CoordinatorTarget;
+  /** The seeded operator's dashboard session token, signed in at /api/auth/sign-in/email. */
+  readonly operatorToken: string;
   /** Messages the Discord adapter was told to post. */
   readonly posted: Posted[];
   /** Channels the Discord adapter was told to create (ids `discord-new-1`, …). */
@@ -63,6 +74,7 @@ export interface Stack {
   readonly reactions: ReactionCall[];
   /** Prompts (messages with buttons) the Discord adapter was told to post. */
   readonly prompts: PostedPrompt[];
+  /** Calls the dashboard API as the signed-in operator; resolves to the JSON body. */
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
   readonly admin: ReturnType<typeof makeAdminActions>;
@@ -74,11 +86,17 @@ export interface Stack {
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
   readonly oauth?: FakeOAuth;
+  /** The stand-in dashboard's origin Google sign-in returns to, when started with `connections`. */
+  readonly webUrl?: string;
+  /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
+  readonly auth: Auth;
   /**
-   * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `secret`: a personal
-   * worker's Bearer token, as the Watcher puts in Claude Code's MCP config.
+   * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `token`: a registered
+   * device's secret, as the Watcher puts in Claude Code's MCP config, or a sandbox session's.
    */
-  readonly worker: (secret?: string) => Promise<Client>;
+  readonly worker: (token: string) => Promise<Client>;
+  /** Mints the MCP token a sandbox session launched as `workerId` would get. */
+  readonly sandboxToken: (workerId: string) => Promise<string>;
   /**
    * Adds a shared worker the way an admin does: `/register-worker shared:True` in the admin
    * channel, the Watcher trading the code at POST /workers/register, then a heartbeat so it
@@ -94,6 +112,10 @@ export const ORG_ID = "o1";
 /** Admin channel and the one admin allowed to run slash commands there. */
 export const ADMIN_CHANNEL = "admin-chan";
 export const ADMIN_USER = "admin-1";
+/** The seeded dashboard operator (ADMIN_EMAIL / ADMIN_PASSWORD). */
+export const OPERATOR = { email: "operator@project-os.test", password: "operator-password" };
+/** COORDINATOR_SERVICE_TOKEN: what the Discord adapter calls /inbound and friends with. */
+export const SERVICE_TOKEN = "integration-service-token";
 
 const isLocal = (input: string | URL | Request) => {
   const url = new URL(input instanceof Request ? input.url : input);
@@ -102,8 +124,13 @@ const isLocal = (input: string | URL | Request) => {
 
 export const startStack = async (options: {
   readonly classifier: Layer.Layer<IntentClassifier>;
-  /** Account linking on Better Auth against a fake OAuth server (Google + GitHub). */
+  /**
+   * Google and GitHub against a fake OAuth server: account linking, and Google sign-in for a
+   * stand-in dashboard (`webUrl`).
+   */
   readonly connections?: boolean;
+  /** ADMIN_EMAILS: who besides the seeded operator may use the dashboard. */
+  readonly allowedEmails?: ReadonlyArray<string>;
   readonly workerLauncher?: typeof WorkerLauncher.Service;
   /**
    * Tickets one shared device may hold. Default here 100, so suites that open several
@@ -149,10 +176,12 @@ export const startStack = async (options: {
   ).listen(0);
 
   // Better Auth needs the Coordinator's URL, known only once it listens: the Layer and the
-  // routes delegate to `connections`, built right after `listen(0)`.
+  // routes delegate to `auth`, built right after `listen(0)`.
   const oauth = options.connections ? startFakeOAuth() : undefined;
-  let connections: Connections | undefined;
-  const lazy = (): Connections => connections!;
+  // Stands where the dashboard is served, so Google sign-in has somewhere to return to.
+  const web = oauth ? Bun.serve({ port: 0, fetch: () => new Response("dashboard") }) : undefined;
+  let auth: Auth | undefined;
+  const lazy = (): Connections => auth!.connections!;
   const connectionsLayer = Layer.succeed(UserConnections, {
     connectUrl: (person, provider) => lazy().service.connectUrl(person, provider),
     list: (person) => lazy().service.list(person),
@@ -184,6 +213,13 @@ export const startStack = async (options: {
   const coordinator = createApp(
     {},
     {
+      access: makeAccess({
+        serviceToken: SERVICE_TOKEN,
+        auth: {
+          sessionUser: (token) => auth!.sessionUser(token),
+          isAllowed: (email) => auth!.isAllowed(email),
+        },
+      }),
       http: {
         run: (effect) => runtime.runPromise(effect as any),
         inbound: {
@@ -207,34 +243,50 @@ export const startStack = async (options: {
         },
       },
       mcp: runtime,
+      auth: {
+        handler: (request: Request) => auth!.handler(request),
+        ...(oauth && {
+          googleSignIn: {
+            start: () => auth!.googleSignIn!.start(),
+            handoff: (request: Request) => auth!.googleSignIn!.handoff(request),
+          },
+        }),
+      },
       ...(oauth && {
-        connect: {
-          startLink: (token: string) => lazy().startLink(token),
-          handler: (request: Request) => lazy().handler(request),
-        },
+        connect: { startLink: (token: string) => lazy().startLink(token) },
       }),
     },
   ).listen(0);
   const url: string = `http://localhost:${coordinator.server!.port}`;
-  const authDb = oauth ? openLocalDb(dbPath) : undefined;
-  if (oauth && authDb) {
-    connections = makeConnections({
-      db: authDb.db,
-      baseURL: url,
-      secret: "integration-secret-integration-secret",
+  const authDb = openLocalDb(dbPath);
+  auth = makeAuth({
+    db: authDb.db,
+    baseURL: url,
+    secret: "integration-secret-integration-secret",
+    admin: OPERATOR,
+    ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
+    ...(web && { webOrigins: [web.url.origin] }),
+    ...(oauth && {
       google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
       github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
-    });
-  }
+    }),
+  });
+  await auth.ready();
+  const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(OPERATOR),
+  });
+  const operatorToken = signIn.headers.get("set-auth-token")!;
+  const target: CoordinatorTarget = { url, token: SERVICE_TOKEN };
 
   const clients: Client[] = [];
-  const worker = async (secret?: string) => {
+  const worker = async (token: string) => {
     const client = new Client({ name: "integration-worker", version: "0" });
     await client.connect(
-      new StreamableHTTPClientTransport(
-        new URL(`${url}/mcp`),
-        secret ? { requestInit: { headers: { authorization: `Bearer ${secret}` } } } : undefined,
-      ),
+      new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
+        requestInit: { headers: { authorization: `Bearer ${token}` } },
+      }),
     );
     clients.push(client);
     return client;
@@ -243,15 +295,19 @@ export const startStack = async (options: {
   const json = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(`${url}${path}`, {
       method,
-      ...(body === undefined
-        ? {}
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+        ...(body !== undefined && { "content-type": "application/json" }),
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
     });
     return res.json() as Promise<any>;
   };
 
   return {
     url,
+    coordinator: target,
+    operatorToken,
     posted,
     createdChannels,
     createdThreads,
@@ -260,6 +316,8 @@ export const startStack = async (options: {
     sidekickCalls: sidekick.calls,
     dbPath,
     ...(oauth && { oauth }),
+    ...(web && { webUrl: web.url.origin }),
+    auth,
     json,
     admin,
     linkChannel: async (channelId) => {
@@ -274,10 +332,12 @@ export const startStack = async (options: {
       return project.id as string;
     },
     worker,
+    sandboxToken: (workerId) =>
+      runtime.runPromise(issueSandboxToken(workerId, 600) as Effect.Effect<string, never, any>),
     registerSharedWorker: async (name = "shared-box") => {
       const admin = { channelId: ADMIN_CHANNEL, userId: ADMIN_USER, name: "Admin" };
       const command = fakeCommand(admin, "register-worker", { shared: "true" })!;
-      const reply = await forwardCommand(url, command, fetch);
+      const reply = await forwardCommand(target, command, fetch);
       const token = /sh -s -- (\S+)/.exec(reply.content)![1]!;
       const credentials = await registerDevice({ server: url, token, name }, fetch);
       const mcp = await worker(credentials.secret);
@@ -292,7 +352,8 @@ export const startStack = async (options: {
       await coordinator.stop();
       await adapter.stop();
       oauth?.stop();
-      authDb?.sqlite.close();
+      await web?.stop(true);
+      authDb.sqlite.close();
       await runtime.dispose();
       globalThis.fetch = realFetch;
       rmSync(dir, { recursive: true, force: true });

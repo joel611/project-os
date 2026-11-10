@@ -43,7 +43,7 @@ afterEach(() => stack.stop());
 const say = async (who: FakeSpeaker, content: string, id?: string) => {
   const inbound = fakeInbound(who, content, id ? { id } : {});
   if (!inbound) throw new Error("message was dropped");
-  await forwardInbound(stack.url, inbound, fetch);
+  await forwardInbound(stack.coordinator, inbound, fetch);
 };
 const tool = async (name: string, args: Record<string, unknown>) =>
   ((await mcp.callTool({ name, arguments: args })) as { structuredContent?: any })

@@ -54,7 +54,7 @@ const click = async (who: FakeSpeaker, choice: number) => {
       close: async (content) => void (seen.closed = content),
       whisper: async (content) => void (seen.whispered = content),
     },
-    { coordinatorUrl: stack.url, fetcher: fetch },
+    { coordinator: stack.coordinator, fetcher: fetch },
   );
   return seen;
 };
@@ -65,7 +65,7 @@ beforeEach(async () => {
   mcp = await stack.worker(SECRET);
   await stack.linkChannel(CHANNEL);
   const inbound = fakeInbound(ada, "deploy the new pricing page", { id: "msg-1" })!;
-  await forwardInbound(stack.url, inbound, fetch);
+  await forwardInbound(stack.coordinator, inbound, fetch);
   const [ticket] = (await tool("ticket_list_assigned", { workerId: WORKER })).tickets;
   ticketId = ticket.id;
   await tool("ticket_claim", { ticketId, workerId: WORKER });

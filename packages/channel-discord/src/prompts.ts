@@ -4,8 +4,7 @@ import {
   type PromptInstruction,
 } from "@project-os/contracts";
 import { Schema } from "effect";
-
-type Fetcher = (req: Request) => Promise<Response>;
+import { type CoordinatorTarget, type Fetcher, postToCoordinator } from "./forward.ts";
 
 // Discord message components as raw API JSON (discord.js accepts it as-is):
 // type 1 = action row, 2 = button, 3 = string select. Button styles: 1 primary,
@@ -118,18 +117,11 @@ const decodeReply = Schema.decodeUnknownSync(PromptAnswerReply);
 
 /** POSTs a click to the Coordinator's /prompts/answer and returns what to show. */
 export const forwardPromptAnswer = async (
-  coordinatorUrl: string,
+  coordinator: CoordinatorTarget,
   answer: PromptAnswer,
   fetcher: Fetcher,
 ): Promise<PromptAnswerReply> => {
-  const url = `${coordinatorUrl.replace(/\/+$/, "")}/prompts/answer`;
-  const res = await fetcher(
-    new Request(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(answer),
-    }),
-  );
+  const res = await postToCoordinator(coordinator, "/prompts/answer", answer, fetcher);
   if (!res.ok) throw new Error(`Coordinator /prompts/answer responded ${res.status}`);
   return decodeReply(await res.json());
 };
@@ -148,12 +140,12 @@ export interface PromptReplier {
 export const answerPromptClick = async (
   answer: PromptAnswer,
   replier: PromptReplier,
-  deps: { readonly coordinatorUrl: string; fetcher: Fetcher },
+  deps: { readonly coordinator: CoordinatorTarget; fetcher: Fetcher },
 ): Promise<void> => {
   await replier.defer();
   let reply: PromptAnswerReply;
   try {
-    reply = await forwardPromptAnswer(deps.coordinatorUrl, answer, deps.fetcher);
+    reply = await forwardPromptAnswer(deps.coordinator, answer, deps.fetcher);
   } catch (err) {
     console.error("forward prompt answer to coordinator failed", err);
     reply = {
