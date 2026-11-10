@@ -14,6 +14,7 @@ import { channelTypeFor } from "./channels.ts";
 export const PROVIDER_LABELS: Record<ConnectionProvider, string> = {
   google: "Google",
   github: "GitHub",
+  clickup: "ClickUp",
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>

@@ -140,7 +140,9 @@ const accountCommand = async (
   if (command.command === "connections") {
     const linked = await config.connections(withConnections((c) => c.list(person)));
     if (linked.length === 0) {
-      return privately("You haven't linked any accounts. Run `/connect` to link Google or GitHub.");
+      return privately(
+        "You haven't linked any accounts. Run `/connect` to link Google, GitHub or ClickUp.",
+      );
     }
     return privately(
       `Linked: ${linked.map((a) => PROVIDER_LABELS[a.provider]).join(", ")}. I use these when working on what you ask for.`,

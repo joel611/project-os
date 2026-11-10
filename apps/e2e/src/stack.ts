@@ -289,6 +289,7 @@ export const startStack = async (options: {
     ...(oauth && {
       google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
       github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
+      clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
     }),
   });
   await auth.ready();

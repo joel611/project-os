@@ -311,7 +311,7 @@ Workers talk to Project Memory and Tickets **only** through MCP tools. No direct
 - `ticket_get_prompt` — a prompt's status and, once clicked, the option picked and by whom
 
 **Account tools**
-- `user_token` — OAuth access token (`google` | `github`) of the person behind the ticket's latest message (§5.7)
+- `user_token` — OAuth access token (`google` | `github` | `clickup`) of the person behind the ticket's latest message (§5.7)
 
 **Memory tools**
 - `project_memory_read` — read project memory / context (pass project_id)
@@ -695,7 +695,7 @@ A developer can make their own computer their Worker, like linking an account. I
 | `project_sources_list` | List the project's sources (alias, description, link) |
 | `project_memory_write` | Write MemoryEntry (optionally linked to ticket) |
 | `project_memory_search` | Optional, later |
-| `user_token` | The latest message author's own Google / GitHub token (§5.7) |
+| `user_token` | The latest message author's own Google / GitHub / ClickUp token (§5.7) |
 
 Every MCP call carries a Bearer token, either a registered device's secret or a sandbox session's token (§3.1).
 
@@ -778,7 +778,7 @@ Dependencies only point inward. Ports are Effect `Context.Service`s, and each pr
 | `AgentRuntime` | Pi Durable conversation: reply composition, admin dialogue | Harness in a Durable Object (DO SQLite storage) | Harness in-process (SQLite file storage) |
 | `Sidekick` | tool-only turns on a ticket: read-only Drive and GitHub tools, acting as the requester (§8.6) | Same Harness as `AgentRuntime` | Same Harness as `AgentRuntime` |
 | `WorkerLauncher` | start a Daytona sandbox for `daytona_pi` tickets | Daytona API | Daytona API when `DAYTONA_API_KEY` is set, else no-op |
-| `UserConnections` | per-person Google / GitHub links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
+| `UserConnections` | per-person Google / GitHub / ClickUp links + their tokens (§5.7) | Better Auth on D1 | Better Auth on bun:sqlite (`packages/auth`) |
 | `Clock` / `IdGenerator` | testable time + ids | shared default | shared default |
 
 Repository ports are defined per aggregate rather than as a generic `Db`, so a non-SQL provider can implement them too.
