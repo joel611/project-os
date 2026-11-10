@@ -15,6 +15,7 @@
     "apps/discord-gateway/src/main.cloudflare.ts",
     "apps/e2e/src/discord-gateway",
     "apps/e2e/src/pi-agent/worker.ts",
+    "apps/e2e/src/r2",
     "apps/cloudflare-sandbox/src",
     "packages/infra-cloudflare/src",
     "apps/web/src"
