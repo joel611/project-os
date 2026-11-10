@@ -204,8 +204,8 @@ export const makeTools = (caller: McpCaller): readonly McpTool<McpServices>[] =>
     define({
       name: "user_token",
       description:
-        "Get an OAuth access token (google or github) for the person behind this ticket's latest message, " +
-        "so you read Drive or GitHub with their own permissions. Use it as a Bearer token (GH_TOKEN for gh/git). " +
+        "Get an OAuth access token (google, github or clickup) for the person behind this ticket's latest message, " +
+        "so you read Drive, GitHub or ClickUp with their own permissions. Use it as a Bearer token (GH_TOKEN for gh/git). " +
         "Fails with NotConnected if they haven't linked that account: the Coordinator has already asked them to " +
         "run /connect, so set the ticket to blocked and stop. Never store or print the token.",
       input: C.UserTokenInput,

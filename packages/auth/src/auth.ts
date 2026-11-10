@@ -36,6 +36,12 @@ export const GITHUB_ENDPOINTS: ProviderEndpoints = {
   userInfoUrl: "https://api.github.com/user",
 };
 
+export const CLICKUP_ENDPOINTS: ProviderEndpoints = {
+  authorizationUrl: "https://app.clickup.com/api",
+  tokenUrl: "https://api.clickup.com/api/v2/oauth/token",
+  userInfoUrl: "https://api.clickup.com/api/v2/user",
+};
+
 /** Read-only Drive access plus identity, so the account shows who linked it. */
 export const GOOGLE_SCOPES = [
   "openid",
@@ -73,7 +79,62 @@ export interface AuthConfig {
    * token can reach, and the person's own access narrows that further.
    */
   readonly github?: OAuthClientConfig;
+  /**
+   * A ClickUp app's client. ClickUp has no scopes: the token reaches the workspaces the person
+   * picked when they authorized, with their own permissions.
+   */
+  readonly clickup?: OAuthClientConfig;
 }
+
+/**
+ * ClickUp takes the code exchange as a JSON body and answers with `access_token` (no refresh
+ * token or expiry unless it sends them), so it can't use the default form-encoded exchange.
+ */
+export const clickupGetToken =
+  (tokenUrl: string, clientId: string, clientSecret: string): GenericOAuthConfig["getToken"] =>
+  async ({ code }) => {
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    });
+    if (!res.ok) throw new Error(`ClickUp token exchange failed (${res.status})`);
+    const body = (await res.json()) as {
+      access_token?: string;
+      token_type?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+    if (!body.access_token) throw new Error("ClickUp token exchange returned no access token");
+    return {
+      tokenType: body.token_type ?? "Bearer",
+      accessToken: body.access_token,
+      ...(body.refresh_token && { refreshToken: body.refresh_token }),
+      ...(body.expires_in && {
+        accessTokenExpiresAt: new Date(Date.now() + body.expires_in * 1000),
+      }),
+      raw: body as Record<string, unknown>,
+    };
+  };
+
+export const clickupUserInfo =
+  (userInfoUrl: string): GenericOAuthConfig["getUserInfo"] =>
+  async (tokens) => {
+    const res = await fetch(userInfoUrl, {
+      headers: { authorization: `Bearer ${tokens.accessToken}`, accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const { user } = (await res.json()) as {
+      user?: { id: number | string; username?: string | null; email?: string | null };
+    };
+    if (!user) return null;
+    return {
+      id: String(user.id),
+      name: user.username ?? String(user.id),
+      email: user.email ?? `${user.id}@clickup.invalid`,
+      emailVerified: false,
+    };
+  };
 
 const githubUserInfo =
   (userInfoUrl: string): GenericOAuthConfig["getUserInfo"] =>
@@ -174,6 +235,21 @@ const linkingProviders = (config: AuthConfig): GenericOAuthConfig[] => {
       disableSignUp: true,
     });
   }
+  if (config.clickup) {
+    const c = { ...CLICKUP_ENDPOINTS, ...config.clickup };
+    out.push({
+      providerId: "clickup",
+      clientId: c.clientId,
+      clientSecret: c.clientSecret,
+      authorizationUrl: c.authorizationUrl,
+      tokenUrl: c.tokenUrl,
+      userInfoUrl: c.userInfoUrl,
+      scopes: [],
+      getToken: clickupGetToken(c.tokenUrl, c.clientId, c.clientSecret),
+      getUserInfo: clickupUserInfo(c.userInfoUrl),
+      disableSignUp: true,
+    });
+  }
   return out;
 };
 
@@ -219,10 +295,10 @@ const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
         enabled: true,
         // A connect link already says whose account it is, so the provider's email needn't match.
         allowDifferentEmails: true,
-        // Linking needs a trusted provider or a verified email, and GitHub never reports its
-        // email verified. Sign-in joins an existing user only on a verified email, since
+        // Linking needs a trusted provider or a verified email, and GitHub and ClickUp never
+        // report theirs verified. Sign-in joins an existing user only on a verified email, since
         // `google-signin` isn't trusted; the account hook keeps the linking clients off operators.
-        trustedProviders: ["github"],
+        trustedProviders: ["github", "clickup"],
       },
     },
     // A dashboard session lasts a week and renews itself while in use.

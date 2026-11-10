@@ -95,6 +95,7 @@ const optionalVars = [
   "ADMIN_EMAILS",
   "GOOGLE_CLIENT_ID",
   "GITHUB_CLIENT_ID",
+  "CLICKUP_CLIENT_ID",
   // Registered workers and the cloud sandbox pool.
   "SHARED_WORKER_MAX_TICKETS",
   "WATCHER_INSTALL_COMMAND",
@@ -122,6 +123,7 @@ const optionalSecrets = [
   "ADMIN_PASSWORD",
   "GOOGLE_CLIENT_SECRET",
   "GITHUB_CLIENT_SECRET",
+  "CLICKUP_CLIENT_SECRET",
   "DAYTONA_API_KEY",
   "BOAT_API_KEY",
   "CLOUDFLARE_SANDBOX_TOKEN",

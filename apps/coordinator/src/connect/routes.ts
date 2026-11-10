@@ -7,7 +7,11 @@ export interface ConnectDeps {
   readonly startLink: (token: string) => Promise<LinkStart | null>;
 }
 
-const LABELS: Record<string, string> = { google: "Google", github: "GitHub" };
+const LABELS: Record<string, string> = {
+  google: "Google",
+  github: "GitHub",
+  clickup: "ClickUp",
+};
 
 const escape = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 

@@ -226,9 +226,26 @@ On the app page, click **Install App**, choose the account or organization that 
 
 ---
 
+## 3b. ClickUp app (optional)
+
+Discord caps an upload at 25 MB, so a PM sends a big video through ClickUp: they attach it to a ClickUp task, paste the task link in Discord, and the Worker downloads it with that PM's own ClickUp token (read access follows their workspace permissions). Images and other small files go straight in Discord and need no ClickUp.
+
+1. In ClickUp, open the avatar menu → **Settings → Apps → Create new app**.
+2. Set the **Redirect URL** to `<PUBLIC_URL>/api/auth/callback/clickup`, e.g. `http://localhost:8080/api/auth/callback/clickup`.
+3. Copy the **Client ID** and **Client Secret**:
+
+   ```sh
+   CLICKUP_CLIENT_ID=...
+   CLICKUP_CLIENT_SECRET=...
+   ```
+
+People link it with `/connect provider:ClickUp`. During authorization ClickUp asks them to pick the workspace(s) the app can reach. ClickUp has no scopes.
+
+---
+
 ## 4. Turn on account linking
 
-Account linking stays off until at least one of the Google or GitHub clients is set, besides the `BETTER_AUTH_SECRET` every Coordinator needs. The Coordinator logs `account linking off: ...` while it is off.
+Account linking stays off until at least one of the Google, GitHub or ClickUp clients is set, besides the `BETTER_AUTH_SECRET` every Coordinator needs. The Coordinator logs `account linking off: ...` while it is off.
 
 ```sh
 # Where browsers reach the Coordinator. Used for connect links and OAuth callbacks,
