@@ -34,7 +34,8 @@ jobs:
           # Names mirror .env.cf.uat. Upload them with
           # `bun run env:gh -- --env uat --file .env.cf.uat`: secrets land in `secrets.*`, the rest
           # in `vars.*`, and GITHUB_* keys are stored as GH_* (GitHub reserves that prefix).
-          # An unset var expands to "" here, which is not the same as unset.
+          # An unset var expands to "" here, which is not the same as unset. alchemy.run.ts treats ""
+          # as unset for optional vars (NonEmptyString), so those just aren't bound.
           # Variables
           ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
           PUBLIC_URL: ${{ vars.PUBLIC_URL }}
@@ -54,8 +55,22 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GITHUB_CLIENT_ID: ${{ vars.GH_CLIENT_ID }}
           CLICKUP_CLIENT_ID: ${{ vars.CLICKUP_CLIENT_ID }}
+          DISCORD_SPLIT_GATEWAY_URL: ${{ vars.DISCORD_SPLIT_GATEWAY_URL }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          SHARED_WORKER_MAX_TICKETS: ${{ vars.SHARED_WORKER_MAX_TICKETS }}
+          WATCHER_INSTALL_COMMAND: ${{ vars.WATCHER_INSTALL_COMMAND }}
+          WORKER_PROVIDERS: ${{ vars.WORKER_PROVIDERS }}
           SANDBOX_MCP_URL: ${{ vars.SANDBOX_MCP_URL }}
+          SANDBOX_PI_MODEL: ${{ vars.SANDBOX_PI_MODEL }}
+          SANDBOX_SESSION_TIMEOUT_SECONDS: ${{ vars.SANDBOX_SESSION_TIMEOUT_SECONDS }}
+          DAYTONA_API_URL: ${{ vars.DAYTONA_API_URL }}
+          DAYTONA_SNAPSHOT: ${{ vars.DAYTONA_SNAPSHOT }}
+          DAYTONA_MAX_CONCURRENT: ${{ vars.DAYTONA_MAX_CONCURRENT }}
+          BOAT_API_URL: ${{ vars.BOAT_API_URL }}
+          BOAT_SANDBOX_SIZE: ${{ vars.BOAT_SANDBOX_SIZE }}
+          BOAT_MAX_CONCURRENT: ${{ vars.BOAT_MAX_CONCURRENT }}
           CLOUDFLARE_SANDBOX_URL: ${{ vars.CLOUDFLARE_SANDBOX_URL }}
+          CLOUDFLARE_SANDBOX_MAX_CONCURRENT: ${{ vars.CLOUDFLARE_SANDBOX_MAX_CONCURRENT }}
           # Secrets
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
