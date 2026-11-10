@@ -3,7 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   checkSource,
   detectSource,
+  formatBytes,
   groupWorkers,
+  hasAttachments,
+  isShownInline,
   workerGroup,
   workerName,
   relativeTime,
@@ -203,5 +206,49 @@ describe("workers", () => {
     expect(groups.shared.map((x) => x.id)).toEqual(["shared-b", "shared-a", "shared-z"]);
     expect(groups.personal.map((x) => x.id)).toEqual(["local-1"]);
     expect(groups.sandbox.map((x) => x.id)).toEqual(["daytona-1"]);
+  });
+});
+
+describe("hasAttachments", () => {
+  const ref = { id: "a1", filename: "x.png", contentType: "image/png", size: 1 };
+
+  it("is true when a created or follow_up event carries files", () => {
+    expect(hasAttachments([{ payload: null }, { payload: { attachments: [ref] } }])).toBe(true);
+  });
+
+  it("is false for text-only tickets and malformed payloads", () => {
+    expect(hasAttachments([])).toBe(false);
+    expect(
+      hasAttachments([
+        { payload: null },
+        { payload: "text" },
+        { payload: { sender: { id: "u1" } } },
+        { payload: { attachments: [] } },
+        { payload: { attachments: "no" } },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("isShownInline", () => {
+  it("draws plain raster pictures only", () => {
+    for (const type of ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]) {
+      expect(isShownInline(type)).toBe(true);
+    }
+    for (const type of ["image/svg+xml", "video/mp4", "application/pdf", "image/png2", null]) {
+      expect(isShownInline(type)).toBe(false);
+    }
+  });
+});
+
+describe("formatBytes", () => {
+  it("scales to the largest unit under 1024", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(1023)).toBe("1023 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(20 * 1024)).toBe("20 KB");
+    expect(formatBytes(5 * 1024 * 1024)).toBe("5 MB");
+    expect(formatBytes(3.25 * 1024 ** 3)).toBe("3.3 GB");
+    expect(formatBytes(2048 * 1024 ** 3)).toBe("2048 GB");
   });
 });

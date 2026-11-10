@@ -33,13 +33,27 @@ const postedLog = join(dataDir, "posted.jsonl");
 
 const orgId = ensureOrg(dbPath, { id: "verify-org", name: "Verify Org" });
 
+// Stands in for Discord's CDN: `drive.ts say --attach <file>` drops the file in $DATA_DIR/cdn and
+// the Coordinator downloads it from here at intake (it allows the `localhost` host below).
+const cdnDir = join(dataDir, "cdn");
+mkdirSync(cdnDir, { recursive: true });
 createReplyApp(async (target, content) =>
   appendFileSync(postedLog, JSON.stringify({ target, content }) + "\n"),
-).listen(adapterPort);
+)
+  .get("/cdn/:name", ({ params }) => Bun.file(join(cdnDir, params.name)))
+  .listen(adapterPort);
 
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
-    LocalLive({ dbPath, adapterUrls: { discord: `http://localhost:${adapterPort}` } }),
+    LocalLive({
+      dbPath,
+      adapterUrls: { discord: `http://localhost:${adapterPort}` },
+      assets: {
+        dir: join(dataDir, "assets"),
+        publicUrl: `http://localhost:${coordPort}`,
+        secret: "verify-secret-verify-secret-verify",
+      },
+    }),
     classifierReturning("new_request"),
     AgentRuntimeEcho,
     makeSidekickRecording().layer,
@@ -66,8 +80,12 @@ createApp(
   {
     access: makeAccess({ serviceToken: SERVICE_TOKEN, auth }),
     auth,
-    http: { run: (e) => runtime.runPromise(e as any), inbound: {} },
+    http: {
+      run: (e) => runtime.runPromise(e as any),
+      inbound: { attachments: { hosts: ["localhost"] } },
+    },
     mcp: runtime as any,
+    assets: { run: (e) => runtime.runPromise(e as any) },
   },
 ).listen(coordPort);
 
