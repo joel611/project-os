@@ -217,6 +217,19 @@ export const createDiscord = ({
       const message = await channel.send({ content, components });
       return { messageId: message.id };
     },
+    async ({ channelId, messageId }) => {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel?.isTextBased()) throw new Error(`channel ${channelId} has no messages`);
+      // A fresh fetch (not the cache) so the CDN links are newly signed.
+      const message = await channel.messages.fetch({ message: messageId, force: true });
+      return [...message.attachments.values()].map((a) => ({
+        id: a.id,
+        filename: a.name ?? a.id,
+        contentType: a.contentType ?? null,
+        size: a.size,
+        url: a.url,
+      }));
+    },
   ).listen({ port: replyPort, hostname: replyHost });
 
   const connectHost = replyHost === "0.0.0.0" ? "localhost" : replyHost;

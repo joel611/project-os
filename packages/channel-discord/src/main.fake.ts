@@ -72,6 +72,7 @@ createReplyApp(
     onReply();
     return { messageId: `fake-prompt-${++fakePrompts}` };
   },
+  async () => [],
 ).listen(port);
 
 const click = async (choice: number) => {

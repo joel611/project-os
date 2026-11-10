@@ -2,9 +2,11 @@ import {
   CreatedChannel,
   CreatedThread,
   PostedPrompt,
+  ResolvedAttachments,
   type ChannelType,
 } from "@project-os/contracts";
 import {
+  AttachmentsResolveFailed,
   ChannelCreateFailed,
   PromptSendFailed,
   ReactionFailed,
@@ -22,6 +24,7 @@ export interface HttpGatewayConfig {
 const decodeCreated = Schema.decodeUnknownOption(CreatedChannel);
 const decodeThread = Schema.decodeUnknownOption(CreatedThread);
 const decodePosted = Schema.decodeUnknownOption(PostedPrompt);
+const decodeResolved = Schema.decodeUnknownOption(ResolvedAttachments);
 
 const baseUrl = (config: HttpGatewayConfig, channelType: ChannelType) => {
   const base = config.adapterUrls[channelType];
@@ -60,7 +63,8 @@ const messageOf = (err: unknown) => (err instanceof Error ? err.message : String
  * POSTs reply instructions to `<adapter>/reply` (delivery failures are defects), channel
  * creation requests to `<adapter>/channels` (failures are `ChannelCreateFailed`, so the admin
  * dialogue can report them), thread requests to `<adapter>/threads` (`ThreadCreateFailed`),
- * reactions to `<adapter>/reactions` (`ReactionFailed`), and prompts to `<adapter>/prompts`
+ * reactions to `<adapter>/reactions` (`ReactionFailed`), attachment lookups to
+ * `<adapter>/attachments` (`AttachmentsResolveFailed`), and prompts to `<adapter>/prompts`
  * (`PromptSendFailed`).
  */
 export const makeHttpChannelGateway = (
@@ -102,6 +106,12 @@ export const makeHttpChannelGateway = (
       catch: (err) =>
         new ReactionFailed({ channelType: request.channelType, message: messageOf(err) }),
     }).pipe(Effect.asVoid),
+  resolveAttachments: (request) =>
+    Effect.tryPromise({
+      try: () => postForResult(config, request, "/attachments", decodeResolved, "attachments"),
+      catch: (err) =>
+        new AttachmentsResolveFailed({ channelType: request.channelType, message: messageOf(err) }),
+    }),
   ask: (request) =>
     Effect.tryPromise({
       try: () => postForResult(config, request, "/prompts", decodePosted, "prompt"),

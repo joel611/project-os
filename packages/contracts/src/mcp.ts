@@ -32,6 +32,24 @@ export const TicketGetOutput = Schema.Struct({
   events: Schema.Array(TicketEvent),
 });
 
+export const TicketAttachmentsInput = Schema.Struct({ ticketId: Id });
+/** A file a person sent on the ticket. `url` is null when it can no longer be read. */
+export const TicketAttachment = Schema.Struct({
+  /** The ticket event (created or follow_up) whose message carried the file. */
+  eventId: Schema.String,
+  id: Schema.String,
+  filename: Schema.String,
+  contentType: Schema.NullOr(Schema.String),
+  size: Schema.Number,
+  /** Fresh download link, valid for about a day; plain GET, no auth header. */
+  url: Schema.NullOr(Schema.String),
+  /** Why `url` is null, e.g. the message was deleted. */
+  error: Schema.optionalKey(Schema.String),
+});
+export const TicketAttachmentsOutput = Schema.Struct({
+  attachments: Schema.Array(TicketAttachment),
+});
+
 export const TicketAppendEventInput = Schema.Struct({
   ticketId: Id,
   type: TicketEventType,

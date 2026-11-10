@@ -101,6 +101,23 @@ export const ReactInstruction = Schema.Struct({
 });
 export type ReactInstruction = typeof ReactInstruction.Type;
 
+/**
+ * Asks a Channel Adapter for the files on a message, with fresh download links. The links
+ * that arrived with the message expire, so a Worker's request re-reads the message.
+ */
+export const ResolveAttachmentsInstruction = Schema.Struct({
+  channelType: ChannelType,
+  /** Where the message lives: the thread's id when it was posted in a thread. */
+  channelId: Schema.String,
+  messageId: Schema.String,
+});
+export type ResolveAttachmentsInstruction = typeof ResolveAttachmentsInstruction.Type;
+
+export const ResolvedAttachments = Schema.Struct({
+  attachments: Schema.Array(InboundAttachment),
+});
+export type ResolvedAttachments = typeof ResolvedAttachments.Type;
+
 /** Slash commands a Channel Adapter registers and forwards to the Coordinator's `/commands`. */
 export const SLASH_COMMANDS = [
   "project-create",
