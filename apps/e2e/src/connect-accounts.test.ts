@@ -37,7 +37,11 @@ const connect = async (speaker: typeof ada, provider: string) => {
   expect(reply.ephemeral).toBe(true);
   const link = /(http:\/\/\S+\/connect\/\S+)/.exec(reply.content)?.[1];
   expect(link, reply.content).toBeDefined();
-  return { link: link!, page: await browse(link!) };
+  // Opening the link must not redeem it (previews fetch links); pressing Continue does.
+  const confirm = await browse(link!);
+  expect(confirm.status).toBe(200);
+  expect(confirm.body).toContain("Continue");
+  return { link: link!, page: await browse(link!, undefined, "POST") };
 };
 
 const say = async (speaker: typeof ada, content: string) => {
@@ -151,8 +155,16 @@ describe("per-person account linking", () => {
 
   it("a connect link works once", async () => {
     const { link } = await connect(ada, "google");
-    const again = await browse(link);
+    const again = await browse(link, undefined, "POST");
     expect(again.status).toBe(410);
+  });
+
+  it("opening a connect link without pressing Continue does not use it up", async () => {
+    const reply = await slash(ada, "connect", { provider: "google" });
+    const link = /(http:\/\/\S+\/connect\/\S+)/.exec(reply.content)![1]!;
+    for (let i = 0; i < 3; i++) expect((await browse(link)).status).toBe(200);
+    const page = await browse(link, undefined, "POST");
+    expect(page.url).toContain("/connect/done?provider=google");
   });
 
   it("asks an unlinked requester to /connect in the channel and fails NotConnected", async () => {
