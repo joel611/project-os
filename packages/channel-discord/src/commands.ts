@@ -5,8 +5,7 @@ import {
   type SlashCommandName,
   WATCHER_AGENTS,
 } from "@project-os/contracts";
-
-type Fetcher = (req: Request) => Promise<Response>;
+import { type CoordinatorTarget, type Fetcher, postToCoordinator } from "./forward.ts";
 
 const PROVIDER_OPTION = {
   name: "provider",
@@ -169,18 +168,11 @@ const decodeReply = Schema.decodeUnknownSync(CommandReply);
 
 /** POSTs a command to the Coordinator's /commands and returns what to show the user. */
 export const forwardCommand = async (
-  coordinatorUrl: string,
+  coordinator: CoordinatorTarget,
   command: SlashCommand,
   fetcher: Fetcher,
 ): Promise<CommandReply> => {
-  const url = `${coordinatorUrl.replace(/\/+$/, "")}/commands`;
-  const res = await fetcher(
-    new Request(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(command),
-    }),
-  );
+  const res = await postToCoordinator(coordinator, "/commands", command, fetcher);
   if (!res.ok) throw new Error(`Coordinator /commands responded ${res.status}`);
   return decodeReply(await res.json());
 };
@@ -202,14 +194,18 @@ export interface InteractionReplier {
 export const answerCommand = async (
   command: SlashCommand,
   replier: InteractionReplier,
-  deps: { readonly coordinatorUrl: string; readonly adminChannelId?: string; fetcher: Fetcher },
+  deps: {
+    readonly coordinator: CoordinatorTarget;
+    readonly adminChannelId?: string;
+    fetcher: Fetcher;
+  },
 ): Promise<void> => {
   const deferredPrivately =
     deps.adminChannelId === undefined || command.channelId !== deps.adminChannelId;
   await replier.defer(deferredPrivately);
   let reply: CommandReply;
   try {
-    reply = await forwardCommand(deps.coordinatorUrl, command, deps.fetcher);
+    reply = await forwardCommand(deps.coordinator, command, deps.fetcher);
   } catch (err) {
     console.error("forward command to coordinator failed", err);
     reply = { content: "Something went wrong reaching the Coordinator.", ephemeral: true };

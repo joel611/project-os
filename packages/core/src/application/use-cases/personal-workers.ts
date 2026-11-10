@@ -132,6 +132,39 @@ export const authenticateWorker = (secret: string) =>
     return yield* workers.findBySecretHash(yield* sha256Hex(secret));
   });
 
+const sandboxTokenKey = (hash: string) => `sandbox-token:${hash}`;
+
+/**
+ * Mints the Bearer token a sandbox session calls MCP with. It acts as `workerId` only and stops
+ * working after `ttlSeconds`. Only its hash is stored.
+ */
+export const issueSandboxToken = (workerId: string, ttlSeconds: number) =>
+  Effect.gen(function* () {
+    const token = yield* randomSecret(32);
+    const kv = yield* KeyValueStore;
+    yield* kv.set(sandboxTokenKey(yield* sha256Hex(token)), workerId, { ttlSeconds });
+    return token;
+  });
+
+/** The sandbox worker id a token was minted for, or undefined (unknown or expired). */
+export const authenticateSandbox = (token: string) =>
+  Effect.gen(function* () {
+    const kv = yield* KeyValueStore;
+    return yield* kv.get(sandboxTokenKey(yield* sha256Hex(token)));
+  });
+
+/** Who is calling MCP: the worker id its Bearer credentials belong to. */
+export interface McpCaller {
+  readonly id: string;
+}
+
+/** A registered device's secret or a sandbox session's token; undefined for anything else. */
+export const authenticateCaller = (token: string) =>
+  Effect.gen(function* () {
+    const id = (yield* authenticateWorker(token))?.id ?? (yield* authenticateSandbox(token));
+    return id === undefined ? undefined : ({ id } satisfies McpCaller);
+  });
+
 /** This person's registered devices, with online/offline from their last heartbeat. */
 export const listPersonalWorkers = (person: Person, staleAfterMs: number) =>
   Effect.gen(function* () {
@@ -198,57 +231,23 @@ export const onlinePersonalWorker = (person: Person, staleAfterMs: number) =>
 const unauthorized = (workerId: string, message: string) =>
   new WorkerUnauthorized({ workerId, message });
 
-const findWorker = (id: string) =>
-  Effect.flatMap(WorkerRepository, (w) => w.get(id)).pipe(
-    Effect.map((w): Worker | undefined => w),
-    Effect.catchTag("WorkerNotFound", () => Effect.succeed(undefined)),
-  );
+/** MCP guard for tools that act as `workerId` (list, claim, heartbeat): only as itself. */
+export const guardActingAs = (workerId: string, caller: McpCaller) =>
+  caller.id === workerId
+    ? Effect.void
+    : Effect.fail(unauthorized(workerId, "A worker can only act as itself."));
 
 /**
- * MCP guard for tools that act as `workerId` (list, claim, heartbeat). A registered device
- * (personal or shared) must be the caller, and a registered caller may only act as itself.
- * Sandbox sessions, which the Coordinator starts itself, need no credentials.
+ * MCP guard for tools on one ticket: only its assignee reaches it (it may carry the requester's
+ * OAuth tokens).
  */
-export const guardActingAs = (workerId: string, caller: Worker | undefined) =>
-  Effect.gen(function* () {
-    if (caller) {
-      if (caller.id !== workerId) {
-        return yield* unauthorized(workerId, "A registered worker can only act as itself.");
-      }
-      return;
-    }
-    const target = yield* findWorker(workerId);
-    if (target?.registered) {
-      return yield* unauthorized(
-        workerId,
-        "This is a registered worker: send its secret as a Bearer token.",
-      );
-    }
-  });
-
-/**
- * MCP guard for tools on one ticket. A ticket assigned to a registered device (personal or
- * shared) is reachable only with that device's secret (it may carry the requester's OAuth
- * tokens), and a registered device only reaches its own tickets.
- */
-export const guardTicketAccess = (ticketId: string, caller: Worker | undefined) =>
+export const guardTicketAccess = (ticketId: string, caller: McpCaller) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
     const ticket = yield* tickets.get(ticketId).pipe(Effect.option);
     // A missing ticket is the tool's own error to report.
     if (Option.isNone(ticket)) return;
-    const assignee = ticket.value.workerId;
-    if (caller) {
-      if (assignee !== caller.id) {
-        return yield* unauthorized(caller.id, "This ticket isn't assigned to this worker.");
-      }
-      return;
-    }
-    const target = assignee === null ? undefined : yield* findWorker(assignee);
-    if (target?.registered) {
-      return yield* unauthorized(
-        target.id,
-        "This ticket belongs to a registered worker: send its secret as a Bearer token.",
-      );
+    if (ticket.value.workerId !== caller.id) {
+      return yield* unauthorized(caller.id, "This ticket isn't assigned to this worker.");
     }
   });

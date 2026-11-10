@@ -8,6 +8,8 @@ services:
       PORT: "8080"
       DATABASE_PATH: /data/project-os.sqlite
       PI_STORAGE_PATH: /data/pi-durable.sqlite
+      # Required: Channel Adapters (Discord, in or out of this process) call with it.
+      COORDINATOR_SERVICE_TOKEN: ${COORDINATOR_SERVICE_TOKEN:-}
       # Discord runs inside the Coordinator when the token is set. For the split layout
       # (`--profile split`), set DISCORD_SPLIT_GATEWAY_URL=http://discord-gateway:8081 and the token is ignored here.
       DISCORD_SPLIT_GATEWAY_URL: ${DISCORD_SPLIT_GATEWAY_URL:-}
@@ -24,8 +26,12 @@ services:
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       DISCORD_REQUIRE_MENTION: ${DISCORD_REQUIRE_MENTION:-true}
       DISCORD_PROJECT_CHANNEL_AUTO_CREATE: ${DISCORD_PROJECT_CHANNEL_AUTO_CREATE:-true}
-      # Account linking (/connect); off unless BETTER_AUTH_SECRET and a client are set. See SETUP.md.
+      # Sign-in (required) and account linking (/connect, off unless a client is set). See SETUP.md.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      WEB_ORIGIN: ${WEB_ORIGIN:-}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -84,6 +90,7 @@ services:
     environment:
       DISCORD_SPLIT_GATEWAY_PORT: "8081"
       COORDINATOR_URL: http://coordinator:8080
+      COORDINATOR_SERVICE_TOKEN: ${COORDINATOR_SERVICE_TOKEN:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}

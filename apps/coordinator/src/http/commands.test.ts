@@ -3,8 +3,8 @@ import { makeTestLayer } from "@project-os/testing";
 import { ConnectionsUnavailable, UserConnections, WorkerRepository } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.ts";
 import { type CommandsConfig, runCommand } from "./commands.ts";
+import { httpRoutes } from "./routes.ts";
 
 const command = (over: Partial<SlashCommand> = {}): SlashCommand => ({
   channelType: "discord",
@@ -92,10 +92,7 @@ describe("POST /commands", () => {
   const appWith = (commands?: CommandsConfig) => {
     const runtime = ManagedRuntime.make(makeTestLayer().layer);
     disposers.push(() => runtime.dispose());
-    return createApp(
-      {},
-      { http: { run: (e) => runtime.runPromise(e), ...(commands && { commands }) } },
-    );
+    return httpRoutes({ run: (e) => runtime.runPromise(e), ...(commands && { commands }) });
   };
   const post = async (app: ReturnType<typeof appWith>, body: unknown) => {
     const res = await app.handle(

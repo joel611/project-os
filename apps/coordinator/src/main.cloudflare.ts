@@ -3,7 +3,7 @@ import {
   makeIntentClassifier,
   newModels,
 } from "@project-os/agent-runtime/classifier";
-import { makeConnections, type OAuthClientConfig } from "@project-os/auth";
+import { makeAuth } from "@project-os/auth";
 import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
@@ -12,6 +12,8 @@ import { env as workerEnv } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
+import { makeAccess } from "./access.ts";
+import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 
 export { PiAgent } from "./pi-agent.ts";
@@ -30,12 +32,6 @@ interface Bindings {
   readonly DISCORD_GATEWAY?: Fetcher;
 }
 
-const oauthClient = (prefix: string): OAuthClientConfig | undefined => {
-  const clientId = process.env[`${prefix}_CLIENT_ID`];
-  const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
-  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
-};
-
 /**
  * Builds the app from the Worker's bindings. This must run at module load: Elysia's
  * `.compile()` uses `new Function`, which workerd allows only before the first request.
@@ -47,21 +43,19 @@ const buildApp = (bindings: Bindings) => {
   const jev = models.getModelOfType("classifier", "openrouter", jevModelId);
   if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
 
-  const google = oauthClient("GOOGLE");
-  const github = oauthClient("GITHUB");
-  const authSecret = process.env.BETTER_AUTH_SECRET;
   const publicUrl = process.env.PUBLIC_URL;
-  // Callbacks are built from PUBLIC_URL, so account linking stays off without it.
-  const connections =
-    authSecret && publicUrl && (google || github)
-      ? makeConnections({
-          db: drizzle(bindings.DB),
-          baseURL: publicUrl,
-          secret: authSecret,
-          ...(google && { google }),
-          ...(github && { github }),
-        })
-      : undefined;
+  const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
+  // Callbacks are built from PUBLIC_URL, so account linking stays off without it. The admin is
+  // seeded on the first sign-in request: nothing here may do I/O.
+  const auth = makeAuth(
+    authConfigFromEnv(process.env, {
+      db: drizzle(bindings.DB),
+      ...(publicUrl && { baseURL: publicUrl }),
+      webOrigins,
+    }),
+  );
+  const connections = auth.connections;
+  const serviceToken = serviceTokenFromEnv(process.env);
 
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
   const runtime = ManagedRuntime.make(
@@ -97,6 +91,7 @@ const buildApp = (bindings: Bindings) => {
   return createApp(
     { adapter: CloudflareAdapter },
     {
+      access: makeAccess({ serviceToken, auth }),
       http: {
         run: (effect) => runtime.runPromise(effect),
         inbound: {
@@ -122,7 +117,8 @@ const buildApp = (bindings: Bindings) => {
       },
       mcp: runtime,
       // The dashboard is served from its own origin and calls this API directly.
-      corsOrigins: parseOrigins(process.env.WEB_ORIGIN),
+      corsOrigins: webOrigins,
+      auth,
       ...(connections && { connect: connections }),
     },
   ).compile();

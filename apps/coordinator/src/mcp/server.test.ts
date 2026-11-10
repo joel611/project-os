@@ -5,7 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { schema } from "@project-os/db-sqlite";
 import { LocalLive, openLocalDb } from "@project-os/infra-local";
-import { ProjectRepository, TicketRepository } from "@project-os/core";
+import { issueSandboxToken, ProjectRepository, TicketRepository } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -64,17 +64,31 @@ beforeEach(async () => {
   runtime = ManagedRuntime.make(layer as Layer.Layer<any, never>);
   await runtime.runPromise(seed as Effect.Effect<void, never, any>);
 
-  const app = new Elysia().use(mcpRoutes(runtime));
-  client = new Client({ name: "test", version: "0" });
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
-      fetch: (url, init) => app.handle(new Request(url.toString(), init)),
-    }),
-  );
+  app = new Elysia().use(mcpRoutes(runtime));
+  client = await connect(await mint("w1"));
 });
 
+let app: { handle: (request: Request) => Promise<Response> };
+const clients: Client[] = [];
+
+/** A sandbox session's MCP token, as the Coordinator mints one at launch. */
+const mint = (workerId: string) =>
+  runtime.runPromise(issueSandboxToken(workerId, 60) as Effect.Effect<string, never, any>);
+
+const connect = async (token?: string) => {
+  const c = new Client({ name: "test", version: "0" });
+  await c.connect(
+    new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
+      fetch: (url, init) => app.handle(new Request(url.toString(), init)),
+      ...(token && { requestInit: { headers: { authorization: `Bearer ${token}` } } }),
+    }),
+  );
+  clients.push(c);
+  return c;
+};
+
 afterEach(async () => {
-  await client.close();
+  await Promise.all(clients.splice(0).map((c) => c.close()));
   await runtime.dispose();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -147,12 +161,32 @@ describe("coordinator MCP server", () => {
 
   it("returns typed failures as isError results", async () => {
     await call("ticket_claim", { ticketId: "t1", workerId: "w1" });
-    const again = await call("ticket_claim", { ticketId: "t1", workerId: "w2" });
+    const again = await call("ticket_claim", { ticketId: "t1", workerId: "w1" });
     expect(again.isError).toBe(true);
     expect(JSON.parse(again.content[0]!.text)._tag).toBe("ClaimConflict");
 
     const missing = await call("ticket_get", { ticketId: "nope" });
     expect(JSON.parse(missing.content[0]!.text)._tag).toBe("TicketNotFound");
+  });
+
+  it("refuses a caller without a token or with an unknown one", async () => {
+    await expect(connect()).rejects.toThrow(/Unauthorized/);
+    await expect(connect("not-a-token")).rejects.toThrow(/Unauthorized/);
+  });
+
+  it("keeps a worker to its own id and its own tickets", async () => {
+    const other = await connect(await mint("w2"));
+    const asW1 = (await other.callTool({
+      name: "ticket_list_assigned",
+      arguments: { workerId: "w1" },
+    })) as { isError?: boolean; content: { text: string }[] };
+    expect(asW1.isError).toBe(true);
+    expect(JSON.parse(asW1.content[0]!.text)._tag).toBe("WorkerUnauthorized");
+    const ticket = (await other.callTool({
+      name: "ticket_get",
+      arguments: { ticketId: "t1" },
+    })) as { isError?: boolean; content: { text: string }[] };
+    expect(JSON.parse(ticket.content[0]!.text)._tag).toBe("WorkerUnauthorized");
   });
 
   it("maps untagged errors to a generic failure", () => {

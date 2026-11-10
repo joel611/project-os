@@ -13,8 +13,8 @@ import { LocalLive, openLocalDb } from "@project-os/infra-local";
 import { classifierReturning, makeTestLayer } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { createApp } from "../app.ts";
-import { type HandleInboundConfig, type HttpEnv } from "./routes.ts";
+
+import { type HandleInboundConfig, type HttpEnv, httpRoutes } from "./routes.ts";
 
 const T0 = "2026-11-04T00:00:00.000Z";
 const disposers: Array<() => Promise<unknown>> = [];
@@ -25,10 +25,7 @@ afterEach(async () => {
 const appFor = (layer: Layer.Layer<HttpEnv>, inbound?: HandleInboundConfig) => {
   const runtime = ManagedRuntime.make(layer);
   disposers.push(() => runtime.dispose());
-  return createApp(
-    {},
-    { http: { run: (effect) => runtime.runPromise(effect), ...(inbound && { inbound }) } },
-  );
+  return httpRoutes({ run: (effect) => runtime.runPromise(effect), ...(inbound && { inbound }) });
 };
 
 type App = ReturnType<typeof appFor>;
@@ -394,7 +391,7 @@ describe("dashboard reads", () => {
     const { layer } = makeTestLayer();
     const runtime = ManagedRuntime.make(layer);
     disposers.push(() => runtime.dispose());
-    const app = createApp({}, { http: { run: (effect) => runtime.runPromise(effect) } });
+    const app = httpRoutes({ run: (effect) => runtime.runPromise(effect) });
     return { app, runtime };
   };
 

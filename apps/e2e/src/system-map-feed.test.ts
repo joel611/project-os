@@ -32,7 +32,7 @@ describe("system map activity feed", () => {
     const baseline = await stack.json("GET", "/activity");
     expect(baseline.tickets).toEqual([]);
 
-    await forwardInbound(stack.url, fakeInbound(speaker, "please add dark mode")!, fetch);
+    await forwardInbound(stack.coordinator, fakeInbound(speaker, "please add dark mode")!, fetch);
     const created = await stack.json("GET", `/activity?since=${encodeURIComponent(baseline.now)}`);
     expect(created.tickets).toMatchObject([
       {

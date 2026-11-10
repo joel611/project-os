@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { ApiError, apiBase, describeError, makeApi } from "./api.ts";
 
 const T = "2026-11-05T00:00:00.000Z";
@@ -171,12 +171,53 @@ describe("makeApi", () => {
   });
 });
 
+describe("session", () => {
+  const recording = (status: number, body: unknown = []) => {
+    const headers: Array<string | null> = [];
+    const fetchFn = (async (_url: string, init?: RequestInit) => {
+      headers.push(new Headers(init?.headers).get("authorization"));
+      return Response.json(body, { status });
+    }) as unknown as typeof fetch;
+    return { fetchFn, headers };
+  };
+
+  it("sends the session token as a Bearer header, and none without one", async () => {
+    const { fetchFn, headers } = recording(200);
+    const expired = vi.fn();
+    await makeApi(fetchFn, "/api", { token: () => "tok-1", expired }).projects();
+    await makeApi(fetchFn, "/api", { token: () => null, expired }).projects();
+    expect(headers).toEqual(["Bearer tok-1", null]);
+    expect(expired).not.toHaveBeenCalled();
+  });
+
+  it("reports a 401 as an ended session and still fails the call", async () => {
+    const { fetchFn } = recording(401, { error: "Unauthorized" });
+    const expired = vi.fn();
+    const api = makeApi(fetchFn, "/api", { token: () => "stale", expired });
+    await expect(api.workers()).rejects.toEqual(new ApiError(401, "Unauthorized"));
+    expect(expired).toHaveBeenCalledOnce();
+  });
+
+  it("does not end the session on a 403 or other errors", async () => {
+    const expired = vi.fn();
+    for (const status of [403, 500]) {
+      const { fetchFn } = recording(status, { error: "Nope" });
+      await makeApi(fetchFn, "/api", { token: () => "t", expired })
+        .projects()
+        .catch(() => undefined);
+    }
+    expect(expired).not.toHaveBeenCalled();
+  });
+});
+
 describe("describeError", () => {
   const unreachable = "Can't reach the Coordinator. Is it running?";
 
   it.each([
     [new TypeError("Failed to fetch"), unreachable],
     [new ApiError(502, "Unreachable"), unreachable],
+    [new ApiError(401, "Unauthorized"), "Your session ended. Sign in again."],
+    [new ApiError(403, "Forbidden"), "This account isn't allowed to use the dashboard."],
     [new ApiError(404, "TicketNotFound"), "Not found."],
     [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
     [new ApiError(400, "SchemaError"), "The Coordinator rejected that input."],

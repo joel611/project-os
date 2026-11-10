@@ -1,6 +1,6 @@
 # Project Agent – Technical Architecture (v2.4)
 
-**Status:** Ticket model + MCP Worker interface locked. Pull assignment model chosen. Worker auth deferred (sandbox, no auth concern).  
+**Status:** Ticket model + MCP Worker interface locked. Pull assignment model chosen. Every Coordinator caller authenticates (§3.1).  
 **Previous:** v2.3 (MCP Worker interface)  
 **Last updated:** 2026-11-04
 
@@ -89,7 +89,7 @@ Three main moving parts:
 | Workers pull and execute tickets via MCP | On session start, look for tickets assigned but not yet picked up, claim one, then work it through MCP tools, read/write Project Memory, post status and results **on the ticket**. Never talk to channels directly. |
 | Project Memory is the source of truth | Channel → Project mapping, sources, default reply targets, and durable project knowledge. Accessible by Coordinator, Workers (via MCP), and Web UI. |
 | Pull assignment | Coordinator only marks a ticket `assigned` (to a worker / worker type). Workers find and claim their work; the Coordinator never pushes into a Worker. |
-| Sandbox sessions need no auth; registered devices do | Sandbox sessions, which the Coordinator starts itself, call MCP without credentials. A registered device (a personal Worker someone added with `/register-worker`, or a shared Worker an admin added with `/register-worker shared:True`) authenticates with a Bearer secret, and only it can reach its tickets (§5.8). Per-ticket scoped tokens are still deferred. |
+| Every caller authenticates | A Worker calls MCP with a Bearer token: a registered device (a personal Worker someone added with `/register-worker`, or a shared Worker an admin added with `/register-worker shared:True`) with its device secret (§5.8), and a sandbox session with the token the Coordinator handed it at launch. Either one acts only as its own worker id and reaches only its own tickets. The web dashboard signs in, and only Channel Adapters may post messages, commands and prompt answers (§3.1). |
 | 1:1 Channel → Project | One Discord channel belongs to exactly one project. |
 | Admin via conversation + Web UI | Admins configure projects/sources via the dedicated admin Discord channel or the web interface. |
 
@@ -160,7 +160,7 @@ Single bounded context that owns:
 2. Loads project context + sources + memory
 3. Runs Jev to classify intent
 4. **Creates a Ticket** and assigns it to a Worker
-5. Leaves the ticket in `assigned`; the Worker picks it up on its next session start (pull model). No auth token.
+5. Leaves the ticket in `assigned`; the Worker picks it up on its next session start (pull model). A sandbox pick is launched with its own MCP token (§3.1).
 6. For long-running work: can post follow-ups or ask status **on the ticket**
 7. Reads final result from the ticket
 8. Decides reply content + destination (from Project Memory rules)
@@ -260,9 +260,32 @@ How it works (`packages/sandbox-daytona`, enabled by `DAYTONA_API_KEY`):
 
 ### 3.1 Auth stance
 
-**Sandbox sessions: no auth.** Sessions the Coordinator starts in a sandbox call MCP with just their `worker_id`, as in the POC.
+Every caller of the Coordinator proves who it is with `Authorization: Bearer <token>`. Which token a route takes is one table, `ROUTE_POLICY` in `apps/coordinator/src/access.ts`, enforced by one guard that runs before every route. A route missing from the table needs a dashboard user, and a unit test fails until the route is listed.
 
-**Registered devices (personal and shared Workers): a Bearer secret** (§5.8). A device registered with `/register-worker` sends `Authorization: Bearer <secret>` on every MCP request; the Coordinator stores only its SHA-256. The rule is symmetric: a registered Worker, and any ticket assigned to one, is reachable only with that Worker's secret, and a registered Worker reaches only its own tickets (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`, `ticket_get`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). An unknown Bearer token gets HTTP 401. Project-scoped tools (`project_memory_*`, `project_sources_list`) are not guarded yet. Per-ticket scoped tokens stay deferred; the tool surface did not change.
+| Caller | Token | Routes |
+| --- | --- | --- |
+| Registered device (personal or shared Worker) | Its device secret (§5.8); the Coordinator stores only the SHA-256 | `/mcp` |
+| Sandbox session | A **sandbox token**: minted when the ticket goes to the sandbox pool, written into Pi's `mcp.json` through the session's env, valid for the provider's session timeout plus 5 minutes; only its SHA-256 is kept, in KV | `/mcp` |
+| Web dashboard operator | A Better Auth session token from `/api/auth/sign-in/email` or Google sign-in. Its email must be on the allowlist (`ADMIN_EMAIL` plus `ADMIN_EMAILS`) | `/projects*`, `/tickets*`, `/workers`, `/activity` |
+| Channel Adapter (Discord, in-process or `apps/discord-gateway`) | `COORDINATOR_SERVICE_TOKEN`, compared in constant time | `/inbound`, `/commands`, `/prompts/answer` |
+| Anyone | none | `/health`, `/api/auth/*`, `/sign-in/*`, `/connect/*`, `/workers/register` (the one-time code is the proof), `/watcher/install.sh` |
+
+**MCP.** No token, an unknown one, or a dashboard or service token gets HTTP 401. A Worker, registered or sandboxed, acts only as its own worker id (`ticket_list_assigned`, `ticket_claim`, `worker_heartbeat`) and reaches only tickets assigned to it (`ticket_get`, `ticket_append_event`, `ticket_update_status`, `ticket_ask`, `user_token`). A sandbox worker id is `<provider>-<ticketId>`, easy to guess, so the token is what keeps one session out of another's ticket. Project-scoped tools (`project_memory_*`, `project_sources_list`) and `ticket_get_prompt` take any authenticated Worker; they are not narrowed to the Worker's own projects yet.
+
+**HTTP API.** No token, or an unknown one, gets 401. A valid session for someone off the allowlist gets 403, and so does the wrong kind of token for the route. That includes a person's channel identity. Account linking creates one auth user per channel identity (§5.7), which can end up holding a session, but its placeholder email is never on the allowlist. The guard reads only the Bearer header, never cookies, so a cookie Better Auth leaves on the Coordinator's origin does not authenticate API calls. Admin identity in a `/commands` or `/prompts/answer` body is trusted because only a Channel Adapter can post there.
+
+**Dashboard sign-in** runs on Better Auth in `packages/auth`, one instance per Coordinator process that also serves account linking. Email and password sign-in is on and sign-up is off. The Coordinator seeds the operator in `ADMIN_EMAIL` / `ADMIN_PASSWORD` at boot (Bun) or on the first `/api/auth` request (Workers). Sessions last 7 days and renew daily while in use. Google sign-in is a second Google client, `google-signin`, with identity scopes only. It needs Google configured, `PUBLIC_URL`, and `WEB_ORIGIN`:
+
+```
+dashboard /login → GET /sign-in/google (Coordinator: state cookies, redirect)
+  → Google → /api/auth/callback/google-signin (Better Auth: user + session cookie)
+  → /sign-in/done (cookie session → one-time token, stored hashed, 3 min)
+  → <first WEB_ORIGIN>/login?ott=… → POST /api/auth/one-time-token/verify → Bearer token
+```
+
+Only allowlisted emails and channel identities can become users (a `create.before` hook), and Google must have verified the email. Emails are unique, and a Google sign-in whose verified email matches an existing user links to that user, so the seeded password operator can also sign in with Google. It also works in the other order. A Google user who later becomes `ADMIN_EMAIL` gets the password added on the next seed. Only a verified email links. `google-signin` is not a trusted provider. `github` is trusted, because GitHub never reports an email verified and `/connect` needs it. An account hook therefore refuses `google` and `github` accounts on anyone but a channel identity, so a GitHub account claiming an operator's email can't take the operator over.
+
+**Fail closed.** The Coordinator refuses to start without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and so does `alchemy deploy`.
 
 ### 3.1a Assignment model: pull
 
@@ -574,7 +597,7 @@ Tickets in `in_progress`
 
 ### 5.6 POC deployment: local Docker Compose
 
-Everything runs on one machine in one Compose network. No auth, no public endpoints.
+Everything runs on one machine in one Compose network, with no public endpoints. The Coordinator still requires credentials from every caller (§3.1).
 
 ```
 docker compose
@@ -608,7 +631,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 - **Passed to Workers.** The tool returns the access token itself, so `gh`, `git` and the Drive API work directly (Joel, 2026-11-06). Workers must not store or print it.
 - **Not linked.** The tool fails `NotConnected` and the Coordinator asks the person in the project channel to `/connect` (once a day per ticket); the Worker sets the ticket `blocked`.
 - **Refresh.** Better Auth refreshes an access token that has under 5 s left before returning it. A failed refresh reads as `NotConnected` (link again).
-- **Storage.** Better Auth's `auth_users` / `auth_accounts` / `auth_sessions` / `auth_verifications` tables, tokens encrypted with `BETTER_AUTH_SECRET`. An auth user is one channel identity; its email is a placeholder (`discord-<id>@people.project-os.invalid`).
+- **Storage.** Better Auth's `auth_users` / `auth_accounts` / `auth_sessions` / `auth_verifications` tables, tokens encrypted with `BETTER_AUTH_SECRET`. An auth user is either a dashboard operator (§3.1) or one channel identity, whose email is a placeholder (`discord-<id>@people.project-os.invalid`) that is never on the dashboard allowlist.
 - **Providers.** Google: OAuth web client, `drive.readonly`, offline access. In Testing mode, refresh tokens last 7 days, so people re-link weekly until the app is verified (accepted, Joel, 2026-11-06). GitHub: a GitHub App's user tokens (8 h, refreshable), limited to repos the app is installed on and the person can access.
 - **Commands.** `/connect`, `/disconnect`, `/connections`.
 
@@ -672,7 +695,7 @@ A developer can make their own computer their Worker, like linking an account. I
 | `project_memory_search` | Optional, later |
 | `user_token` | The latest message author's own Google / GitHub token (§5.7) |
 
-No auth on MCP for shared Workers; personal Workers send a Bearer secret (§3.1). Ticket-scoped tokens deferred.
+Every MCP call carries a Bearer token, either a registered device's secret or a sandbox session's token (§3.1).
 
 ### Internal (used by agent loop)
 
@@ -688,8 +711,8 @@ No auth on MCP for shared Workers; personal Workers send a Bearer secret (§3.1)
 ## 7. Open / Deferred Items
 
 - Coordinator stack: TypeScript + Effect + Elysia + Drizzle; Cloudflare (Workers, D1, KV) as target, local Bun/SQLite for POC (§8)
-- Auth for Web UI and admin Discord actions
-- Per-ticket scoped Worker auth tokens (deferred). Personal Workers have device secrets (§5.8); shared Workers have none
+- Admin Discord actions still trust the Discord user ids in `ADMIN_USER_IDS`; the Coordinator trusts the adapter that forwards them (§3.1)
+- Scoping project memory and sources tools to the calling Worker's projects
 - Moving a personal Worker's ticket to the cloud Worker when the device goes offline mid-ticket
 - Publishing `@project-os/watcher` to npm (it depends on workspace packages)
 - Detailed JSON schemas for TicketEvent.payload and Ticket.result
@@ -802,7 +825,7 @@ project-os/
 │  │  └─ migrations/
 │  ├─ infra-cloudflare/                # Layer: D1 db, KV, Cron, DO AgentRuntime
 │  ├─ infra-local/                     # Layer: bun:sqlite db, memory KV, timer
-│  ├─ auth/                            # Better Auth: UserConnections Layer, /connect
+│  ├─ auth/                            # Better Auth: dashboard sign-in, UserConnections Layer, /connect
 │  └─ testing/                         # in-memory fakes of every port
 │
 ├─ libs/
@@ -837,7 +860,6 @@ Enforce these with lint import rules in the Vite+ config.
 - **Agent runtime:** see §8.6.
 - **Atomic claim:** `ticket_claim` is a single conditional `UPDATE … WHERE status = 'assigned'`, which works the same on D1 and bun:sqlite.
 - **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. Alchemy v2 (`alchemy.run.ts`, an Effect program) declares the Cloudflare resources and handles Cloudflare dev and deploy; see `docs/deployment.md`.
-- `libs/auth` (Better Auth) is dropped for the POC since there's no auth. It comes back as an `Auth` port when Web UI auth is designed.
 - The v1.1 throwaway `Task` entity in `CONTEXT.md` is no longer needed once `ticket/` exists.
 
 ### 8.6 Pi Durable + Jev
@@ -882,6 +904,6 @@ v2.x separates concerns and adopts a **ticket-driven** internal process with MCP
 - Project Memory is the durable project brain
 - Channels are pure adapters
 - Workers pull assigned tickets on session start
-- Worker auth tokens are deferred (sandbox, no auth concern)
+- Every caller authenticates: Workers by device secret or sandbox token, the dashboard by session, Channel Adapters by service token
 
 This mirrors how real teams use tickets: the coordinator creates work, assigns it, follows up on the ticket, and only surfaces curated updates to the customer/channel.

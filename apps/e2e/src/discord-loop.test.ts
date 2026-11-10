@@ -34,7 +34,7 @@ const sayInDiscord = async (
 ) => {
   const inbound = fakeInbound(who, content, { ...(id && { id }), ...options });
   if (!inbound) return;
-  await forwardInbound(stack.url, inbound, fetch);
+  await forwardInbound(stack.coordinator, inbound, fetch);
 };
 
 const tool = async (name: string, args: Record<string, unknown>) =>

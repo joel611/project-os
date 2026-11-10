@@ -25,6 +25,7 @@ const daytonaTicket = {
   ticketId: "t1",
   workerType: "daytona_pi",
   workerId: "daytona-t1",
+  mcpToken: "mcp-token-t1",
 } as const;
 const ok = async () => ({ exitCode: 0, output: "" });
 
@@ -40,13 +41,21 @@ describe("sandbox launcher", () => {
     expect(calls[0]!.command).toBe(SESSION_COMMAND);
     expect(calls[0]!.env).toEqual({
       OPENROUTER_API_KEY: "sk-or",
-      PROJECT_OS_MCP_JSON: piMcpJson("https://tunnel.example/mcp"),
+      PROJECT_OS_MCP_JSON: piMcpJson("https://tunnel.example/mcp", "mcp-token-t1"),
       PROJECT_OS_MODEL: "openrouter/m",
       PROJECT_OS_PROMPT: "Work one ticket.\nYour worker_id is `daytona-t1`.",
     });
     expect(JSON.parse(calls[0]!.env.PROJECT_OS_MCP_JSON!)).toEqual({
-      mcpServers: { "project-os": { url: "https://tunnel.example/mcp", exposure: "direct" } },
+      mcpServers: {
+        "project-os": {
+          url: "https://tunnel.example/mcp",
+          headers: { Authorization: "Bearer mcp-token-t1" },
+          exposure: "direct",
+        },
+      },
     });
+    // The token reaches Pi through the env, never the shell line.
+    expect(calls[0]!.command).not.toContain("mcp-token-t1");
   });
 
   it("starts the ticket on the provider it was assigned to", async () => {
@@ -70,6 +79,7 @@ describe("sandbox launcher", () => {
         ticketId: "t2",
         workerType: "cloudflare_pi",
         workerId: "cloudflare-t2",
+        mcpToken: "mcp-token-t2",
       }),
     );
     await settle();
@@ -80,13 +90,13 @@ describe("sandbox launcher", () => {
     ]);
   });
 
-  it("reports its providers as the pool, in order, with caps", async () => {
+  it("reports its providers as the pool, in order, with caps and session timeout", async () => {
     const { launcher } = setup(ok, [
       { workerType: "cloudflare_pi", runner: { run: ok }, maxConcurrent: 3 },
     ]);
     expect(await Effect.runPromise(launcher.pool)).toEqual([
-      { workerType: "daytona_pi" },
-      { workerType: "cloudflare_pi", maxConcurrent: 3 },
+      { workerType: "daytona_pi", sessionTimeoutSeconds: 1800 },
+      { workerType: "cloudflare_pi", maxConcurrent: 3, sessionTimeoutSeconds: 1800 },
     ]);
   });
 
@@ -97,13 +107,14 @@ describe("sandbox launcher", () => {
       return { exitCode: 0, output: "" };
     });
     await Effect.runPromise(
-      launcher.launch({ ticketId: "t1", workerType: "local", workerId: "w" }),
+      launcher.launch({ ticketId: "t1", workerType: "local", workerId: "w", mcpToken: "m" }),
     );
     await Effect.runPromise(
       launcher.launch({
         ticketId: "t1",
         workerType: "cloudflare_pi",
         workerId: "cloudflare-t1",
+        mcpToken: "mcp-token-t1",
       }),
     );
     expect(ran).toBe(false);

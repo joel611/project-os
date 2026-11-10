@@ -14,10 +14,14 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
-  // The dashboard calls `/api/*`; the Coordinator serves the same paths at its root.
+  // The dashboard calls `/api/*`; the Coordinator serves the same paths at its root, except
+  // Better Auth, which it serves at `/api/auth/*` itself. First match wins, so that comes first.
   server: {
     port: 5173,
     proxy: {
+      // Through the proxy the dashboard is same-origin with the Coordinator, so sign-in
+      // carries the Coordinator's origin and passes Better Auth's origin check.
+      "/api/auth": { target: coordinator, headers: { origin: new URL(coordinator).origin } },
       "/api": { target: coordinator, rewrite: (p) => p.replace(/^\/api/, "") },
     },
   },

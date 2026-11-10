@@ -1,15 +1,21 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
+import { type Access, deny } from "./access.ts";
+import { type AuthDeps, authRoutes } from "./auth/routes.ts";
 import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
 
 export interface AppDeps {
+  /** Who is calling; every route but the public ones and /mcp is refused without someone. */
+  readonly access: Access;
   /** HTTP ingress + admin routes (#13). Omitted: no ingress routes. */
   readonly http?: HttpDeps;
   /** MCP server (#12). Omitted: `/mcp` is not mounted. */
   readonly mcp?: McpRuntime;
-  /** Account linking (`/connect/*`, `/api/auth/*`). Omitted: not mounted. */
+  /** Sign-in (`/api/auth/*`). Omitted: not mounted. */
+  readonly auth?: AuthDeps;
+  /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
   /**
    * Origins a browser may call this API from (the web dashboard when it is served from
@@ -31,24 +37,30 @@ export const parseOrigins = (raw: string | undefined): ReadonlyArray<string> =>
  * through the provider Layer chosen by the entry file (main.bun.ts / main.cloudflare.ts).
  * Routes: http/ (#13), MCP: mcp/ (#12), health sweep: health/ (#15).
  */
-export const createApp = (
-  options: ConstructorParameters<typeof Elysia>[0] = {},
-  deps: AppDeps = {},
-) => {
-  const base = new Elysia(options);
+export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps: AppDeps) => {
+  // Before any route, so every route below (plugins included) passes through it.
+  const base = new Elysia(options).onBeforeHandle(async ({ request, route, set }) => {
+    const denied = await deny(deps.access, request, route);
+    if (!denied) return;
+    set.status = denied.status;
+    return { error: denied.error };
+  });
   const withCors = deps.corsOrigins?.length
     ? base.use(
         cors({
           origin: [...deps.corsOrigins],
           methods: ["GET", "POST", "PATCH", "OPTIONS"],
-          allowedHeaders: ["content-type"],
-          // The API has no cookies or sessions to share across origins.
+          allowedHeaders: ["content-type", "authorization"],
+          // Sign-in hands the dashboard its session token in this header.
+          exposeHeaders: ["set-auth-token"],
+          // Sessions travel as Bearer tokens, never as cookies across origins.
           credentials: false,
         }),
       )
     : base;
   const app = withCors.get("/health", () => ({ status: "ok", service: "coordinator" }));
   const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
-  const withConnect = deps.connect ? withHttp.use(connectRoutes(deps.connect)) : withHttp;
+  const withAuth = deps.auth ? withHttp.use(authRoutes(deps.auth)) : withHttp;
+  const withConnect = deps.connect ? withAuth.use(connectRoutes(deps.connect)) : withAuth;
   return deps.mcp ? withConnect.use(mcpRoutes(deps.mcp)) : withConnect;
 };

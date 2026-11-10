@@ -43,6 +43,7 @@ describe("LocalLive", () => {
         ticketId: "t",
         workerType: "local",
         workerId: "w",
+        mcpToken: "m",
       });
       return { now, id, v: yield* kv.get("k") };
     });
