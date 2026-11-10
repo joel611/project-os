@@ -64,10 +64,14 @@ describe("COMMAND_DEFINITIONS", () => {
     }
   });
 
-  it("offers google and github as the only /connect providers", () => {
+  it("offers google, github and clickup as the only /connect providers", () => {
     const connect = COMMAND_DEFINITIONS.find((c) => c.name === "connect")!;
     expect(connect.options[0]).toMatchObject({ name: "provider", required: true });
-    expect(connect.options[0]!.choices.map((c) => c.value)).toEqual(["google", "github"]);
+    expect(connect.options[0]!.choices.map((c) => c.value)).toEqual([
+      "google",
+      "github",
+      "clickup",
+    ]);
   });
 
   it("offers no command in DMs: the bot only works in the server", () => {

@@ -44,6 +44,12 @@ describe("authConfigFromEnv", () => {
       base,
     );
     expect(both.github).toEqual({ clientId: "h", clientSecret: "hs" });
+    expect(both.clickup).toBeUndefined();
+    const clickup = authConfigFromEnv(
+      { BETTER_AUTH_SECRET: "s", CLICKUP_CLIENT_ID: "c", CLICKUP_CLIENT_SECRET: "cs" },
+      base,
+    );
+    expect(clickup.clickup).toEqual({ clientId: "c", clientSecret: "cs" });
   });
 
   it("refuses to start without COORDINATOR_SERVICE_TOKEN", () => {

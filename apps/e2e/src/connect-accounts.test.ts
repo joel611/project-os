@@ -10,7 +10,7 @@ import { type Stack, startStack } from "./stack.ts";
 // /connect in Discord -> Coordinator /commands -> one-time link -> browser: /connect/:token
 // -> fake provider authorize -> Better Auth callback (real, on the Coordinator) -> /connect/done.
 // Then a Worker asks `user_token` for the ticket and gets that person's token, refreshed by
-// Better Auth when it is about to expire. Google and GitHub are one fake OAuth server.
+// Better Auth when it is about to expire. Google, GitHub and ClickUp are one fake OAuth server.
 
 /** The shared worker an admin registered; set once the stack is up. */
 let SECRET: string;
@@ -82,6 +82,25 @@ describe("per-person account linking", () => {
     expect(row.refresh_token).not.toContain("rt-google-1");
     expect(stack.oauth!.tokenRequests).toEqual([
       { provider: "google", grantType: "authorization_code" },
+    ]);
+  });
+
+  it("links ClickUp (JSON code exchange, token that never expires) for a PM", async () => {
+    const { page } = await connect(ada, "clickup");
+    expect(page.url).toContain("/connect/done?provider=clickup");
+    expect(page.body).toContain("ClickUp account connected");
+    expect((await slash(ada, "connections")).content).toContain("ClickUp");
+
+    const ticketId = await say(ada, "use the demo video from our ClickUp task");
+    const res = await userToken(ticketId, "clickup");
+    expect(res.isError).toBeFalsy();
+    expect(res.structuredContent).toMatchObject({
+      accessToken: "at-clickup-1",
+      expiresAt: null,
+      person: { channelType: "discord", id: "u-ada", name: "Ada" },
+    });
+    expect(stack.oauth!.tokenRequests).toEqual([
+      { provider: "clickup", grantType: "authorization_code" },
     ]);
   });
 

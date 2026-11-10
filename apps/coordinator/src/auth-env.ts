@@ -42,6 +42,7 @@ export const authConfigFromEnv = (
 ): AuthConfig => {
   const google = oauthClient(env, "GOOGLE");
   const github = oauthClient(env, "GITHUB");
+  const clickup = oauthClient(env, "CLICKUP");
   const adminEmail = nonEmpty(env, "ADMIN_EMAIL");
   const adminPassword = nonEmpty(env, "ADMIN_PASSWORD");
   if (adminEmail && !adminPassword) throw new Error("ADMIN_EMAIL is set without ADMIN_PASSWORD");
@@ -56,5 +57,6 @@ export const authConfigFromEnv = (
     ...(adminEmail && adminPassword && { admin: { email: adminEmail, password: adminPassword } }),
     ...(google && { google }),
     ...(github && { github }),
+    ...(clickup && { clickup }),
   };
 };
