@@ -201,13 +201,11 @@ export const setDefaultChannel = (input: {
       });
     }
     if (existing.projectId !== input.projectId) {
-      return yield* Effect.fail(
-        new SourceAlreadyLinked({
-          type,
-          externalId: input.externalId,
-          projectId: existing.projectId,
-        }),
-      );
+      return yield* new SourceAlreadyLinked({
+        type,
+        externalId: input.externalId,
+        projectId: existing.projectId,
+      });
     }
     return yield* sources.setDefaultResponse(input.projectId, existing.id);
   });

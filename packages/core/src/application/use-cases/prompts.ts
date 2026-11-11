@@ -5,7 +5,7 @@ import {
   type PromptAnswerReply,
   type PromptKind,
 } from "@project-os/contracts";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import {
   answeredContent,
   NoPromptChannel,
@@ -169,8 +169,10 @@ export const askOnTicket = (input: {
   });
 
 export const getPrompt = (input: { readonly promptId: string }) =>
-  Effect.flatMap(loadPrompt(input.promptId), (prompt) =>
-    prompt ? Effect.succeed(prompt) : Effect.fail(new PromptNotFound(input)),
+  Effect.filterOrFail(
+    loadPrompt(input.promptId),
+    Predicate.isNotNullish,
+    () => new PromptNotFound(input),
   );
 
 /**

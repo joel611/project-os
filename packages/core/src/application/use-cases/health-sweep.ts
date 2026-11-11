@@ -164,7 +164,7 @@ export const healthSweep = (thresholds: HealthThresholds) =>
     const guarded =
       <R>(rule: (t: Ticket) => Effect.Effect<ReadonlyArray<HealthAction>, unknown, R>) =>
       (t: Ticket) =>
-        rule(t).pipe(Effect.catch(() => Effect.succeed<ReadonlyArray<HealthAction>>([])));
+        rule(t).pipe(Effect.orElseSucceed((): ReadonlyArray<HealthAction> => []));
 
     // One at a time, oldest first: each assignment fills a slot the next pick must see.
     const queued = (yield* tickets.listByStatus(["open"]))

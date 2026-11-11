@@ -218,7 +218,7 @@ describe("worker file uploads", () => {
         yield* upload(id, "a7").pipe(
           Effect.provideService(TicketRepository, {
             ...tickets,
-            findThread: () => Effect.succeed(undefined),
+            findThread: () => Effect.undefined,
           }),
           Effect.provideService(ProjectSourceRepository, {
             listByProject: () => Effect.succeed([]),
