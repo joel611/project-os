@@ -343,7 +343,7 @@ describe("tickets", () => {
     });
   });
 
-  it("does not reply for non-completing transitions", async () => {
+  it("posts a plain failure notice, not a composed reply, when a ticket fails", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
     sent.length = 0; // the thread-opened note
@@ -352,7 +352,8 @@ describe("tickets", () => {
       error: "boom",
     });
     expect(res.body).toMatchObject({ status: "failed", error: "boom" });
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.content).toContain("boom");
   });
 
   it("409s on an invalid transition and 404s on unknown tickets", async () => {

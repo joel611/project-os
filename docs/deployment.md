@@ -80,7 +80,7 @@ The deploy output lists which secrets were bound (`boundSecrets`). For account l
 - **The gateway Container is not tested end to end.** `apps/e2e/src/discord-gateway.test.ts` runs the real gateway Worker and the Coordinator's service-binding path in workerd, with a Durable Object standing in for the container. `alchemy dev` built the stack with the Container and the service binding. Not checked: the container actually logging in to Discord, and a real reply posted from Cloudflare. The container runs one instance (`maxInstances: 1`), and a cold start after a deploy or crash waits for the next Cron tick (up to a minute) or the next reply.
 - **No deploy against a real account yet.** The Worker was bundled and run in local workerd, not deployed.
 - `KeyValueStore.setIfAbsent` is not atomic on Workers KV, and a TTL under 60 seconds is raised to 60. Inbound dedupe can let a duplicate delivery through.
-- Cron Triggers (the health sweep) are left off until `main.cloudflare.ts` exports a `scheduled` handler. Add `crons: ["* * * * *"]` to the Coordinator then.
+- **The health sweep runs from a Cron Trigger** (`crons: ["* * * * *"]`, `scheduled` in `main.cloudflare.ts`), every minute. Why a Cron Trigger and not Durable Object alarms: [ADR 0001](adr/0001-health-sweep-on-cron-not-durable-object-alarms.md).
 - Alchemy reads the drizzle-kit v1 layout (one folder per migration) straight from `packages/db-sqlite/migrations`, the same folder the local migrator uses.
 - Alchemy v2 is in beta. Versions are pinned exactly (`alchemy`, `@alchemy.run/cloudflare`); expect breaking changes on upgrade.
 

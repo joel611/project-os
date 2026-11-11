@@ -3,6 +3,7 @@ import { Effect, Option, Schema } from "effect";
 import { workerStatus, type Ticket } from "../../domain/index.ts";
 import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
 import { assignToWorker, pickWorker } from "./assign-worker.ts";
+import { notifyTicket } from "./on-ticket-completed.ts";
 
 /** Thresholds in milliseconds (docs/technical-architecture.md §5.5). */
 export interface HealthThresholds {
@@ -120,6 +121,10 @@ export const healthSweep = (thresholds: HealthThresholds) =>
             reason,
           },
         );
+        yield* notifyTicket(
+          t.id,
+          `Ticket "${t.title}" hasn't been picked up yet (${reason}). It is flagged as stalled.`,
+        );
         return [{ kind: "assignment_flagged", ticketId: t.id, reason } as const];
       });
 
@@ -143,6 +148,7 @@ export const healthSweep = (thresholds: HealthThresholds) =>
           const error = `Failed by health sweep: ${reason}`;
           yield* systemEvent(t.id, "system", error, { kind: "health_failed", reason });
           yield* tickets.updateStatus(t.id, "failed", at, { error });
+          yield* notifyTicket(t.id, `Ticket "${t.title}" failed: ${reason}.`);
           return [{ kind: "failed", ticketId: t.id, reason } as const];
         }
         if (idle >= thresholds.followUpMs && !followedUp) {
