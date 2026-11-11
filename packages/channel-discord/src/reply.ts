@@ -15,7 +15,16 @@ export interface ReplyTarget {
   channelId: string;
   threadId?: string;
 }
-export type PostToDiscord = (target: ReplyTarget, content: string) => Promise<void>;
+/** A file posted with a reply, already downloaded. */
+export interface ReplyUpload {
+  filename: string;
+  data: Uint8Array;
+}
+export type PostToDiscord = (
+  target: ReplyTarget,
+  content: string,
+  files?: ReadonlyArray<ReplyUpload>,
+) => Promise<void>;
 /** Creates a text channel; resolves to its id and Discord's final name. */
 export type CreateDiscordChannel = (name: string) => Promise<{ channelId: string; name: string }>;
 /** Starts a public thread on a message; resolves to the thread's id. */
@@ -171,9 +180,22 @@ export const createReplyApp = (
         set.status = 400;
         return { error: "invalid reply instruction" };
       }
-      const { channelId, threadId, content } = parsed.value;
+      const { channelId, threadId, content, files } = parsed.value;
       try {
-        await post(threadId === undefined ? { channelId } : { channelId, threadId }, content);
+        const target = threadId === undefined ? { channelId } : { channelId, threadId };
+        if (files === undefined || files.length === 0) {
+          await post(target, content);
+        } else {
+          const uploads = await Promise.all(
+            files.map(async ({ filename, url }) => {
+              // The Coordinator's own signed link: no redirects, so it can't be pointed elsewhere.
+              const res = await fetch(url, { redirect: "manual" });
+              if (!res.ok) throw new Error(`could not download ${filename} (${res.status})`);
+              return { filename, data: new Uint8Array(await res.arrayBuffer()) };
+            }),
+          );
+          await post(target, content, uploads);
+        }
         return { ok: true };
       } catch (err) {
         set.status = 502;

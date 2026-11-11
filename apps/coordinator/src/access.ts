@@ -32,6 +32,8 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "POST /connect/:token": "public",
   // The signature in the link is the proof; it covers one file and expires.
   "GET /assets/:ticketId/:attachmentId/:filename": "public",
+  // Same: the upload signature is minted for one ticket, attachment id and filename.
+  "PUT /assets/:ticketId/:attachmentId/:filename": "public",
   // The one-time code is the proof; the install script holds nothing secret.
   "POST /workers/register": "public",
   "GET /watcher/install.sh": "public",

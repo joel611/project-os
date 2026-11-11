@@ -177,11 +177,21 @@ export const createDiscord = ({
   });
 
   const reply = createReplyApp(
-    async ({ channelId, threadId }, content) => {
+    async ({ channelId, threadId }, content, files) => {
       const channel = await client.channels.fetch(threadId ?? channelId);
       if (!channel?.isSendable())
         throw new Error(`channel ${threadId ?? channelId} is not sendable`);
-      await channel.send(content);
+      await channel.send(
+        files === undefined
+          ? content
+          : {
+              content,
+              files: files.map(({ filename, data }) => ({
+                attachment: Buffer.from(data),
+                name: filename,
+              })),
+            },
+      );
     },
     async (name) => {
       if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");

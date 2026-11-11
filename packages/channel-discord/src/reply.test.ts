@@ -10,6 +10,51 @@ const post = (app: ReturnType<typeof createReplyApp>, body: unknown) =>
     }),
   );
 
+describe("reply endpoint with files", () => {
+  const withFiles = { channelType: "discord", channelId: "c1", content: "see" };
+
+  it("downloads each file and posts the bytes with the message", async () => {
+    const files = Bun.serve({ port: 0, fetch: () => new Response("abc") });
+    try {
+      const calls: unknown[] = [];
+      const app = createReplyApp(
+        async (target, content, uploads) => void calls.push([target, content, uploads]),
+      );
+      const res = await post(app, {
+        ...withFiles,
+        files: [{ filename: "r.txt", url: `http://localhost:${files.port}/r` }],
+      });
+      expect(res.status).toBe(200);
+      expect(calls).toEqual([
+        [
+          { channelId: "c1" },
+          "see",
+          [{ filename: "r.txt", data: new TextEncoder().encode("abc") }],
+        ],
+      ]);
+    } finally {
+      await files.stop(true);
+    }
+  });
+
+  it("answers 502 and posts nothing when a file can't be downloaded", async () => {
+    const files = Bun.serve({ port: 0, fetch: () => new Response("gone", { status: 404 }) });
+    try {
+      const calls: unknown[] = [];
+      const app = createReplyApp(async () => void calls.push(1));
+      const res = await post(app, {
+        ...withFiles,
+        files: [{ filename: "r.txt", url: `http://localhost:${files.port}/r` }],
+      });
+      expect(res.status).toBe(502);
+      expect(await res.json()).toEqual({ error: "could not download r.txt (404)" });
+      expect(calls).toEqual([]);
+    } finally {
+      await files.stop(true);
+    }
+  });
+});
+
 describe("reply endpoint", () => {
   it("posts to the channel", async () => {
     const calls: unknown[] = [];

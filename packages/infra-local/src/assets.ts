@@ -31,7 +31,15 @@ export interface AssetStoreConfig {
 const hex = (bytes: ArrayBuffer): string =>
   [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
-const sign = async (secret: string, key: string, expires: number): Promise<string> => {
+/** What a signature allows; the purpose is signed, so a download link can't upload. */
+type Purpose = "asset" | "upload";
+
+const sign = async (
+  secret: string,
+  key: string,
+  expires: number,
+  purpose: Purpose,
+): Promise<string> => {
   const hmac = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -40,7 +48,11 @@ const sign = async (secret: string, key: string, expires: number): Promise<strin
     ["sign"],
   );
   return hex(
-    await crypto.subtle.sign("HMAC", hmac, new TextEncoder().encode(`asset:${key}:${expires}`)),
+    await crypto.subtle.sign(
+      "HMAC",
+      hmac,
+      new TextEncoder().encode(`${purpose}:${key}:${expires}`),
+    ),
   );
 };
 
@@ -76,6 +88,21 @@ export const makeAssetStore = (config: AssetStoreConfig): typeof AssetStore.Serv
   // workerd throws "Illegal invocation" when the global `fetch` is called detached.
   // The host allowlist is checked on the first URL only, so a redirect elsewhere is refused.
   const download = config.fetch ?? ((url: string) => fetch(url, { redirect: "manual" }));
+  const signedUrl = (key: string, purpose: Purpose) =>
+    Effect.promise(async () => {
+      const links = config.links;
+      if (!links) return undefined;
+      const expires = Math.floor(now() / 1000) + (links.ttlSeconds ?? 3600);
+      const sig = await sign(links.secret, key, expires, purpose);
+      const path = key.split("/").map(encodeURIComponent).join("/");
+      return `${links.publicUrl.replace(/\/+$/, "")}/assets/${path}?exp=${expires}&sig=${sig}`;
+    });
+  const verifySig = (key: string, expires: number, sig: string, purpose: Purpose) =>
+    Effect.promise(async () => {
+      const links = config.links;
+      if (!links || expires * 1000 < now()) return false;
+      return sameText(sig, await sign(links.secret, key, expires, purpose));
+    });
   return {
     ingest: ({ key, url, contentType, size, maxBytes }) =>
       Effect.tryPromise({
@@ -95,20 +122,14 @@ export const makeAssetStore = (config: AssetStoreConfig): typeof AssetStore.Serv
         try: () => config.backend.get(key),
         catch: (err) => new AssetStoreFailed({ message: messageOf(err) }),
       }),
-    link: (key) =>
-      Effect.promise(async () => {
-        const links = config.links;
-        if (!links) return undefined;
-        const expires = Math.floor(now() / 1000) + (links.ttlSeconds ?? 3600);
-        const sig = await sign(links.secret, key, expires);
-        const path = key.split("/").map(encodeURIComponent).join("/");
-        return `${links.publicUrl.replace(/\/+$/, "")}/assets/${path}?exp=${expires}&sig=${sig}`;
-      }),
-    verify: (key, expires, sig) =>
-      Effect.promise(async () => {
-        const links = config.links;
-        if (!links || expires * 1000 < now()) return false;
-        return sameText(sig, await sign(links.secret, key, expires));
+    link: (key) => signedUrl(key, "asset"),
+    verify: (key, expires, sig) => verifySig(key, expires, sig, "asset"),
+    uploadLink: (key) => signedUrl(key, "upload"),
+    verifyUpload: (key, expires, sig) => verifySig(key, expires, sig, "upload"),
+    put: ({ key, body, contentType, size, maxBytes }) =>
+      Effect.tryPromise({
+        try: () => config.backend.put(key, limitBytes(body, maxBytes), { contentType, size }),
+        catch: (err) => new AssetStoreFailed({ message: messageOf(err) }),
       }),
   };
 };
@@ -119,4 +140,7 @@ export const AssetStoreUnavailable = Layer.succeed(AssetStore, {
   get: () => Effect.succeed(undefined),
   link: () => Effect.succeed(undefined),
   verify: () => Effect.succeed(false),
+  uploadLink: () => Effect.succeed(undefined),
+  verifyUpload: () => Effect.succeed(false),
+  put: () => Effect.fail(new AssetStoreFailed({ message: "File storage is not configured." })),
 });
