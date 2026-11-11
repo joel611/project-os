@@ -1,6 +1,8 @@
 import type { ActivityTicket, ChannelType, TicketStatus } from "@project-os/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
+import { activityInterval } from "@/polling";
 import { QueryError } from "@/components/states";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -42,42 +44,48 @@ const useMapStyle = () => {
   return [style, choose] as const;
 };
 
-const POLL_MS = 2000;
-
-/** Polls `GET /activity` and turns each read into stories for the player. */
+/**
+ * Polls `GET /activity` and turns each read into stories for the player. The polling itself is
+ * a query: it pauses while the tab is hidden, refetches on focus, and backs off while quiet.
+ */
 const useActivity = (player: Player) => {
   const [model, setModel] = useState<MapModel>(emptyModel);
-  const [error, setError] = useState<Error | null>(null);
   const modelRef = useRef(model);
+  const quietReads = useRef(0);
+  const committed = useRef<unknown>(null);
   const { play, settle } = player;
 
-  useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async () => {
-      try {
-        const feed = await api.activity(modelRef.current.since);
-        if (stopped) return;
-        const baseline = modelRef.current.since === null;
-        const next = applyFeed(modelRef.current, feed);
-        modelRef.current = next.model;
-        setModel(next.model);
-        setError(null);
-        if (baseline) settle(feed.tickets.map((t) => [t.id, t.status] as const));
-        next.stories.forEach(play);
-      } catch (e) {
-        if (!stopped) setError(e instanceof Error ? e : new Error(String(e)));
-      }
-      if (!stopped) timer = setTimeout(poll, POLL_MS);
-    };
-    void poll();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [play, settle]);
+  const activity = useQuery({
+    queryKey: ["activity"],
+    queryFn: async () => {
+      const feed = await api.activity(modelRef.current.since);
+      const baseline = modelRef.current.since === null;
+      const next = applyFeed(modelRef.current, feed);
+      // Folding is synchronous with the read, so the next poll's `since` never lags the effect.
+      quietReads.current =
+        next.stories.length === 0 && next.model.seenEvents.size === modelRef.current.seenEvents.size
+          ? quietReads.current + 1
+          : 0;
+      modelRef.current = next.model;
+      return { feed, next, baseline };
+    },
+    refetchInterval: () => activityInterval(quietReads.current),
+    // The map owns this data: a cached read from an earlier visit would replay as a baseline.
+    staleTime: 0,
+    gcTime: 0,
+    structuralSharing: false,
+  });
 
-  return { model, error };
+  useEffect(() => {
+    const read = activity.data;
+    if (!read || committed.current === read) return;
+    committed.current = read;
+    setModel(read.next.model);
+    if (read.baseline) settle(read.feed.tickets.map((t) => [t.id, t.status] as const));
+    read.next.stories.forEach(play);
+  }, [activity.data, play, settle]);
+
+  return { model, error: activity.error };
 };
 
 /** The live system map of channels, adapters, the Coordinator and Workers, in either style. */
