@@ -281,5 +281,5 @@ export const completeAttachmentUpload = (input: {
             : `Attached ${input.filename}`,
         ...(url !== undefined && { files: [{ filename: input.filename, url }] }),
       })
-      .pipe(Effect.catchCause(() => Effect.void));
+      .pipe(Effect.ignoreCause);
   });

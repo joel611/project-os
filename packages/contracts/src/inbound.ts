@@ -9,7 +9,7 @@ export const InboundAttachment = Schema.Struct({
   id: Schema.String,
   filename: Schema.String,
   contentType: Schema.NullOr(Schema.String),
-  size: Schema.Number,
+  size: Schema.Finite,
   url: Schema.String,
 });
 export type InboundAttachment = typeof InboundAttachment.Type;
@@ -19,7 +19,7 @@ export const AttachmentRef = Schema.Struct({
   id: Schema.String,
   filename: Schema.String,
   contentType: Schema.NullOr(Schema.String),
-  size: Schema.Number,
+  size: Schema.Finite,
   /** True when the Coordinator copied the file into its own storage at intake. */
   stored: Schema.optionalKey(Schema.Boolean),
 });

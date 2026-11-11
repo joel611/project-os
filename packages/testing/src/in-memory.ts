@@ -408,7 +408,7 @@ export const makeAssetStoreRecording = (options?: { readonly fail?: string }) =>
         options?.fail === undefined
           ? Effect.sync(() => void stored.set(key, url))
           : Effect.fail(new AssetStoreFailed({ message: options.fail })),
-      get: () => Effect.succeed(undefined),
+      get: () => Effect.undefined,
       link: (key) => Effect.succeed(stored.has(key) ? `https://assets.test/${key}` : undefined),
       verify: () => Effect.succeed(false),
       uploadLink: (key) =>

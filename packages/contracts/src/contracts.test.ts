@@ -159,7 +159,7 @@ describe("contracts round-trip", () => {
 
   it("TicketStatus accepts every member", () => {
     for (const s of C.TICKET_STATUSES) {
-      expect(Schema.decodeUnknownSync(C.TicketStatus)(s)).toBe(s);
+      expect(Schema.decodeSync(C.TicketStatus)(s)).toBe(s);
     }
   });
 });

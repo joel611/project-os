@@ -95,7 +95,7 @@ export const assetRoutes = ({ run }: AssetDeps) =>
               body: request.body,
             }).pipe(
               Effect.map(() => "stored" as const),
-              Effect.catch(() => Effect.succeed("failed" as const)),
+              Effect.orElseSucceed(() => "failed" as const),
             );
           }),
         );

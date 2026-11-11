@@ -137,10 +137,10 @@ export const makeAssetStore = (config: AssetStoreConfig): typeof AssetStore.Serv
 /** Placeholder until an entry file supplies storage: nothing is stored, no links are issued. */
 export const AssetStoreUnavailable = Layer.succeed(AssetStore, {
   ingest: () => Effect.fail(new AssetStoreFailed({ message: "File storage is not configured." })),
-  get: () => Effect.succeed(undefined),
-  link: () => Effect.succeed(undefined),
+  get: () => Effect.undefined,
+  link: () => Effect.undefined,
   verify: () => Effect.succeed(false),
-  uploadLink: () => Effect.succeed(undefined),
+  uploadLink: () => Effect.undefined,
   verifyUpload: () => Effect.succeed(false),
   put: () => Effect.fail(new AssetStoreFailed({ message: "File storage is not configured." })),
 });
