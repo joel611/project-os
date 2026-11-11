@@ -3,6 +3,7 @@ import {
   createProject,
   createProjectWithChannel,
   handleInbound,
+  notifyTicket,
   ProjectSourceRepository,
   setDefaultChannel,
   TicketRepository,
@@ -258,6 +259,35 @@ describe("updateStatusAndNotify", () => {
     expect((await r.result).status).toBe("failed");
     expect(r.sent).toHaveLength(1);
     expect(r.sent[0]?.content).toContain("boom");
+  });
+
+  it("tells the thread a ticket failed even without a reason", async () => {
+    const r = run(
+      Effect.gen(function* () {
+        yield* setup;
+        return yield* updateStatusAndNotify({ ticketId: "t1", status: "failed" });
+      }),
+    );
+    expect((await r.result).status).toBe("failed");
+    expect(r.sent[0]?.content).toBe('Ticket "Do it" failed.');
+  });
+
+  it("sends no notice when the ticket has nowhere to post", async () => {
+    const r = run(
+      Effect.gen(function* () {
+        const project = yield* createProject({ orgId: "o1", name: "Acme" });
+        yield* (yield* TicketRepository).insert(ticket(project.id));
+        return yield* notifyTicket("t1", "hello");
+      }),
+    );
+    expect(await r.result).toBe(false);
+    expect(r.sent).toHaveLength(0);
+  });
+
+  it("swallows a notice for a ticket that does not exist", async () => {
+    const r = run(notifyTicket("missing", "hello"));
+    expect(await r.result).toBe(false);
+    expect(r.sent).toHaveLength(0);
   });
 
   it("passes the failure reason through", async () => {
