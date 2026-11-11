@@ -40,7 +40,7 @@ export const TicketAttachment = Schema.Struct({
   id: Schema.String,
   filename: Schema.String,
   contentType: Schema.NullOr(Schema.String),
-  size: Schema.Number,
+  size: Schema.Finite,
   /**
    * Download link; plain GET, no auth header. A copy the Coordinator stored lasts an hour from
    * this call; otherwise it is a fresh Discord link, good for about a day.
@@ -67,7 +67,7 @@ export const TicketAttachFileOutput = Schema.Struct({
   /** Header the PUT must carry so the file is stored with the right type. */
   contentType: Schema.String,
   /** Seconds the link works. */
-  expiresInSeconds: Schema.Number,
+  expiresInSeconds: Schema.Finite,
 });
 
 export const TicketAppendEventInput = Schema.Struct({

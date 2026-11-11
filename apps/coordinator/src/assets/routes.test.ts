@@ -19,10 +19,10 @@ const appWith = (store: Partial<typeof AssetStore.Service>) =>
         (effect as Effect.Effect<A, never, AssetStore>).pipe(
           Effect.provideService(AssetStore, {
             ingest: () => Effect.void,
-            get: () => Effect.succeed(undefined),
-            link: () => Effect.succeed(undefined),
+            get: () => Effect.undefined,
+            link: () => Effect.undefined,
             verify: () => Effect.succeed(true),
-            uploadLink: () => Effect.succeed(undefined),
+            uploadLink: () => Effect.undefined,
             verifyUpload: () => Effect.succeed(true),
             put: () => Effect.void,
             ...store,

@@ -128,14 +128,12 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
 
     accessToken: (person, provider) =>
       Effect.gen(function* () {
-        if (!configured.has(provider)) return yield* Effect.fail(unavailable(provider));
+        if (!configured.has(provider)) return yield* unavailable(provider);
         const notConnected = (message: string) =>
           new NotConnected({ provider, personId: person.id, message });
         const found = yield* Effect.promise(() => findAccount(person, provider));
         if (!found) {
-          return yield* Effect.fail(
-            notConnected(`${who(person)} has not linked a ${provider} account.`),
-          );
+          return yield* notConnected(`${who(person)} has not linked a ${provider} account.`);
         }
         // Refreshes first when the stored token is (nearly) expired.
         const tokens = yield* Effect.tryPromise({

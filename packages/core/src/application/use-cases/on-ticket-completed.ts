@@ -46,7 +46,7 @@ export const notifyTicket = (ticketId: string, content: string) =>
     if (!destination) return false;
     yield* gateway.send({ ...destination, content });
     return true;
-  }).pipe(Effect.catch(() => Effect.succeed(false)));
+  }).pipe(Effect.orElseSucceed(() => false));
 
 /**
  * Status change plus the completion hook. Every path that moves a ticket (HTTP, MCP) should
