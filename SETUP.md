@@ -327,13 +327,15 @@ When the Coordinator assigns a ticket, it reads the pool and starts the first pr
 
 | Provider           | `WORKER_PROVIDERS` name | Worker type     | Status    | Settings                                                                                           |
 | ------------------ | ----------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------- |
-| Daytona            | `daytona`               | `daytona_pi`    | Supported | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
+| Daytona            | `daytona`               | `daytona_pi`    | Paused    | `DAYTONA_API_KEY`, optional `DAYTONA_API_URL`, `DAYTONA_SNAPSHOT`, `DAYTONA_MAX_CONCURRENT`        |
 | Cloudflare Sandbox | `cloudflare`            | `cloudflare_pi` | Supported | `CLOUDFLARE_SANDBOX_URL`, `CLOUDFLARE_SANDBOX_TOKEN`, optional `CLOUDFLARE_SANDBOX_MAX_CONCURRENT` |
 | boat.dev           | `boat`                  | `boat_pi`       | Supported | `BOAT_API_KEY`, optional `BOAT_API_URL`, `BOAT_SANDBOX_SIZE`, `BOAT_MAX_CONCURRENT`                |
 
 The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SECONDS` still work as fallbacks for the `SANDBOX_*` names.
 
 ### Daytona
+
+**Paused.** The code stays and works up to launching the sandbox, but a sandbox can only reach the Coordinator's public `/mcp` URL on Daytona's Tier 3, which is too costly for now. On a lower tier Pi installs and runs but never connects, and the ticket stays `assigned`. We are not investing further until that changes; use a registered device, Cloudflare Sandbox or boat.dev instead.
 
 1. Create an API key at [app.daytona.io](https://app.daytona.io) and set `DAYTONA_API_KEY`.
 2. Optional: `DAYTONA_SNAPSHOT` for a snapshot with Node 22.19 or newer (Pi installs itself at session start).
