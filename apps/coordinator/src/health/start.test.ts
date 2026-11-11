@@ -1,6 +1,8 @@
 import {
   Clock,
+  ChannelGateway,
   IdGenerator,
+  ProjectSourceRepository,
   KeyValueStore,
   Scheduler,
   TicketRepository,
@@ -30,6 +32,8 @@ describe("startHealthSweep", () => {
       Layer.succeed(Clock, { now: Effect.succeed(new Date("2026-11-04T00:00:00.000Z")) }),
       Layer.succeed(IdGenerator, { next: Effect.succeed("id") }),
       Layer.succeed(KeyValueStore, {} as never),
+      Layer.succeed(ChannelGateway, {} as never),
+      Layer.succeed(ProjectSourceRepository, {} as never),
       Layer.succeed(WorkerRepository, { list: Effect.succeed([]) } as never),
       Layer.succeed(WorkerLauncher, { pool: Effect.succeed([]), launch: () => Effect.void }),
       Layer.succeed(TicketRepository, {

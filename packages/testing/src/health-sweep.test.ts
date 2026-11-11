@@ -15,6 +15,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   IdGeneratorSequential,
   KeyValueStoreInMemory,
+  makeChannelGatewayRecording,
+  ProjectSourceRepositoryInMemory,
   TicketRepositoryInMemory,
   WorkerRepositoryInMemory,
 } from "./index.ts";
@@ -68,6 +70,8 @@ const scenario = <A>(
     tickets,
     WorkerRepositoryInMemory,
     KeyValueStoreInMemory,
+    ProjectSourceRepositoryInMemory,
+    makeChannelGatewayRecording().layer,
     Layer.succeed(WorkerLauncher, {
       pool: Effect.succeed(pool),
       launch: ({ ticketId, workerId }) =>

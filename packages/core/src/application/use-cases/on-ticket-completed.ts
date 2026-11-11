@@ -35,6 +35,20 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
   });
 
 /**
+ * Tells the ticket's thread (or the project's default response source) something happened to
+ * it. Plain text, no Pi turn: these are status notices, not replies. Best effort: a send that
+ * fails must not undo the status change that caused it.
+ */
+export const notifyTicket = (ticketId: string, content: string) =>
+  Effect.gen(function* () {
+    const gateway = yield* ChannelGateway;
+    const destination = yield* ticketChannel(ticketId);
+    if (!destination) return false;
+    yield* gateway.send({ ...destination, content });
+    return true;
+  }).pipe(Effect.catch(() => Effect.succeed(false)));
+
+/**
  * Status change plus the completion hook. Every path that moves a ticket (HTTP, MCP) should
  * use this rather than `updateStatus`, so a `completed` ticket always gets its reply.
  */
@@ -45,6 +59,18 @@ export const updateStatusAndNotify = (input: {
 }) =>
   updateStatus(input).pipe(
     Effect.tap((ticket) =>
-      ticket.status === "completed" ? onTicketCompleted({ ticketId: ticket.id }) : Effect.void,
+      ticket.status === "completed"
+        ? onTicketCompleted({ ticketId: ticket.id })
+        : ticket.status === "failed"
+          ? notifyTicket(
+              ticket.id,
+              `Ticket "${ticket.title}" failed${input.error ? `: ${input.error}` : "."}`,
+            )
+          : ticket.status === "blocked"
+            ? notifyTicket(
+                ticket.id,
+                `Ticket "${ticket.title}" is blocked and needs input before it can continue.`,
+              )
+            : Effect.void,
     ),
   );
