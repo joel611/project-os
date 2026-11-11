@@ -38,7 +38,7 @@ const sign = async (
   secret: string,
   key: string,
   expires: number,
-  purpose: Purpose = "asset",
+  purpose: Purpose,
 ): Promise<string> => {
   const hmac = await crypto.subtle.importKey(
     "raw",

@@ -1,5 +1,9 @@
 import {
   assetKey,
+  ChannelGateway,
+  completeAttachmentUpload,
+  MAX_CHANNEL_FILE_BYTES,
+  requestAttachmentUpload,
   handleInbound,
   listTicketAttachments,
   ProjectSourceRepository,
@@ -148,3 +152,89 @@ describe("copying attachments at intake", () => {
 });
 
 const ticketId = ticketOf;
+
+describe("worker file uploads", () => {
+  const body = (size = 3) => new Response(new Uint8Array(size)).body!;
+  const upload = (ticket: string, attachmentId: string, size = 3) =>
+    completeAttachmentUpload({
+      ticketId: ticket,
+      attachmentId,
+      filename: "r.txt",
+      contentType: "text/plain",
+      size,
+      body: body(size),
+    });
+
+  it("mints a ticket-bound link, then stores, lists and posts the file once", async () => {
+    const { test, run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    const sentBefore = test.sent.length;
+
+    const minted = await run(requestAttachmentUpload({ ticketId: id, filename: "r.txt" }));
+    expect(minted.uploadUrl).toBe(`https://assets.test/upload/${id}/${minted.attachmentId}/r.txt`);
+    expect(minted.contentType).toBe("application/octet-stream");
+
+    await run(upload(id, minted.attachmentId));
+    await run(upload(id, minted.attachmentId));
+
+    const listed = await run(listTicketAttachments(id));
+    expect(listed.filter((f) => f.id === minted.attachmentId)).toHaveLength(1);
+    const posts = test.sent.slice(sentBefore);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.files).toEqual([
+      { filename: "r.txt", url: `https://assets.test/${id}/${minted.attachmentId}/r.txt` },
+    ]);
+  });
+
+  it("posts a note instead of the file when it is too big for the channel", async () => {
+    const { test, run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    await run(upload(id, "big", MAX_CHANNEL_FILE_BYTES + 1));
+    const last = test.sent.at(-1)!;
+    expect(last.files).toBeUndefined();
+    expect(last.content).toContain("too big to post here");
+  });
+
+  it("still stores the file when the thread can't be reached", async () => {
+    const { test, run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    await run(
+      upload(id, "a9").pipe(
+        Effect.provideService(ChannelGateway, {
+          send: () => Effect.die("discord down"),
+        } as unknown as typeof ChannelGateway.Service),
+      ),
+    );
+    expect(test.storedAssets.has(`${id}/a9/r.txt`)).toBe(true);
+  });
+
+  it("records the file but posts nothing when the ticket has nowhere to reply", async () => {
+    const { test, run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    const sentBefore = test.sent.length;
+    await run(
+      Effect.gen(function* () {
+        const tickets = yield* TicketRepository;
+        yield* upload(id, "a7").pipe(
+          Effect.provideService(TicketRepository, {
+            ...tickets,
+            findThread: () => Effect.succeed(undefined),
+          }),
+          Effect.provideService(ProjectSourceRepository, {
+            listByProject: () => Effect.succeed([]),
+          } as unknown as typeof ProjectSourceRepository.Service),
+        );
+      }),
+    );
+    expect(test.sent.length).toBe(sentBefore);
+    expect((await run(listTicketAttachments(id))).some((f) => f.id === "a7")).toBe(true);
+  });
+
+  it("fails to mint a link when file storage is not configured", async () => {
+    const { run, send } = setup({ failAssetStore: "no storage" });
+    const id = ticketId(await send(message([file()])));
+    await expect(run(requestAttachmentUpload({ ticketId: id, filename: "r.txt" }))).rejects.toThrow(
+      "File storage is not configured.",
+    );
+  });
+});
