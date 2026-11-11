@@ -34,7 +34,7 @@ import {
 import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
 import {
-  changeStatus,
+  changeStatusAndNotify,
   CreateProjectBody,
   createProject,
   CreateSourceBody,
@@ -237,7 +237,7 @@ export const httpRoutes = ({
         set,
         toResult(
           decode(UpdateStatusBody, body).pipe(
-            Effect.flatMap((update) => changeStatus(params.id, update)),
+            Effect.flatMap((update) => changeStatusAndNotify(params.id, update)),
           ),
         ),
       ),

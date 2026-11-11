@@ -95,7 +95,7 @@ export const listProjectTickets = (projectId: string) =>
     return all.filter((t) => t.projectId === projectId);
   });
 
-export const changeStatus = (ticketId: string, body: typeof UpdateStatusBody.Type) =>
+export const changeStatusAndNotify = (ticketId: string, body: typeof UpdateStatusBody.Type) =>
   updateStatusAndNotify({
     ticketId,
     status: body.status,

@@ -25,9 +25,20 @@ interface Bindings {
   readonly DISCORD_GATEWAY?: Fetcher;
 }
 
+/** A failure can't cross the Durable Object RPC as a typed error, so it travels as data. */
 type Reply =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly message: string };
+
+const encodeReply = Effect.match({
+  onSuccess: (text: string): Reply => ({ ok: true, text }),
+  onFailure: (e: { readonly message: string }): Reply => ({ ok: false, message: e.message }),
+});
+
+const decodeReply =
+  <E>(failure: (message: string) => E) =>
+  (reply: Reply) =>
+    reply.ok ? Effect.succeed(reply.text) : Effect.fail(failure(reply.message));
 
 export class PiAgent extends DurableObject<Bindings> {
   readonly #runtime: ManagedRuntime.ManagedRuntime<AgentRuntime | Sidekick, never>;
@@ -75,14 +86,7 @@ export class PiAgent extends DurableObject<Bindings> {
     readonly prompt: string;
     readonly requestId?: string;
   }): Promise<Reply> {
-    return this.#runtime.runPromise(
-      AgentRuntime.use((r) => r.respond(input)).pipe(
-        Effect.match({
-          onSuccess: (text): Reply => ({ ok: true, text }),
-          onFailure: (e): Reply => ({ ok: false, message: e.message }),
-        }),
-      ),
-    );
+    return this.#runtime.runPromise(AgentRuntime.use((r) => r.respond(input)).pipe(encodeReply));
   }
 
   answer(input: {
@@ -91,14 +95,7 @@ export class PiAgent extends DurableObject<Bindings> {
     readonly requestId?: string;
     readonly token: (provider: ConnectionProvider) => Promise<SidekickToken>;
   }): Promise<Reply> {
-    return this.#runtime.runPromise(
-      Sidekick.use((s) => s.answer(input)).pipe(
-        Effect.match({
-          onSuccess: (text): Reply => ({ ok: true, text }),
-          onFailure: (e): Reply => ({ ok: false, message: e.message }),
-        }),
-      ),
-    );
+    return this.#runtime.runPromise(Sidekick.use((s) => s.answer(input)).pipe(encodeReply));
   }
 }
 
@@ -111,13 +108,7 @@ export const durableAgentRuntime = (
         Effect.tryPromise({
           try: async (): Promise<Reply> => await agents.getByName(input.sessionId).respond(input),
           catch: (e) => new AgentRuntimeError({ message: String(e) }),
-        }).pipe(
-          Effect.flatMap((reply) =>
-            reply.ok
-              ? Effect.succeed(reply.text)
-              : Effect.fail(new AgentRuntimeError({ message: reply.message })),
-          ),
-        ),
+        }).pipe(Effect.flatMap(decodeReply((message) => new AgentRuntimeError({ message })))),
     }),
     Layer.succeed(Sidekick, {
       answer: (input) =>
@@ -125,12 +116,6 @@ export const durableAgentRuntime = (
           try: async (): Promise<Reply> =>
             await agents.getByName(`sidekick:${input.ticketId}`).answer(input),
           catch: (e) => new SidekickError({ message: String(e) }),
-        }).pipe(
-          Effect.flatMap((reply) =>
-            reply.ok
-              ? Effect.succeed(reply.text)
-              : Effect.fail(new SidekickError({ message: reply.message })),
-          ),
-        ),
+        }).pipe(Effect.flatMap(decodeReply((message) => new SidekickError({ message })))),
     }),
   );

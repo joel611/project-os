@@ -9,9 +9,10 @@ export type Caller =
 
 /**
  * Who may call a route. `worker` is /mcp: Watchers and sandbox sessions, whose credentials the
- * MCP route resolves itself.
+ * MCP route resolves itself. `token` routes carry their own proof (a signed link, a one-time
+ * token) that the handler redeems.
  */
-export type RoutePolicy = "public" | "user" | "service" | "worker";
+export type RoutePolicy = "public" | "token" | "user" | "service" | "worker";
 
 /**
  * Every route's policy, keyed `METHOD pattern` as registered (`ALL` for `.all`). A route missing
@@ -25,10 +26,10 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /sign-in/done": "public",
   "GET /connect/done": "public",
   "GET /connect/:token": "public",
-  "POST /connect/:token": "public",
-  "GET /assets/:ticketId/:attachmentId/:filename": "public",
-  "PUT /assets/:ticketId/:attachmentId/:filename": "public",
-  "POST /workers/register": "public",
+  "POST /connect/:token": "token",
+  "GET /assets/:ticketId/:attachmentId/:filename": "token",
+  "PUT /assets/:ticketId/:attachmentId/:filename": "token",
+  "POST /workers/register": "token",
   "GET /watcher/install.sh": "public",
   "POST /inbound": "service",
   "POST /commands": "service",
@@ -54,6 +55,7 @@ export const policyFor = (method: string, route: string): RoutePolicy =>
 
 const ADMITS: Readonly<Record<RoutePolicy, ReadonlyArray<Caller["kind"]>>> = {
   public: ["anonymous", "user", "outsider", "service"],
+  token: ["anonymous", "user", "outsider", "service"],
   worker: ["anonymous", "user", "outsider", "service"],
   user: ["user"],
   service: ["service"],
@@ -116,6 +118,6 @@ export const deny = async (
   route: string,
 ): Promise<Denial | undefined> => {
   const policy = policyFor(request.method, route);
-  if (policy === "public" || policy === "worker") return undefined;
+  if (policy === "public" || policy === "token" || policy === "worker") return undefined;
   return authorize(policy, await access.caller(request));
 };

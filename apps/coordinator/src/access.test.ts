@@ -45,6 +45,7 @@ describe("policyFor", () => {
     expect(policyFor("GET", "/something-new")).toBe("user");
     expect(policyFor("POST", "/api/auth/*")).toBe("public");
     expect(policyFor("POST", "/inbound")).toBe("service");
+    expect(policyFor("POST", "/workers/register")).toBe("token");
   });
 });
 
@@ -57,5 +58,6 @@ describe("authorize", () => {
     expect(authorize("user", { kind: "service" })).toMatchObject({ status: 403 });
     expect(authorize("service", { kind: "user", userId: "u" })).toMatchObject({ status: 403 });
     expect(authorize("public", { kind: "anonymous" })).toBeUndefined();
+    expect(authorize("token", { kind: "anonymous" })).toBeUndefined();
   });
 });

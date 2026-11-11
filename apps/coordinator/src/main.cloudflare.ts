@@ -7,7 +7,6 @@ import { makeAuth } from "@project-os/auth";
 import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
-import type { SandboxRunner } from "@project-os/sandbox-core";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
@@ -16,6 +15,7 @@ import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import sessionStartPrompt from "../../watcher/prompts/session-start.md";
@@ -31,18 +31,6 @@ interface Bindings {
   /** Service binding to the Discord gateway Worker; absent when the gateway runs off-platform. */
   readonly DISCORD_GATEWAY?: Fetcher;
 }
-
-/**
- * A sandbox session outlives the request that started it, so `waitUntil` keeps the Worker alive
- * for it. Workers cap that time; see "Known gaps" in docs/deployment.md.
- */
-const heldOpen = (runner: SandboxRunner): SandboxRunner => ({
-  run: (input) => {
-    const session = runner.run(input);
-    waitUntil(session.catch(() => undefined));
-    return session;
-  },
-});
 
 /**
  * Builds the app from the Worker's bindings. This must run at module load: Elysia's
@@ -73,7 +61,7 @@ const buildApp = (bindings: Bindings) => {
     runners: Object.fromEntries(
       Object.entries(configuredRunners(process.env)).map(([provider, runner]) => [
         provider,
-        heldOpen(runner),
+        heldOpen(runner, waitUntil),
       ]),
     ),
   });
