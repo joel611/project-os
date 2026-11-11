@@ -7,14 +7,17 @@ import { makeAuth } from "@project-os/auth";
 import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
+import type { SandboxRunner } from "@project-os/sandbox-core";
 import { type Effect, Layer, ManagedRuntime } from "effect";
-import { env as workerEnv } from "cloudflare:workers";
+import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
+import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
+import sessionStartPrompt from "../../watcher/prompts/session-start.md";
 
 export { PiAgent } from "./pi-agent.ts";
 
@@ -22,7 +25,8 @@ export { PiAgent } from "./pi-agent.ts";
 //
 // What runs here: the HTTP API (/inbound, /commands, ...), the MCP endpoint Watchers poll,
 // and account linking. The agent runtime (Pi Durable) runs in the `PiAgent` Durable Object.
-// What does not yet: the health sweep (no Cron handler) and the sandbox pool. See "Known gaps" in docs/deployment.md.
+// What does not yet: the health sweep (no Cron handler). The sandbox pool runs, with the
+// `waitUntil` limit described in "Known gaps" in docs/deployment.md.
 
 interface Bindings {
   readonly DB: D1Database;
@@ -33,6 +37,18 @@ interface Bindings {
   /** Service binding to the Discord gateway Worker; absent when the gateway runs off-platform. */
   readonly DISCORD_GATEWAY?: Fetcher;
 }
+
+/**
+ * A sandbox session outlives the request that started it, so `waitUntil` keeps the Worker alive
+ * for it. Workers cap that time; see "Known gaps" in docs/deployment.md.
+ */
+const heldOpen = (runner: SandboxRunner): SandboxRunner => ({
+  run: (input) => {
+    const session = runner.run(input);
+    waitUntil(session.catch(() => undefined));
+    return session;
+  },
+});
 
 /**
  * Builds the app from the Worker's bindings. This must run at module load: Elysia's
@@ -59,6 +75,17 @@ const buildApp = (bindings: Bindings) => {
   const connections = auth.connections;
   const serviceToken = serviceTokenFromEnv(process.env);
 
+  const workerLauncher = sandboxLauncherFromEnv(process.env, {
+    prompt: sessionStartPrompt,
+    log: console.log,
+    runners: Object.fromEntries(
+      Object.entries(configuredRunners(process.env)).map(([provider, runner]) => [
+        provider,
+        heldOpen(runner),
+      ]),
+    ),
+  });
+
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
@@ -68,6 +95,7 @@ const buildApp = (bindings: Bindings) => {
         adapterUrls: gatewayUrl ? { discord: gatewayUrl } : {},
         ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
         agent: durableAgentRuntime(bindings.PI_AGENT),
+        ...(workerLauncher && { workerLauncher }),
         // Signed links point at PUBLIC_URL, so storage stays off without it.
         ...(bindings.ASSETS &&
           publicUrl && {

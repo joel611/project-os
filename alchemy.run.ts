@@ -295,6 +295,8 @@ export default Alchemy.Stack(
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
       main: "./apps/coordinator/src/main.cloudflare.ts",
+      // The Pi session prompt the sandbox launcher sends is a Markdown file shared with the Watcher.
+      rules: [{ type: "Text", globs: ["**/*.md"] }],
       // nodejs_compat is the runtime default for dates from 2026-08-04, and it fills
       // `process.env` from the vars and secrets below, which `@project-os/config` reads.
       compatibility: { date: COMPATIBILITY_DATE },
