@@ -318,8 +318,8 @@ export default Alchemy.Stack(
         }),
         WEB_ORIGIN: dashboard.url.as<string>(),
       },
-      // TODO: add `crons: ["* * * * *"]` (health sweep, §5) once main.cloudflare.ts
-      // exports a `scheduled` handler; today it only exports `fetch`.
+      // Cron Trigger: the health sweep (§5), through the `scheduled` handler.
+      crons: ["* * * * *"],
     });
 
     return {

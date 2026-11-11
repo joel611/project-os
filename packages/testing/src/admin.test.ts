@@ -236,7 +236,7 @@ describe("updateStatusAndNotify", () => {
     expect(r.sent).toHaveLength(1);
   });
 
-  it("sends nothing for other statuses", async () => {
+  it("tells the thread when the ticket is blocked", async () => {
     const r = run(
       Effect.gen(function* () {
         yield* setup;
@@ -244,7 +244,20 @@ describe("updateStatusAndNotify", () => {
       }),
     );
     expect((await r.result).status).toBe("blocked");
-    expect(r.sent).toHaveLength(0);
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]?.content).toContain("blocked");
+  });
+
+  it("tells the thread when the ticket fails, with the reason", async () => {
+    const r = run(
+      Effect.gen(function* () {
+        yield* setup;
+        return yield* updateStatusAndNotify({ ticketId: "t1", status: "failed", error: "boom" });
+      }),
+    );
+    expect((await r.result).status).toBe("failed");
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]?.content).toContain("boom");
   });
 
   it("passes the failure reason through", async () => {

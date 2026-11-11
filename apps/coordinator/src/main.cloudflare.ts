@@ -11,6 +11,7 @@ import type { SandboxRunner } from "@project-os/sandbox-core";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
+import { healthSweep } from "@project-os/core";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
@@ -25,7 +26,7 @@ export { PiAgent } from "./pi-agent.ts";
 //
 // What runs here: the HTTP API (/inbound, /commands, ...), the MCP endpoint Watchers poll,
 // and account linking. The agent runtime (Pi Durable) runs in the `PiAgent` Durable Object.
-// What does not yet: the health sweep (no Cron handler). The sandbox pool runs, with the
+// The health sweep runs from a Cron Trigger (`scheduled`). The sandbox pool runs, with the
 // `waitUntil` limit described in "Known gaps" in docs/deployment.md.
 
 interface Bindings {
@@ -127,7 +128,7 @@ const buildApp = (bindings: Bindings) => {
     .map((id) => id.trim())
     .filter(Boolean);
 
-  return createApp(
+  const app = createApp(
     { adapter: CloudflareAdapter },
     {
       access: makeAccess({ serviceToken, auth }),
@@ -162,6 +163,22 @@ const buildApp = (bindings: Bindings) => {
       ...(connections && { connect: connections }),
     },
   ).compile();
+
+  // Cron Trigger: the health sweep (assign queued tickets, flag stalled ones, fail dead ones).
+  const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
+  return { app, sweep };
 };
 
-export default buildApp(workerEnv as unknown as Bindings);
+const built = buildApp(workerEnv as unknown as Bindings);
+
+export default {
+  fetch: (request: Request, ...rest: unknown[]) =>
+    (built.app.fetch as (...args: unknown[]) => Promise<Response>)(request, ...rest),
+  scheduled: (
+    _controller: unknown,
+    _env: unknown,
+    ctx: { waitUntil(p: Promise<unknown>): void },
+  ) => {
+    ctx.waitUntil(built.sweep().catch((e) => console.error("health sweep failed", e)));
+  },
+};
