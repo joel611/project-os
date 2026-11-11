@@ -22,13 +22,6 @@ import sessionStartPrompt from "../../watcher/prompts/session-start.md";
 
 export { PiAgent } from "./pi-agent.ts";
 
-// Cloudflare target: Workers + D1 + KV (docs/technical-architecture.md §8).
-//
-// What runs here: the HTTP API (/inbound, /commands, ...), the MCP endpoint Watchers poll,
-// and account linking. The agent runtime (Pi Durable) runs in the `PiAgent` Durable Object.
-// The health sweep runs from a Cron Trigger (`scheduled`). The sandbox pool runs, with the
-// `waitUntil` limit described in "Known gaps" in docs/deployment.md.
-
 interface Bindings {
   readonly DB: D1Database;
   readonly KV: KVNamespace;
@@ -64,8 +57,6 @@ const buildApp = (bindings: Bindings) => {
 
   const publicUrl = process.env.PUBLIC_URL;
   const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
-  // Callbacks are built from PUBLIC_URL, so account linking stays off without it. The admin is
-  // seeded on the first sign-in request: nothing here may do I/O.
   const auth = makeAuth(
     authConfigFromEnv(process.env, {
       db: drizzle(bindings.DB),
@@ -97,7 +88,6 @@ const buildApp = (bindings: Bindings) => {
         ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
         agent: durableAgentRuntime(bindings.PI_AGENT),
         ...(workerLauncher && { workerLauncher }),
-        // Signed links point at PUBLIC_URL, so storage stays off without it.
         ...(bindings.ASSETS &&
           publicUrl && {
             assets: {
@@ -108,7 +98,6 @@ const buildApp = (bindings: Bindings) => {
           }),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
-      // Projects reference an org (FK) and nothing else creates one.
       Layer.effectDiscard(ensureOrg(bindings.DB)),
       ...(connections ? [connections.layer] : []),
     ),
@@ -157,14 +146,12 @@ const buildApp = (bindings: Bindings) => {
       },
       mcp: runtime,
       assets: { run: (effect) => runtime.runPromise(effect) },
-      // The dashboard is served from its own origin and calls this API directly.
       corsOrigins: webOrigins,
       auth,
       ...(connections && { connect: connections }),
     },
   ).compile();
 
-  // Cron Trigger: the health sweep (assign queued tickets, flag stalled ones, fail dead ones).
   const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
   return { app, sweep };
 };

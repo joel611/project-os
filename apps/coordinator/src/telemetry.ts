@@ -36,7 +36,6 @@ export const setupTelemetry = (
       tracer: tracerProvider.getTracer("project-os"),
       meter: meterProvider.getMeter("project-os"),
     }),
-    // Flushes pending spans and metrics; call before exiting.
     shutdown: async () => {
       await Promise.all([tracerProvider.shutdown(), meterProvider.shutdown()]);
     },

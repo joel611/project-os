@@ -22,7 +22,6 @@ import {
 } from "@project-os/core";
 import { Effect } from "effect";
 
-/** Ports the admin actions need from the provider Layer. */
 export type AdminEnv =
   | ChannelGateway
   | Clock
@@ -31,29 +30,21 @@ export type AdminEnv =
   | ProjectSourceRepository
   | TicketRepository;
 
-/** Short names the admin dialogue may use, plus the full source types. */
 const SOURCE_TYPES: Record<string, ProjectSourceType> = {
   ...CHANNEL_SOURCE_TYPES,
   ...Object.fromEntries(PROJECT_SOURCE_TYPES.map((t) => [t, t])),
 };
 
-/** One line per source for the model: alias, what it is, and its description. */
 const describeSource = (s: ProjectSource) =>
   `- ${s.alias}: ${s.type} ${s.externalId}` +
   (s.isDefaultResponse ? " (reply channel)" : "") +
   (s.description ? ` — ${s.description}` : "");
 
-/** Failures become text the model can relay, never exceptions out of a tool call. */
 const asText = <E extends { readonly _tag: string }>(effect: Effect.Effect<string, E, AdminEnv>) =>
   effect.pipe(Effect.catch((e) => Effect.succeed(`Failed: ${e._tag} ${JSON.stringify(e)}`)));
 
-/**
- * The Coordinator actions behind the admin dialogue's tools (#14's `AdminActions`), each
- * running the matching core use case. `run` executes against the provider Layer.
- */
 export const makeAdminActions = (deps: {
   readonly run: <A>(effect: Effect.Effect<A, unknown, AdminEnv>) => Promise<A>;
-  /** Org that new projects belong to (POC: one org). */
   readonly orgId: string;
   /**
    * Whether `create_project` also creates the project's Discord channel (default true).

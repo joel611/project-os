@@ -28,7 +28,6 @@ const positiveInt = (env: Env, key: string) => {
   return n;
 };
 
-/** Runners for every provider whose credentials are set. */
 export const configuredRunners = (
   env: Env,
   live: {
@@ -111,7 +110,6 @@ export const sandboxLauncherFromEnv = (
   options.log(`sandbox pool: ${providers.map((p) => p.workerType).join(", ")}`);
   return makeSandboxLauncher({
     providers,
-    // The sandbox is in the cloud: this must be a public URL (tunnel), not MCP_URL.
     mcpUrl: required(env, "SANDBOX_MCP_URL", "DAYTONA_MCP_URL"),
     openrouterApiKey: required(env, "OPENROUTER_API_KEY"),
     model,

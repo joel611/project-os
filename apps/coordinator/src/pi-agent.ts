@@ -25,7 +25,6 @@ interface Bindings {
   readonly DISCORD_GATEWAY?: Fetcher;
 }
 
-/** Errors cross the RPC boundary as values, so the Worker rebuilds the typed error. */
 type Reply =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly message: string };
@@ -35,7 +34,6 @@ export class PiAgent extends DurableObject<Bindings> {
 
   constructor(ctx: DurableObjectState, bindings: Bindings) {
     super(ctx, bindings);
-    // Admin tools act on the same D1 and KV as the Worker. The Pi layer is not part of this one.
     const core = ManagedRuntime.make(
       CloudflareLive({
         db: bindings.DB,
@@ -65,7 +63,6 @@ export class PiAgent extends DurableObject<Bindings> {
     this.#runtime = ManagedRuntime.make(Layer.orDie(agent));
   }
 
-  /** The chat model and its provider. A test subclass swaps in a faux one. */
   protected chat(): { readonly models: Models; readonly model: AgentRuntimeOptions["model"] } {
     return {
       models: newModels(),
@@ -92,7 +89,6 @@ export class PiAgent extends DurableObject<Bindings> {
     readonly ticketId: string;
     readonly prompt: string;
     readonly requestId?: string;
-    /** An RPC stub back to the Worker: the requester's token, fetched only when a tool needs it. */
     readonly token: (provider: ConnectionProvider) => Promise<SidekickToken>;
   }): Promise<Reply> {
     return this.#runtime.runPromise(
@@ -106,7 +102,6 @@ export class PiAgent extends DurableObject<Bindings> {
   }
 }
 
-/** `AgentRuntime` and `Sidekick` for the Worker, served by the session's `PiAgent`. */
 export const durableAgentRuntime = (
   agents: DurableObjectNamespace<PiAgent>,
 ): Layer.Layer<AgentRuntime | Sidekick> =>

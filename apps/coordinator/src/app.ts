@@ -38,10 +38,8 @@ export const parseOrigins = (raw: string | undefined): ReadonlyArray<string> =>
 /**
  * Builds the Coordinator HTTP app. Transport only: routes call core use cases
  * through the provider Layer chosen by the entry file (main.bun.ts / main.cloudflare.ts).
- * Routes: http/ (#13), MCP: mcp/ (#12), health sweep: health/ (#15).
  */
 export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps: AppDeps) => {
-  // Before any route, so every route below (plugins included) passes through it.
   const base = new Elysia(options).onBeforeHandle(async ({ request, route, set }) => {
     const denied = await deny(deps.access, request, route);
     if (!denied) return;
@@ -56,7 +54,6 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
           allowedHeaders: ["content-type", "authorization"],
           // Sign-in hands the dashboard its session token in this header.
           exposeHeaders: ["set-auth-token"],
-          // Sessions travel as Bearer tokens, never as cookies across origins.
           credentials: false,
         }),
       )

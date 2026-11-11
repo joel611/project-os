@@ -59,7 +59,6 @@ const decodeCommand = Schema.decodeUnknownOption(SlashCommand);
 
 export type { CommandsConfig, HandleInboundConfig };
 
-/** Ports the HTTP routes need from the provider Layer. */
 export type HttpEnv =
   | AgentRuntime
   | AssetStore
@@ -78,7 +77,6 @@ export type HttpEnv =
   | WorkerRepository;
 
 export interface HttpDeps {
-  /** Runs an effect against the provider Layer chosen by the entry file. */
   readonly run: <A>(effect: Effect.Effect<A, never, HttpEnv>) => Promise<A>;
   readonly inbound?: HandleInboundConfig;
   /** Worker `lastSeenAt` older than this reads as offline in `GET /workers`. Default: env. */
@@ -89,7 +87,6 @@ export interface HttpDeps {
   readonly prompts?: PromptAnswerConfig;
 }
 
-/** Ingress + minimal admin API (docs/technical-architecture.md §6). Transport only. */
 export const httpRoutes = ({
   run,
   inbound = {},
@@ -106,151 +103,143 @@ export const httpRoutes = ({
     return result.body;
   };
 
-  return (
-    new Elysia({ name: "http-routes" })
-      .post("/inbound", ({ body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(InboundMessage, body).pipe(
-              Effect.flatMap((message) => handleInbound(message, inbound)),
-            ),
+  return new Elysia({ name: "http-routes" })
+    .post("/inbound", ({ body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(InboundMessage, body).pipe(
+            Effect.flatMap((message) => handleInbound(message, inbound)),
           ),
         ),
-      )
-      .post("/commands", async ({ body, set }) => {
-        const parsed = decodeCommand(body);
-        if (parsed._tag === "None") {
-          set.status = 400;
-          return { error: "invalid slash command" };
-        }
-        if (!commands) {
-          set.status = 501;
-          return { error: "slash commands are not configured" };
-        }
-        return runCommand(parsed.value, commands);
-      })
-      // A click on a prompt's button or select menu, forwarded by a Channel Adapter.
-      .post("/prompts/answer", ({ body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(PromptAnswer, body).pipe(
-              Effect.flatMap((answer) => answerPrompt(answer, prompts)),
-            ),
+      ),
+    )
+    .post("/commands", async ({ body, set }) => {
+      const parsed = decodeCommand(body);
+      if (parsed._tag === "None") {
+        set.status = 400;
+        return { error: "invalid slash command" };
+      }
+      if (!commands) {
+        set.status = 501;
+        return { error: "slash commands are not configured" };
+      }
+      return runCommand(parsed.value, commands);
+    })
+    .post("/prompts/answer", ({ body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(PromptAnswer, body).pipe(
+            Effect.flatMap((answer) => answerPrompt(answer, prompts)),
           ),
         ),
-      )
-      .get("/projects", ({ set }) => reply(set, toResult(listProjects)))
-      .post("/projects", ({ body, set }) =>
-        reply(
-          set,
-          toResult(decode(CreateProjectBody, body).pipe(Effect.flatMap(createProject)), 201),
-        ),
-      )
-      .get("/projects/:id", ({ params, set }) => reply(set, toResult(getProject(params.id))))
-      .patch("/projects/:id", ({ params, body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(UpdateProjectBody, body).pipe(
-              Effect.flatMap((patch) => updateProject(params.id, patch)),
-            ),
+      ),
+    )
+    .get("/projects", ({ set }) => reply(set, toResult(listProjects)))
+    .post("/projects", ({ body, set }) =>
+      reply(
+        set,
+        toResult(decode(CreateProjectBody, body).pipe(Effect.flatMap(createProject)), 201),
+      ),
+    )
+    .get("/projects/:id", ({ params, set }) => reply(set, toResult(getProject(params.id))))
+    .patch("/projects/:id", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(UpdateProjectBody, body).pipe(
+            Effect.flatMap((patch) => updateProject(params.id, patch)),
           ),
         ),
-      )
-      .get("/projects/:id/memory", ({ params, set }) =>
-        reply(set, toResult(listProjectMemory(params.id))),
-      )
-      .post("/projects/:id/sources", ({ params, body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(CreateSourceBody, body).pipe(
-              Effect.flatMap((source) => linkSource(params.id, source)),
-            ),
-            201,
+      ),
+    )
+    .get("/projects/:id/memory", ({ params, set }) =>
+      reply(set, toResult(listProjectMemory(params.id))),
+    )
+    .post("/projects/:id/sources", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(CreateSourceBody, body).pipe(
+            Effect.flatMap((source) => linkSource(params.id, source)),
+          ),
+          201,
+        ),
+      ),
+    )
+    .patch("/projects/:id/sources/:sourceId", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(UpdateSourceBody, body).pipe(
+            Effect.flatMap((patch) => editSource(params.id, params.sourceId, patch)),
           ),
         ),
-      )
-      .patch("/projects/:id/sources/:sourceId", ({ params, body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(UpdateSourceBody, body).pipe(
-              Effect.flatMap((patch) => editSource(params.id, params.sourceId, patch)),
-            ),
+      ),
+    )
+    .get("/projects/:id/tickets", ({ params, set }) =>
+      reply(set, toResult(listProjectTickets(params.id))),
+    )
+    .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
+    .get("/watcher/install.sh", ({ set }) => {
+      const workers = commands?.workers;
+      if (!workers) {
+        set.status = 501;
+        return { error: "registered workers are not configured" };
+      }
+      set.headers["content-type"] = "text/x-shellscript; charset=utf-8";
+      return installScript(watcherScriptConfig(workers));
+    })
+    .post("/workers/register", ({ body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(WorkerRegisterRequest, body).pipe(
+            Effect.flatMap(redeemWorkerRegistration),
+            Effect.map(({ worker, secret }) => ({
+              workerId: worker.id,
+              name: workerLabel(worker),
+              secret,
+            })),
+          ),
+          201,
+        ),
+      ),
+    )
+    .get("/activity", ({ query, set }) => {
+      const since = typeof query.since === "string" ? query.since : undefined;
+      if (since !== undefined && Number.isNaN(Date.parse(since))) {
+        set.status = 400;
+        return { error: "since must be an ISO timestamp" };
+      }
+      return reply(
+        set,
+        toResult(
+          readActivity({
+            ...(since === undefined ? {} : { since }),
+            staleAfterMs: workerStaleMs,
+          }),
+        ),
+      );
+    })
+    .get("/tickets/:id", ({ params, set }) =>
+      reply(set, toResult(getTicket({ ticketId: params.id }))),
+    )
+    .get("/tickets/:id/attachments", ({ params, set }) =>
+      reply(
+        set,
+        toResult(Effect.map(listTicketAttachments(params.id), (attachments) => ({ attachments }))),
+      ),
+    )
+    .post("/tickets/:id/status", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(UpdateStatusBody, body).pipe(
+            Effect.flatMap((update) => changeStatus(params.id, update)),
           ),
         ),
-      )
-      .get("/projects/:id/tickets", ({ params, set }) =>
-        reply(set, toResult(listProjectTickets(params.id))),
-      )
-      .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
-      .get("/watcher/install.sh", ({ set }) => {
-        const workers = commands?.workers;
-        if (!workers) {
-          set.status = 501;
-          return { error: "registered workers are not configured" };
-        }
-        set.headers["content-type"] = "text/x-shellscript; charset=utf-8";
-        return installScript(watcherScriptConfig(workers));
-      })
-      // A Watcher trading its /register-worker code for device credentials. The code is the
-      // only proof: it is bound to whoever ran the command, short-lived, and works once.
-      .post("/workers/register", ({ body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(WorkerRegisterRequest, body).pipe(
-              Effect.flatMap(redeemWorkerRegistration),
-              Effect.map(({ worker, secret }) => ({
-                workerId: worker.id,
-                name: workerLabel(worker),
-                secret,
-              })),
-            ),
-            201,
-          ),
-        ),
-      )
-      .get("/activity", ({ query, set }) => {
-        const since = typeof query.since === "string" ? query.since : undefined;
-        if (since !== undefined && Number.isNaN(Date.parse(since))) {
-          set.status = 400;
-          return { error: "since must be an ISO timestamp" };
-        }
-        return reply(
-          set,
-          toResult(
-            readActivity({
-              ...(since === undefined ? {} : { since }),
-              staleAfterMs: workerStaleMs,
-            }),
-          ),
-        );
-      })
-      .get("/tickets/:id", ({ params, set }) =>
-        reply(set, toResult(getTicket({ ticketId: params.id }))),
-      )
-      // The files sent on a ticket, each with a download link the browser can use in an <img>.
-      .get("/tickets/:id/attachments", ({ params, set }) =>
-        reply(
-          set,
-          toResult(
-            Effect.map(listTicketAttachments(params.id), (attachments) => ({ attachments })),
-          ),
-        ),
-      )
-      .post("/tickets/:id/status", ({ params, body, set }) =>
-        reply(
-          set,
-          toResult(
-            decode(UpdateStatusBody, body).pipe(
-              Effect.flatMap((update) => changeStatus(params.id, update)),
-            ),
-          ),
-        ),
-      )
-  );
+      ),
+    );
 };

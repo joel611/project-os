@@ -9,7 +9,6 @@ import { Effect } from "effect";
 export interface SeedInput {
   readonly orgId: string;
   readonly projectName: string;
-  /** Discord channel that is the project's source and default reply channel. */
   readonly discordChannelId: string;
 }
 
@@ -29,7 +28,6 @@ export const seedDefaults = (input: SeedInput) =>
       found ?? (yield* createProject({ orgId: input.orgId, name: input.projectName }));
 
     const linked = yield* sources.findByExternal("discord_channel", input.discordChannelId);
-    // Links the channel if new, refuses another project's, else just flags it as default.
     const source = yield* setDefaultChannel({
       projectId: project.id,
       externalId: input.discordChannelId,

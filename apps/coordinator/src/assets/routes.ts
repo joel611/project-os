@@ -8,14 +8,9 @@ import { Elysia } from "elysia";
 import type { McpServices } from "../mcp/tools.ts";
 
 export interface AssetDeps {
-  /** Runs an effect against the provider Layer chosen by the entry file. */
   readonly run: <A>(effect: Effect.Effect<A, never, McpServices>) => Promise<A>;
 }
 
-/**
- * Types a browser may show in place. SVG, HTML and the rest are always downloads, since opened
- * from this origin they could run script.
- */
 const INLINE_TYPES = /^image\/(png|jpeg|gif|webp|avif)$/;
 
 /**
@@ -54,8 +49,6 @@ export const assetRoutes = ({ run }: AssetDeps) =>
         headers: {
           "content-type": outcome.contentType,
           "content-length": String(outcome.size),
-          // Stored bytes are someone else's file: only plain raster images are shown in place
-          // (the dashboard's <img>); anything else is saved, never rendered in this origin.
           "content-disposition": `${INLINE_TYPES.test(outcome.contentType) ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(params.filename)}`,
           "x-content-type-options": "nosniff",
           "cache-control": "private, no-store",

@@ -328,7 +328,7 @@ describe("tickets", () => {
   it("completing a ticket runs onTicketCompleted and replies in the ticket's thread", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
-    sent.length = 0; // the thread-opened note
+    sent.length = 0;
     const started = await call(app, "POST", `/tickets/${id}/status`, { status: "in_progress" });
     expect(started.status).toBe(200);
     expect(sent).toHaveLength(0);
@@ -346,7 +346,7 @@ describe("tickets", () => {
   it("posts a plain failure notice, not a composed reply, when a ticket fails", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
-    sent.length = 0; // the thread-opened note
+    sent.length = 0;
     const res = await call(app, "POST", `/tickets/${id}/status`, {
       status: "failed",
       error: "boom",
