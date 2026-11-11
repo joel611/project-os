@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ExternalLink, Pencil, Star } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 import { api, ApiError, describeError, type ProjectDetail } from "@/api";
+import { SLOW_MS } from "@/polling";
 import { Empty, QueryError } from "@/components/states";
 import { SOURCE_META } from "@/components/source";
 import { Badge } from "@/components/ui/badge";
@@ -343,6 +344,7 @@ export const SettingsPage = ({ projectId }: { projectId: string }) => {
   const detail = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.project(projectId),
+    refetchInterval: SLOW_MS,
   });
   if (detail.error instanceof ApiError && detail.error.status === 404)
     return <Empty title="No such project" hint="It may have been removed. Pick one on the left." />;

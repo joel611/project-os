@@ -6,6 +6,7 @@ import { authClient } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { session } from "@/session";
 import { groupWorkers, relativeTime, type WorkerGroup, workerName } from "@/model";
+import { SLOW_MS } from "@/polling";
 import { useNow } from "@/use-now";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToneDot } from "@/components/tone";
@@ -18,7 +19,11 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 const Projects = () => {
-  const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: api.projects,
+    refetchInterval: SLOW_MS,
+  });
 
   if (projects.isPending) return <Skeleton className="mx-2 h-8" />;
   if (projects.isError) return <QueryError error={projects.error} />;
@@ -78,7 +83,11 @@ const WorkerRow = ({ worker: w, now }: { readonly worker: WorkerView; readonly n
 );
 
 const Workers = () => {
-  const workers = useQuery({ queryKey: ["workers"], queryFn: api.workers });
+  const workers = useQuery({
+    queryKey: ["workers"],
+    queryFn: api.workers,
+    refetchInterval: SLOW_MS,
+  });
   const now = useNow();
 
   if (workers.isPending) return <Skeleton className="mx-2 h-8" />;

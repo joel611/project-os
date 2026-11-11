@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { FileText, Settings, Star } from "lucide-react";
 import { api, ApiError, type ProjectDetail } from "@/api";
+import { SLOW_MS, ticketListInterval } from "@/polling";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -63,7 +64,11 @@ const TicketRows = ({
 }) => {
   const now = useNow();
   // Registered devices are shown by name; sandbox sessions and unknown ids by id.
-  const workers = useQuery({ queryKey: ["workers"], queryFn: api.workers });
+  const workers = useQuery({
+    queryKey: ["workers"],
+    queryFn: api.workers,
+    refetchInterval: SLOW_MS,
+  });
   const names = new Map(workers.data?.map((w) => [w.id, workerName(w)]));
   return tickets.map((t) => (
     // The title link stretches over the whole row, so the row is clickable and keyboard-reachable.
@@ -181,14 +186,17 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
   const detail = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.project(projectId),
+    refetchInterval: SLOW_MS,
   });
   const tickets = useQuery({
     queryKey: ["tickets", projectId],
     queryFn: () => api.tickets(projectId),
+    refetchInterval: (query) => ticketListInterval(query.state.data),
   });
   const memory = useQuery({
     queryKey: ["memory", projectId],
     queryFn: () => api.memory(projectId),
+    refetchInterval: SLOW_MS,
   });
   const count = (n: number | undefined) =>
     n === undefined ? null : <span className="text-muted-foreground tabular-nums">{n}</span>;

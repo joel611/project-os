@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { ticketDetailInterval } from "@/polling";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -89,6 +90,7 @@ export const TicketSheet = ({
     queryKey: ["ticket", ticketId],
     queryFn: () => api.ticket(ticketId!),
     enabled: ticketId !== null,
+    refetchInterval: (query) => ticketDetailInterval(query.state.data?.ticket),
   });
 
   return (
