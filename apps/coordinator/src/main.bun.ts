@@ -9,7 +9,7 @@ import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { makeAuth } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
-import { type Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
@@ -125,7 +125,8 @@ const runtime = ManagedRuntime.make(
   ),
 );
 
-await runtime.runPromise(startHealthSweep(healthConfig()));
+// The stop effect is intentionally dropped: the sweep lives as long as the process.
+await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));
 
 const adminChannelId = process.env.ADMIN_CHANNEL_ID;
 const adminUserIds = (process.env.ADMIN_USER_IDS ?? "")
