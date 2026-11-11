@@ -107,7 +107,7 @@ describe("worker attach file", () => {
 
   it("keeps a file too big for Discord on the ticket and says so in the thread", async () => {
     await start();
-    const big = new Uint8Array(10 * 1024 * 1024 + 1);
+    const big = new Uint8Array(20 * 1024 * 1024 + 1);
     const { uploadUrl } = await requestUpload("big.bin", "application/octet-stream");
     expect((await put(uploadUrl, big, "application/octet-stream")).status).toBe(200);
 

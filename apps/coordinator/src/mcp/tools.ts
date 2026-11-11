@@ -151,7 +151,7 @@ export const makeTools = (caller: McpCaller): readonly McpTool<McpServices>[] =>
         "posts it in the ticket's thread. This call returns an uploadUrl; then upload the file with " +
         'curl, e.g. `curl --fail -T <path> -H "content-type: <contentType>" "<uploadUrl>"` ' +
         "(PUT, no auth header; -T sets content-length). The file is attached only once that " +
-        "upload succeeds. Files up to 100 MB are kept on the ticket; only up to 10 MB are posted " +
+        "upload succeeds. Files up to 100 MB are kept on the ticket; only up to 20 MB are posted " +
         "to the thread. Link valid for an hour. Never attach secrets or credentials.",
       input: C.TicketAttachFileInput,
       output: C.TicketAttachFileOutput,

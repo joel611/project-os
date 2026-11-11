@@ -198,7 +198,7 @@ export const listTicketAttachments = (ticketId: string) =>
   });
 
 /** Largest file posted into a channel with a reply; Discord refuses bigger uploads. */
-export const MAX_CHANNEL_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_CHANNEL_FILE_BYTES = 20 * 1024 * 1024;
 
 /**
  * Starts a Worker's file upload: mints the attachment id and a signed PUT link bound to this
