@@ -195,6 +195,44 @@ describe("signed links", () => {
     expect(await Effect.runPromise(bare.verify("k", 9_999_999_999, "sig"))).toBe(false);
   });
 
+  it("signs uploads separately: an upload link can't download and a download link can't upload", async () => {
+    const up = new URL((await Effect.runPromise(store.uploadLink("t1/a1/hero.png")))!);
+    const exp = Number(up.searchParams.get("exp"));
+    const sig = up.searchParams.get("sig")!;
+    const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);
+    now = 1_000_000;
+    expect(await run(store.verifyUpload("t1/a1/hero.png", exp, sig))).toBe(true);
+    expect(await run(store.verify("t1/a1/hero.png", exp, sig))).toBe(false);
+    const down = (await parts("t1/a1/hero.png")).sig;
+    expect(await run(store.verifyUpload("t1/a1/hero.png", exp, down))).toBe(false);
+  });
+
+  it("issues no upload links and refuses upload signatures without a secret", async () => {
+    const bare = makeAssetStore({ backend });
+    expect(await Effect.runPromise(bare.uploadLink("k"))).toBeUndefined();
+    expect(await Effect.runPromise(bare.verifyUpload("k", 9_999_999_999, "sig"))).toBe(false);
+  });
+
+  it("puts a stream into the backend and refuses one past the byte limit", async () => {
+    const mem = memoryBackend();
+    const s = makeAssetStore({ backend: mem.backend });
+    const put = (text: string, maxBytes: number) =>
+      Effect.runPromise(
+        Effect.result(
+          s.put({
+            key: "t1/a1/r.txt",
+            body: new Response(text).body!,
+            contentType: "text/plain",
+            size: text.length,
+            maxBytes,
+          }),
+        ),
+      );
+    expect((await put("hello", 100))._tag).toBe("Success");
+    expect(mem.files.get("t1/a1/r.txt")).toMatchObject({ contentType: "text/plain", size: 5 });
+    expect((await put("hello", 3))._tag).toBe("Failure");
+  });
+
   it("defaults to a one hour link on the real clock", async () => {
     const real = makeAssetStore({ backend, links: { publicUrl: "http://x", secret: "s" } });
     const exp = Number(new URL((await Effect.runPromise(real.link("k")))!).searchParams.get("exp"));
@@ -219,6 +257,19 @@ describe("AssetStoreUnavailable", () => {
     expect(await run((s) => s.get("k"))).toMatchObject({ success: undefined });
     expect(await run((s) => s.link("k"))).toMatchObject({ success: undefined });
     expect(await run((s) => s.verify("k", 1, "s"))).toMatchObject({ success: false });
+    expect(await run((s) => s.uploadLink("k"))).toMatchObject({ success: undefined });
+    expect(await run((s) => s.verifyUpload("k", 1, "s"))).toMatchObject({ success: false });
+    expect(
+      await run((s) =>
+        s.put({
+          key: "k",
+          body: new Response("x").body!,
+          contentType: "text/plain",
+          size: 1,
+          maxBytes: 1,
+        }),
+      ),
+    ).toMatchObject({ failure: { message: "File storage is not configured." } });
   });
 });
 

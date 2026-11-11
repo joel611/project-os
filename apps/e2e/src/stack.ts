@@ -42,6 +42,7 @@ export interface MessageFile {
 export interface Posted {
   readonly target: ReplyTarget;
   readonly content: string;
+  readonly files?: ReadonlyArray<{ readonly filename: string; readonly data: Uint8Array }>;
 }
 
 export interface CreatedThreadCall {
@@ -186,7 +187,8 @@ export const startStack = async (options: {
     },
   });
   const adapter = createReplyApp(
-    async (target, content) => void posted.push({ target, content }),
+    async (target, content, files) =>
+      void posted.push({ target, content, ...(files && { files }) }),
     async (name) => {
       createdChannels.push(name);
       // Discord lowercases and hyphenates text channel names.

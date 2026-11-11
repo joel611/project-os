@@ -53,6 +53,23 @@ export const TicketAttachmentsOutput = Schema.Struct({
   attachments: Schema.Array(TicketAttachment),
 });
 
+export const TicketAttachFileInput = Schema.Struct({
+  ticketId: Id,
+  /** Name the file gets on the ticket and in Discord, e.g. `report.pdf`. */
+  filename: Id,
+  /** MIME type the file is stored with, e.g. `image/png`. Default `application/octet-stream`. */
+  contentType: Schema.optionalKey(Id),
+});
+export const TicketAttachFileOutput = Schema.Struct({
+  attachmentId: Schema.String,
+  /** PUT the file's bytes here with a `content-length` header and no auth header. */
+  uploadUrl: Schema.String,
+  /** Header the PUT must carry so the file is stored with the right type. */
+  contentType: Schema.String,
+  /** Seconds the link works. */
+  expiresInSeconds: Schema.Number,
+});
+
 export const TicketAppendEventInput = Schema.Struct({
   ticketId: Id,
   type: TicketEventType,
