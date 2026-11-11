@@ -411,6 +411,9 @@ export const makeAssetStoreRecording = (options?: { readonly fail?: string }) =>
       get: () => Effect.succeed(undefined),
       link: (key) => Effect.succeed(stored.has(key) ? `https://assets.test/${key}` : undefined),
       verify: () => Effect.succeed(false),
+      uploadLink: (key) => Effect.succeed(`https://assets.test/upload/${key}`),
+      verifyUpload: () => Effect.succeed(false),
+      put: ({ key }) => Effect.sync(() => void stored.set(key, "upload")),
     }),
   };
 };

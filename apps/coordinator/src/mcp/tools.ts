@@ -22,6 +22,7 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   readMemory,
+  requestAttachmentUpload,
   TicketRepository,
   updateStatusAndNotify,
   UserConnections,
@@ -142,6 +143,20 @@ export const makeTools = (caller: McpCaller): readonly McpTool<McpServices>[] =>
       output: C.TicketAttachmentsOutput,
       guard: onTicket,
       run: (i) => Effect.map(listTicketAttachments(i.ticketId), (attachments) => ({ attachments })),
+    }),
+    define({
+      name: "ticket_attach_file",
+      description:
+        "Send a file you made (screenshot, report, export) back on this ticket. The Coordinator " +
+        "posts it in the ticket's thread. This call returns an uploadUrl; then upload the file with " +
+        'curl, e.g. `curl --fail -T <path> -H "content-type: <contentType>" "<uploadUrl>"` ' +
+        "(PUT, no auth header; -T sets content-length). The file is attached only once that " +
+        "upload succeeds. Files up to 100 MB are kept on the ticket; only up to 10 MB are posted " +
+        "to the thread. Link valid for an hour. Never attach secrets or credentials.",
+      input: C.TicketAttachFileInput,
+      output: C.TicketAttachFileOutput,
+      guard: onTicket,
+      run: requestAttachmentUpload,
     }),
     define({
       name: "ticket_append_event",

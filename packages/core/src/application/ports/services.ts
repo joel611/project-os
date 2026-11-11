@@ -90,6 +90,24 @@ export class AssetStore extends Context.Service<
     readonly link: (key: string) => Effect.Effect<string | undefined>;
     /** Whether `sig` is a valid, unexpired signature for `key`. */
     readonly verify: (key: string, expires: number, sig: string) => Effect.Effect<boolean>;
+    /**
+     * A short-lived signed URL a Worker PUTs a file to, to store it under `key`; undefined when
+     * links aren't configured. Not interchangeable with `link`: a download link can't upload.
+     */
+    readonly uploadLink: (key: string) => Effect.Effect<string | undefined>;
+    /** Whether `sig` is a valid, unexpired upload signature for `key`. */
+    readonly verifyUpload: (key: string, expires: number, sig: string) => Effect.Effect<boolean>;
+    /**
+     * Stores `body` (exactly `size` bytes, streamed) under `key`. Fails when it runs past
+     * `maxBytes` or the write fails.
+     */
+    readonly put: (input: {
+      readonly key: string;
+      readonly body: ReadableStream<Uint8Array>;
+      readonly contentType: string;
+      readonly size: number;
+      readonly maxBytes: number;
+    }) => Effect.Effect<void, AssetStoreFailed>;
   }
 >()("@project-os/core/AssetStore") {}
 

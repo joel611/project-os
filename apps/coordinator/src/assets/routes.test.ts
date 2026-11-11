@@ -1,6 +1,7 @@
 import { AssetStore, AssetStoreFailed } from "@project-os/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
+import type { McpServices } from "../mcp/tools.ts";
 import { assetRoutes } from "./routes.ts";
 
 const body = (text: string) =>
@@ -13,14 +14,17 @@ const body = (text: string) =>
 
 const appWith = (store: Partial<typeof AssetStore.Service>) =>
   assetRoutes({
-    run: (effect) =>
+    run: <A>(effect: Effect.Effect<A, never, McpServices>) =>
       Effect.runPromise(
-        effect.pipe(
+        (effect as Effect.Effect<A, never, AssetStore>).pipe(
           Effect.provideService(AssetStore, {
             ingest: () => Effect.void,
             get: () => Effect.succeed(undefined),
             link: () => Effect.succeed(undefined),
             verify: () => Effect.succeed(true),
+            uploadLink: () => Effect.succeed(undefined),
+            verifyUpload: () => Effect.succeed(true),
+            put: () => Effect.void,
             ...store,
           }),
         ),

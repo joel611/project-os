@@ -48,11 +48,16 @@ export const InboundMessage = Schema.Struct({
 });
 export type InboundMessage = typeof InboundMessage.Type;
 
+/** A file the Channel Adapter downloads from `url` and posts with a reply. */
+export const ReplyFile = Schema.Struct({ filename: Schema.String, url: Schema.String });
+export type ReplyFile = typeof ReplyFile.Type;
+
 export const ReplyInstruction = Schema.Struct({
   channelType: ChannelType,
   channelId: Schema.String,
   threadId: Schema.optionalKey(Schema.String),
   content: Schema.String,
+  files: Schema.optionalKey(Schema.Array(ReplyFile)),
 });
 export type ReplyInstruction = typeof ReplyInstruction.Type;
 
