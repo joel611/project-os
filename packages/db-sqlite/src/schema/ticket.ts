@@ -1,4 +1,4 @@
-import { TICKET_STATUSES, WORKER_TYPES } from "@project-os/contracts";
+import { type Requester, TICKET_STATUSES, WORKER_TYPES } from "@project-os/contracts";
 import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { projects } from "./project.ts";
 
@@ -18,6 +18,7 @@ export const tickets = sqliteTable(
     priority: text("priority"),
     workerType: text("worker_type", { enum: WORKER_TYPES }),
     workerId: text("worker_id"),
+    requester: text("requester", { mode: "json" }).$type<Requester>(),
     result: text("result", { mode: "json" }),
     error: text("error"),
     createdAt: text("created_at").notNull(),

@@ -13,6 +13,10 @@ const Json = Schema.Unknown;
 const Timestamp = Schema.String;
 const Id = Schema.NonEmptyString;
 
+/** Who asked for a Ticket, by their channel's own user id. */
+export const Requester = Schema.Struct({ channelType: ChannelType, id: Schema.String });
+export type Requester = typeof Requester.Type;
+
 export const Ticket = Schema.Struct({
   id: Id,
   projectId: Id,
@@ -23,6 +27,8 @@ export const Ticket = Schema.Struct({
   priority: Schema.NullOr(Schema.String),
   workerType: Schema.NullOr(WorkerType),
   workerId: Schema.NullOr(Schema.String),
+  /** Null for Tickets made before it was recorded, and for ones no person asked for. */
+  requester: Schema.NullOr(Requester),
   result: Json,
   error: Schema.NullOr(Schema.String),
   createdAt: Timestamp,

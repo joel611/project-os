@@ -41,6 +41,7 @@ const seed = Effect.gen(function* () {
     priority: null,
     workerType: "local",
     workerId: null,
+    requester: null,
     result: null,
     error: null,
     createdAt: T0,

@@ -42,6 +42,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   priority: null,
   workerType: "local",
   workerId: "w1",
+  requester: null,
   result: null,
   error: null,
   createdAt: iso(0),
@@ -272,9 +273,9 @@ describe("healthSweep: in_progress tickets", () => {
 });
 
 describe("healthSweep: queued tickets", () => {
-  const ADA = { channelType: "discord" as const, sender: { id: "u-ada" } };
+  const ADA = { channelType: "discord" as const, id: "u-ada" };
   /** An `open` ticket with no worker, as handleInbound leaves it when nobody had room. */
-  const queue = (id: string, minutes: number, payload: unknown = ADA) =>
+  const queue = (id: string, minutes: number, requester: Ticket["requester"] = ADA) =>
     Effect.gen(function* () {
       const repo = yield* TicketRepository;
       yield* repo.insert(
@@ -284,19 +285,10 @@ describe("healthSweep: queued tickets", () => {
           workerType: null,
           workerId: null,
           assignedAt: null,
+          requester,
           createdAt: iso(minutes),
         }),
       );
-      yield* repo.appendEvent({
-        id: `${id}-created`,
-        ticketId: id,
-        type: "created",
-        actor: "coordinator",
-        actorId: null,
-        body: "",
-        payload,
-        createdAt: iso(minutes),
-      });
     });
   const register = (id: string, owner: { channelType: "discord"; id: string } | null) =>
     Effect.flatMap(WorkerRepository, (w) =>
@@ -373,7 +365,7 @@ describe("healthSweep: queued tickets", () => {
       Effect.gen(function* () {
         yield* register("shared-1", null);
         yield* beat("shared-1", 0);
-        yield* queue("q1", 0, { note: "no sender" });
+        yield* queue("q1", 0, null);
         expect(yield* healthSweep(thresholds)).toEqual([]);
       }),
     ));

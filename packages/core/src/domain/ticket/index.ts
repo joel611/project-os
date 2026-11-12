@@ -86,6 +86,27 @@ export const assignTicket = (
   }));
 
 /**
+ * Release: `assigned → open`, taking the ticket back from `workerId` so it is Queued again.
+ * Only the assignee's own `assigned` ticket can be released; once claimed it is the worker's.
+ */
+export const releaseTicket = (
+  ticket: Ticket,
+  workerId: string,
+  at: string,
+): Effect.Effect<Ticket, InvalidTransition> =>
+  ticket.status === "assigned" && ticket.workerId === workerId
+    ? Effect.succeed({
+        ...ticket,
+        status: "open" as const,
+        workerType: null,
+        workerId: null,
+        assignedAt: null,
+        lastActivityAt: at,
+        updatedAt: at,
+      })
+    : Effect.fail(new InvalidTransition({ ticketId: ticket.id, from: ticket.status, to: "open" }));
+
+/**
  * Claim: the atomic `assigned → in_progress` transition. Only the assigned worker may claim,
  * and only from `assigned`. Repositories must apply this atomically.
  */

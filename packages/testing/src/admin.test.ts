@@ -205,6 +205,7 @@ describe("updateStatusAndNotify", () => {
     priority: null,
     workerType: "local",
     workerId: "w1",
+    requester: null,
     result: { ok: true },
     error: null,
     createdAt: T0,

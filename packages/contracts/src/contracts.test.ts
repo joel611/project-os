@@ -12,6 +12,7 @@ const ticket = {
   priority: null,
   workerType: "local",
   workerId: null,
+  requester: null,
   result: null,
   error: null,
   createdAt: "2026-11-04T00:00:00.000Z",

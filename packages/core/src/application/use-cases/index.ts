@@ -1,5 +1,4 @@
 export * from "./activity.ts";
-export * from "./assign-worker.ts";
 export * from "./attachments.ts";
 export * from "./admin.ts";
 export * from "./channels.ts";
@@ -13,4 +12,6 @@ export * from "./tickets.ts";
 export * from "./connections.ts";
 export * from "./prompts.ts";
 export * from "./personal-workers.ts";
-export * from "./sandbox-pool.ts";
+export * from "./placement.ts";
+export * from "./sandbox-credentials.ts";
+export * from "./secrets.ts";

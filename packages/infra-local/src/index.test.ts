@@ -93,6 +93,7 @@ describe("LocalLive", () => {
         priority: null,
         workerType: "local",
         workerId: null,
+        requester: null,
         result: null,
         error: null,
         createdAt: T0,

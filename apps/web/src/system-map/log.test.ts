@@ -14,6 +14,7 @@ const ticket = (over: Partial<ActivityTicket> = {}): ActivityTicket => ({
   priority: null,
   workerType: "local",
   workerId: "w1",
+  requester: null,
   result: null,
   error: null,
   createdAt: T(1),

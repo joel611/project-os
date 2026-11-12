@@ -3,6 +3,7 @@ import {
   ChannelCreateFailed,
   ChannelGateway,
   claimTicket,
+  releaseTicket,
   IdGenerator,
   IntentClassifier,
   AssetStore,
@@ -82,6 +83,8 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
           put({ ...a, workerType: worker.workerType, workerId: worker.workerId }),
         ),
       ),
+    release: (ticketId, workerId, at) =>
+      Effect.flatMap(find(ticketId), (t) => Effect.map(releaseTicket(t, workerId, at), put)),
     claim: (ticketId, workerId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(claimTicket(t, workerId, at), put)),
     updateStatus: (ticketId, to, at, extra) =>
