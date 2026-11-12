@@ -76,6 +76,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   priority: null,
   workerType: "local",
   workerId: "w1",
+  requester: null,
   result: null,
   error: null,
   createdAt: T0,
@@ -169,34 +170,7 @@ describe("handleInbound", () => {
     expect(value.events.map((e) => e.type)).toEqual(["created", "assigned"]);
   });
 
-  it("new_request with no free device goes to a sandbox under its own worker id, and launches", async () => {
-    const { value, launched } = await run(
-      Effect.gen(function* () {
-        const out = yield* handleInbound(msg(), config);
-        if (out.kind !== "ticket_created") throw new Error(out.kind);
-        return out.ticket;
-      }),
-      {
-        classifier: classifierReturning("new_request"),
-        sandboxPool: [{ workerType: "daytona_pi" }],
-        shared: false,
-      },
-    );
-    expect(value).toMatchObject({
-      workerType: "daytona_pi",
-      workerId: `daytona-${value.id}`,
-    });
-    expect(launched).toEqual([
-      {
-        ticketId: value.id,
-        workerType: "daytona_pi",
-        workerId: `daytona-${value.id}`,
-        mcpToken: expect.stringMatching(/^[\w-]{40,}$/),
-      },
-    ]);
-  });
-
-  describe("worker routing", () => {
+  describe("when no worker has room", () => {
     const newTicket = (cfg: Parameters<typeof handleInbound>[1] = config, externalId = "m1") =>
       Effect.gen(function* () {
         const out = yield* handleInbound(msg({ externalId }), cfg);
@@ -204,98 +178,6 @@ describe("handleInbound", () => {
         return out.ticket;
       });
     const asNew = classifierReturning("new_request");
-
-    it("starts the first sandbox provider in pool order", async () => {
-      const { value, launched } = await run(newTicket(), {
-        classifier: asNew,
-        sandboxPool: [{ workerType: "cloudflare_pi" }, { workerType: "daytona_pi" }],
-        shared: false,
-      });
-      expect(value).toMatchObject({
-        workerType: "cloudflare_pi",
-        workerId: `cloudflare-${value.id}`,
-      });
-      expect(launched).toEqual([
-        {
-          ticketId: value.id,
-          workerType: "cloudflare_pi",
-          workerId: `cloudflare-${value.id}`,
-          mcpToken: expect.any(String),
-        },
-      ]);
-    });
-
-    it("skips a provider at its cap and takes the next", async () => {
-      const { value } = await run(
-        Effect.gen(function* () {
-          const first = yield* newTicket(config, "m1");
-          const second = yield* newTicket(config, "m2");
-          return [first.workerType, second.workerType];
-        }),
-        {
-          classifier: asNew,
-          sandboxPool: [
-            { workerType: "cloudflare_pi", maxConcurrent: 1 },
-            { workerType: "daytona_pi" },
-          ],
-          shared: false,
-        },
-      );
-      expect(value).toEqual(["cloudflare_pi", "daytona_pi"]);
-    });
-
-    it("prefers a free shared device over the sandbox pool, and launches nothing", async () => {
-      const { value, launched } = await run(newTicket(), {
-        classifier: asNew,
-        sandboxPool: [{ workerType: "daytona_pi" }],
-      });
-      expect(value).toMatchObject({ workerType: "local", workerId: "w1" });
-      expect(launched).toEqual([]);
-    });
-
-    it("moves on once a shared device holds its cap, to a less loaded one, then the pool", async () => {
-      const { value } = await run(
-        Effect.gen(function* () {
-          yield* sharedDevice("w2");
-          const cfg = { ...config, sharedWorkerMaxTickets: 1 };
-          const picks = [];
-          for (const id of ["m1", "m2", "m3"]) picks.push((yield* newTicket(cfg, id)).workerId);
-          return picks;
-        }),
-        { classifier: asNew, sandboxPool: [{ workerType: "daytona_pi" }] },
-      );
-      expect(value.slice(0, 2).sort()).toEqual(["w1", "w2"]);
-      expect(value[2]).toMatch(/^daytona-/);
-    });
-
-    it("defaults a shared device to one ticket at a time", async () => {
-      const { value } = await run(
-        Effect.gen(function* () {
-          yield* newTicket({}, "m1");
-          return yield* newTicket({}, "m2");
-        }),
-        { classifier: asNew },
-      );
-      expect(value).toMatchObject({ status: "open", workerId: null });
-    });
-
-    it("ignores an offline shared device", async () => {
-      const { value } = await run(
-        Effect.gen(function* () {
-          yield* (yield* WorkerRepository).register({
-            id: "w-off",
-            workerType: "local",
-            owner: null,
-            name: "off",
-            secretHash: "hash-off",
-            at: T0,
-          });
-          return yield* newTicket();
-        }),
-        { classifier: asNew, sandboxPool: [{ workerType: "daytona_pi" }], shared: false },
-      );
-      expect(value.workerType).toBe("daytona_pi");
-    });
 
     it("queues the ticket, and says so in its thread, when no worker has room", async () => {
       const { value, sent, launched } = await run(

@@ -24,6 +24,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   priority: null,
   workerType: null,
   workerId: null,
+  requester: null,
   result: null,
   error: null,
   createdAt: T0,

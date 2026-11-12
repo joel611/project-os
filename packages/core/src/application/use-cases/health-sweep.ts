@@ -1,9 +1,9 @@
-import { ChannelType, type TicketEvent } from "@project-os/contracts";
-import { Effect, Option, Schema } from "effect";
+import type { TicketEvent } from "@project-os/contracts";
+import { Effect } from "effect";
 import { workerStatus, type Ticket } from "../../domain/index.ts";
 import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
-import { assignToWorker, pickWorker } from "./assign-worker.ts";
 import { notifyTicket } from "./on-ticket-completed.ts";
+import { placeOrQueue } from "./placement.ts";
 
 /** Thresholds in milliseconds (docs/technical-architecture.md §5.5). */
 export interface HealthThresholds {
@@ -15,7 +15,7 @@ export interface HealthThresholds {
   readonly followUpMs: number;
   /** `in_progress` with no activity for this long → failed. */
   readonly inactivityFailMs: number;
-  /** Queued tickets are routed with this (see `WorkerRouting`). */
+  /** Queued tickets are routed with this (see `PlacementRouting`). */
   readonly sharedWorkerMaxTickets?: number;
 }
 
@@ -27,13 +27,6 @@ export type HealthAction =
 
 const KIND_FLAGGED = "health_assignment_flagged";
 const KIND_FOLLOW_UP = "health_follow_up";
-
-/** Who asked for a ticket: the sender on its `created` event. */
-const Requester = Schema.Struct({
-  channelType: ChannelType,
-  sender: Schema.Struct({ id: Schema.String }),
-});
-const decodeRequester = Schema.decodeUnknownOption(Requester);
 
 const payloadOf = (event: TicketEvent): { kind?: unknown; idleSince?: string } =>
   typeof event.payload === "object" && event.payload !== null ? event.payload : {};
@@ -89,17 +82,16 @@ export const healthSweep = (thresholds: HealthThresholds) =>
 
     const sweepQueued = (t: Ticket) =>
       Effect.gen(function* () {
-        const created = (yield* tickets.listEvents(t.id)).find((e) => e.type === "created");
-        const requester = decodeRequester(created?.payload);
-        if (Option.isNone(requester)) return [];
-        const pick = yield* pickWorker(
-          { channelType: requester.value.channelType, id: requester.value.sender.id },
-          t.id,
-          thresholds,
-        );
-        if (!pick) return [];
-        yield* assignToWorker(t.id, pick, at);
-        return [{ kind: "assigned", ticketId: t.id, workerId: pick.workerId } as const];
+        if (t.requester === null) return [];
+        const placement = yield* placeOrQueue({
+          ticketId: t.id,
+          requester: t.requester,
+          routing: thresholds,
+          at,
+          alreadyQueued: true,
+        });
+        if (placement.kind === "queued") return [];
+        return [{ kind: "assigned", ticketId: t.id, workerId: placement.workerId } as const];
       });
 
     const sweepAssigned = (t: Ticket) =>

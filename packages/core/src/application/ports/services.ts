@@ -244,6 +244,11 @@ export interface SandboxPoolEntry {
   readonly sessionTimeoutSeconds?: number;
 }
 
+/** A sandbox session could not be started. */
+export class LaunchFailed extends Data.TaggedError("LaunchFailed")<{
+  readonly message: string;
+}> {}
+
 export class WorkerLauncher extends Context.Service<
   WorkerLauncher,
   {
@@ -254,8 +259,9 @@ export class WorkerLauncher extends Context.Service<
     readonly pool: Effect.Effect<ReadonlyArray<SandboxPoolEntry>>;
     /**
      * Start a sandbox session for a ticket just assigned to the pool. Returns once the launch is
-     * under way, not when the session ends; failures are the launcher's to report. Registered
-     * devices are never launched: their Watcher pulls the ticket.
+     * under way, not when the session ends. Fails `LaunchFailed` when it could not be started
+     * at all (a failure after kickoff is the launcher's to log); the ticket then goes back to
+     * the queue. Registered devices are never launched: their Watcher pulls the ticket.
      */
     readonly launch: (input: {
       readonly ticketId: string;
@@ -264,7 +270,7 @@ export class WorkerLauncher extends Context.Service<
       readonly workerId: string;
       /** The session's Bearer token for MCP: it acts as `workerId` only, until it expires. */
       readonly mcpToken: string;
-    }) => Effect.Effect<void>;
+    }) => Effect.Effect<void, LaunchFailed>;
   }
 >()("@project-os/core/WorkerLauncher") {}
 

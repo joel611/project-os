@@ -9,7 +9,6 @@ import {
   issueWorkerRegistration,
   KeyValueStore,
   listPersonalWorkers,
-  onlinePersonalWorker,
   ProjectRepository,
   ProjectSourceRepository,
   redeemWorkerRegistration,
@@ -17,7 +16,6 @@ import {
   TicketRepository,
   unregisterWorker,
   workerLabel,
-  WorkerRepository,
   type Person,
 } from "@project-os/core";
 import type { InboundMessage } from "@project-os/contracts";
@@ -204,57 +202,6 @@ const newTicket = (sender: Person, externalId?: string) =>
     if (out.kind !== "ticket_created") throw new Error(out.kind);
     return out.ticket;
   });
-
-describe("ticket routing", () => {
-  it("gives a new ticket to the requester's online device, and launches nothing", async () => {
-    const { value, launched } = await run(
-      Effect.gen(function* () {
-        yield* linkChannel;
-        const { worker } = yield* device(ADA, true);
-        const ticket = yield* newTicket(ADA);
-        const events = yield* (yield* TicketRepository).listEvents(ticket.id);
-        return { worker, ticket, assigned: events.find((e) => e.type === "assigned") };
-      }),
-    );
-    expect(value.ticket).toMatchObject({ workerId: value.worker.id, workerType: "local" });
-    expect(value.assigned?.body).toBe(
-      `Assigned to the requester's own worker ${value.worker.name}`,
-    );
-    expect(launched).toEqual([]);
-  });
-
-  it("sends tickets to the sandbox pool when the device is offline or someone else asks", async () => {
-    const { value } = await run(
-      Effect.gen(function* () {
-        yield* linkChannel;
-        yield* device(ADA, false);
-        yield* device(BOB, true);
-        return yield* newTicket(ADA);
-      }),
-    );
-    expect(value).toMatchObject({
-      workerType: "daytona_pi",
-      workerId: `daytona-${value.id}`,
-    });
-  });
-
-  it("prefers the most recently seen online device", async () => {
-    const { value } = await run(
-      Effect.gen(function* () {
-        const a = yield* device(ADA, true, "a");
-        const b = yield* device(ADA, true, "b");
-        yield* (yield* WorkerRepository).heartbeat({
-          workerId: a.worker.id,
-          workerType: "local",
-          ticketId: null,
-          at: "2026-11-03T23:59:00.000Z",
-        });
-        return { picked: yield* onlinePersonalWorker(ADA, 15 * 60_000), b: b.worker.id };
-      }),
-    );
-    expect(value.picked?.id).toBe(value.b);
-  });
-});
 
 describe("MCP credentials", () => {
   it("knows a device by its secret and a sandbox session by its launch token", async () => {

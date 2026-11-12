@@ -15,6 +15,8 @@ import {
   TicketRepository,
   WorkerRepository,
 } from "../ports/index.ts";
+import { authenticateSandbox } from "./sandbox-credentials.ts";
+import { randomSecret, sha256Hex } from "./secrets.ts";
 import { nowIso } from "./tickets.ts";
 
 /** How long a /register-worker code works, once. */
@@ -29,23 +31,6 @@ const PendingRegistration = Schema.fromJsonString(
   }),
 );
 const decodePending = Schema.decodeUnknownOption(PendingRegistration);
-
-const base64url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-/** A random URL-safe secret. Web Crypto: works on Bun and Workers alike. */
-export const randomSecret = (bytes: number): Effect.Effect<string> =>
-  Effect.sync(() => base64url(crypto.getRandomValues(new Uint8Array(bytes))));
-
-/** Hex SHA-256: what the Coordinator stores in place of codes and device secrets. */
-export const sha256Hex = (value: string): Effect.Effect<string> =>
-  Effect.promise(async () => {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  });
 
 const pendingKey = (hash: string) => `worker-register:${hash}`;
 const usedKey = (hash: string) => `worker-register-used:${hash}`;
@@ -132,27 +117,6 @@ export const authenticateWorker = (secret: string) =>
     return yield* workers.findBySecretHash(yield* sha256Hex(secret));
   });
 
-const sandboxTokenKey = (hash: string) => `sandbox-token:${hash}`;
-
-/**
- * Mints the Bearer token a sandbox session calls MCP with. It acts as `workerId` only and stops
- * working after `ttlSeconds`. Only its hash is stored.
- */
-export const issueSandboxToken = (workerId: string, ttlSeconds: number) =>
-  Effect.gen(function* () {
-    const token = yield* randomSecret(32);
-    const kv = yield* KeyValueStore;
-    yield* kv.set(sandboxTokenKey(yield* sha256Hex(token)), workerId, { ttlSeconds });
-    return token;
-  });
-
-/** The sandbox worker id a token was minted for, or undefined (unknown or expired). */
-export const authenticateSandbox = (token: string) =>
-  Effect.gen(function* () {
-    const kv = yield* KeyValueStore;
-    return yield* kv.get(sandboxTokenKey(yield* sha256Hex(token)));
-  });
-
 /** Who is calling MCP: the worker id its Bearer credentials belong to. */
 export interface McpCaller {
   readonly id: string;
@@ -213,19 +177,6 @@ export const unregisterSharedWorker = (idOrName: string) =>
     if (!target) return undefined;
     yield* workers.remove(target.id);
     return target;
-  });
-
-/**
- * The device that should take `person`'s next ticket: their most recently seen personal
- * worker that is online. Undefined sends the ticket to the pool instead.
- */
-export const onlinePersonalWorker = (person: Person, staleAfterMs: number) =>
-  Effect.gen(function* () {
-    const online = (yield* listPersonalWorkers(person, staleAfterMs))
-      .filter((w) => w.status === "online")
-      .map((w) => w.worker)
-      .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
-    return online[0];
   });
 
 const unauthorized = (workerId: string, message: string) =>

@@ -35,6 +35,16 @@ export class TicketRepository extends Context.Service<
       worker: { readonly workerType: WorkerType; readonly workerId: string | null },
       at: string,
     ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
+    /**
+     * Atomic `assigned → open` for a ticket still `assigned` to `workerId`: clears the worker
+     * so the ticket is Queued again, keeping its `createdAt`. Fails `InvalidTransition` once
+     * the worker has claimed it (or it was released or reassigned).
+     */
+    readonly release: (
+      ticketId: string,
+      workerId: string,
+      at: string,
+    ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
     /** Atomic `assigned → in_progress`. Two concurrent claims: exactly one wins. */
     readonly claim: (
       ticketId: string,

@@ -243,6 +243,7 @@ export const seedQaData = (projectId: string) =>
         priority: q.priority,
         workerType: q.worker?.type ?? null,
         workerId,
+        requester: null,
         result: q.result ?? null,
         error: q.error ?? null,
         createdAt: iso(q.ageMinutes),
