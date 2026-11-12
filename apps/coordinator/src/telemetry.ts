@@ -7,8 +7,7 @@ import { BasicTracerProvider, BatchSpanProcessor } from "@opentelemetry/sdk-trac
 
 /**
  * OTLP/HTTP telemetry for Pi Durable, off unless an endpoint is configured. The exporters read the
- * standard `OTEL_EXPORTER_OTLP_*` variables (endpoint, headers, timeouts). The service name comes
- * from `OTEL_SERVICE_NAME` (the SDK does not read it itself), default `project-os-coordinator`.
+ * standard `OTEL_EXPORTER_OTLP_*` variables (endpoint, headers, timeouts) from `process.env`.
  */
 export const setupTelemetry = (
   env: Record<string, string | undefined>,

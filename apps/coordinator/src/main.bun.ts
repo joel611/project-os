@@ -40,7 +40,6 @@ const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
 const jev = models.getModelOfType("classifier", "openrouter", jevModelId);
 if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
 
-// Explicit return type: `runtime` is defined below and depends on this function.
 const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
   runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
 

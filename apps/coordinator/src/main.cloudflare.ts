@@ -34,8 +34,7 @@ interface Bindings {
 
 /**
  * Builds the app from the Worker's bindings. This must run at module load: Elysia's
- * `.compile()` uses `new Function`, which workerd allows only before the first request.
- * Nothing here does I/O; the layers build lazily on the first `runPromise`.
+ * `.compile()` uses `new Function`, which workerd allows only during startup.
  */
 const buildApp = (bindings: Bindings) => {
   const models = newModels();

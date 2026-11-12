@@ -82,7 +82,8 @@ export const mcpRoutes = (runtime: McpRuntime) =>
       try {
         return await transport.handleRequest(request);
       } finally {
-        // Non-streaming (JSON) responses are complete once handleRequest resolves.
+        // enableJsonResponse: a POST's response is complete once handleRequest resolves, so closing
+        // here cuts nothing off.
         await server.close();
       }
     },

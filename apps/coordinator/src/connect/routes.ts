@@ -75,6 +75,5 @@ export const connectRoutes = ({ startLink }: ConnectDeps) =>
       }
       const headers = new Headers({ location: start.redirect, "cache-control": "no-store" });
       for (const cookie of start.setCookies) headers.append("set-cookie", cookie);
-      // 303: the browser follows a POST's redirect with a GET to the provider.
       return new Response(null, { status: 303, headers });
     });

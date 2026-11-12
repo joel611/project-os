@@ -15,9 +15,8 @@ import { DurableObject } from "cloudflare:workers";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { makeAdminActions } from "./admin/actions.ts";
 
-// Pi Durable on Workers. Pi's storage must live in a SQLite-backed Durable Object, so each
-// session (`project:<id>`, `admin:<channel>`, `sidekick:<ticket>`) gets one `PiAgent` that owns
-// its Harness. The Worker reaches it through `durableAgentRuntime`.
+// One `PiAgent` per session (`project:<id>`, `admin:<channel>`, `sidekick:<ticket>`) is the sole
+// owner of that session's Pi storage.
 
 interface Bindings {
   readonly DB: D1Database;

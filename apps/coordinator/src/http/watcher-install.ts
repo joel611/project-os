@@ -30,9 +30,7 @@ export const installLine = (
     ...(yes ? ["--yes"] : []),
   ].join(" ");
 
-// The script reads answers from the terminal, not stdin, because stdin is the curl pipe. The
-// terminal is opened once on fd 3 so a file standing in for it (PROJECT_OS_INSTALL_TTY, used by
-// tests) is read line by line. Prompts go to stderr.
+// The script reads answers from the terminal, not stdin, because stdin is the curl pipe.
 const TTY_HELPERS = `tty=\${PROJECT_OS_INSTALL_TTY:-/dev/tty}
 asking=""
 if (: <"$tty") 2>/dev/null; then exec 3<"$tty"; asking=1; fi
