@@ -7,6 +7,7 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   readMemory,
+  removeSource,
   TicketRepository,
   updateSource,
   updateStatusAndNotify,
@@ -89,6 +90,9 @@ export const editSource = (
   sourceId: string,
   body: typeof UpdateSourceBody.Type,
 ) => updateSource({ projectId, sourceId, ...body });
+
+export const unlinkSource = (projectId: string, sourceId: string) =>
+  removeSource({ projectId, sourceId });
 
 export const listProjectTickets = (projectId: string) =>
   Effect.gen(function* () {

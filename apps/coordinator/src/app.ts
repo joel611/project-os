@@ -50,7 +50,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
     ? base.use(
         cors({
           origin: [...deps.corsOrigins],
-          methods: ["GET", "POST", "PATCH", "OPTIONS"],
+          methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
           allowedHeaders: ["content-type", "authorization"],
           // Sign-in hands the dashboard its session token in this header.
           exposeHeaders: ["set-auth-token"],

@@ -2,7 +2,7 @@ import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { type Stack, startStack } from "./stack.ts";
 
-// Source aliases end to end: the dashboard API (POST/PATCH sources) and the admin dialogue's
+// Source aliases end to end: the dashboard API (POST/PATCH/DELETE sources) and the admin dialogue's
 // actions name sources, and a Worker finds them by alias over MCP `project_sources_list`.
 
 /** The shared worker an admin registered; set once the stack is up. */
@@ -96,6 +96,39 @@ describe("project source aliases", () => {
       description: null,
     });
     expect(patched).toMatchObject({ alias: "design-docs", description: null });
+  });
+
+  it("removes a source from the dashboard: Workers stop seeing it and it can be linked again", async () => {
+    const projectId = await stack.linkChannel("chan-1");
+    const repo = await stack.json("POST", `/projects/${projectId}/sources`, {
+      type: "github_repo",
+      externalId: "acme/web",
+      name: "acme/web",
+      alias: "web",
+    });
+
+    expect(await stack.json("DELETE", `/projects/${projectId}/sources/${repo.id}`)).toMatchObject({
+      id: repo.id,
+      alias: "web",
+    });
+    expect(await stack.json("DELETE", `/projects/${projectId}/sources/${repo.id}`)).toMatchObject({
+      error: "SourceNotFound",
+    });
+    expect((await listSources(projectId)).map((s) => s.alias)).toEqual(["chat"]);
+
+    const anonymous = await fetch(`${stack.url}/projects/${projectId}/sources/${repo.id}`, {
+      method: "DELETE",
+    });
+    expect(anonymous.status).toBe(401);
+
+    expect(
+      await stack.json("POST", `/projects/${projectId}/sources`, {
+        type: "github_repo",
+        externalId: "acme/web",
+        name: "acme/web",
+        alias: "web",
+      }),
+    ).toMatchObject({ alias: "web" });
   });
 
   it("names the channel admin create_project makes after the channel", async () => {

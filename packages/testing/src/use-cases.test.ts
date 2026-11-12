@@ -13,6 +13,7 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   readMemory,
+  removeSource,
   TicketRepository,
   updateProject,
   updateSource,
@@ -837,6 +838,29 @@ describe("project sources", () => {
       url: "https://github.com/acme/web",
     });
     expect(value.missing._tag).toBe("ProjectNotFound");
+  });
+});
+
+describe("removeSource", () => {
+  it("unlinks a source so Workers stop seeing it, and 404s a source of another project", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const repo = yield* addSource({
+          projectId: "p1",
+          type: "github_repo",
+          externalId: "acme/web",
+          name: "acme/web",
+          alias: "web",
+        });
+        const foreign = yield* Effect.flip(removeSource({ projectId: "p2", sourceId: repo.id }));
+        const removed = yield* removeSource({ projectId: "p1", sourceId: repo.id });
+        const listed = yield* listProjectSources({ projectId: "p1" });
+        return { foreign, removed, listed };
+      }),
+    );
+    expect(value.foreign._tag).toBe("SourceNotFound");
+    expect(value.removed).toMatchObject({ alias: "web", externalId: "acme/web" });
+    expect(value.listed.map((s) => s.alias)).not.toContain("web");
   });
 });
 

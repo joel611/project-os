@@ -266,6 +266,28 @@ describe("ProjectSourceRepository", () => {
     expect(foreign._tag).toBe("SourceNotFound");
   });
 
+  it("removes a source, freeing its link, and refuses a foreign or unknown one", async () => {
+    const { removed, foreign, again, left, relinked } = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* ProjectSourceRepository;
+        yield* repo.insert(source({ alias: "chat" }));
+        yield* repo.insert(source({ id: "s2", externalId: "chan-2", alias: "docs" }));
+        const foreign = yield* Effect.flip(repo.remove("p2", "s1"));
+        const removed = yield* repo.remove("p1", "s1");
+        const again = yield* Effect.flip(repo.remove("p1", "s1"));
+        const left = yield* repo.listByProject("p1");
+        const relinked = yield* repo.insert(source({ id: "s3", alias: "chat" }));
+        return { removed, foreign, again, left, relinked };
+      }),
+    );
+    expect(removed).toMatchObject({ id: "s1", alias: "chat" });
+    expect(foreign._tag).toBe("SourceNotFound");
+    expect(again._tag).toBe("SourceNotFound");
+    expect(left.map((s) => s.id)).toEqual(["s2"]);
+    expect(relinked).toMatchObject({ id: "s3", externalId: "chan-1" });
+  });
+
   it("rejects setDefaultResponse for unknown or foreign source", async () => {
     const err = await run(
       Effect.gen(function* () {

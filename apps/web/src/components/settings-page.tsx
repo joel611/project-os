@@ -1,7 +1,7 @@
 import { detectSource, type ProjectSource, suggestAlias } from "@project-os/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink, Pencil, Star } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Star, Trash2 } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 import { api, ApiError, describeError, type ProjectDetail } from "@/api";
 import { SLOW_MS } from "@/polling";
@@ -9,11 +9,27 @@ import { Empty, QueryError } from "@/components/states";
 import { SOURCE_META } from "@/components/source";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ALIAS_HINT, checkSource, normalizeAlias, sourceUrl, type SourceInput } from "@/model";
+import {
+  ALIAS_HINT,
+  checkSource,
+  confirmPhrase,
+  normalizeAlias,
+  removalNote,
+  sourceUrl,
+  type SourceInput,
+} from "@/model";
 
 const PANEL = "rounded-xl border bg-card p-6 shadow-card md:p-7";
 
@@ -117,6 +133,63 @@ const EditSource = ({
   );
 };
 
+const RemoveSource = ({
+  projectId,
+  source,
+  onClose,
+}: {
+  projectId: string;
+  source: ProjectSource;
+  onClose: () => void;
+}) => {
+  const qc = useQueryClient();
+  const [typed, setTyped] = useState("");
+  const phrase = confirmPhrase(source);
+  const remove = useMutation({
+    mutationFn: () => api.removeSource(projectId, source.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] }),
+  });
+  const confirmed = typed.trim() === phrase;
+  const submit = (e: SyntheticEvent) => {
+    e.preventDefault();
+    if (confirmed) remove.mutate();
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>
+              Remove <span className="font-mono">{source.alias}</span>?
+            </DialogTitle>
+            <DialogDescription>{removalNote(source)}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="confirm-remove">
+              Type <span className="font-mono font-semibold">{phrase}</span> to confirm
+            </Label>
+            <Input
+              id="confirm-remove"
+              autoComplete="off"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+            <Problems lines={remove.error ? [describeError(remove.error)] : []} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="destructive" disabled={!confirmed || remove.isPending}>
+              {remove.isPending ? "Removing…" : "Remove source"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const SourceRow = ({
   projectId,
   source,
@@ -128,18 +201,18 @@ const SourceRow = ({
 }) => {
   const { Icon, label } = SOURCE_META[source.type];
   const url = sourceUrl(source);
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<"view" | "edit" | "remove">("view");
   return (
     <li className="flex items-start gap-4 px-6 py-5">
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
         <Icon className="size-4" aria-label={label} />
       </span>
-      {editing ? (
+      {mode === "edit" ? (
         <EditSource
           projectId={projectId}
           source={source}
           sources={sources}
-          onDone={() => setEditing(false)}
+          onDone={() => setMode("view")}
         />
       ) : (
         <>
@@ -163,10 +236,18 @@ const SourceRow = ({
           <button
             type="button"
             aria-label={`Edit ${source.alias}`}
-            onClick={() => setEditing(true)}
+            onClick={() => setMode("edit")}
             className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <Pencil className="size-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove ${source.alias}`}
+            onClick={() => setMode("remove")}
+            className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
           </button>
           {url && (
             <a
@@ -180,6 +261,9 @@ const SourceRow = ({
             </a>
           )}
         </>
+      )}
+      {mode === "remove" && (
+        <RemoveSource projectId={projectId} source={source} onClose={() => setMode("view")} />
       )}
     </li>
   );
