@@ -74,6 +74,10 @@ describe("/source-add slash command", () => {
     expect((await run({ link: "https://github.com/acme/web" })).content).toBe(
       "That GitHub repo is already linked to this project.",
     );
+    await stack.linkChannel("other-chan");
+    expect((await run({ link: "acme/web" }, { ...ada, channelId: "other-chan" })).content).toBe(
+      "That GitHub repo is already linked to another project.",
+    );
     expect((await run({ link: "other/web" })).content).toMatch(/already has a source called `web`/);
     expect((await run({ link: "acme/api", alias: "Not OK!" })).content).toMatch(/alias is/);
     expect(await run({ link: "acme/api" }, { ...ada, channelId: "random" })).toEqual({

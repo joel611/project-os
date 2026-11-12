@@ -331,8 +331,6 @@ const sourceAdd = async (command: SlashCommand, config: CommandsConfig): Promise
           ),
         ),
         Effect.catchTags({
-          ProjectNotFound: () =>
-            Effect.succeed(privately("This channel's project no longer exists.")),
           SourceAlreadyLinked: (e) =>
             Effect.succeed(
               privately(
@@ -348,9 +346,10 @@ const sourceAdd = async (command: SlashCommand, config: CommandsConfig): Promise
               ),
             ),
           InvalidSourceAlias: (e) => Effect.succeed(privately(e.message)),
-          // Only from marking a default reply channel, which this never asks for.
-          SourceNotFound: () => Effect.succeed(privately("Something went wrong linking it.")),
         }),
+        // The channel's project exists (its source points at it), and no default reply channel
+        // is set, so ProjectNotFound and SourceNotFound can't happen.
+        Effect.orDie,
       );
     }),
   );
