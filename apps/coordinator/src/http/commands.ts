@@ -3,10 +3,13 @@ import {
   type CommandReply,
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
+  detectSource,
   type SlashCommand,
+  suggestAlias,
   WATCHER_AGENTS,
 } from "@project-os/contracts";
 import {
+  addSource,
   type Clock,
   type IdGenerator,
   issueWorkerRegistration,
@@ -14,6 +17,8 @@ import {
   listPersonalWorkers,
   listSharedWorkers,
   type Person,
+  type ProjectRepository,
+  ProjectSourceRepository,
   PROVIDER_LABELS,
   REGISTRATION_TTL_SECONDS,
   unregisterSharedWorker,
@@ -22,6 +27,7 @@ import {
   type Worker,
   workerLabel,
   type WorkerRepository,
+  sourceUrl,
 } from "@project-os/core";
 import { Effect } from "effect";
 import { installLine, type ScriptConfig } from "./watcher-install.ts";
@@ -39,7 +45,11 @@ export interface CommandsConfig {
    * anyone, shared ones (`shared:True`) for admins in the admin channel. Unset: refused.
    */
   readonly workers?: WorkersCommandsConfig;
+  /** Links sources to the project of the channel the command ran in (/source-add). Unset: refused. */
+  readonly sources?: <A>(effect: Effect.Effect<A, never, SourcesEnv>) => Promise<A>;
 }
+
+export type SourcesEnv = Clock | IdGenerator | ProjectRepository | ProjectSourceRepository;
 
 export type WorkersEnv = Clock | IdGenerator | KeyValueStore | WorkerRepository;
 
@@ -77,6 +87,8 @@ export const runCommand = async (
     case "workers":
     case "unregister-worker":
       return workerCommand(command, config);
+    case "source-add":
+      return sourceAdd(command, config);
   }
 };
 
@@ -267,3 +279,78 @@ const workerLine = ({ worker, status }: { readonly worker: Worker; readonly stat
 
 const seen = (iso: string) =>
   Date.parse(iso) <= 0 ? "never" : iso.replace("T", " ").slice(0, 16) + " UTC";
+
+const SOURCE_LABELS = {
+  github_repo: "GitHub repo",
+  google_drive_folder: "Google Drive folder",
+} as const;
+
+/**
+ * Links a GitHub repo or Google Drive folder to the project whose channel (or thread) the
+ * command ran in. The link is read the same way the dashboard reads it. A repo's alias defaults
+ * to its name; a Drive folder id says nothing, so it needs one.
+ */
+const sourceAdd = async (command: SlashCommand, config: CommandsConfig): Promise<CommandReply> => {
+  if (!config.sources) return privately("Linking sources is not configured here.");
+  const usage =
+    "Usage: /source-add link:<GitHub repo or Google Drive folder> [alias:<name>] [description:<text>]";
+  const detected = detectSource(command.options.link ?? "");
+  if (!detected) {
+    return privately(`That isn't a GitHub repo or Google Drive folder link.\n${usage}`);
+  }
+  const alias = command.options.alias?.trim() || suggestAlias(detected);
+  if (!alias) {
+    return privately(
+      "A Drive folder link doesn't say what's in it, so give it an alias, like `alias:design-docs`.",
+    );
+  }
+  const description = command.options.description?.trim() || undefined;
+  const label = SOURCE_LABELS[detected.type];
+
+  return config.sources(
+    Effect.gen(function* () {
+      const channel = yield* (yield* ProjectSourceRepository).findByExternal(
+        "discord_channel",
+        command.channelId,
+      );
+      if (!channel || channel.status !== "active") {
+        return privately("/source-add only works in a project's channel.");
+      }
+      return yield* addSource({
+        projectId: channel.projectId,
+        type: detected.type,
+        externalId: detected.externalId,
+        name: detected.name,
+        alias,
+        description,
+      }).pipe(
+        Effect.map((source) =>
+          privately(
+            `Linked ${label} <${sourceUrl(source)}> to this project as \`${source.alias}\`. ` +
+              "Workers can now find it by that name.",
+          ),
+        ),
+        Effect.catchTags({
+          SourceAlreadyLinked: (e) =>
+            Effect.succeed(
+              privately(
+                e.projectId === channel.projectId
+                  ? `That ${label} is already linked to this project.`
+                  : `That ${label} is already linked to another project.`,
+              ),
+            ),
+          SourceAliasTaken: (e) =>
+            Effect.succeed(
+              privately(
+                `This project already has a source called \`${e.alias}\`. Pick another with \`alias:\`.`,
+              ),
+            ),
+          InvalidSourceAlias: (e) => Effect.succeed(privately(e.message)),
+        }),
+        // The channel's project exists (its source points at it), and no default reply channel
+        // is set, so ProjectNotFound and SourceNotFound can't happen.
+        Effect.orDie,
+      );
+    }),
+  );
+};

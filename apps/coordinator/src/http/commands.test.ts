@@ -84,6 +84,28 @@ describe("runCommand /project-create", () => {
   });
 });
 
+describe("runCommand /source-add", () => {
+  const sourceAdd = (options: Record<string, string>) =>
+    command({ command: "source-add", channelId: "proj", options });
+
+  it("refuses when linking sources is not configured", async () => {
+    expect(await runCommand(sourceAdd({ link: "acme/web" }), recording().config)).toEqual({
+      content: "Linking sources is not configured here.",
+      ephemeral: true,
+    });
+  });
+
+  it("checks the link and alias before touching the project", async () => {
+    const config = recording({
+      sources: () => Promise.reject(new Error("should not run")),
+    }).config;
+    expect((await runCommand(sourceAdd({}), config)).content).toMatch(/^That isn't a GitHub/);
+    expect((await runCommand(sourceAdd({ link: "1AbCdEfGhIjK" }), config)).content).toMatch(
+      /give it an alias/,
+    );
+  });
+});
+
 describe("POST /commands", () => {
   const disposers: Array<() => Promise<unknown>> = [];
   afterEach(async () => {

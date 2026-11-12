@@ -69,10 +69,10 @@ The bot connects with these gateway intents (`packages/channel-discord/src/main.
 
 The invite needs two **scopes**:
 
-| Scope                   | Why                                                                                                                                      |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `bot`                   | Adds the bot user to the server                                                                                                          |
-| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections`, `/register-worker`, `/workers`, `/unregister-worker` |
+| Scope                   | Why                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bot`                   | Adds the bot user to the server                                                                                                                         |
+| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections`, `/register-worker`, `/workers`, `/unregister-worker`, `/source-add` |
 
 And these **bot permissions**:
 

@@ -1,4 +1,4 @@
-import type { ProjectSource } from "@project-os/contracts";
+import { detectSource, type ProjectSource, suggestAlias } from "@project-os/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ExternalLink, Pencil, Star } from "lucide-react";
@@ -14,15 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  ALIAS_HINT,
-  checkSource,
-  detectSource,
-  normalizeAlias,
-  sourceUrl,
-  suggestAlias,
-  type SourceInput,
-} from "@/model";
+import { ALIAS_HINT, checkSource, normalizeAlias, sourceUrl, type SourceInput } from "@/model";
 
 const Problems = ({ lines }: { lines: ReadonlyArray<string> }) =>
   lines.length > 0 && (
