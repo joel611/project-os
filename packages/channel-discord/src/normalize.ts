@@ -8,6 +8,8 @@ export interface DiscordMessageLike {
   author: { id: string; username: string; bot: boolean };
   member?: { displayName: string } | null;
   channelId: string;
+  /** Server the message was sent in; null in DMs. */
+  guildId?: string | null;
   channel: { isThread(): boolean; parentId?: string | null };
   /** Direct user mentions (not @everyone or roles). */
   mentions?: { users: { has(id: string): boolean } };
@@ -60,6 +62,9 @@ export const normalizeMessage = (
     content: mentionsBot ? stripMention(m.content, botUserId!) : m.content,
     ...(attachments.length === 0 ? {} : { attachments }),
     ...(botUserId === undefined ? {} : { mentionsBot }),
+    ...(m.guildId
+      ? { url: `https://discord.com/channels/${m.guildId}/${m.channelId}/${m.id}` }
+      : {}),
     raw: {
       id: m.id,
       content: m.content,

@@ -53,7 +53,7 @@ const adminActions = makeAdminActions({
 
 const otel = setupTelemetry(process.env);
 const digestConfig = channelDigestConfig();
-const digester = digestConfig.enabled ? channelDigesterFromEnv(models, process.env) : undefined;
+const digester = channelDigesterFromEnv(models, process.env);
 const digest = { ...digestConfig, enabled: digester !== undefined };
 
 const AiLive = Layer.orDie(

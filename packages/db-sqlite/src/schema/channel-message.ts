@@ -16,6 +16,7 @@ export const channelMessages = sqliteTable(
     senderId: text("sender_id").notNull(),
     senderName: text("sender_name"),
     content: text("content").notNull(),
+    url: text("url"),
     sentAt: text("sent_at").notNull(),
   },
   (t) => [

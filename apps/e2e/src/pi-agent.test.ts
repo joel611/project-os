@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Miniflare } from "miniflare";
@@ -8,13 +8,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/
 // through durableAgentRuntime. Faked: the chat model (pi-ai's faux provider, swapped in by a
 // PiAgent subclass); every outbound fetch is refused. Real: workerd, DO SQLite storage, D1.
 
-const migration = readFileSync(
-  new URL(
-    "../../../packages/db-sqlite/migrations/20261107121658_init/migration.sql",
-    import.meta.url,
-  ),
-  "utf8",
-).replace(/CREATE (UNIQUE )?(TABLE|INDEX)/g, "CREATE $1$2 IF NOT EXISTS");
+// Every migration, oldest first; safe to re-run on a database that already has them.
+const migrations = new URL("../../../packages/db-sqlite/migrations/", import.meta.url);
+const migration = readdirSync(migrations)
+  .sort()
+  .map((name) => readFileSync(new URL(`${name}/migration.sql`, migrations), "utf8"))
+  .join("\n--> statement-breakpoint\n")
+  .replace(/CREATE (UNIQUE )?(TABLE|INDEX)/g, "CREATE $1$2 IF NOT EXISTS");
 
 let dir: string;
 let script: string;
@@ -55,7 +55,14 @@ const boot = async (root = mkdtempSync(join(dir, "state-"))) => {
   instances.push(mf);
   const db = await mf.getD1Database("DB");
   for (const statement of migration.split("--> statement-breakpoint")) {
-    await db.prepare(statement).run();
+    if (statement.trim() === "") continue;
+    await db
+      .prepare(statement)
+      .run()
+      .catch((e: Error) => {
+        // An ALTER TABLE ADD from an earlier run on the same persisted database.
+        if (!/duplicate column/i.test(e.message)) throw e;
+      });
   }
   await db
     .prepare(

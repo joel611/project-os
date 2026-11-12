@@ -69,7 +69,7 @@ const buildApp = (bindings: Bindings) => {
 
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
   const digestConfig = channelDigestConfig();
-  const digester = digestConfig.enabled ? channelDigesterFromEnv(models, process.env) : undefined;
+  const digester = channelDigesterFromEnv(models, process.env);
   const digest = { ...digestConfig, enabled: digester !== undefined };
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(

@@ -14,8 +14,10 @@ const SYSTEM_PROMPT = `You keep the memory of a software project. You are shown 
 
 Skip small talk, questions, status chatter, requests to the bot, and anything already in the known memory list. Most stretches of chat have nothing worth saving: then answer with an empty list.
 
+For each point, list in messageIds the one to three messages that best show where it came from, most relevant first: the message where it was agreed or stated, then the one that raised it. People will read these later to learn who decided and when.
+
 Answer with JSON only, no prose and no code fence:
-{"points":[{"type":"decision"|"note","title":"<headline, under 80 characters>","content":"<one to three sentences that stand on their own: what was decided or learned, by whom, and why if said>","messageIds":["<ids of the messages it came from>"]}]}`;
+{"points":[{"type":"decision"|"note","title":"<headline, under 80 characters>","content":"<one to three sentences that stand on their own: what was decided or learned, by whom, and why if said>","messageIds":["<ids of its source messages, most relevant first>"]}]}`;
 
 const Answer = Schema.Struct({
   points: Schema.Array(

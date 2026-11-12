@@ -181,8 +181,6 @@ export const startStack = async (options: {
   readonly maxAttachmentBytes?: number;
   /** Make every Channel Digest model call fail with this message. */
   readonly failDigest?: string;
-  /** Env the Coordinator reads its settings from, on top of the admin channel and list. */
-  readonly env?: Readonly<Record<string, string>>;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -296,7 +294,7 @@ export const startStack = async (options: {
         },
       }),
       ...coordinatorConfig({
-        env: { ADMIN_CHANNEL_ID: ADMIN_CHANNEL, ADMIN_USER_IDS: ADMIN_USER, ...options.env },
+        env: { ADMIN_CHANNEL_ID: ADMIN_CHANNEL, ADMIN_USER_IDS: ADMIN_USER },
         run: (effect) => runtime.runPromise(effect as any),
         // Known once the Coordinator listens; read only when a command runs.
         publicUrl: () => url,
@@ -307,6 +305,8 @@ export const startStack = async (options: {
             ...(options.maxAttachmentBytes && { maxBytes: options.maxAttachmentBytes }),
           },
           sharedWorkerMaxTickets: options.sharedWorkerMaxTickets ?? 100,
+          // As when the entry file found a digest model.
+          channelDigest: true,
         },
       }),
       mcp: runtime,

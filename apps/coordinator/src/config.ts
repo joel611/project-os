@@ -1,4 +1,4 @@
-import { channelDigestConfig, envBool, envNumber, healthConfig } from "@project-os/config";
+import { envBool, envNumber, healthConfig } from "@project-os/config";
 import type { Effect } from "effect";
 import { type AppDeps, parseOrigins } from "./app.ts";
 import type { HttpDeps, HttpEnv } from "./http/routes.ts";
@@ -41,7 +41,6 @@ export const coordinatorConfig = (
       inbound: {
         confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5, env),
         requireMention: envBool("DISCORD_REQUIRE_MENTION", true, env),
-        channelDigest: channelDigestConfig(env).enabled,
         workerStaleMs: health.workerStaleMs,
         sharedWorkerMaxTickets: health.sharedWorkerMaxTickets,
         ...(adminChannelId && { adminChannelId, adminUserIds }),

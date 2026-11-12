@@ -54,6 +54,8 @@ const project = (over: Partial<Project> = {}): Project => ({
   slug: null,
   customInstructions: "",
   defaultResponseChannelId: null,
+  channelDigest: true,
+  channelDigestNotify: false,
   status: "active",
   createdBy: null,
   createdAt: T0,
@@ -602,6 +604,7 @@ const chat = (over: Partial<ChannelMessage> = {}): ChannelMessage => ({
   senderId: "u1",
   senderName: "Ada",
   content: "hi",
+  url: null,
   sentAt: T0,
   ...over,
 });

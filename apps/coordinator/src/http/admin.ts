@@ -26,6 +26,8 @@ export const UpdateProjectBody = Schema.Struct({
   name: Schema.optionalKey(Schema.NonEmptyString),
   slug: Schema.optionalKey(Schema.NullOr(Schema.String)),
   customInstructions: Schema.optionalKey(Schema.String),
+  channelDigest: Schema.optionalKey(Schema.Boolean),
+  channelDigestNotify: Schema.optionalKey(Schema.Boolean),
 });
 
 export const CreateSourceBody = Schema.Struct({

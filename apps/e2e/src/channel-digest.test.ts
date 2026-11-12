@@ -7,11 +7,12 @@ import { type Stack, startStack } from "./stack.ts";
 
 // People talk in a project channel without @mentioning the bot. The Discord adapter forwards
 // every message anyway; the Coordinator keeps them, and the Channel Digest (Cron each minute)
-// later saves the decisions in them to Project Memory and says so in the channel.
+// later saves the decisions in them to Project Memory, with the messages they came from.
 
 const CHANNEL = "chan-1";
-const ada: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada" };
-const bob: FakeSpeaker = { channelId: CHANNEL, userId: "u2", name: "Bob" };
+const GUILD = "guild-1";
+const ada: FakeSpeaker = { channelId: CHANNEL, userId: "u1", name: "Ada", guildId: GUILD };
+const bob: FakeSpeaker = { channelId: CHANNEL, userId: "u2", name: "Bob", guildId: GUILD };
 
 const classifier = Layer.succeed(IntentClassifier, {
   classify: () => Effect.succeed({ intent: "new_request", confidence: 1 }),
@@ -39,9 +40,14 @@ describe("channel digest", () => {
     stack = await startStack({ classifier });
     const projectId = await stack.linkChannel(CHANNEL);
 
-    await chat(ada, "should we use Postgres or SQLite for the cache?", { id: "m1" });
-    await chat(bob, "ok we decided: SQLite, it is one file", { id: "m2" });
-    await chat(ada, "lunch?", { id: "m3" });
+    const t0 = Date.now() - 10 * 60_000;
+    const at = new Date(t0 + 60_000);
+    await chat(ada, "should we use Postgres or SQLite for the cache?", {
+      id: "m1",
+      at: new Date(t0),
+    });
+    await chat(bob, "ok we decided: SQLite, it is one file", { id: "m2", at });
+    await chat(ada, "lunch?", { id: "m3", at: new Date(t0 + 120_000) });
     // Nothing answers unmentioned chatter.
     expect(stack.posted).toEqual([]);
     expect(stack.reactions).toEqual([]);
@@ -63,12 +69,22 @@ describe("channel digest", () => {
         title: "ok we decided: SQLite, it is one file",
         content: "Bob: ok we decided: SQLite, it is one file",
         createdBy: CHANNEL_DIGEST_AUTHOR,
-        sourceMetadata: expect.objectContaining({
+        // Who said it, when, and a link back, so "why do we use SQLite?" has an answer.
+        sourceMetadata: {
           source: "channel_digest",
+          channelType: "discord",
           channelId: CHANNEL,
-          messageIds: ["m2"],
-          senders: ["Bob"],
-        }),
+          messages: [
+            {
+              id: "m2",
+              sender: "Bob",
+              senderId: "u2",
+              sentAt: at.toISOString(),
+              url: `https://discord.com/channels/${GUILD}/${CHANNEL}/m2`,
+              quote: "ok we decided: SQLite, it is one file",
+            },
+          ],
+        },
       }),
     ]);
     // Digested messages are gone: the next run has nothing to read.
@@ -90,8 +106,12 @@ describe("channel digest", () => {
       expect.objectContaining({ id: "m1", content: "please add dark mode" }),
       expect.objectContaining({ id: "m2", threadId: "discord-thread-1" }),
     ]);
-    expect((await memory(projectId)).map((m) => m.sourceMetadata.threadIds)).toEqual([
-      ["discord-thread-1"],
+    expect((await memory(projectId))[0]!.sourceMetadata.messages).toEqual([
+      expect.objectContaining({
+        id: "m2",
+        threadId: "discord-thread-1",
+        url: `https://discord.com/channels/${GUILD}/discord-thread-1/m2`,
+      }),
     ]);
 
     // Said again later: the digester is shown the saved title and doesn't repeat it.
@@ -136,12 +156,16 @@ describe("channel digest", () => {
     expect(stack.digestCalls).toHaveLength(0);
   });
 
-  it("posts what it saved in the channel when notify is on", async () => {
+  it("posts what it saved in the channel when the project says so", async () => {
     stack = await startStack({ classifier });
     const projectId = await stack.linkChannel(CHANNEL);
+    const project = await stack.json("PATCH", `/projects/${projectId}`, {
+      channelDigestNotify: true,
+    });
+    expect(project).toMatchObject({ channelDigest: true, channelDigestNotify: true });
     await chat(ada, "we decided to ship on Friday");
 
-    await stack.runDigest({ notify: true });
+    await stack.runDigest();
     expect(await memory(projectId)).toHaveLength(1);
     expect(stack.posted).toEqual([
       {
@@ -151,11 +175,14 @@ describe("channel digest", () => {
     ]);
   });
 
-  it("keeps nothing with CHANNEL_DIGEST=false", async () => {
-    stack = await startStack({ classifier, env: { CHANNEL_DIGEST: "false" } });
-    await stack.linkChannel(CHANNEL);
+  it("keeps nothing for a project with the digest turned off, and drops what it kept before", async () => {
+    stack = await startStack({ classifier });
+    const projectId = await stack.linkChannel(CHANNEL);
     await chat(ada, "we decided to ship on Friday");
+    await stack.json("PATCH", `/projects/${projectId}`, { channelDigest: false });
+    await chat(ada, "we decided to ship on Monday");
 
+    expect(await stack.runDigest()).toEqual([{ projectId, messages: 0, saved: 0 }]);
     expect(await stack.runDigest()).toEqual([]);
     expect(stack.digestCalls).toHaveLength(0);
   });

@@ -76,6 +76,33 @@ export const MemoryEntry = Schema.Struct({
 });
 export type MemoryEntry = typeof MemoryEntry.Type;
 
+/** A message a Channel Digest memory entry came from: who said what, when, and where. */
+export const DigestSourceMessage = Schema.Struct({
+  id: Schema.String,
+  sender: Schema.String,
+  senderId: Schema.String,
+  sentAt: Timestamp,
+  /** Set when it was said in a ticket thread. */
+  threadId: Schema.optionalKey(Schema.String),
+  url: Schema.optionalKey(Schema.String),
+  /** The message text, cut at 500 characters. */
+  quote: Schema.String,
+});
+export type DigestSourceMessage = typeof DigestSourceMessage.Type;
+
+/**
+ * `sourceMetadata` of a memory entry the Channel Digest saved: the messages that best show
+ * where it came from, most relevant first, so "why do we...?" can be answered with who and when.
+ */
+export const ChannelDigestSource = Schema.Struct({
+  source: Schema.Literal("channel_digest"),
+  channelType: ChannelType,
+  channelId: Schema.String,
+  messages: Schema.Array(DigestSourceMessage),
+});
+export type ChannelDigestSource = typeof ChannelDigestSource.Type;
+export const isChannelDigestSource = Schema.is(ChannelDigestSource);
+
 /**
  * Something a person said in a project channel or one of its ticket threads, kept until the
  * Channel Digest has read it. Deleted once digested.
@@ -91,6 +118,8 @@ export const ChannelMessage = Schema.Struct({
   senderId: Schema.String,
   senderName: Schema.NullOr(Schema.String),
   content: Schema.String,
+  /** Link that opens the message, when the channel has one. */
+  url: Schema.NullOr(Schema.String),
   sentAt: Timestamp,
 });
 export type ChannelMessage = typeof ChannelMessage.Type;
@@ -103,6 +132,10 @@ export const Project = Schema.Struct({
   customInstructions: Schema.String,
   /** FK to a ProjectSource (usually Discord). */
   defaultResponseChannelId: Schema.NullOr(Schema.String),
+  /** Channel Digest: save decisions from the project's channel chat to memory. */
+  channelDigest: Schema.Boolean,
+  /** Channel Digest: also post in the channel what it saved. */
+  channelDigestNotify: Schema.Boolean,
   status: Schema.Literals(["active", "archived", "deleted"]),
   createdBy: Schema.NullOr(Schema.String),
   createdAt: Timestamp,

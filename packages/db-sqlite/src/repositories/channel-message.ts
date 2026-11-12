@@ -1,5 +1,5 @@
 import type { ChannelMessageRepository } from "@project-os/core";
-import { asc, count, eq, inArray, lt, max, min, sql } from "drizzle-orm";
+import { asc, count, eq, inArray, lt, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { channelMessages } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
@@ -23,20 +23,12 @@ export const makeChannelMessageRepository = (db: SqliteDb): Impl => ({
       .select({
         projectId: channelMessages.projectId,
         count: count(),
-        oldestAt: min(channelMessages.sentAt),
-        newestAt: max(channelMessages.sentAt),
+        // Never null: each group has at least one row.
+        oldestAt: sql<string>`min(${channelMessages.sentAt})`,
+        newestAt: sql<string>`max(${channelMessages.sentAt})`,
       })
       .from(channelMessages)
       .groupBy(channelMessages.projectId),
-  ).pipe(
-    Effect.map((rows) =>
-      rows.map((r) => ({
-        projectId: r.projectId,
-        count: r.count,
-        oldestAt: r.oldestAt ?? "",
-        newestAt: r.newestAt ?? "",
-      })),
-    ),
   ),
   list: (projectId, limit) =>
     q(() =>

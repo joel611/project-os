@@ -1,4 +1,4 @@
-import type { InboundMessage } from "@project-os/contracts";
+import type { ChannelDigestSource, InboundMessage } from "@project-os/contracts";
 import { Effect } from "effect";
 import {
   ChannelDigester,
@@ -24,8 +24,6 @@ export interface ChannelDigestConfig {
   readonly retentionMs: number;
   /** Most messages one digest reads; the rest wait for the next run. */
   readonly maxMessages: number;
-  /** Post what was saved in the channel, so people can see it and set it right. */
-  readonly notify: boolean;
   /** After a failed digest, wait this long before trying that project again. */
   readonly retryAfterMs?: number;
 }
@@ -35,12 +33,13 @@ export const DEFAULT_CHANNEL_DIGEST: ChannelDigestConfig = {
   maxWaitMs: 6 * 60 * 60_000,
   retentionMs: 7 * 24 * 60 * 60_000,
   maxMessages: 200,
-  notify: false,
 };
 
 /** How many recent memory titles the digester sees, to avoid saving a point twice. */
 const KNOWN_TITLES = 50;
 const TITLE_MAX = 80;
+/** Longest source message quoted on a memory entry. */
+const QUOTE_MAX = 500;
 
 /** Keeps a project channel message for the Channel Digest. Empty (file-only) messages are skipped. */
 export const recordChannelMessage = (message: InboundMessage, projectId: string) =>
@@ -58,6 +57,7 @@ export const recordChannelMessage = (message: InboundMessage, projectId: string)
       senderId: message.sender.id,
       senderName: message.sender.name ?? null,
       content: message.content,
+      url: message.url ?? null,
       sentAt: message.receivedAt,
     });
   });
@@ -78,7 +78,7 @@ export interface DigestRun {
 /**
  * The Channel Digest: for each project whose channel conversation has gone quiet (or waited
  * long enough), reads the waiting messages, saves the decisions and facts in them to Project
- * Memory, and drops the messages. Safe to run every minute; a project is digested by one run at
+ * Memory, and drops the messages. Posts what it saved when the project has `channelDigestNotify`. Safe to run every minute; a project is digested by one run at
  * a time, and a failed one is retried after `retryAfterMs`.
  */
 export const digestChannels = (config: ChannelDigestConfig) =>
@@ -127,7 +127,11 @@ const digestProject = (projectId: string, config: ChannelDigestConfig) =>
     const gateway = yield* ChannelGateway;
     const project = yield* (yield* ProjectRepository).get(projectId).pipe(Effect.orDie);
     const messages = yield* repo.list(projectId, config.maxMessages);
-    if (messages.length === 0) return { projectId, messages: 0, saved: 0 };
+    // Turned off in the dashboard since these were kept: drop them unread.
+    if (!project.channelDigest) {
+      yield* repo.remove(messages.map((m) => m.id));
+      return { projectId, messages: 0, saved: 0 };
+    }
     const known = (yield* (yield* MemoryRepository).list(projectId, { limit: KNOWN_TITLES })).map(
       (m) => m.title,
     );
@@ -147,27 +151,33 @@ const digestProject = (projectId: string, config: ChannelDigestConfig) =>
 
     const byExternal = new Map(messages.map((m) => [m.externalId, m]));
     for (const point of points) {
-      const sources = point.messageIds.flatMap((id) => byExternal.get(id) ?? []);
-      const threadIds = [...new Set(sources.flatMap((m) => m.threadId ?? []))];
+      const sources = [...new Set(point.messageIds)].flatMap((id) => byExternal.get(id) ?? []);
+      const sourceMetadata: ChannelDigestSource = {
+        source: "channel_digest",
+        channelType: messages[0]!.channelType,
+        channelId: messages[0]!.channelId,
+        messages: sources.map((m) => ({
+          id: m.externalId,
+          sender: m.senderName ?? m.senderId,
+          senderId: m.senderId,
+          sentAt: m.sentAt,
+          ...(m.threadId === null ? {} : { threadId: m.threadId }),
+          ...(m.url === null ? {} : { url: m.url }),
+          quote: m.content.length > QUOTE_MAX ? `${m.content.slice(0, QUOTE_MAX - 1)}…` : m.content,
+        })),
+      };
       yield* writeMemory({
         projectId,
         type: point.type,
         title: point.title.slice(0, TITLE_MAX),
         content: point.content,
         workerId: CHANNEL_DIGEST_AUTHOR,
-        sourceMetadata: {
-          source: "channel_digest",
-          channelType: messages[0]!.channelType,
-          channelId: messages[0]!.channelId,
-          messageIds: sources.map((m) => m.externalId),
-          ...(threadIds.length === 0 ? {} : { threadIds }),
-          senders: [...new Set(sources.map((m) => m.senderName ?? m.senderId))],
-        },
+        sourceMetadata,
       });
     }
     yield* repo.remove(messages.map((m) => m.id));
 
-    if (config.notify && points.length > 0) {
+    if (project.channelDigestNotify && points.length > 0) {
       const last = messages[messages.length - 1]!;
       yield* gateway.send({
         channelType: last.channelType,

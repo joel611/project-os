@@ -25,8 +25,6 @@ services:
       ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       DISCORD_REQUIRE_MENTION: ${DISCORD_REQUIRE_MENTION:-true}
-      CHANNEL_DIGEST: ${CHANNEL_DIGEST:-true}
-      CHANNEL_DIGEST_NOTIFY: ${CHANNEL_DIGEST_NOTIFY:-false}
       DISCORD_PROJECT_CHANNEL_AUTO_CREATE: ${DISCORD_PROJECT_CHANNEL_AUTO_CREATE:-true}
       # Sign-in (required) and account linking (/connect, off unless a client is set). See SETUP.md.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}

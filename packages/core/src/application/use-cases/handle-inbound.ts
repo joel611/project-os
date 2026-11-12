@@ -40,8 +40,9 @@ export interface HandleInboundConfig {
    */
   readonly requireMention?: boolean;
   /**
-   * Keep every message in a linked Discord project channel and its threads, mentioned or not,
-   * for the Channel Digest to read later (`digestChannels`).
+   * The Channel Digest runs here: keep every message in a linked Discord project channel and
+   * its threads, mentioned or not, for `digestChannels` to read later, in projects that have
+   * `channelDigest` on.
    */
   readonly channelDigest?: boolean;
   /**
@@ -223,7 +224,8 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
 
     // Before the mention gate: the digest reads what people say among themselves too.
     if (source && config.channelDigest && message.channelType === "discord") {
-      yield* recordChannelMessage(message, source.projectId);
+      const target = yield* projects.get(source.projectId);
+      if (target.channelDigest) yield* recordChannelMessage(message, target.id);
     }
 
     if (

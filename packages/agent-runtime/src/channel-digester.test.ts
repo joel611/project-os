@@ -21,26 +21,36 @@ const input = {
 };
 
 /** A chat model that answers `text`; records each request. */
-const answering = (text: string, stopReason: AssistantMessage["stopReason"] = "stop") => {
+const answering = (
+  text: string,
+  stopReason: AssistantMessage["stopReason"] = "stop",
+  extra: Partial<AssistantMessage> & { throws?: unknown } = {},
+  request: typeof input = input,
+) => {
   const models = newModels();
   const model = models.getModel("openrouter", "anthropic/claude-sonnet-4.5")!;
   const requests: unknown[] = [];
   const client = {
     completeSimple: async (_m: unknown, context: unknown): Promise<AssistantMessage> => {
       requests.push(context);
+      if ("throws" in extra) throw extra.throws;
       return {
         role: "assistant",
-        content: [{ type: "text", text }],
+        content: [
+          { type: "thinking", thinking: "hmm" },
+          { type: "text", text },
+        ],
         api: model.api,
         provider: model.provider,
         model: model.id,
         usage: {} as AssistantMessage["usage"],
         stopReason,
         timestamp: 0,
+        ...extra,
       };
     },
   };
-  const run = Effect.flatMap(ChannelDigester, (d) => d.digest(input)).pipe(
+  const run = Effect.flatMap(ChannelDigester, (d) => d.digest(request)).pipe(
     Effect.provide(makeChannelDigester({ client, model })),
   );
   return { requests, run };
@@ -74,6 +84,23 @@ describe("channel digester", () => {
     expect(bad._tag).toBe("ChannelDigestError");
     const failed = await Effect.runPromise(Effect.flip(answering("", "error").run));
     expect(failed.message).toBe("digest error");
+  });
+
+  it("says when the project has no context or memory yet", () => {
+    const prompt = digestPrompt({ ...input, projectContext: " ", known: [] });
+    expect(prompt).not.toContain("About the project");
+    expect(prompt).toContain("(none)");
+  });
+
+  it("reports the provider's error message, or what it threw", async () => {
+    const failed = await Effect.runPromise(
+      Effect.flip(answering("", "error", { errorMessage: "rate limited" }).run),
+    );
+    expect(failed.message).toBe("rate limited");
+    const thrown = await Effect.runPromise(
+      Effect.flip(answering("", "stop", { throws: "socket closed" }).run),
+    );
+    expect(thrown.message).toBe("socket closed");
   });
 
   it("drops empty points", () => {

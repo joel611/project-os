@@ -12,6 +12,8 @@ export interface FakeSpeaker {
   threadId?: string;
   userId: string;
   name: string;
+  /** Server the channel is in; set to get message links. */
+  guildId?: string;
 }
 
 /**
@@ -44,6 +46,7 @@ export const fakeInbound = (
     author: { id: speaker.userId, username: speaker.name, bot: false },
     member: { displayName: speaker.name },
     channelId: speaker.threadId ?? speaker.channelId,
+    ...(speaker.guildId && { guildId: speaker.guildId }),
     channel: speaker.threadId
       ? { isThread: () => true, parentId: speaker.channelId }
       : { isThread: () => false },
