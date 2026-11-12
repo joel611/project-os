@@ -422,6 +422,29 @@ describe("TicketRepository", () => {
     expect(results.filter(Exit.isFailure)).toHaveLength(7);
   });
 
+  it("double release: exactly one of two concurrent releases wins", async () => {
+    const db = makeDb();
+    await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        yield* (yield* TicketRepository).insert(ticket());
+      }),
+      db,
+    );
+    const results = await run(
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        return yield* Effect.all(
+          Array.from({ length: 4 }, () => Effect.exit(repo.release("t1", "w1", T1))),
+          { concurrency: "unbounded" },
+        );
+      }),
+      db,
+    );
+    expect(results.filter(Exit.isSuccess)).toHaveLength(1);
+    expect(results.filter(Exit.isFailure)).toHaveLength(3);
+  });
+
   it("updates status through the state machine and stamps timestamps", async () => {
     const out = await run(
       Effect.gen(function* () {

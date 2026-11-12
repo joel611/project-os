@@ -124,6 +124,19 @@ describe("sandbox launcher", () => {
     expect(ran).toBe(false);
   });
 
+  it("fails the launch when the runner throws on kickoff, Error or not", async () => {
+    const { launcher: boom } = setup(() => {
+      throw new Error("no runner");
+    });
+    const { launcher: odd } = setup(() => {
+      throw "weird";
+    });
+    expect((await Effect.runPromise(Effect.flip(boom.launch(daytonaTicket)))).message).toBe(
+      "no runner",
+    );
+    expect((await Effect.runPromise(Effect.flip(odd.launch(daytonaTicket)))).message).toBe("weird");
+  });
+
   it("logs a rejected session without throwing from launch", async () => {
     const { launcher, logs } = setup(() => Promise.reject(new Error("no capacity")));
     await Effect.runPromise(launcher.launch(daytonaTicket));

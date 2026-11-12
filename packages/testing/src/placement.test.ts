@@ -1,10 +1,12 @@
 import {
   authenticateSandbox,
   heartbeat,
+  LaunchFailed,
   issueWorkerRegistration,
   placeOrQueue,
   redeemWorkerRegistration,
   TicketRepository,
+  WorkerLauncher,
   WorkerRepository,
   type PlaceRequest,
   type Person,
@@ -444,6 +446,31 @@ describe("placeOrQueue: concurrent placements", () => {
     ]);
   });
 
+  it("keeps a ticket its worker claimed before the recount, even if that is over the cap", async () => {
+    const t = makeTestLayer({});
+    const value = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* sharedDevice("w1");
+        const repo = yield* TicketRepository;
+        // The Watcher claims at once, and another ticket got in alongside.
+        const eager = {
+          ...repo,
+          assign: (...args: Parameters<typeof repo.assign>) =>
+            repo.assign(...args).pipe(
+              Effect.tap(() =>
+                repo.insert({ ...openTicket("other"), status: "in_progress", workerId: "w1" }),
+              ),
+              Effect.tap(() => Effect.orDie(repo.claim(args[0], "w1", T0))),
+            ),
+        };
+        const placement = yield* place("t1").pipe(Effect.provideService(TicketRepository, eager));
+        return { placement, status: (yield* repo.get("t1")).status };
+      }).pipe(Effect.provide(t.layer)) as Effect.Effect<any>,
+    );
+    expect(value.placement.kind).toBe("placed");
+    expect(value.status).toBe("in_progress");
+  });
+
   it("never launches more sandboxes than the provider's cap", async () => {
     const { value, launched } = await raced(
       { sandboxPool: [{ workerType: "daytona_pi", maxConcurrent: 1 }] },
@@ -497,6 +524,29 @@ describe("placeOrQueue: a launch that fails", () => {
     );
     expect(t.launchAttempts).toHaveLength(1);
     expect(token).toBeUndefined();
+  });
+
+  it("leaves a ticket the worker already claimed where it is", async () => {
+    const t = makeTestLayer(daytona);
+    const value = await Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        const launcher = yield* WorkerLauncher;
+        const claimingThenFailing = {
+          ...launcher,
+          launch: (input: Parameters<typeof launcher.launch>[0]) =>
+            Effect.orDie(repo.claim(input.ticketId, input.workerId, T0)).pipe(
+              Effect.andThen(Effect.fail(new LaunchFailed({ message: "late" }))),
+            ),
+        };
+        const placement = yield* place("t1").pipe(
+          Effect.provideService(WorkerLauncher, claimingThenFailing),
+        );
+        return { placement, status: (yield* repo.get("t1")).status };
+      }).pipe(Effect.provide(t.layer)) as Effect.Effect<any>,
+    );
+    expect(value.placement.kind).toBe("placed");
+    expect(value.status).toBe("in_progress");
   });
 
   it("is retried by the next placement, silently while it stays Queued", async () => {
