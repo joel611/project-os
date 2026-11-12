@@ -51,6 +51,8 @@ const setup = (options: Parameters<typeof makeTestLayer>[0] = {}) => {
       slug: null,
       customInstructions: "",
       defaultResponseChannelId: null,
+      channelDigest: true,
+      channelDigestNotify: false,
       status: "active",
       createdBy: null,
       createdAt: T0,

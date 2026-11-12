@@ -26,10 +26,11 @@ describe("add_ticket_requester migration", () => {
   });
 
   it("backfills Queued tickets from their created event, and only those", () => {
-    // The database as it was before this migration: every migration but the newest.
+    // The database as it was before this migration: every migration older than it.
     const before = mkdtempSync(join(tmpdir(), "migrations-before-"));
     const all = readdirSync(folder).sort();
-    for (const name of all.slice(0, -1))
+    const index = all.findIndex((name) => name.endsWith("_add_ticket_requester"));
+    for (const name of all.slice(0, index))
       cpSync(join(folder, name), join(before, name), { recursive: true });
 
     const sqlite = new Database(":memory:");

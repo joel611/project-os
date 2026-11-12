@@ -13,7 +13,7 @@ export interface CoordinatorConfigInput {
   /** The Coordinator's public URL; read when a command needs it, so it may be known late. */
   readonly publicUrl: () => string;
   readonly admin: NonNullable<HttpDeps["commands"]>["admin"];
-  /** Settings that replace the ones env gives for `inbound`, for a test stack. */
+  /** Settings that replace the ones env gives for `inbound` (a test stack, or what the entry file found). */
   readonly inbound?: NonNullable<HttpDeps["inbound"]>;
 }
 

@@ -30,6 +30,8 @@ export interface SourcePatch {
 export interface ProjectPatch {
   readonly name?: string;
   readonly customInstructions?: string;
+  readonly channelDigest?: boolean;
+  readonly channelDigestNotify?: boolean;
 }
 
 /** A Coordinator error response: HTTP status plus its tagged error name. */

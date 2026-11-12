@@ -43,6 +43,8 @@ export const InboundMessage = Schema.Struct({
    * Coordinator only acts on top-level project channel messages that mention the bot.
    */
   mentionsBot: Schema.optionalKey(Schema.Boolean),
+  /** Link that opens the message in its channel, when the channel has one (Discord). */
+  url: Schema.optionalKey(Schema.String),
   raw: Schema.Unknown,
   receivedAt: Schema.String,
 });

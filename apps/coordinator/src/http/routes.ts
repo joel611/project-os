@@ -16,6 +16,7 @@ import {
   type AgentRuntime,
   type AssetStore,
   type ChannelGateway,
+  type ChannelMessageRepository,
   type Clock,
   type HandleInboundConfig,
   type IdGenerator,
@@ -63,6 +64,7 @@ export type HttpEnv =
   | AgentRuntime
   | AssetStore
   | ChannelGateway
+  | ChannelMessageRepository
   | Clock
   | IdGenerator
   | IntentClassifier

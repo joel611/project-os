@@ -1,4 +1,9 @@
-import type { ChannelType, MemoryEntry, MemoryEntryType } from "@project-os/contracts";
+import type {
+  ChannelMessage,
+  ChannelType,
+  MemoryEntry,
+  MemoryEntryType,
+} from "@project-os/contracts";
 import { Context, type Effect } from "effect";
 import type { Project, ProjectNotFound } from "../../domain/project/index.ts";
 import type {
@@ -141,6 +146,34 @@ export class MemoryRepository extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<MemoryEntry>>;
   }
 >()("@project-os/core/MemoryRepository") {}
+
+/** A project with channel messages the Channel Digest hasn't read yet. */
+export interface PendingChannel {
+  readonly projectId: string;
+  readonly count: number;
+  /** `sentAt` of its oldest and newest waiting message. */
+  readonly oldestAt: string;
+  readonly newestAt: string;
+}
+
+/** Channel messages held for the Channel Digest. Digested rows are removed. */
+export class ChannelMessageRepository extends Context.Service<
+  ChannelMessageRepository,
+  {
+    /** Stores a message; false when one with the same `(channelType, externalId)` is already there. */
+    readonly append: (message: ChannelMessage) => Effect.Effect<boolean>;
+    /** Projects with waiting messages. */
+    readonly pending: Effect.Effect<ReadonlyArray<PendingChannel>>;
+    /** A project's waiting messages, oldest first. */
+    readonly list: (
+      projectId: string,
+      limit: number,
+    ) => Effect.Effect<ReadonlyArray<ChannelMessage>>;
+    readonly remove: (ids: ReadonlyArray<string>) => Effect.Effect<void>;
+    /** Drops messages sent before `at` (ones a failing digest never got to). Returns how many. */
+    readonly removeSentBefore: (at: string) => Effect.Effect<number>;
+  }
+>()("@project-os/core/ChannelMessageRepository") {}
 
 export class WorkerRepository extends Context.Service<
   WorkerRepository,

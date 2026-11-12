@@ -29,6 +29,8 @@ const project: Project = {
   slug: null,
   customInstructions: "",
   defaultResponseChannelId: null,
+  channelDigest: true,
+  channelDigestNotify: false,
   status: "active",
   createdBy: null,
   createdAt: T0,

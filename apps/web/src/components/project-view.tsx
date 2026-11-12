@@ -1,4 +1,4 @@
-import type { MemoryEntry, Ticket } from "@project-os/contracts";
+import { isChannelDigestSource, type MemoryEntry, type Ticket } from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { FileText, Settings, Star } from "lucide-react";
@@ -167,6 +167,30 @@ const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
             </span>
           </div>
           <p className="text-sm whitespace-pre-wrap text-muted-foreground">{m.content}</p>
+          {isChannelDigestSource(m.sourceMetadata) && (
+            <ul className="flex flex-col gap-1 border-l-2 pl-3 text-xs text-muted-foreground">
+              {m.sourceMetadata.messages.map((s) => (
+                <li key={s.id}>
+                  <span className="font-medium text-foreground">{s.sender}</span>
+                  {" · "}
+                  {s.url ? (
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {relativeTime(s.sentAt, now)}
+                    </a>
+                  ) : (
+                    relativeTime(s.sentAt, now)
+                  )}
+                  {s.threadId && " · in a ticket thread"}
+                  <span className="block whitespace-pre-wrap">“{s.quote}”</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {m.ticketId && (
             <Link
               className="text-xs text-muted-foreground underline-offset-2 hover:underline"
