@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ApiError } from "./api.ts";
-import { authBase, makeAuthClient } from "./auth.ts";
+import { authBase, googleRefused, makeAuthClient } from "./auth.ts";
 
 const COORD = "https://coord.test";
 
@@ -95,17 +95,38 @@ describe("signOut", () => {
 
 describe("Google", () => {
   it("offers Google only when the Coordinator says so", async () => {
+    const none = { google: false, googleDomains: [] };
     const on = answering(() => Response.json({ google: true }));
-    expect(await makeAuthClient(on.fetchFn, COORD).providers()).toEqual({ google: true });
+    expect(await makeAuthClient(on.fetchFn, COORD).providers()).toEqual({
+      google: true,
+      googleDomains: [],
+    });
     expect(on.seen[0]!.url).toBe(`${COORD}/sign-in/providers`);
     const off = answering(() => Response.json({ google: false }));
-    expect(await makeAuthClient(off.fetchFn, COORD).providers()).toEqual({ google: false });
+    expect(await makeAuthClient(off.fetchFn, COORD).providers()).toEqual(none);
     const garbled = answering(() => new Response("<html>"));
-    expect(await makeAuthClient(garbled.fetchFn, COORD).providers()).toEqual({ google: false });
+    expect(await makeAuthClient(garbled.fetchFn, COORD).providers()).toEqual(none);
     const down = (async () => {
       throw new TypeError("Failed to fetch");
     }) as unknown as typeof fetch;
-    expect(await makeAuthClient(down, COORD).providers()).toEqual({ google: false });
+    expect(await makeAuthClient(down, COORD).providers()).toEqual(none);
+  });
+
+  it("reads which domains Google sign-in is limited to, dropping anything but strings", async () => {
+    const limited = answering(() =>
+      Response.json({ google: true, googleDomains: ["acme.com", 7, "acme.io"] }),
+    );
+    expect(await makeAuthClient(limited.fetchFn, COORD).providers()).toEqual({
+      google: true,
+      googleDomains: ["acme.com", "acme.io"],
+    });
+  });
+
+  it("names the allowed domains when Google turns someone away", () => {
+    expect(googleRefused(["acme.com", "acme.io"])).toMatch(
+      /only takes @acme\.com, @acme\.io accounts/,
+    );
+    expect(googleRefused([])).toMatch(/Ask an admin to add your email/);
   });
 
   it("starts at the Coordinator's Google route, directly or through the dev proxy", () => {

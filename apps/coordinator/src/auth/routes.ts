@@ -21,7 +21,10 @@ const redirect = (location: string, cookies: ReadonlyArray<string> = []) => {
 export const authRoutes = ({ handler, googleSignIn }: AuthDeps) =>
   new Elysia({ name: "auth-routes" })
     .all("/api/auth/*", ({ request }) => handler(request))
-    .get("/sign-in/providers", () => ({ google: googleSignIn !== undefined }))
+    .get("/sign-in/providers", () => ({
+      google: googleSignIn !== undefined,
+      googleDomains: googleSignIn?.domains ?? [],
+    }))
     .get("/sign-in/google", async ({ set }) => {
       if (!googleSignIn) {
         set.status = 404;
