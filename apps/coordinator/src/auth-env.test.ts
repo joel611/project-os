@@ -23,6 +23,15 @@ describe("authConfigFromEnv", () => {
     );
     expect(config.admin).toEqual({ email: "ops@example.com", password: "pw-pw-pw-pw" });
     expect(config.allowedEmails).toEqual(["ada@example.com", "bob@example.com"]);
+    expect(config.allowedDomains).toEqual([]);
+  });
+
+  it("reads the Google sign-in domains, comma-separated", () => {
+    const config = authConfigFromEnv(
+      { BETTER_AUTH_SECRET: "s", GOOGLE_ALLOWED_DOMAINS: " acme.com, acme.io ,," },
+      base,
+    );
+    expect(config.allowedDomains).toEqual(["acme.com", "acme.io"]);
   });
 
   it("links accounts with whichever OAuth clients are fully set", () => {

@@ -71,6 +71,12 @@ export interface AuthConfig {
   readonly webOrigins?: ReadonlyArray<string>;
   /** Emails that may use the dashboard and its API, besides `admin`. */
   readonly allowedEmails?: ReadonlyArray<string>;
+  /**
+   * Google Workspace domains (`acme.com`). Set, Google sign-in takes only accounts of these
+   * domains, and every such account may use the dashboard; `allowedEmails` outside them are
+   * refused. `admin` keeps its password either way.
+   */
+  readonly allowedDomains?: ReadonlyArray<string>;
   /** Seeded on first use, so a fresh deployment has someone who can sign in. */
   readonly admin?: AdminAccount;
   readonly google?: OAuthClientConfig;
@@ -162,9 +168,21 @@ const githubUserInfo =
     };
   };
 
-/** Google's userinfo, refused unless Google has verified the email. */
+const lower = (email: string) => email.trim().toLowerCase();
+
+/** The domain part of an email, lowercased. */
+const domainOf = (email: string) => {
+  const e = lower(email);
+  return e.slice(e.lastIndexOf("@") + 1);
+};
+
+/**
+ * Google's userinfo, refused unless Google has verified the email and, with `domains`, the
+ * account belongs to one of them. Google sets `hd` only on Workspace accounts, so a personal
+ * account registered with a company address doesn't pass.
+ */
 const verifiedGoogleUser =
-  (userInfoUrl: string): GenericOAuthConfig["getUserInfo"] =>
+  (userInfoUrl: string, domains: ReadonlySet<string>): GenericOAuthConfig["getUserInfo"] =>
   async (tokens) => {
     const res = await fetch(userInfoUrl, {
       headers: { authorization: `Bearer ${tokens.accessToken}` },
@@ -175,9 +193,14 @@ const verifiedGoogleUser =
       sub: string;
       email: string;
       email_verified?: boolean;
+      hd?: string;
       name: string;
     };
     if (u.email_verified !== true) return null;
+    if (domains.size > 0) {
+      const hd = u.hd?.trim().toLowerCase();
+      if (!hd || !domains.has(hd) || domainOf(u.email) !== hd) return null;
+    }
     return { id: u.sub, email: u.email, emailVerified: true, name: u.name };
   };
 
@@ -257,6 +280,10 @@ const signInProviders = (config: AuthConfig): GenericOAuthConfig[] => {
   const google = googleSignInConfig(config);
   if (!google) return [];
   const { client } = google;
+  const domains = allowedDomains(config);
+  // One domain: Google's account chooser shows only that domain's accounts. It's a hint; the
+  // check is in `verifiedGoogleUser`.
+  const [onlyDomain] = domains.size === 1 ? domains : [];
   return [
     {
       providerId: GOOGLE_SIGN_IN,
@@ -266,12 +293,13 @@ const signInProviders = (config: AuthConfig): GenericOAuthConfig[] => {
       tokenUrl: client.tokenUrl,
       userInfoUrl: client.userInfoUrl,
       scopes: ["openid", "email", "profile"],
-      getUserInfo: verifiedGoogleUser(client.userInfoUrl),
+      ...(onlyDomain && { authorizationUrlParams: { hd: onlyDomain } }),
+      getUserInfo: verifiedGoogleUser(client.userInfoUrl, domains),
     },
   ];
 };
 
-const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
+const betterAuthFor = (config: AuthConfig, isOperator: (email: string) => boolean) =>
   betterAuth({
     ...(config.baseURL && { baseURL: config.baseURL }),
     secret: config.secret,
@@ -308,9 +336,7 @@ const betterAuthFor = (config: AuthConfig, allowed: ReadonlySet<string>) =>
         create: {
           // Users are operators on the allowlist, or people's channel identities for linking.
           before: async (user) =>
-            allowed.has(lower(user.email)) || isChannelIdentityEmail(user.email)
-              ? undefined
-              : false,
+            isOperator(user.email) || isChannelIdentityEmail(user.email) ? undefined : false,
         },
       },
       account: {
@@ -339,6 +365,8 @@ export type BetterAuth = ReturnType<typeof betterAuthFor>;
 
 /** Dashboard sign-in with Google, when Google, PUBLIC_URL and WEB_ORIGIN are all set. */
 export interface GoogleSignIn {
+  /** `allowedDomains`: the only Google Workspace domains that may sign in; empty for any. */
+  readonly domains: ReadonlyArray<string>;
   /** The redirect to Google, with the state cookies the browser must carry back. */
   readonly start: () => Promise<LinkStart>;
   /** Where the browser goes once Google is done: the dashboard, holding a one-time token. */
@@ -351,17 +379,36 @@ export interface SessionUser {
   readonly email: string;
 }
 
-const lower = (email: string) => email.trim().toLowerCase();
+/** `allowedDomains`, lowercased and without a leading `@`. */
+const allowedDomains = (config: AuthConfig): ReadonlySet<string> =>
+  new Set(
+    (config.allowedDomains ?? [])
+      .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+      .filter(Boolean),
+  );
+
+/**
+ * Who may use the dashboard: `admin`, then anyone at `allowedDomains` when set, otherwise the
+ * `allowedEmails`.
+ */
+const operatorCheck = (config: AuthConfig) => {
+  const admin = config.admin && lower(config.admin.email);
+  const domains = allowedDomains(config);
+  const emails = new Set((config.allowedEmails ?? []).map(lower));
+  return (email: string) => {
+    const e = lower(email);
+    if (e === admin) return true;
+    return domains.size > 0 ? domains.has(domainOf(e)) : emails.has(e);
+  };
+};
 
 /**
  * The Coordinator's one Better Auth instance: dashboard sign-in (`/api/auth/*`, session
  * tokens sent as `Authorization: Bearer`), and account linking when an OAuth client is set.
  */
 export const makeAuth = (config: AuthConfig) => {
-  const allowed: ReadonlySet<string> = new Set(
-    [...(config.allowedEmails ?? []), ...(config.admin ? [config.admin.email] : [])].map(lower),
-  );
-  const auth = betterAuthFor(config, allowed);
+  const isOperator = operatorCheck(config);
+  const auth = betterAuthFor(config, isOperator);
 
   /** Creates the admin and its password login unless they exist. Safe to run on every boot. */
   const ensureAdmin = async (): Promise<void> => {
@@ -396,6 +443,7 @@ export const makeAuth = (config: AuthConfig) => {
 
   const google = googleSignInConfig(config);
   const googleSignIn: GoogleSignIn | undefined = google && {
+    domains: [...allowedDomains(config)],
     start: async () => {
       const { headers, response } = await auth.api.signInSocial({
         body: {
@@ -438,7 +486,7 @@ export const makeAuth = (config: AuthConfig) => {
       return session ? { userId: session.user.id, email: session.user.email } : undefined;
     },
     /** Whether this email may use the dashboard and its API. */
-    isAllowed: (email: string) => allowed.has(lower(email)),
+    isAllowed: isOperator,
     /** Account linking; undefined without `baseURL` or an OAuth client. */
     connections,
     /** Google sign-in for the dashboard; undefined without Google, `baseURL` and a web origin. */

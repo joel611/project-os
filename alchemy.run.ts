@@ -93,6 +93,7 @@ const optionalVars = [
   // Better Auth: OAuth callbacks and connect links, and more dashboard operators.
   "PUBLIC_URL",
   "ADMIN_EMAILS",
+  "GOOGLE_ALLOWED_DOMAINS",
   "GOOGLE_CLIENT_ID",
   "GITHUB_CLIENT_ID",
   "CLICKUP_CLIENT_ID",

@@ -49,7 +49,7 @@ _Avoid_: worker pool (the Watchers are not in it), provider list.
 **Sandbox token**: the Bearer token the Coordinator mints when it starts a sandbox session, handed to Pi in its MCP config. It acts as that session's worker id only and expires with the session (the provider's timeout plus 5 minutes). It is what keeps one sandbox out of another's Ticket, since sandbox worker ids are easy to guess.
 _Avoid_: worker secret (that is a registered computer's), session token (that is the dashboard's).
 
-**Operator**: a person allowed into the web dashboard: `ADMIN_EMAIL`, signing in with the seeded password, or an email in `ADMIN_EMAILS`, signing in with Google. Not the same as a Discord admin (`ADMIN_USER_IDS`), who acts in the admin channel.
+**Operator**: a person allowed into the web dashboard: `ADMIN_EMAIL`, signing in with the seeded password, or an email in `ADMIN_EMAILS`, signing in with Google. With `GOOGLE_ALLOWED_DOMAINS` set, anyone with a Google Workspace account at those domains instead of `ADMIN_EMAILS`. Not the same as a Discord admin (`ADMIN_USER_IDS`), who acts in the admin channel.
 _Avoid_: admin (alone), user.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.

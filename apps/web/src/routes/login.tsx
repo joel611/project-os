@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { describeError } from "@/api";
-import { authClient } from "@/auth";
+import { authClient, googleRefused } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,6 @@ interface LoginSearch {
   readonly error?: string;
 }
 
-const GOOGLE_REFUSED =
-  "Google sign-in didn't work for that account. Ask an admin to add your email, or use your password.";
-
 const Login = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -30,7 +27,9 @@ const Login = () => {
   });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(googleError ? GOOGLE_REFUSED : null);
+  const [error, setError] = useState<string | null>(null);
+  const [googleFailed, setGoogleFailed] = useState(googleError !== undefined);
+  const shown = error ?? (googleFailed ? googleRefused(providers.data?.googleDomains ?? []) : null);
   const [pending, setPending] = useState(ott !== undefined);
 
   const enter = async (token: string) => {
@@ -55,6 +54,7 @@ const Login = () => {
     event.preventDefault();
     setPending(true);
     setError(null);
+    setGoogleFailed(false);
     try {
       const token = await authClient.signIn(email.trim(), password);
       if (token) await enter(token);
@@ -114,9 +114,9 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            {error && (
+            {shown && (
               <p role="alert" className="text-sm text-red-700">
-                {error}
+                {shown}
               </p>
             )}
             <Button type="submit" disabled={pending}>

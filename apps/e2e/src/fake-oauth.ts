@@ -22,6 +22,10 @@ export interface FakeOAuth {
   email: string;
   /** What Google says about whether it verified the account's email. */
   emailVerified: boolean;
+  /** The Google Workspace domain (`hd`); undefined for a personal account. */
+  hd: string | undefined;
+  /** The query of every authorize request, in order. */
+  readonly authorizeRequests: URLSearchParams[];
   /** The GitHub account's public email; null when it keeps it private. */
   githubEmail: string | null;
   readonly stop: () => void;
@@ -30,6 +34,7 @@ export interface FakeOAuth {
 export const startFakeOAuth = (): FakeOAuth => {
   let n = 0;
   const tokenRequests: FakeOAuth["tokenRequests"] = [];
+  const authorizeRequests: URLSearchParams[] = [];
 
   const server = Bun.serve({
     port: 0,
@@ -37,6 +42,7 @@ export const startFakeOAuth = (): FakeOAuth => {
       const url = new URL(req.url);
       const [, provider, action] = url.pathname.split("/");
       if (action === "authorize") {
+        authorizeRequests.push(url.searchParams);
         const back = new URL(url.searchParams.get("redirect_uri")!);
         back.searchParams.set("code", `code-${provider}`);
         back.searchParams.set("state", url.searchParams.get("state")!);
@@ -77,6 +83,7 @@ export const startFakeOAuth = (): FakeOAuth => {
             sub: "google-ada",
             email: fake.email,
             email_verified: fake.emailVerified,
+            ...(fake.hd && { hd: fake.hd }),
             name: "Ada Lovelace",
           });
     },
@@ -95,6 +102,8 @@ export const startFakeOAuth = (): FakeOAuth => {
     failUserInfo: false,
     email: "ada@example.com",
     emailVerified: true,
+    hd: undefined,
+    authorizeRequests,
     githubEmail: null,
     stop: () => server.stop(true),
   };
