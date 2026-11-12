@@ -132,8 +132,8 @@ export const readAttachmentsPayload = (payload: unknown): AttachmentsPayload | u
   return refs.every((ref) => ref.stored) ? { attachments: refs } : undefined;
 };
 
-const channelTypeOf = (payload: unknown): ChannelType | undefined => {
-  if (typeof payload !== "object" || payload === null) return undefined;
+/** The payload must be an object: callers have read attachments off it already. */
+const channelTypeOf = (payload: object): ChannelType | undefined => {
   const { channelType } = payload as Record<string, unknown>;
   return Schema.is(ChannelType)(channelType) ? channelType : undefined;
 };
@@ -201,9 +201,10 @@ export const listTicketAttachments = (ticketId: string) =>
     const out: Array<typeof TicketAttachment.Type> = [];
     for (const event of events) {
       const found = readAttachmentsPayload(event.payload);
-      const channelType = channelTypeOf(event.payload);
+      if (!found) continue;
+      const channelType = channelTypeOf(event.payload as object);
       // A message-sourced event needs a known channel; a Worker's upload has no source message.
-      if (!found || (found.message !== undefined && channelType === undefined)) continue;
+      if (found.message !== undefined && channelType === undefined) continue;
       const links = new Map<string, string>();
       for (const ref of found.attachments) {
         const link = ref.stored ? yield* store.link(assetKey(ticketId, ref)) : undefined;
