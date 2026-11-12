@@ -140,6 +140,21 @@ describe("makeAuth", () => {
     expect(auth.isAllowed("eve@example.com")).toBe(false);
   });
 
+  it("with domains, allows anyone at them and the admin, and no listed email outside them", () => {
+    const auth = authWith({
+      admin,
+      allowedEmails: ["ada@example.com", "bob@acme.com"],
+      allowedDomains: ["@Acme.com ", "acme.io"],
+    });
+    expect(auth.isAllowed("eve@ACME.com")).toBe(true);
+    expect(auth.isAllowed("bob@acme.com")).toBe(true);
+    expect(auth.isAllowed("zed@acme.io")).toBe(true);
+    expect(auth.isAllowed("ops@example.com")).toBe(true);
+    expect(auth.isAllowed("ada@example.com")).toBe(false);
+    expect(auth.isAllowed("eve@notacme.com")).toBe(false);
+    expect(auth.isAllowed("eve@sub.acme.com")).toBe(false);
+  });
+
   it("links accounts only when a provider and the public URL are set", () => {
     const google = { clientId: "id", clientSecret: "secret" };
     expect(authWith().connections).toBeUndefined();

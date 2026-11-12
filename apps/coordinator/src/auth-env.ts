@@ -23,15 +23,16 @@ const oauthClient = (env: Env, prefix: string): OAuthClientConfig | undefined =>
   return clientId && clientSecret ? { clientId, clientSecret } : undefined;
 };
 
-const emails = (raw: string | undefined) =>
+const list = (raw: string | undefined) =>
   (raw ?? "")
     .split(",")
-    .map((email) => email.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
 
 /**
  * Better Auth settings from env. BETTER_AUTH_SECRET is required. ADMIN_EMAIL with
- * ADMIN_PASSWORD seeds an operator who can sign in to the dashboard.
+ * ADMIN_PASSWORD seeds an operator who can sign in to the dashboard. GOOGLE_ALLOWED_DOMAINS
+ * limits Google sign-in to those Workspace domains and lets anyone at them in.
  */
 export const authConfigFromEnv = (
   env: Env,
@@ -50,7 +51,8 @@ export const authConfigFromEnv = (
       "BETTER_AUTH_SECRET",
       "it signs dashboard sessions (generate one with `openssl rand -base64 32`)",
     ),
-    allowedEmails: emails(env.ADMIN_EMAILS),
+    allowedEmails: list(env.ADMIN_EMAILS),
+    allowedDomains: list(env.GOOGLE_ALLOWED_DOMAINS),
     ...(adminEmail && adminPassword && { admin: { email: adminEmail, password: adminPassword } }),
     ...(google && { google }),
     ...(github && { github }),

@@ -14,8 +14,9 @@ const ADA = "ada@example.com";
 let stack: Stack;
 afterEach(() => stack.stop());
 
-const start = (options: { allowedEmails?: ReadonlyArray<string> } = {}) =>
-  startStack({ classifier: classifierReturning("new_request"), connections: true, ...options });
+const start = (
+  options: { allowedEmails?: ReadonlyArray<string>; allowedDomains?: ReadonlyArray<string> } = {},
+) => startStack({ classifier: classifierReturning("new_request"), connections: true, ...options });
 
 /** Plays the browser from the dashboard's button to where it lands back on the dashboard. */
 const signInWithGoogle = async () => {
@@ -76,7 +77,10 @@ const sessionUserId = async (token: string) => {
 describe("Google sign-in", () => {
   it("lets an allowed Google account into the dashboard API", async () => {
     stack = await start({ allowedEmails: [ADA] });
-    expect(await (await fetch(`${stack.url}/sign-in/providers`)).json()).toEqual({ google: true });
+    expect(await (await fetch(`${stack.url}/sign-in/providers`)).json()).toEqual({
+      google: true,
+      googleDomains: [],
+    });
 
     const landed = await signInWithGoogle();
     expect(landed.origin).toBe(stack.webUrl);
@@ -183,11 +187,81 @@ describe("Google sign-in", () => {
   });
 });
 
+describe("Google sign-in limited to domains (GOOGLE_ALLOWED_DOMAINS)", () => {
+  const signedIn = async () => {
+    const landed = await signInWithGoogle();
+    const ott = landed.searchParams.get("ott");
+    if (!ott) return { landed, token: undefined };
+    const verified = await exchange(ott);
+    return { landed, token: verified.headers.get("set-auth-token") ?? undefined };
+  };
+
+  it("lets in anyone at the domain without listing them, and tells Google the domain", async () => {
+    stack = await start({ allowedDomains: ["acme.com"] });
+    stack.oauth!.email = "eve@acme.com";
+    stack.oauth!.hd = "acme.com";
+    expect(await (await fetch(`${stack.url}/sign-in/providers`)).json()).toEqual({
+      google: true,
+      googleDomains: ["acme.com"],
+    });
+
+    const { token } = await signedIn();
+    expect(token).toBeTruthy();
+    expect((await projects(token!)).status).toBe(200);
+    expect(stack.oauth!.authorizeRequests.at(-1)!.get("hd")).toBe("acme.com");
+  });
+
+  it("refuses a listed email outside the domain, and creates no user", async () => {
+    stack = await start({ allowedEmails: [ADA], allowedDomains: ["acme.com"] });
+    const { landed, token } = await signedIn();
+    expect(token).toBeUndefined();
+    expect(landed.pathname).toBe("/login");
+    expect(landed.searchParams.get("error")).toBeTruthy();
+    expect(usersWithEmail(ADA)).toBe(0);
+  });
+
+  it("refuses a personal Google account with a company address (no hd)", async () => {
+    stack = await start({ allowedDomains: ["acme.com"] });
+    stack.oauth!.email = "eve@acme.com";
+    const { landed, token } = await signedIn();
+    expect(token).toBeUndefined();
+    expect(landed.searchParams.get("error")).toBeTruthy();
+    expect(usersWithEmail("eve@acme.com")).toBe(0);
+  });
+
+  it("refuses an account whose email Google hasn't verified, even at the domain", async () => {
+    stack = await start({ allowedDomains: ["acme.com"] });
+    stack.oauth!.email = "eve@acme.com";
+    stack.oauth!.hd = "acme.com";
+    stack.oauth!.emailVerified = false;
+    const { token } = await signedIn();
+    expect(token).toBeUndefined();
+    expect(usersWithEmail("eve@acme.com")).toBe(0);
+  });
+
+  it("takes any of several domains, and sends no hd hint for more than one", async () => {
+    stack = await start({ allowedDomains: ["acme.com", "acme.io"] });
+    stack.oauth!.email = "zed@acme.io";
+    stack.oauth!.hd = "acme.io";
+    const { token } = await signedIn();
+    expect((await projects(token!)).status).toBe(200);
+    expect(stack.oauth!.authorizeRequests.at(-1)!.get("hd")).toBeNull();
+  });
+
+  it("keeps the password operator's sign-in, outside the domain", async () => {
+    stack = await start({ allowedDomains: ["acme.com"] });
+    const password = await signInWithPassword();
+    const token = password.headers.get("set-auth-token")!;
+    expect((await projects(token)).status).toBe(200);
+  });
+});
+
 describe("without Google", () => {
   it("offers only the password, and has no Google route", async () => {
     stack = await startStack({ classifier: classifierReturning("new_request") });
     expect(await (await fetch(`${stack.url}/sign-in/providers`)).json()).toEqual({
       google: false,
+      googleDomains: [],
     });
     expect((await fetch(`${stack.url}/sign-in/google`, { redirect: "manual" })).status).toBe(404);
     expect((await fetch(`${stack.url}/sign-in/done`, { redirect: "manual" })).status).toBe(404);

@@ -37,6 +37,8 @@ ADMIN_EMAIL=you@example.com
 ADMIN_PASSWORD=...
 # Optional: more emails allowed into the dashboard, comma-separated. They sign in with Google.
 # ADMIN_EMAILS=teammate@example.com
+# Optional: instead of listing people, let anyone at your Google Workspace domain(s) in.
+# GOOGLE_ALLOWED_DOMAINS=acme.com
 ```
 
 Workers never use a shared Google or GitHub credential. They call the `user_token` MCP tool, which returns the token of the person who asked, so Google's and GitHub's own permissions decide what a Worker can reach.
@@ -169,6 +171,14 @@ Go to **Google Auth Platform** (APIs & Services → OAuth consent screen):
    ```
 
 The same client also adds **Continue with Google** to the dashboard's sign-in page once `WEB_ORIGIN` is set to where the dashboard is served (`http://localhost:5173` for `bun run --cwd apps/web dev`). Google returns there after sign-in. Only `ADMIN_EMAIL` and the emails in `ADMIN_EMAILS` get in, and only when Google has verified the address. A Google account with the same address as the `ADMIN_EMAIL` operator signs in as that operator, so the password and Google both work.
+
+To let your whole team in without listing everyone, set `GOOGLE_ALLOWED_DOMAINS` to your Google Workspace domain (comma-separate several):
+
+```sh
+GOOGLE_ALLOWED_DOMAINS=acme.com
+```
+
+Once it's set, Google sign-in takes only accounts of those domains, and anyone at them gets in. The Coordinator checks Google's `hd` (hosted domain) claim as well as the email, so a personal Google account registered with an `@acme.com` address is refused. Emails in `ADMIN_EMAILS` outside those domains are refused too. The `ADMIN_EMAIL` operator can always sign in with the password. With one domain, Google's account chooser also shows only that domain's accounts. Linking Google Drive with `/connect` isn't affected.
 
 ---
 
@@ -401,6 +411,7 @@ Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/dep
 | Discord messages reach nothing, gateway logs `responded 401` | `apps/discord-gateway` has no `COORDINATOR_SERVICE_TOKEN`, or a different one from the Coordinator's                                              |
 | Dashboard sign-in says the email and password don't match    | `ADMIN_EMAIL` / `ADMIN_PASSWORD` were unset on the Coordinator's first start, or the password changed since. The seed never overwrites a password |
 | Google sign-in says it didn't work for that account          | The email isn't `ADMIN_EMAIL` or in `ADMIN_EMAILS`, or Google hasn't verified it                                                                  |
+| Google sign-in says it only takes `@domain` accounts         | `GOOGLE_ALLOWED_DOMAINS` is set and the account isn't a Workspace account of one of those domains                                                 |
 | `/connect` says linking is off                               | The provider's client id/secret is missing from the Coordinator's environment                                                                     |
 | `/register-worker` code says "expired, or already used"      | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                     |
 | Your tickets still go to a sandbox after registering         | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                       |

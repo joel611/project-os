@@ -8,6 +8,19 @@ export const authBase = (coordinatorUrl: string | undefined): string =>
   coordinatorUrl ? `${coordinatorUrl.replace(/\/+$/, "")}/api/auth` : "/api/auth";
 
 /** Sign-in and sign-out against the Coordinator: Better Auth, plus its Google hand-off. */
+/** Sign-in methods the Coordinator offers besides email and password. */
+export interface SignInProviders {
+  readonly google: boolean;
+  /** The only Google Workspace domains Google sign-in takes; empty for any allowed email. */
+  readonly googleDomains: ReadonlyArray<string>;
+}
+
+/** Why Google turned someone away, naming the domains when sign-in is limited to them. */
+export const googleRefused = (domains: ReadonlyArray<string>): string =>
+  domains.length > 0
+    ? `Google sign-in only takes ${domains.map((d) => `@${d}`).join(", ")} accounts. Sign in with one of those, or use your password.`
+    : "Google sign-in didn't work for that account. Ask an admin to add your email, or use your password.";
+
 export const makeAuthClient = (
   fetchFn: typeof fetch = fetch,
   coordinatorUrl: string | undefined = import.meta.env.VITE_COORDINATOR_URL as string | undefined,
@@ -46,10 +59,17 @@ export const makeAuthClient = (
       }).catch(() => undefined);
     },
     /** Which sign-in methods the Coordinator offers besides email and password. */
-    providers: async (): Promise<{ readonly google: boolean }> => {
+    providers: async (): Promise<SignInProviders> => {
       const res = await fetchFn(`${api}/sign-in/providers`).catch(() => undefined);
-      const body: unknown = await res?.json().catch(() => null);
-      return { google: (body as { google?: unknown } | null)?.google === true };
+      const body = (await res?.json().catch(() => null)) as {
+        google?: unknown;
+        googleDomains?: unknown;
+      } | null;
+      const domains = Array.isArray(body?.googleDomains) ? body.googleDomains : [];
+      return {
+        google: body?.google === true,
+        googleDomains: domains.filter((d): d is string => typeof d === "string"),
+      };
     },
     /** Opened as a page, not fetched: Google's state cookies must land on the Coordinator. */
     googleStartUrl: `${api}/sign-in/google`,

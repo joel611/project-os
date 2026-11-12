@@ -266,7 +266,7 @@ Every caller of the Coordinator proves who it is with `Authorization: Bearer <to
 | --- | --- | --- |
 | Registered device (personal or shared Worker) | Its device secret (§5.8); the Coordinator stores only the SHA-256 | `/mcp` |
 | Sandbox session | A **sandbox token**: minted when the ticket goes to the sandbox pool, written into Pi's `mcp.json` through the session's env, valid for the provider's session timeout plus 5 minutes; only its SHA-256 is kept, in KV | `/mcp` |
-| Web dashboard operator | A Better Auth session token from `/api/auth/sign-in/email` or Google sign-in. Its email must be on the allowlist (`ADMIN_EMAIL` plus `ADMIN_EMAILS`) | `/projects*`, `/tickets*`, `/workers`, `/activity` |
+| Web dashboard operator | A Better Auth session token from `/api/auth/sign-in/email` or Google sign-in. Its email must be on the allowlist (`ADMIN_EMAIL` plus `ADMIN_EMAILS`, or with `GOOGLE_ALLOWED_DOMAINS` set, `ADMIN_EMAIL` plus anyone at those domains) | `/projects*`, `/tickets*`, `/workers`, `/activity` |
 | Channel Adapter (Discord, in-process or `apps/discord-gateway`) | `COORDINATOR_SERVICE_TOKEN`, compared in constant time | `/inbound`, `/commands`, `/prompts/answer` |
 | Anyone | none | `/health`, `/api/auth/*`, `/sign-in/*`, `/connect/*`, `/workers/register` (the one-time code is the proof), `/watcher/install.sh` |
 

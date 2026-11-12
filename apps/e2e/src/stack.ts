@@ -152,6 +152,8 @@ export const startStack = async (options: {
   readonly connections?: boolean;
   /** ADMIN_EMAILS: who besides the seeded operator may use the dashboard. */
   readonly allowedEmails?: ReadonlyArray<string>;
+  /** GOOGLE_ALLOWED_DOMAINS: the only Workspace domains Google sign-in takes. */
+  readonly allowedDomains?: ReadonlyArray<string>;
   readonly workerLauncher?: typeof WorkerLauncher.Service;
   /**
    * Tickets one shared device may hold. Default here 100, so suites that open several
@@ -287,6 +289,9 @@ export const startStack = async (options: {
         handler: (request: Request) => auth!.handler(request),
         ...(oauth && {
           googleSignIn: {
+            get domains() {
+              return auth!.googleSignIn!.domains;
+            },
             start: () => auth!.googleSignIn!.start(),
             handoff: (request: Request) => auth!.googleSignIn!.handoff(request),
           },
@@ -305,6 +310,7 @@ export const startStack = async (options: {
     secret: "integration-secret-integration-secret",
     admin: OPERATOR,
     ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
+    ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
     ...(web && { webOrigins: [web.url.origin] }),
     ...(oauth && {
       google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
