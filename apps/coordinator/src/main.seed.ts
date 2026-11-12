@@ -5,9 +5,6 @@ import { Effect, ManagedRuntime } from "effect";
 import { seedDefaults } from "./admin/seed.ts";
 import { seedQaData } from "./admin/seed-qa.ts";
 
-// `bun run seed`: default org + a project + its Discord channel as the default response,
-// plus sample tickets (every status) and memory entries (every type) for QA.
-// Safe to re-run. Set SEED_DISCORD_CHANNEL_ID (and optionally SEED_PROJECT_NAME).
 const dbPath = dataPath("project-os.sqlite", process.env.DATABASE_PATH ?? process.env.DB_PATH);
 const orgId = ensureOrg(dbPath, DEFAULT_ORG);
 

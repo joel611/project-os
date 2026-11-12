@@ -32,7 +32,6 @@ import {
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 
-/** Services the tool use cases need; the entry file's runtime must provide them. */
 export type McpServices =
   | AgentRuntime
   | AssetStore
@@ -53,7 +52,6 @@ export interface ToolFailure {
   readonly [key: string]: unknown;
 }
 
-/** One MCP tool: a use case behind contract schemas. `R` is the services the use case needs. */
 export interface McpTool<R> {
   readonly name: string;
   readonly description: string;
@@ -67,7 +65,6 @@ export const toFailure = (error: unknown): ToolFailure => {
   if (Schema.isSchemaError(error)) return { _tag: "InvalidInput", message: error.message };
   if (typeof error === "object" && error !== null && "_tag" in error) {
     const { _tag, ...rest } = error as { _tag: string };
-    // Errors with their own message (e.g. NotConnected) tell the Worker what to do next.
     const own = (error as { message?: unknown }).message;
     const detail = typeof own === "string" && own !== "" ? ` ${own}` : "";
     return { ...rest, _tag, message: `${_tag}: ${JSON.stringify(rest)}${detail}` };

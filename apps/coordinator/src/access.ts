@@ -3,18 +3,16 @@ import type { SessionUser } from "@project-os/auth";
 /** Who a request's `Authorization: Bearer` credentials say is calling. */
 export type Caller =
   | { readonly kind: "anonymous" }
-  /** A dashboard session whose email is on the allowlist. */
   | { readonly kind: "user"; readonly userId: string }
-  /** A valid session for someone not on the allowlist, such as a person's channel identity. */
   | { readonly kind: "outsider" }
-  /** A Channel Adapter holding COORDINATOR_SERVICE_TOKEN. */
   | { readonly kind: "service" };
 
 /**
  * Who may call a route. `worker` is /mcp: Watchers and sandbox sessions, whose credentials the
- * MCP route resolves itself.
+ * MCP route resolves itself. `token` routes carry their own proof (a signed link, a one-time
+ * token) that the handler redeems.
  */
-export type RoutePolicy = "public" | "user" | "service" | "worker";
+export type RoutePolicy = "public" | "token" | "user" | "service" | "worker";
 
 /**
  * Every route's policy, keyed `METHOD pattern` as registered (`ALL` for `.all`). A route missing
@@ -27,17 +25,12 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /sign-in/google": "public",
   "GET /sign-in/done": "public",
   "GET /connect/done": "public",
-  // GET only shows a confirm page; the POST redeems the one-time token.
   "GET /connect/:token": "public",
-  "POST /connect/:token": "public",
-  // The signature in the link is the proof; it covers one file and expires.
-  "GET /assets/:ticketId/:attachmentId/:filename": "public",
-  // Same: the upload signature is minted for one ticket, attachment id and filename.
-  "PUT /assets/:ticketId/:attachmentId/:filename": "public",
-  // The one-time code is the proof; the install script holds nothing secret.
-  "POST /workers/register": "public",
+  "POST /connect/:token": "token",
+  "GET /assets/:ticketId/:attachmentId/:filename": "token",
+  "PUT /assets/:ticketId/:attachmentId/:filename": "token",
+  "POST /workers/register": "token",
   "GET /watcher/install.sh": "public",
-  // Channel Adapters: admin identity in the body is trusted only from them.
   "POST /inbound": "service",
   "POST /commands": "service",
   "POST /prompts/answer": "service",
@@ -62,6 +55,7 @@ export const policyFor = (method: string, route: string): RoutePolicy =>
 
 const ADMITS: Readonly<Record<RoutePolicy, ReadonlyArray<Caller["kind"]>>> = {
   public: ["anonymous", "user", "outsider", "service"],
+  token: ["anonymous", "user", "outsider", "service"],
   worker: ["anonymous", "user", "outsider", "service"],
   user: ["user"],
   service: ["service"],
@@ -88,7 +82,6 @@ export const bearerToken = (request: Request): string | undefined => {
 const sha256 = async (value: string) =>
   new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 
-/** Compares digests in full, so the time taken says nothing about where they differ. */
 const sameSecret = async (a: string, b: string) => {
   const [x, y] = await Promise.all([sha256(a), sha256(b)]);
   let diff = 0;
@@ -96,7 +89,6 @@ const sameSecret = async (a: string, b: string) => {
   return diff === 0;
 };
 
-/** Resolves who is calling; the guard in app.ts asks only for routes that need someone. */
 export interface Access {
   readonly caller: (request: Request) => Promise<Caller>;
 }
@@ -120,13 +112,12 @@ export const makeAccess = (deps: {
   },
 });
 
-/** The denial for this request, if any. Public and MCP routes never resolve the caller. */
 export const deny = async (
   access: Access,
   request: Request,
   route: string,
 ): Promise<Denial | undefined> => {
   const policy = policyFor(request.method, route);
-  if (policy === "public" || policy === "worker") return undefined;
+  if (policy === "public" || policy === "token" || policy === "worker") return undefined;
   return authorize(policy, await access.caller(request));
 };

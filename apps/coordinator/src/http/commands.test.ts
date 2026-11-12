@@ -303,7 +303,6 @@ describe("runCommand personal workers", () => {
     expect(listed.content).toContain("**ada-mbp**");
     expect(listed.content).toContain("offline, last seen never");
 
-    // Seen once, a while ago (the test clock is 2026-11-04T00:00Z).
     await config.workers!.run(
       Effect.gen(function* () {
         const repo = yield* WorkerRepository;
@@ -382,11 +381,9 @@ describe("runCommand personal workers", () => {
       expect((await runCommand(shared("workers"), config)).content).toBe(
         `Shared workers:\n- **build-box** (\`${device.id}\`): offline, last seen never`,
       );
-      // Members see the pool next to their own devices (none here).
       const mine = await runCommand(worker("workers"), config);
       expect(mine.content).toContain("no registered workers");
       expect(mine.content).toContain("**build-box**");
-      // ...and can't remove it as one of theirs.
       expect(
         (await runCommand(worker("unregister-worker", { worker: "build-box" }), config)).content,
       ).toContain('no worker called "build-box"');

@@ -7,7 +7,6 @@ import type { McpRuntime } from "./mcp/server.ts";
 
 const web = "https://dash.example.com";
 
-/** Bearer `svc` is the service, `op` an allowed operator, `eve` someone not allowed. */
 const access: Access = {
   caller: async (request): Promise<Caller> => {
     const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
@@ -23,7 +22,6 @@ afterEach(async () => {
   await Promise.all(disposers.splice(0).map((d) => d()));
 });
 
-/** Every route mounted, on an in-memory runtime. */
 const fullApp = (extra: Partial<AppDeps> = {}) => {
   const runtime = ManagedRuntime.make(makeTestLayer().layer);
   disposers.push(() => runtime.dispose());
@@ -90,7 +88,6 @@ describe("coordinator app", () => {
       for (const path of ["/inbound", "/commands", "/prompts/answer"]) {
         expect((await call(app, path, { method: "POST", body: {} })).status).toBe(401);
         expect((await call(app, path, { method: "POST", body: {}, token: "op" })).status).toBe(403);
-        // Past the guard, the route itself rejects the empty body.
         const svc = await call(app, path, { method: "POST", body: {}, token: "svc" });
         expect(svc.status).toBe(400);
       }

@@ -71,7 +71,6 @@ beforeEach(async () => {
 let app: { handle: (request: Request) => Promise<Response> };
 const clients: Client[] = [];
 
-/** A sandbox session's MCP token, as the Coordinator mints one at launch. */
 const mint = (workerId: string) =>
   runtime.runPromise(issueSandboxToken(workerId, 60) as Effect.Effect<string, never, any>);
 

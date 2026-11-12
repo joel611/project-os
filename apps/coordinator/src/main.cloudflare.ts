@@ -7,7 +7,6 @@ import { makeAuth } from "@project-os/auth";
 import { env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
-import type { SandboxRunner } from "@project-os/sandbox-core";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
@@ -16,18 +15,12 @@ import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import sessionStartPrompt from "../../watcher/prompts/session-start.md";
 
 export { PiAgent } from "./pi-agent.ts";
-
-// Cloudflare target: Workers + D1 + KV (docs/technical-architecture.md §8).
-//
-// What runs here: the HTTP API (/inbound, /commands, ...), the MCP endpoint Watchers poll,
-// and account linking. The agent runtime (Pi Durable) runs in the `PiAgent` Durable Object.
-// The health sweep runs from a Cron Trigger (`scheduled`). The sandbox pool runs, with the
-// `waitUntil` limit described in "Known gaps" in docs/deployment.md.
 
 interface Bindings {
   readonly DB: D1Database;
@@ -40,21 +33,8 @@ interface Bindings {
 }
 
 /**
- * A sandbox session outlives the request that started it, so `waitUntil` keeps the Worker alive
- * for it. Workers cap that time; see "Known gaps" in docs/deployment.md.
- */
-const heldOpen = (runner: SandboxRunner): SandboxRunner => ({
-  run: (input) => {
-    const session = runner.run(input);
-    waitUntil(session.catch(() => undefined));
-    return session;
-  },
-});
-
-/**
  * Builds the app from the Worker's bindings. This must run at module load: Elysia's
- * `.compile()` uses `new Function`, which workerd allows only before the first request.
- * Nothing here does I/O; the layers build lazily on the first `runPromise`.
+ * `.compile()` uses `new Function`, which workerd allows only during startup.
  */
 const buildApp = (bindings: Bindings) => {
   const models = newModels();
@@ -64,8 +44,6 @@ const buildApp = (bindings: Bindings) => {
 
   const publicUrl = process.env.PUBLIC_URL;
   const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
-  // Callbacks are built from PUBLIC_URL, so account linking stays off without it. The admin is
-  // seeded on the first sign-in request: nothing here may do I/O.
   const auth = makeAuth(
     authConfigFromEnv(process.env, {
       db: drizzle(bindings.DB),
@@ -82,7 +60,7 @@ const buildApp = (bindings: Bindings) => {
     runners: Object.fromEntries(
       Object.entries(configuredRunners(process.env)).map(([provider, runner]) => [
         provider,
-        heldOpen(runner),
+        heldOpen(runner, waitUntil),
       ]),
     ),
   });
@@ -97,7 +75,6 @@ const buildApp = (bindings: Bindings) => {
         ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
         agent: durableAgentRuntime(bindings.PI_AGENT),
         ...(workerLauncher && { workerLauncher }),
-        // Signed links point at PUBLIC_URL, so storage stays off without it.
         ...(bindings.ASSETS &&
           publicUrl && {
             assets: {
@@ -108,7 +85,6 @@ const buildApp = (bindings: Bindings) => {
           }),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
-      // Projects reference an org (FK) and nothing else creates one.
       Layer.effectDiscard(ensureOrg(bindings.DB)),
       ...(connections ? [connections.layer] : []),
     ),
@@ -157,14 +133,12 @@ const buildApp = (bindings: Bindings) => {
       },
       mcp: runtime,
       assets: { run: (effect) => runtime.runPromise(effect) },
-      // The dashboard is served from its own origin and calls this API directly.
       corsOrigins: webOrigins,
       auth,
       ...(connections && { connect: connections }),
     },
   ).compile();
 
-  // Cron Trigger: the health sweep (assign queued tickets, flag stalled ones, fail dead ones).
   const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
   return { app, sweep };
 };

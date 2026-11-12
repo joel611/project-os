@@ -5,7 +5,6 @@ export interface HttpResult {
   readonly body: unknown;
 }
 
-/** Every typed failure the HTTP handlers can surface, with its status code. */
 const STATUS = {
   SchemaError: 400,
   TicketNotFound: 404,
@@ -22,7 +21,6 @@ const STATUS = {
 
 type KnownError = { readonly _tag: keyof typeof STATUS };
 
-/** Success becomes `{ status, body }`; known failures become `{ status, body: { error, ... } }`. */
 export const toResult = <A, E extends KnownError, R>(
   effect: Effect.Effect<A, E, R>,
   status = 200,

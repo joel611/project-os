@@ -126,7 +126,6 @@ interface QaMemory {
   readonly title: string;
   readonly content: string;
   readonly ageMinutes: number;
-  /** Index into QA_TICKETS this entry links to. */
   readonly ticket?: number;
   readonly worker?: string;
 }

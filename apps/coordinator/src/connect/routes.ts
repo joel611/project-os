@@ -1,7 +1,6 @@
 import type { LinkStart } from "@project-os/auth";
 import { Elysia } from "elysia";
 
-/** What the Coordinator needs from `@project-os/auth` to serve account linking. */
 export interface ConnectDeps {
   /** Redeems a one-time connect link; null when unknown, used, or expired. */
   readonly startLink: (token: string) => Promise<LinkStart | null>;
@@ -56,8 +55,6 @@ export const connectRoutes = ({ startLink }: ConnectDeps) =>
       ),
     )
     .post("/connect/:token", async ({ params }) => {
-      // A failure after the token is redeemed (provider misconfigured, unreachable) leaves it
-      // used, like a success would; say so instead of a bare 500.
       const start = await startLink(params.token).catch((error: unknown) => {
         console.error("connect: starting the provider flow failed", error);
         return undefined;
@@ -78,6 +75,5 @@ export const connectRoutes = ({ startLink }: ConnectDeps) =>
       }
       const headers = new Headers({ location: start.redirect, "cache-control": "no-store" });
       for (const cookie of start.setCookies) headers.append("set-cookie", cookie);
-      // 303: the browser follows a POST's redirect with a GET to the provider.
       return new Response(null, { status: 303, headers });
     });

@@ -31,7 +31,6 @@ export interface CommandsConfig {
   readonly adminChannelId?: string;
   /** Discord user ids allowed to run admin commands. Unset: no check. Empty: nobody. */
   readonly adminUserIds?: ReadonlyArray<string>;
-  /** The same actions the admin dialogue's tools call. */
   readonly admin: Pick<AdminActions, "createProject">;
   /** Runs account-linking effects (/connect, /disconnect, /connections). Unset: refused. */
   readonly connections?: <A>(effect: Effect.Effect<A, never, UserConnections>) => Promise<A>;
@@ -46,10 +45,8 @@ export type WorkersEnv = Clock | IdGenerator | KeyValueStore | WorkerRepository;
 
 export interface WorkersCommandsConfig {
   readonly run: <A>(effect: Effect.Effect<A, never, WorkersEnv>) => Promise<A>;
-  /** Coordinator URL as the person's computer reaches it (the Watcher registers and polls here). */
   readonly publicUrl: string;
   readonly installCommand?: string;
-  /** A device that hasn't heartbeat within this reads as offline. */
   readonly staleMs: number;
 }
 
@@ -83,7 +80,6 @@ export const runCommand = async (
   }
 };
 
-/** Why `command` may not run as an admin command, or undefined when it may. */
 const adminRefusal = (
   command: SlashCommand,
   config: CommandsConfig,
