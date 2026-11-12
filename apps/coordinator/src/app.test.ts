@@ -83,6 +83,15 @@ describe("coordinator app", () => {
       expect(await ok.json()).toEqual([]);
     });
 
+    it("lets only an allowed operator remove a project source", async () => {
+      const app = fullApp();
+      const path = "/projects/p1/sources/s1";
+      expect((await call(app, path, { method: "DELETE" })).status).toBe(401);
+      expect((await call(app, path, { method: "DELETE", token: "eve" })).status).toBe(403);
+      expect((await call(app, path, { method: "DELETE", token: "svc" })).status).toBe(403);
+      expect((await call(app, path, { method: "DELETE", token: "op" })).status).toBe(404);
+    });
+
     it("takes messages, commands and prompt answers only from a Channel Adapter", async () => {
       const app = fullApp();
       for (const path of ["/inbound", "/commands", "/prompts/answer"]) {
@@ -151,6 +160,7 @@ describe("coordinator app", () => {
       expect(res.status).toBe(204);
       expect(res.headers.get("access-control-allow-origin")).toBe(web);
       expect(res.headers.get("access-control-allow-methods")).toContain("PATCH");
+      expect(res.headers.get("access-control-allow-methods")).toContain("DELETE");
       expect(res.headers.get("access-control-allow-headers")).toContain("authorization");
     });
 

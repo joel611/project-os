@@ -121,6 +121,21 @@ export const sourceUrl = (s: { type: string; externalId: string }): string | nul
  * Where a worker sits: a `shared` device an admin registered into the pool, someone's
  * `personal` device, or a `sandbox` session the Coordinator started for one ticket.
  */
+/** Source types whose messages reach the project (see core `CHANNEL_SOURCE_TYPES`). */
+const INBOUND_SOURCE_TYPES: ReadonlySet<string> = new Set(["discord_channel", "email_address"]);
+
+/** What removing a source changes, for the confirmation before it goes. */
+export const removalNote = (s: {
+  readonly type: string;
+  readonly isDefaultResponse: boolean;
+}): string =>
+  (INBOUND_SOURCE_TYPES.has(s.type)
+    ? "Workers will no longer see it, and its messages will stop reaching this project."
+    : "Workers will no longer see it.") +
+  (s.isDefaultResponse
+    ? " It is the reply channel, so the project will have none until you link another."
+    : "");
+
 export type WorkerGroup = "shared" | "personal" | "sandbox";
 
 export const workerGroup = (w: Worker): WorkerGroup =>

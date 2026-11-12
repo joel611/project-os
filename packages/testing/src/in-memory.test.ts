@@ -103,6 +103,22 @@ describe("1:1 channel → project", () => {
     );
     expect(list.filter((s) => s.isDefaultResponse).map((s) => s.id)).toEqual(["s2"]);
   });
+
+  it("remove unlinks the channel, and refuses a foreign or unknown source", async () => {
+    const { removed, foreign, unlinked } = await run(
+      Effect.gen(function* () {
+        const repo = yield* ProjectSourceRepository;
+        yield* repo.insert(source());
+        const foreign = yield* Effect.flip(repo.remove("p2", "s1"));
+        const removed = yield* repo.remove("p1", "s1");
+        const unlinked = yield* repo.findByExternal("discord_channel", "chan-1");
+        return { removed, foreign, unlinked };
+      }),
+    );
+    expect(removed.id).toBe("s1");
+    expect(foreign._tag).toBe("SourceNotFound");
+    expect(unlinked).toBeUndefined();
+  });
 });
 
 describe("TicketRepository fake", () => {

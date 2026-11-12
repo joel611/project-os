@@ -233,6 +233,28 @@ describe("projects and sources", () => {
     expect((await patch({ alias: "x" }, "nope")).status).toBe(404);
   });
 
+  it("DELETEs a source, so its channel can be linked again, and 404s unknown ones", async () => {
+    const { app } = setup();
+    const { project, source } = await linkedProject(app);
+    const other = await call(app, "POST", "/projects", { orgId: "o1", name: "Other" });
+    const url = (projectId: string, id = source.id) => `/projects/${projectId}/sources/${id}`;
+
+    expect((await call(app, "DELETE", url(other.body.id))).status).toBe(404);
+    expect(await call(app, "DELETE", url(project.id))).toMatchObject({
+      status: 200,
+      body: { id: source.id, externalId: source.externalId },
+    });
+    expect((await call(app, "DELETE", url(project.id))).status).toBe(404);
+    expect((await call(app, "GET", `/projects/${project.id}`)).body.sources).toEqual([]);
+    const relinked = await call(app, "POST", `/projects/${other.body.id}/sources`, {
+      type: source.type,
+      externalId: source.externalId,
+      name: source.name,
+      alias: "chat",
+    });
+    expect(relinked.status).toBe(201);
+  });
+
   it("rejects an invalid source body with 400", async () => {
     const { app } = setup();
     const { project } = await linkedProject(app);

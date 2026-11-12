@@ -41,6 +41,7 @@ import {
   CreateSourceBody,
   UpdateSourceBody,
   editSource,
+  unlinkSource,
   decode,
   getProject,
   linkSource,
@@ -179,6 +180,9 @@ export const httpRoutes = ({
           ),
         ),
       ),
+    )
+    .delete("/projects/:id/sources/:sourceId", ({ params, set }) =>
+      reply(set, toResult(unlinkSource(params.id, params.sourceId))),
     )
     .get("/projects/:id/tickets", ({ params, set }) =>
       reply(set, toResult(listProjectTickets(params.id))),

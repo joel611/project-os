@@ -1,7 +1,7 @@
 import { detectSource, type ProjectSource, suggestAlias } from "@project-os/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink, Pencil, Star } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Star, Trash2 } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 import { api, ApiError, describeError, type ProjectDetail } from "@/api";
 import { SLOW_MS } from "@/polling";
@@ -13,7 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ALIAS_HINT, checkSource, normalizeAlias, sourceUrl, type SourceInput } from "@/model";
+import {
+  ALIAS_HINT,
+  checkSource,
+  normalizeAlias,
+  removalNote,
+  sourceUrl,
+  type SourceInput,
+} from "@/model";
 
 const PANEL = "rounded-xl border bg-card p-6 shadow-card md:p-7";
 
@@ -117,6 +124,49 @@ const EditSource = ({
   );
 };
 
+const RemoveSource = ({
+  projectId,
+  source,
+  onCancel,
+}: {
+  projectId: string;
+  source: ProjectSource;
+  onCancel: () => void;
+}) => {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => api.removeSource(projectId, source.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] }),
+  });
+  return (
+    <div
+      role="alertdialog"
+      aria-label={`Remove ${source.alias}?`}
+      className="flex flex-1 flex-col gap-2"
+    >
+      <p className="text-sm">
+        Remove <span className="font-mono font-medium">{source.alias}</span> from this project?{" "}
+        {removalNote(source)}
+      </p>
+      <Problems lines={remove.error ? [describeError(remove.error)] : []} />
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          disabled={remove.isPending}
+          onClick={() => remove.mutate()}
+        >
+          {remove.isPending ? "Removing…" : "Remove"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const SourceRow = ({
   projectId,
   source,
@@ -128,19 +178,21 @@ const SourceRow = ({
 }) => {
   const { Icon, label } = SOURCE_META[source.type];
   const url = sourceUrl(source);
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<"view" | "edit" | "remove">("view");
   return (
     <li className="flex items-start gap-4 px-6 py-5">
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
         <Icon className="size-4" aria-label={label} />
       </span>
-      {editing ? (
+      {mode === "edit" ? (
         <EditSource
           projectId={projectId}
           source={source}
           sources={sources}
-          onDone={() => setEditing(false)}
+          onDone={() => setMode("view")}
         />
+      ) : mode === "remove" ? (
+        <RemoveSource projectId={projectId} source={source} onCancel={() => setMode("view")} />
       ) : (
         <>
           <div className="min-w-0 flex-1">
@@ -163,10 +215,18 @@ const SourceRow = ({
           <button
             type="button"
             aria-label={`Edit ${source.alias}`}
-            onClick={() => setEditing(true)}
+            onClick={() => setMode("edit")}
             className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <Pencil className="size-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove ${source.alias}`}
+            onClick={() => setMode("remove")}
+            className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
           </button>
           {url && (
             <a

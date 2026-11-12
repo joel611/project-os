@@ -9,6 +9,7 @@ import {
   workerGroup,
   workerName,
   relativeTime,
+  removalNote,
   sourceUrl,
   splitTickets,
   STATUS,
@@ -104,6 +105,18 @@ describe("checkSource", () => {
 
   it("rejects an alias another source in the project uses", () => {
     expect(check("acme/api", "WEB")).toEqual({ kind: "alias_taken", alias: "web" });
+  });
+});
+
+describe("removalNote", () => {
+  it("says what a removed source stops doing", () => {
+    expect(removalNote({ type: "github_repo", isDefaultResponse: false })).toBe(
+      "Workers will no longer see it.",
+    );
+    expect(removalNote({ type: "discord_channel", isDefaultResponse: true })).toBe(
+      "Workers will no longer see it, and its messages will stop reaching this project." +
+        " It is the reply channel, so the project will have none until you link another.",
+    );
   });
 });
 

@@ -127,6 +127,14 @@ export class ProjectSourceRepository extends Context.Service<
         readonly updatedAt: string;
       },
     ) => Effect.Effect<ProjectSource, SourceNotFound | SourceAliasTaken>;
+    /**
+     * Deletes a project's source and returns it. Its `(type, externalId)` is free to link again,
+     * and a channel it named stops routing to the project.
+     */
+    readonly remove: (
+      projectId: string,
+      sourceId: string,
+    ) => Effect.Effect<ProjectSource, SourceNotFound>;
   }
 >()("@project-os/core/ProjectSourceRepository") {}
 
