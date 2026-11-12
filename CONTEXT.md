@@ -38,6 +38,9 @@ _Avoid_: private worker, device worker.
 **Shared Worker**: a computer an admin registered with `/register-worker shared:True` in the admin channel, running the Watcher. It has no owner and takes anyone's Tickets, up to `SHARED_WORKER_MAX_TICKETS` at a time, before the Sandbox Pool is tried. Authenticates to MCP with a Bearer secret, like a Personal Worker.
 _Avoid_: host Watcher, hosted worker (the old fixed `WORKER_ID` Watcher no longer exists).
 
+**Placement**: the Coordinator's decision of where a new Ticket runs: a Personal Worker, a Shared Worker, a Sandbox Pool provider, the Sidekick, or nowhere yet (a Queued Ticket). Inbound messages and the health sweep both place Tickets through the one Placement module. It takes the requester as input and stores it on the Ticket, and it keeps capacity honest: it assigns, recounts the load, and if the device or provider is now over its cap this Ticket, the last to take the slot, goes back to the queue (the health sweep then places Queued Tickets oldest first). A launch that fails at kickoff releases its slot and the Ticket goes back to the queue.
+_Avoid_: assignment (that is the `assigned` status), scheduling, routing.
+
 **Queued Ticket**: a new Ticket that no Personal Worker, Shared Worker or Sandbox Pool provider had room for. It stays `open` with no worker, its thread is told so, and the health sweep assigns it, oldest first, once one has room.
 
 **Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Providers are named `daytona`, `cloudflare` and `boat`, and their Workers are `<provider>-<ticketId>` (`daytona-<ticketId>`). When no Personal or Shared Worker takes a Ticket, the Coordinator reads the pool and starts the first provider with room under its cap.
