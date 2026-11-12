@@ -1,5 +1,3 @@
-// Manual smoke test: one faux Pi turn exported to a live OTLP endpoint (see docker-compose lgtm).
-//   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 bun apps/coordinator/src/telemetry.smoke.ts
 import { createModels, fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { makeAgentRuntime } from "@project-os/agent-runtime";

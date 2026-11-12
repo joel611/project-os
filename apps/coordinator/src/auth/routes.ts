@@ -1,9 +1,7 @@
 import { type GoogleSignIn, SIGN_IN_DONE_PATH } from "@project-os/auth";
 import { Elysia } from "elysia";
 
-/** What the Coordinator needs from `@project-os/auth` to serve sign-in. */
 export interface AuthDeps {
-  /** Better Auth's own routes under `/api/auth`: sign-in, sign-out, OAuth callbacks. */
   readonly handler: (request: Request) => Promise<Response>;
   /** Dashboard sign-in with Google. Omitted: the dashboard offers email and password only. */
   readonly googleSignIn?: GoogleSignIn | undefined;

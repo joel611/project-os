@@ -19,7 +19,6 @@ afterEach(async () => {
   await Promise.all(disposers.splice(0).map((d) => d()));
 });
 
-/** One in-memory world per test; `run` and the admin actions share its state. */
 const setup = (
   options?: Parameters<typeof makeTestLayer>[0],
   actionOptions?: { readonly autoCreateChannel?: boolean },

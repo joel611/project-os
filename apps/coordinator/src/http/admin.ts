@@ -32,7 +32,6 @@ export const CreateSourceBody = Schema.Struct({
   type: ProjectSourceType,
   externalId: Schema.NonEmptyString,
   name: Schema.NonEmptyString,
-  /** What the source is for, unique in the project (e.g. `design-docs`). */
   alias: Schema.NonEmptyString,
   description: Schema.optionalKey(Schema.NullOr(Schema.String)),
   direction: Schema.optionalKey(Schema.Literals(["inbound", "outbound", "both"])),
@@ -73,7 +72,6 @@ export const listProjectMemory = (projectId: string) =>
     return yield* readMemory({ projectId });
   });
 
-/** Workers with online/offline derived from `lastSeenAt` (never stored). */
 export const listWorkers = (staleAfterMs: number) =>
   Effect.gen(function* () {
     const now = yield* Effect.flatMap(Clock, (c) => c.now);
@@ -97,8 +95,7 @@ export const listProjectTickets = (projectId: string) =>
     return all.filter((t) => t.projectId === projectId);
   });
 
-/** Status change; a `completed` ticket also gets its reply (the ticket-completed hook). */
-export const changeStatus = (ticketId: string, body: typeof UpdateStatusBody.Type) =>
+export const changeStatusAndNotify = (ticketId: string, body: typeof UpdateStatusBody.Type) =>
   updateStatusAndNotify({
     ticketId,
     status: body.status,

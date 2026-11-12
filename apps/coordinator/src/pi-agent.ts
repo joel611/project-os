@@ -15,9 +15,8 @@ import { DurableObject } from "cloudflare:workers";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { makeAdminActions } from "./admin/actions.ts";
 
-// Pi Durable on Workers. Pi's storage must live in a SQLite-backed Durable Object, so each
-// session (`project:<id>`, `admin:<channel>`, `sidekick:<ticket>`) gets one `PiAgent` that owns
-// its Harness. The Worker reaches it through `durableAgentRuntime`.
+// One `PiAgent` per session (`project:<id>`, `admin:<channel>`, `sidekick:<ticket>`) is the sole
+// owner of that session's Pi storage.
 
 interface Bindings {
   readonly DB: D1Database;
@@ -25,17 +24,26 @@ interface Bindings {
   readonly DISCORD_GATEWAY?: Fetcher;
 }
 
-/** Errors cross the RPC boundary as values, so the Worker rebuilds the typed error. */
+/** A failure can't cross the Durable Object RPC as a typed error, so it travels as data. */
 type Reply =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly message: string };
+
+const encodeReply = Effect.match({
+  onSuccess: (text: string): Reply => ({ ok: true, text }),
+  onFailure: (e: { readonly message: string }): Reply => ({ ok: false, message: e.message }),
+});
+
+const decodeReply =
+  <E>(failure: (message: string) => E) =>
+  (reply: Reply) =>
+    reply.ok ? Effect.succeed(reply.text) : Effect.fail(failure(reply.message));
 
 export class PiAgent extends DurableObject<Bindings> {
   readonly #runtime: ManagedRuntime.ManagedRuntime<AgentRuntime | Sidekick, never>;
 
   constructor(ctx: DurableObjectState, bindings: Bindings) {
     super(ctx, bindings);
-    // Admin tools act on the same D1 and KV as the Worker. The Pi layer is not part of this one.
     const core = ManagedRuntime.make(
       CloudflareLive({
         db: bindings.DB,
@@ -65,7 +73,6 @@ export class PiAgent extends DurableObject<Bindings> {
     this.#runtime = ManagedRuntime.make(Layer.orDie(agent));
   }
 
-  /** The chat model and its provider. A test subclass swaps in a faux one. */
   protected chat(): { readonly models: Models; readonly model: AgentRuntimeOptions["model"] } {
     return {
       models: newModels(),
@@ -78,35 +85,19 @@ export class PiAgent extends DurableObject<Bindings> {
     readonly prompt: string;
     readonly requestId?: string;
   }): Promise<Reply> {
-    return this.#runtime.runPromise(
-      AgentRuntime.use((r) => r.respond(input)).pipe(
-        Effect.match({
-          onSuccess: (text): Reply => ({ ok: true, text }),
-          onFailure: (e): Reply => ({ ok: false, message: e.message }),
-        }),
-      ),
-    );
+    return this.#runtime.runPromise(AgentRuntime.use((r) => r.respond(input)).pipe(encodeReply));
   }
 
   answer(input: {
     readonly ticketId: string;
     readonly prompt: string;
     readonly requestId?: string;
-    /** An RPC stub back to the Worker: the requester's token, fetched only when a tool needs it. */
     readonly token: (provider: ConnectionProvider) => Promise<SidekickToken>;
   }): Promise<Reply> {
-    return this.#runtime.runPromise(
-      Sidekick.use((s) => s.answer(input)).pipe(
-        Effect.match({
-          onSuccess: (text): Reply => ({ ok: true, text }),
-          onFailure: (e): Reply => ({ ok: false, message: e.message }),
-        }),
-      ),
-    );
+    return this.#runtime.runPromise(Sidekick.use((s) => s.answer(input)).pipe(encodeReply));
   }
 }
 
-/** `AgentRuntime` and `Sidekick` for the Worker, served by the session's `PiAgent`. */
 export const durableAgentRuntime = (
   agents: DurableObjectNamespace<PiAgent>,
 ): Layer.Layer<AgentRuntime | Sidekick> =>
@@ -116,13 +107,7 @@ export const durableAgentRuntime = (
         Effect.tryPromise({
           try: async (): Promise<Reply> => await agents.getByName(input.sessionId).respond(input),
           catch: (e) => new AgentRuntimeError({ message: String(e) }),
-        }).pipe(
-          Effect.flatMap((reply) =>
-            reply.ok
-              ? Effect.succeed(reply.text)
-              : Effect.fail(new AgentRuntimeError({ message: reply.message })),
-          ),
-        ),
+        }).pipe(Effect.flatMap(decodeReply((message) => new AgentRuntimeError({ message })))),
     }),
     Layer.succeed(Sidekick, {
       answer: (input) =>
@@ -130,12 +115,6 @@ export const durableAgentRuntime = (
           try: async (): Promise<Reply> =>
             await agents.getByName(`sidekick:${input.ticketId}`).answer(input),
           catch: (e) => new SidekickError({ message: String(e) }),
-        }).pipe(
-          Effect.flatMap((reply) =>
-            reply.ok
-              ? Effect.succeed(reply.text)
-              : Effect.fail(new SidekickError({ message: reply.message })),
-          ),
-        ),
+        }).pipe(Effect.flatMap(decodeReply((message) => new SidekickError({ message })))),
     }),
   );
