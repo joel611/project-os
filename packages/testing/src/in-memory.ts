@@ -202,6 +202,15 @@ export const ProjectSourceRepositoryInMemory = Layer.sync(ProjectSourceRepositor
         sources.set(sourceId, updated);
         return Effect.succeed(updated);
       }),
+    remove: (projectId, sourceId) =>
+      Effect.suspend(() => {
+        const target = sources.get(sourceId);
+        if (!target || target.projectId !== projectId) {
+          return Effect.fail(new SourceNotFound({ sourceId }));
+        }
+        sources.delete(sourceId);
+        return Effect.succeed(target);
+      }),
     findByExternal: (type, externalId) => Effect.sync(() => find(type, externalId)),
     listByProject: (projectId) =>
       Effect.sync(() => [...sources.values()].filter((s) => s.projectId === projectId)),

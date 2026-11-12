@@ -115,11 +115,15 @@ describe("makeApi", () => {
       alias: "web",
     });
     await api.updateSource("p1", "s1", { description: "the marketing site" });
+    expect(await api.removeSource("p1", "s1")).toEqual(source);
     expect(seen.map((s) => [s.url, s.init?.method])).toEqual([
       ["/api/projects/p1", "PATCH"],
       ["/api/projects/p1/sources", "POST"],
       ["/api/projects/p1/sources/s1", "PATCH"],
+      ["/api/projects/p1/sources/s1", "DELETE"],
     ]);
+    expect(seen[3]?.init?.body).toBeUndefined();
+    expect(seen[3]?.init?.headers).not.toHaveProperty("content-type");
     expect(JSON.parse(String(seen[2]?.init?.body))).toEqual({ description: "the marketing site" });
     expect(JSON.parse(String(seen[0]?.init?.body))).toEqual({ name: "Acme" });
   });

@@ -184,6 +184,14 @@ export const updateSource = (input: {
   });
 
 /**
+ * Unlinks a source from its project. A channel source stops routing messages to the project;
+ * if it was the reply channel, the project has none until another is set. Tickets keep their
+ * own thread, so nothing else points at the source.
+ */
+export const removeSource = (input: { readonly projectId: string; readonly sourceId: string }) =>
+  Effect.flatMap(ProjectSourceRepository, (repo) => repo.remove(input.projectId, input.sourceId));
+
+/**
  * Makes `externalId` the project's default reply channel. Links it first if it is new;
  * refuses a channel that already belongs to another project (1:1 channel → project).
  */

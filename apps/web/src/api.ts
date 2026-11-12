@@ -99,13 +99,14 @@ export const makeApi = (
   const send = async <S extends Schema.Decoder<unknown>>(
     path: string,
     schema: S,
-    init?: { readonly method: "POST" | "PATCH"; readonly json: unknown },
+    init?: { readonly method: "POST" | "PATCH" | "DELETE"; readonly json?: unknown },
   ) => {
     const token = auth.token();
     const res = await fetchFn(`${base}${path}`, {
-      ...(init && { method: init.method, body: JSON.stringify(init.json) }),
+      ...(init && { method: init.method }),
+      ...(init?.json !== undefined && { body: JSON.stringify(init.json) }),
       headers: {
-        ...(init && { "content-type": "application/json" }),
+        ...(init?.json !== undefined && { "content-type": "application/json" }),
         ...(token && { authorization: `Bearer ${token}` }),
       },
     });
@@ -137,6 +138,10 @@ export const makeApi = (
       send(`/projects/${id(projectId)}/sources/${id(sourceId)}`, ProjectSource, {
         method: "PATCH",
         json: patch,
+      }),
+    removeSource: (projectId: string, sourceId: string) =>
+      send(`/projects/${id(projectId)}/sources/${id(sourceId)}`, ProjectSource, {
+        method: "DELETE",
       }),
   };
 };

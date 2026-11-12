@@ -74,6 +74,17 @@ export const makeProjectSourceRepository = (db: SqliteDb): Impl => {
         );
         return row ?? (yield* new SourceNotFound({ sourceId }));
       }),
+    remove: (projectId, sourceId) =>
+      q(() =>
+        db
+          .delete(projectSources)
+          .where(and(eq(projectSources.id, sourceId), eq(projectSources.projectId, projectId)))
+          .returning(),
+      ).pipe(
+        Effect.flatMap(([row]) =>
+          row ? Effect.succeed(row) : Effect.fail(new SourceNotFound({ sourceId })),
+        ),
+      ),
     findByExternal,
     listByProject: (projectId) =>
       q(() => db.select().from(projectSources).where(eq(projectSources.projectId, projectId))),
