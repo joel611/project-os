@@ -1,8 +1,9 @@
 import {
   ClaimConflict,
+  InvalidTransition,
+  releaseTicket,
   TicketNotFound,
   transitionTicket,
-  type InvalidTransition,
   type Ticket,
   type TicketStatus,
   type TicketRepository,
@@ -92,6 +93,42 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
               .where(inArray(tickets.status, [...statuses])),
           ),
     assign,
+    release: (ticketId, workerId, at) =>
+      find(ticketId).pipe(
+        Effect.flatMap((current) => releaseTicket(current, workerId, at)),
+        Effect.flatMap((next) =>
+          // One conditional UPDATE: only a ticket still `assigned` to this worker is taken back.
+          q(() =>
+            db
+              .update(tickets)
+              .set({
+                status: "open",
+                workerType: null,
+                workerId: null,
+                assignedAt: null,
+                lastActivityAt: next.lastActivityAt,
+                updatedAt: next.updatedAt,
+              })
+              .where(
+                and(
+                  eq(tickets.id, ticketId),
+                  eq(tickets.status, "assigned"),
+                  eq(tickets.workerId, workerId),
+                ),
+              )
+              .returning(),
+          ),
+        ),
+        Effect.flatMap(([row]) =>
+          row
+            ? Effect.succeed(row)
+            : find(ticketId).pipe(
+                Effect.flatMap((t) =>
+                  Effect.fail(new InvalidTransition({ ticketId, from: t.status, to: "open" })),
+                ),
+              ),
+        ),
+      ),
     claim: (ticketId, workerId, at) =>
       // One conditional UPDATE: of N concurrent claims exactly one matches `status = 'assigned'`.
       q(() =>

@@ -3,6 +3,7 @@ import {
   Clock,
   type Executor,
   IntentClassifier,
+  LaunchFailed,
   type SandboxPoolEntry,
   WorkerLauncher,
 } from "@project-os/core";
@@ -54,10 +55,14 @@ export const makeTestLayer = (options?: {
   readonly failSidekick?: string;
   /** Have each Sidekick turn ask for this provider's token, as one of its tools would. */
   readonly sidekickProbe?: ConnectionProvider;
+  /** Make `WorkerLauncher.launch` fail with this message, until `setLaunchFailure` says otherwise. */
+  readonly failLaunch?: string;
   /** The launcher's sandbox pool. Default: empty (no sandbox provider configured). */
   readonly sandboxPool?: ReadonlyArray<SandboxPoolEntry>;
 }) => {
   const launched: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
+  const launchAttempts: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
+  let launchFailure = options?.failLaunch;
   const sidekick = makeSidekickRecording({
     ...(options?.failSidekick === undefined ? {} : { fail: options.failSidekick }),
     ...(options?.sidekickProbe === undefined ? {} : { probe: options.sidekickProbe }),
@@ -86,7 +91,15 @@ export const makeTestLayer = (options?: {
     AgentRuntimeEcho,
     Layer.succeed(WorkerLauncher, {
       pool: Effect.succeed(options?.sandboxPool ?? []),
-      launch: (input) => Effect.sync(() => void launched.push(input)),
+      launch: (input) =>
+        Effect.suspend(() => {
+          launchAttempts.push(input);
+          if (launchFailure !== undefined) {
+            return Effect.fail(new LaunchFailed({ message: launchFailure }));
+          }
+          launched.push(input);
+          return Effect.void;
+        }),
     }),
     sidekick.layer,
     IdGeneratorSequential,
@@ -102,6 +115,12 @@ export const makeTestLayer = (options?: {
     sent: gateway.sent,
     createdChannels: gateway.created,
     launched,
+    /** Every `WorkerLauncher.launch` call, including the ones that failed. */
+    launchAttempts,
+    /** Make later launches fail with this message, or succeed again (undefined). */
+    setLaunchFailure: (message: string | undefined) => {
+      launchFailure = message;
+    },
     /** Link a person's account, as if they had finished `/connect`. */
     link: connections.link,
     createdThreads: gateway.threads,

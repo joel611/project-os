@@ -37,6 +37,7 @@ const ticket: Ticket = {
   priority: null,
   workerType: "local",
   workerId: "w1",
+  requester: null,
   result: null,
   error: null,
   createdAt: T0,

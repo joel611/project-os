@@ -16,9 +16,9 @@ import {
   attachmentsPayload,
   storeAttachments,
 } from "./attachments.ts";
-import { assignToWorker, pickWorker, QUEUED_EVENT_KIND, QUEUED_MESSAGE } from "./assign-worker.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { writeMemory } from "./memory.ts";
+import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { nowIso, updateStatus } from "./tickets.ts";
 
@@ -43,13 +43,11 @@ export interface HandleInboundConfig {
    * window; only then does it get new tickets. Default 15 minutes.
    */
   readonly workerStaleMs?: number;
-  /** See `WorkerRouting.sharedWorkerMaxTickets`. Default 1. */
+  /** See `PlacementRouting.sharedWorkerMaxTickets`. Default 1. */
   readonly sharedWorkerMaxTickets?: number;
   /** Which files are copied into storage at intake, and how big. Default: Discord's CDN, 100 MB. */
   readonly attachments?: AttachmentStorageConfig;
 }
-
-export const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
 
 export type InboundOutcome =
   | { readonly kind: "duplicate" }
@@ -305,6 +303,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     switch (result.intent) {
       case "new_request": {
         const ticketId = yield* ids.next;
+        const requester = { channelType: message.channelType, id: message.sender.id };
         yield* tickets.insert({
           id: ticketId,
           projectId: project.id,
@@ -315,6 +314,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           priority: null,
           workerType: null,
           workerId: null,
+          requester,
           result: null,
           error: null,
           createdAt: at,
@@ -344,25 +344,9 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           createdAt: at,
         });
         if (result.executor === "sidekick") {
-          // Tool-only: assign and claim at once under the Sidekick's own id, answer in the
-          // ticket's thread, and finish. Everything else waits for a pull-model Worker.
-          yield* tickets.assign(
-            ticketId,
-            { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
-            at,
-          );
-          yield* tickets.appendEvent({
-            id: yield* ids.next,
-            ticketId,
-            type: "assigned",
-            actor: "coordinator",
-            actorId: null,
-            body: "Assigned to the Sidekick",
-            payload: { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
-            createdAt: at,
-          });
-          // Just assigned to this id in this turn, so a conflict is a bug, not a state to report.
-          yield* Effect.orDie(tickets.claim(ticketId, SIDEKICK_WORKER_ID, at));
+          // Tool-only: placed at once under the Sidekick's own id, answered in the ticket's
+          // thread, and finished. Everything else waits for a pull-model Worker.
+          yield* placeOrQueue({ ticketId, requester, executor: "sidekick", routing: config, at });
           const threadId = yield* openTicketThread(ticketId, at);
           const answered = yield* sidekickAnswer(ticketId, message.content);
           if (answered.ok) {
@@ -394,37 +378,10 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           }
           return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
         }
-        // The requester's own online device, else a free shared device, else a sandbox from
-        // the pool. With none free the ticket stays open, queued; the health sweep assigns it
-        // once one has room.
-        const pick = yield* pickWorker(
-          { channelType: message.channelType, id: message.sender.id },
-          ticketId,
-          {
-            workerStaleMs: config.workerStaleMs ?? DEFAULT_WORKER_STALE_MS,
-            ...(config.sharedWorkerMaxTickets !== undefined && {
-              sharedWorkerMaxTickets: config.sharedWorkerMaxTickets,
-            }),
-          },
-        );
-        if (!pick) {
-          yield* tickets.appendEvent({
-            id: yield* ids.next,
-            ticketId,
-            type: "system",
-            actor: "coordinator",
-            actorId: null,
-            body: "Queued: no worker is free",
-            payload: { kind: QUEUED_EVENT_KIND },
-            createdAt: at,
-          });
-          const threadId = yield* openTicketThread(ticketId, at);
-          yield* replyIn(threadId, QUEUED_MESSAGE);
-          return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
-        }
-        const assigned = yield* assignToWorker(ticketId, pick, at);
-        yield* openTicketThread(ticketId, at);
-        return { kind: "ticket_created", ticket: assigned } as InboundOutcome;
+        const placement = yield* placeOrQueue({ ticketId, requester, routing: config, at });
+        const threadId = yield* openTicketThread(ticketId, at);
+        if (placement.kind === "queued") yield* replyIn(threadId, QUEUED_MESSAGE);
+        return { kind: "ticket_created", ticket: placement.ticket } as InboundOutcome;
       }
       case "follow_up": {
         const target = active[0];

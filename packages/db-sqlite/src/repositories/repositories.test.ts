@@ -87,6 +87,7 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   priority: null,
   workerType: "local",
   workerId: "w1",
+  requester: null,
   result: null,
   error: null,
   createdAt: T0,
@@ -338,6 +339,64 @@ describe("TicketRepository", () => {
     });
     expect(out.open).toMatchObject({ _tag: "ClaimConflict", status: "open" });
     expect(out.miss._tag).toBe("TicketNotFound");
+  });
+
+  it("round-trips the requester", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ id: "t1", requester: { channelType: "discord", id: "u1" } }));
+        yield* repo.insert(ticket({ id: "t2" }));
+        return [(yield* repo.get("t1")).requester, (yield* repo.get("t2")).requester];
+      }),
+    );
+    expect(out).toEqual([{ channelType: "discord", id: "u1" }, null]);
+  });
+
+  it("releases an assigned ticket back to open for its worker, keeping createdAt", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket());
+        const released = yield* repo.release("t1", "w1", T1);
+        return { released, stored: yield* repo.get("t1") };
+      }),
+    );
+    for (const t of [out.released, out.stored]) {
+      expect(t).toMatchObject({
+        status: "open",
+        workerType: null,
+        workerId: null,
+        assignedAt: null,
+        createdAt: T0,
+        lastActivityAt: T1,
+      });
+    }
+  });
+
+  it("refuses to release a claimed ticket, another worker's, or an unknown one", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket());
+        yield* repo.insert(ticket({ id: "t2" }));
+        yield* repo.claim("t2", "w1", T1);
+        return {
+          wrong: yield* Effect.flip(repo.release("t1", "w2", T1)),
+          claimed: yield* Effect.flip(repo.release("t2", "w1", T1)),
+          miss: yield* Effect.flip(repo.release("nope", "w1", T1)),
+          stillAssigned: (yield* repo.get("t1")).status,
+          stillRunning: (yield* repo.get("t2")).status,
+        };
+      }),
+    );
+    expect(out.wrong).toMatchObject({ _tag: "InvalidTransition", from: "assigned", to: "open" });
+    expect(out.claimed).toMatchObject({ _tag: "InvalidTransition", from: "in_progress" });
+    expect(out.miss._tag).toBe("TicketNotFound");
+    expect([out.stillAssigned, out.stillRunning]).toEqual(["assigned", "in_progress"]);
   });
 
   it("double claim: exactly one of two concurrent claims wins", async () => {

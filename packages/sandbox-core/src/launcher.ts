@@ -1,6 +1,7 @@
 import { SANDBOX_PROVIDER_OF } from "@project-os/contracts";
 import {
   DEFAULT_SANDBOX_SESSION_SECONDS,
+  LaunchFailed,
   type SandboxPoolEntry,
   type WorkerLauncher,
 } from "@project-os/core";
@@ -76,7 +77,9 @@ export const sessionEnv = (
 /**
  * Starts a Pi session for sandbox tickets on the provider the ticket was assigned to, and
  * reports the pool to the Coordinator. `launch` returns as soon as the sandbox work is kicked
- * off; failures are logged, and the ticket stays `assigned` for the health sweep to flag.
+ * off. A launch that cannot even start (a worker type outside the pool, or the runner throwing
+ * on kickoff) fails `LaunchFailed`, so the Coordinator queues the ticket again. A session that
+ * fails after kickoff is only logged: the ticket stays `assigned` for the health sweep to flag.
  */
 export const makeSandboxLauncher = (
   config: SandboxLauncherConfig,
@@ -95,29 +98,32 @@ export const makeSandboxLauncher = (
   return {
     pool: Effect.succeed(pool),
     launch: ({ ticketId, workerType, workerId, mcpToken }) =>
-      Effect.sync(() => {
-        const provider = byType.get(workerType);
-        if (provider === undefined) return;
-        const name = SANDBOX_PROVIDER_OF[provider.workerType];
-        config.log(`${name}: launching ${workerId} for ticket ${ticketId}`);
-        provider.runner
-          .run({
-            env: sessionEnv(config, { workerId, mcpToken }),
-            command: SESSION_COMMAND,
-            timeoutSeconds,
-          })
-          .then(
-            ({ exitCode, output }) =>
-              config.log(
-                exitCode === 0
-                  ? `${name}: ${workerId} finished`
-                  : `${name}: ${workerId} exited ${exitCode}: ${output.slice(-500)}`,
-              ),
-            (e) =>
-              config.log(
-                `${name}: ${workerId} failed: ${e instanceof Error ? e.message : String(e)}`,
-              ),
-          );
+      Effect.try({
+        try: () => {
+          const provider = byType.get(workerType);
+          if (provider === undefined) throw new Error(`no ${workerType} provider in the pool`);
+          const name = SANDBOX_PROVIDER_OF[provider.workerType];
+          config.log(`${name}: launching ${workerId} for ticket ${ticketId}`);
+          provider.runner
+            .run({
+              env: sessionEnv(config, { workerId, mcpToken }),
+              command: SESSION_COMMAND,
+              timeoutSeconds,
+            })
+            .then(
+              ({ exitCode, output }) =>
+                config.log(
+                  exitCode === 0
+                    ? `${name}: ${workerId} finished`
+                    : `${name}: ${workerId} exited ${exitCode}: ${output.slice(-500)}`,
+                ),
+              (e) =>
+                config.log(
+                  `${name}: ${workerId} failed: ${e instanceof Error ? e.message : String(e)}`,
+                ),
+            );
+        },
+        catch: (e) => new LaunchFailed({ message: e instanceof Error ? e.message : String(e) }),
       }),
   };
 };

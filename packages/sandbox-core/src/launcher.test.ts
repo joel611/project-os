@@ -100,23 +100,27 @@ describe("sandbox launcher", () => {
     ]);
   });
 
-  it("ignores worker types outside the pool", async () => {
+  it("fails the launch for worker types outside the pool, without running anything", async () => {
     let ran = false;
     const { launcher } = setup(async () => {
       ran = true;
       return { exitCode: 0, output: "" };
     });
-    await Effect.runPromise(
-      launcher.launch({ ticketId: "t1", workerType: "local", workerId: "w", mcpToken: "m" }),
-    );
-    await Effect.runPromise(
-      launcher.launch({
-        ticketId: "t1",
-        workerType: "cloudflare_pi",
-        workerId: "cloudflare-t1",
-        mcpToken: "mcp-token-t1",
-      }),
-    );
+    const fails = (input: Parameters<typeof launcher.launch>[0]) =>
+      Effect.runPromise(Effect.flip(launcher.launch(input)));
+    const local = await fails({
+      ticketId: "t1",
+      workerType: "local",
+      workerId: "w",
+      mcpToken: "m",
+    });
+    const unpooled = await fails({
+      ticketId: "t1",
+      workerType: "cloudflare_pi",
+      workerId: "cloudflare-t1",
+      mcpToken: "mcp-token-t1",
+    });
+    expect([local._tag, unpooled._tag]).toEqual(["LaunchFailed", "LaunchFailed"]);
     expect(ran).toBe(false);
   });
 

@@ -26,6 +26,7 @@ const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): T
   priority: null,
   workerType: null,
   workerId: null,
+  requester: null,
   result: null,
   error: null,
   createdAt: lastActivityAt,
