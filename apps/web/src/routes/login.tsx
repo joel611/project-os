@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Network } from "lucide-react";
 import { useEffect, useState } from "react";
 import { describeError } from "@/api";
 import { authClient, googleRefused } from "@/auth";
@@ -67,10 +68,16 @@ const Login = () => {
   };
 
   return (
-    <main className="flex h-svh items-center justify-center bg-muted/30 p-6">
-      <Card className="w-full max-w-sm">
+    <main className="flex h-svh flex-col items-center justify-center gap-8 bg-background p-6">
+      <span className="flex items-center gap-2.5">
+        <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <Network className="size-4" />
+        </span>
+        <span className="text-base font-semibold tracking-tight">project-os</span>
+      </span>
+      <Card className="w-full max-w-sm shadow-card [--card-spacing:--spacing(7)]">
         <CardHeader>
-          <CardTitle>Sign in to project-os</CardTitle>
+          <CardTitle className="text-lg font-semibold">Sign in</CardTitle>
           <CardDescription>The dashboard is for operators of this Coordinator.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -115,7 +122,7 @@ const Login = () => {
               />
             </div>
             {shown && (
-              <p role="alert" className="text-sm text-red-700">
+              <p role="alert" className="text-sm text-destructive">
                 {shown}
               </p>
             )}

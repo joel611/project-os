@@ -4,18 +4,12 @@ import { cn } from "@/lib/utils";
 import { STATUS, type Tone } from "@/model";
 
 const TONE: Readonly<Record<Tone, { readonly badge: string; readonly dot: string }>> = {
-  neutral: { badge: "border-border text-muted-foreground", dot: "bg-muted-foreground/50" },
-  info: { badge: "border-sky-500/30 bg-sky-500/10 text-sky-700", dot: "bg-sky-500" },
-  progress: {
-    badge: "border-violet-500/30 bg-violet-500/10 text-violet-700",
-    dot: "bg-violet-500",
-  },
-  warn: { badge: "border-amber-500/30 bg-amber-500/10 text-amber-700", dot: "bg-amber-500" },
-  success: {
-    badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
-    dot: "bg-emerald-500",
-  },
-  danger: { badge: "border-red-500/30 bg-red-500/10 text-red-700", dot: "bg-red-500" },
+  neutral: { badge: "bg-tone-neutral-bg text-tone-neutral", dot: "bg-tone-neutral-dot" },
+  info: { badge: "bg-tone-info-bg text-tone-info", dot: "bg-tone-info-dot" },
+  progress: { badge: "bg-tone-progress-bg text-tone-progress", dot: "bg-tone-progress-dot" },
+  warn: { badge: "bg-tone-warn-bg text-tone-warn", dot: "bg-tone-warn-dot" },
+  success: { badge: "bg-tone-success-bg text-tone-success", dot: "bg-tone-success-dot" },
+  danger: { badge: "bg-tone-danger-bg text-tone-danger", dot: "bg-tone-danger-dot" },
 };
 
 export const ToneDot = ({ tone, pulse = false }: { tone: Tone; pulse?: boolean }) => (
@@ -32,7 +26,7 @@ export const ToneDot = ({ tone, pulse = false }: { tone: Tone; pulse?: boolean }
 export const StatusBadge = ({ status }: { status: TicketStatus }) => {
   const meta = STATUS[status];
   return (
-    <Badge variant="outline" className={cn("gap-1.5 font-medium", TONE[meta.tone].badge)}>
+    <Badge className={cn("h-6 gap-1.5 border-0 px-2.5 font-medium", TONE[meta.tone].badge)}>
       <ToneDot tone={meta.tone} pulse={status === "in_progress"} />
       {meta.label}
     </Badge>
