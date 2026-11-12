@@ -4,7 +4,7 @@ import {
   newModels,
 } from "@project-os/agent-runtime/classifier";
 import { makeAuth } from "@project-os/auth";
-import { env, envBool, envNumber, healthConfig } from "@project-os/config";
+import { env, envBool, healthConfig } from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { type Effect, Layer, ManagedRuntime } from "effect";
@@ -15,6 +15,7 @@ import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { coordinatorConfig } from "./config.ts";
 import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
@@ -98,42 +99,17 @@ const buildApp = (bindings: Bindings) => {
     autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
   });
 
-  const adminChannelId = process.env.ADMIN_CHANNEL_ID;
-  const adminUserIds = (process.env.ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-
   const app = createApp(
     { adapter: CloudflareAdapter },
     {
-      access: makeAccess({ serviceToken, auth }),
-      http: {
+      ...coordinatorConfig({
+        env: process.env,
         run: (effect) => runtime.runPromise(effect),
-        inbound: {
-          confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
-          requireMention: envBool("DISCORD_REQUIRE_MENTION", true),
-          workerStaleMs: healthConfig().workerStaleMs,
-          sharedWorkerMaxTickets: healthConfig().sharedWorkerMaxTickets,
-          ...(adminChannelId && { adminChannelId, adminUserIds }),
-        },
-        commands: {
-          ...(adminChannelId && { adminChannelId, adminUserIds }),
-          admin: adminActions,
-          connections: (effect) => runtime.runPromise(effect),
-          workers: {
-            run: (effect) => runtime.runPromise(effect),
-            publicUrl: publicUrl ?? "",
-            ...(process.env.WATCHER_INSTALL_COMMAND && {
-              installCommand: process.env.WATCHER_INSTALL_COMMAND,
-            }),
-            staleMs: healthConfig().workerStaleMs,
-          },
-        },
-      },
+        publicUrl: () => publicUrl ?? "",
+        admin: adminActions,
+      }),
+      access: makeAccess({ serviceToken, auth }),
       mcp: runtime,
-      assets: { run: (effect) => runtime.runPromise(effect) },
-      corsOrigins: webOrigins,
       auth,
       ...(connections && { connect: connections }),
     },

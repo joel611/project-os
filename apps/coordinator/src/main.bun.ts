@@ -16,6 +16,7 @@ import { createApp, parseOrigins } from "./app.ts";
 import { assetBaseUrl } from "./assets/base-url.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { coordinatorConfig } from "./config.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
@@ -107,42 +108,17 @@ const runtime = ManagedRuntime.make(
 
 await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));
 
-const adminChannelId = process.env.ADMIN_CHANNEL_ID;
-const adminUserIds = (process.env.ADMIN_USER_IDS ?? "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
-
 createApp(
   {},
   {
-    access: makeAccess({ serviceToken, auth }),
-    http: {
+    ...coordinatorConfig({
+      env: process.env,
       run: (effect) => runtime.runPromise(effect),
-      inbound: {
-        confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5),
-        requireMention: envBool("DISCORD_REQUIRE_MENTION", true),
-        workerStaleMs: healthConfig().workerStaleMs,
-        sharedWorkerMaxTickets: healthConfig().sharedWorkerMaxTickets,
-        ...(adminChannelId && { adminChannelId, adminUserIds }),
-      },
-      commands: {
-        ...(adminChannelId && { adminChannelId, adminUserIds }),
-        admin: adminActions,
-        connections: (effect) => runtime.runPromise(effect),
-        workers: {
-          run: (effect) => runtime.runPromise(effect),
-          publicUrl,
-          ...(process.env.WATCHER_INSTALL_COMMAND && {
-            installCommand: process.env.WATCHER_INSTALL_COMMAND,
-          }),
-          staleMs: healthConfig().workerStaleMs,
-        },
-      },
-    },
+      publicUrl: () => publicUrl,
+      admin: adminActions,
+    }),
+    access: makeAccess({ serviceToken, auth }),
     mcp: runtime,
-    assets: { run: (effect) => runtime.runPromise(effect) },
-    corsOrigins: webOrigins,
     auth,
     ...(connections && { connect: connections }),
   },

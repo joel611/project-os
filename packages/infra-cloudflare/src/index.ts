@@ -74,10 +74,7 @@ export interface CloudflareConfig {
   readonly agent?: Layer.Layer<AgentRuntime | Sidekick>;
 }
 
-/**
- * A Worker has no process to keep a timer in, so `every` does nothing. Recurring work belongs
- * to a Cron Trigger calling a `scheduled` handler (not wired yet).
- */
+/** A Worker has no process to keep a timer in, so `every` does nothing. Recurring work runs from a Cron Trigger. */
 const SchedulerNoop = Layer.succeed(Scheduler, {
   every: () => Effect.succeed(Effect.void),
 });
