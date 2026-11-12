@@ -267,12 +267,19 @@ export default Alchemy.Stack(
             // Cron Trigger: restarts the container after a crash, a stop or a deploy.
             crons: ["* * * * *"],
             env: {
-              Gateway: Cloudflare.Container("Gateway", {
-                className: "DiscordGateway",
-                context: stageGatewayContext(),
-                dockerfile: "apps/discord-gateway/Dockerfile",
-                instanceType: "lite",
-                maxInstances: 1,
+              // The image is a Durable Object-managed Container, attached to the class below.
+              // A standalone ("fleet") Container is created before the Worker exists, with no
+              // Durable Object, and Cloudflare rejects that on this account ("This account
+              // requires a Durable Object binding when creating a default application").
+              // `GatewayContainer` starts it (`instance` and env are set in `start()`).
+              Gateway: Cloudflare.DurableObject("GatewayContainer", {
+                containers: [
+                  Cloudflare.Container("GatewayImage", {
+                    schedulingPolicy: "durable_object",
+                    context: stageGatewayContext(),
+                    dockerfile: "apps/discord-gateway/Dockerfile",
+                  }),
+                ],
               }),
               DISCORD_BOT_TOKEN: botToken,
               COORDINATOR_URL: reachableFromContainer(publicUrl),
