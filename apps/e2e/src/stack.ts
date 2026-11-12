@@ -21,11 +21,12 @@ import { createReplyApp, type ReplyTarget } from "../../../packages/channel-disc
 import { registerDevice } from "../../watcher/src/register.ts";
 import { makeAccess } from "../../coordinator/src/access.ts";
 import { createApp } from "../../coordinator/src/app.ts";
+import { coordinatorConfig } from "../../coordinator/src/config.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
 import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 
-// Every component wired as in main.bun.ts, each on its own localhost port.
+// Every component wired as in main.bun.ts (config from the same `coordinatorConfig`), each on its own localhost port.
 // Real: SQLite, Coordinator HTTP + MCP, HTTP channel gateway, Discord adapter /reply.
 // Faked: discord.js (a recording `post`), both AI ports (classifier, agent runtime), and,
 // with `connections`, Google and GitHub (one fake OAuth server), so no test reaches a provider. `fetch` to any non-localhost host throws.
@@ -267,34 +268,21 @@ export const startStack = async (options: {
           isAllowed: (email) => auth!.isAllowed(email),
         },
       }),
-      http: {
+      ...coordinatorConfig({
+        env: { ADMIN_CHANNEL_ID: ADMIN_CHANNEL, ADMIN_USER_IDS: ADMIN_USER },
         run: (effect) => runtime.runPromise(effect as any),
+        // Known once the Coordinator listens; read only when a command runs.
+        publicUrl: () => url,
+        admin,
         inbound: {
-          requireMention: true,
           attachments: {
             hosts: ["localhost"],
             ...(options.maxAttachmentBytes && { maxBytes: options.maxAttachmentBytes }),
           },
           sharedWorkerMaxTickets: options.sharedWorkerMaxTickets ?? 100,
         },
-        prompts: { adminChannelId: ADMIN_CHANNEL, adminUserIds: [ADMIN_USER] },
-        commands: {
-          adminChannelId: ADMIN_CHANNEL,
-          adminUserIds: [ADMIN_USER],
-          admin,
-          connections: (effect) => runtime.runPromise(effect as any),
-          workers: {
-            run: (effect) => runtime.runPromise(effect as any),
-            // Known once the Coordinator listens; read only when a command runs.
-            get publicUrl(): string {
-              return url;
-            },
-            staleMs: 15 * 60_000,
-          },
-        },
-      },
+      }),
       mcp: runtime,
-      assets: { run: (effect) => runtime.runPromise(effect as any) },
       auth: {
         handler: (request: Request) => auth!.handler(request),
         ...(oauth && {
