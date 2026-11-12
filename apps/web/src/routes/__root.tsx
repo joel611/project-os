@@ -9,11 +9,14 @@ import {
 } from "@tanstack/react-router";
 import { Sidebar } from "@/components/sidebar";
 import { LOGIN_PATH, session } from "@/session";
+import { THEME_BOOT } from "@/theme";
 import appCss from "../index.css?url";
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
-  <html lang="en">
+  <html lang="en" suppressHydrationWarning>
     <head>
+      {/* Sets the theme class before first paint, so a dark reload never flashes light. */}
+      <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       <HeadContent />
     </head>
     <body>
@@ -31,8 +34,10 @@ const Layout = () => {
   return (
     <div className="flex h-svh">
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto p-8">
-        <Outlet />
+      <main className="min-w-0 flex-1 overflow-y-auto px-6 py-8 md:px-14 md:py-10">
+        <div className="mx-auto max-w-[1120px]">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

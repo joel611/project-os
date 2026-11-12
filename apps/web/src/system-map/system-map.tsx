@@ -142,7 +142,7 @@ export const SystemMap = () => {
   const scene = { map, player, workers: workerViews, waiting, coordinatorLine };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
         {error ? <QueryError error={error} /> : <span />}
         <Tabs value={style} onValueChange={(v) => setStyle(v as MapStyle)}>
@@ -152,7 +152,7 @@ export const SystemMap = () => {
           </TabsList>
         </Tabs>
       </div>
-      <div className={`map-stage map-${style} overflow-x-auto rounded-xl border`}>
+      <div className={`map-stage map-${style} overflow-x-auto rounded-2xl border shadow-card`}>
         {style === "schematic" ? <SchematicScene {...scene} /> : <IsoScene {...scene} />}
       </div>
       {slots.length === 0 && (
