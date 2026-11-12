@@ -12,9 +12,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ALIAS_HINT, checkSource, normalizeAlias, sourceUrl, type SourceInput } from "@/model";
+
+const PANEL = "rounded-xl border bg-card p-6 shadow-card md:p-7";
+
+/** A settings group: what it is on the left, its controls on the right; stacked when narrow. */
+const Section = ({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint: string;
+  children: React.ReactNode;
+}) => (
+  <section className="grid gap-6 border-t pt-10 first-of-type:border-t-0 first-of-type:pt-0 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)] lg:gap-12">
+    <div className="flex flex-col gap-2">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="text-sm leading-relaxed text-muted-foreground">{hint}</p>
+    </div>
+    <div className="min-w-0">{children}</div>
+  </section>
+);
 
 const Problems = ({ lines }: { lines: ReadonlyArray<string> }) =>
   lines.length > 0 && (
@@ -110,8 +130,10 @@ const SourceRow = ({
   const url = sourceUrl(source);
   const [editing, setEditing] = useState(false);
   return (
-    <li className="flex items-start gap-3 p-3">
-      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label={label} />
+    <li className="flex items-start gap-4 px-6 py-5">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+        <Icon className="size-4" aria-label={label} />
+      </span>
       {editing ? (
         <EditSource
           projectId={projectId}
@@ -123,16 +145,18 @@ const SourceRow = ({
         <>
           <div className="min-w-0 flex-1">
             <div className="truncate font-mono text-sm font-medium">{source.alias}</div>
-            <div className="truncate text-xs text-muted-foreground">
+            <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
               {label} · {source.name}
             </div>
             {source.description && (
-              <p className="mt-1 text-sm text-muted-foreground">{source.description}</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                {source.description}
+              </p>
             )}
           </div>
           {source.isDefaultResponse && (
-            <Badge variant="outline" className="gap-1 font-normal">
-              <Star className="size-3 fill-amber-400 text-amber-400" />
+            <Badge className="h-6 gap-1 border-0 bg-tone-warn-bg px-2.5 font-medium text-tone-warn">
+              <Star className="size-3 fill-tone-warn-dot text-tone-warn-dot" />
               replies here
             </Badge>
           )}
@@ -140,7 +164,7 @@ const SourceRow = ({
             type="button"
             aria-label={`Edit ${source.alias}`}
             onClick={() => setEditing(true)}
-            className="text-muted-foreground hover:text-foreground"
+            className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <Pencil className="size-4" />
           </button>
@@ -150,7 +174,7 @@ const SourceRow = ({
               target="_blank"
               rel="noreferrer"
               aria-label={`Open ${source.alias}`}
-              className="text-muted-foreground hover:text-foreground"
+              className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <ExternalLink className="size-4" />
             </a>
@@ -171,7 +195,7 @@ const SourceList = ({
   sources.length === 0 ? (
     <Empty title="No sources yet" hint="Link a repo or Drive folder above." />
   ) : (
-    <ul className="flex flex-col divide-y rounded-lg border">
+    <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
       {sources.map((s) => (
         <SourceRow key={s.id} projectId={projectId} source={s} sources={sources} />
       ))}
@@ -227,8 +251,8 @@ const AddSource = ({
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium">Add source</h2>
+    <form onSubmit={submit} className={`${PANEL} flex flex-col gap-4`}>
+      <h3 className="text-sm font-semibold">Add source</h3>
       <Input
         aria-label="GitHub repo or Google Drive folder link"
         placeholder="Paste a GitHub repo or Google Drive folder link"
@@ -281,7 +305,7 @@ const AddSource = ({
         />
       </div>
       <Problems lines={problem ? [problem] : []} />
-      <div>
+      <div className="flex justify-end">
         <Button type="submit" disabled={!text.trim() || !alias.trim() || add.isPending}>
           {add.isPending ? "Adding…" : "Add"}
         </Button>
@@ -318,7 +342,7 @@ const General = ({ project }: { project: ProjectDetail["project"] }) => {
         e.preventDefault();
         save.mutate();
       }}
-      className="flex max-w-2xl flex-col gap-4"
+      className={`${PANEL} flex flex-col gap-5`}
     >
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="project-name">Name</Label>
@@ -365,7 +389,7 @@ const General = ({ project }: { project: ProjectDetail["project"] }) => {
         </label>
       </fieldset>
       <Problems lines={save.error ? [describeError(save.error)] : []} />
-      <div>
+      <div className="flex justify-end">
         <Button type="submit" disabled={!dirty || !name.trim() || save.isPending}>
           {save.isPending ? "Saving…" : "Save"}
         </Button>
@@ -384,42 +408,41 @@ export const SettingsPage = ({ projectId }: { projectId: string }) => {
     return <Empty title="No such project" hint="It may have been removed. Pick one on the left." />;
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <header className="flex flex-col gap-1">
+    <div className="flex flex-col gap-10">
+      <header className="flex flex-col gap-3">
         <Link
           to="/projects/$projectId"
           params={{ projectId }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className="size-3.5" />
           {detail.data?.project.name ?? "Project"}
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight">Project settings</h1>
+        <h1 className="text-[28px] leading-tight font-semibold tracking-tight">Project settings</h1>
       </header>
       {detail.isPending ? (
         <Skeleton className="h-40" />
       ) : detail.isError ? (
         <QueryError error={detail.error} />
       ) : (
-        <Tabs defaultValue="sources">
-          <TabsList>
-            <TabsTrigger value="sources">
-              Sources{" "}
-              <span className="text-muted-foreground tabular-nums">
-                {detail.data.sources.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="general">General</TabsTrigger>
-          </TabsList>
-          <TabsContent value="sources" className="flex flex-col gap-6 pt-2">
-            <AddSource projectId={projectId} sources={detail.data.sources} />
-            <SourceList projectId={projectId} sources={detail.data.sources} />
-          </TabsContent>
-          <TabsContent value="general" className="pt-2">
+        <>
+          <Section
+            title="General"
+            hint="The name people see, instructions every worker gets with each ticket, and what the bot keeps from channel chat."
+          >
             {/* Remount when the saved row changes so fields reset to what was saved. */}
             <General key={detail.data.project.updatedAt} project={detail.data.project} />
-          </TabsContent>
-        </Tabs>
+          </Section>
+          <Section
+            title={`Sources · ${detail.data.sources.length}`}
+            hint="Repos and Drive folders this project reads from. Workers refer to them by alias."
+          >
+            <div className="flex flex-col gap-5">
+              <AddSource projectId={projectId} sources={detail.data.sources} />
+              <SourceList projectId={projectId} sources={detail.data.sources} />
+            </div>
+          </Section>
+        </>
       )}
     </div>
   );

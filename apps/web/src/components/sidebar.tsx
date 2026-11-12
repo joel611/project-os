@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { FolderKanban, LogOut, Network } from "lucide-react";
+import { FolderKanban, LogOut, Monitor, Moon, Network, Sun } from "lucide-react";
 import { api, type WorkerView } from "@/api";
 import { authClient } from "@/auth";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,15 @@ import { useNow } from "@/use-now";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToneDot } from "@/components/tone";
 import { QueryError } from "@/components/states";
+import { cn } from "@/lib/utils";
+import { type ThemePref, useTheme } from "@/theme";
+
+const NAV_ITEM =
+  "flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground";
+const NAV_ACTIVE = "bg-sidebar-accent font-medium text-foreground";
 
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-  <h2 className="px-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+  <h2 className="px-2.5 pb-1.5 text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
     {children}
   </h2>
 );
@@ -29,7 +35,7 @@ const Projects = () => {
   if (projects.isError) return <QueryError error={projects.error} />;
   if (projects.data.length === 0)
     return (
-      <p className="px-2 text-sm text-muted-foreground">
+      <p className="px-2.5 text-sm text-muted-foreground">
         No projects yet. Create one in the Discord admin channel or run{" "}
         <code className="text-xs">bun run seed</code>.
       </p>
@@ -42,10 +48,10 @@ const Projects = () => {
           key={p.id}
           to="/projects/$projectId"
           params={{ projectId: p.id }}
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-          activeProps={{ className: "bg-muted font-medium" }}
+          className={NAV_ITEM}
+          activeProps={{ className: NAV_ACTIVE }}
         >
-          <FolderKanban className="size-4 text-muted-foreground" />
+          <FolderKanban className="size-4 shrink-0" />
           <span className="truncate">{p.name}</span>
         </Link>
       ))}
@@ -60,12 +66,12 @@ const WORKER_GROUPS: ReadonlyArray<{ readonly group: WorkerGroup; readonly title
 ];
 
 const WorkerRow = ({ worker: w, now }: { readonly worker: WorkerView; readonly now: Date }) => (
-  <li className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm">
+  <li className="flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-sm">
     <span className="pt-1.5">
       <ToneDot tone={w.status === "online" ? "success" : "neutral"} />
     </span>
     <div className="min-w-0">
-      <div className="truncate font-medium" title={w.id}>
+      <div className="truncate text-[13px] font-medium" title={w.id}>
         {workerName(w)}
       </div>
       <div className="text-xs text-muted-foreground">
@@ -95,7 +101,7 @@ const Workers = () => {
   const groups = groupWorkers(workers.data);
   if (WORKER_GROUPS.every(({ group }) => groups[group].length === 0))
     return (
-      <p className="px-2 text-sm text-muted-foreground">
+      <p className="px-2.5 text-sm text-muted-foreground">
         No workers yet. Admins add shared ones with{" "}
         <code className="text-xs">/register-worker shared:True</code>; anyone can add their own
         computer with <code className="text-xs">/register-worker</code>.
@@ -103,11 +109,11 @@ const Workers = () => {
     );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {WORKER_GROUPS.filter(({ group }) => groups[group].length > 0).map(({ group, title }) => (
         <div key={group}>
-          <h3 className="px-2 text-xs text-muted-foreground">{title}</h3>
-          <ul className="flex flex-col gap-1">
+          <h3 className="px-2.5 pb-0.5 text-xs font-medium text-muted-foreground">{title}</h3>
+          <ul className="flex flex-col gap-0.5">
             {groups[group].map((w) => (
               <WorkerRow key={w.id} worker={w} now={now} />
             ))}
@@ -129,25 +135,70 @@ const SignOut = () => {
     await navigate({ to: "/login" });
   };
   return (
-    <Button variant="ghost" size="sm" className="mt-auto justify-start gap-2" onClick={signOut}>
+    <Button
+      variant="ghost"
+      size="sm"
+      className="justify-start gap-2 text-muted-foreground"
+      onClick={signOut}
+    >
       <LogOut />
       Sign out
     </Button>
   );
 };
 
+const THEMES: ReadonlyArray<{
+  readonly pref: ThemePref;
+  readonly label: string;
+  readonly Icon: typeof Sun;
+}> = [
+  { pref: "light", label: "Light", Icon: Sun },
+  { pref: "dark", label: "Dark", Icon: Moon },
+  { pref: "system", label: "System", Icon: Monitor },
+];
+
+const ThemeToggle = () => {
+  const [pref, choose] = useTheme();
+  return (
+    <div
+      role="group"
+      aria-label="Theme"
+      className="grid grid-cols-3 gap-0.5 rounded-lg bg-muted p-[3px]"
+    >
+      {THEMES.map(({ pref: p, label, Icon }) => (
+        <button
+          key={p}
+          type="button"
+          aria-pressed={pref === p}
+          onClick={() => choose(p)}
+          className={cn(
+            "inline-flex h-7 items-center justify-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+            pref === p && "bg-card text-foreground shadow-card ring-1 ring-border",
+          )}
+        >
+          <Icon className="size-3.5" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+};
+
 export const Sidebar = () => (
-  <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/30 p-3">
-    <Link to="/" className="px-2 pt-1 text-sm font-semibold tracking-tight">
-      project-os
+  <aside className="flex w-66 shrink-0 flex-col gap-7 overflow-y-auto border-r border-sidebar-border bg-sidebar px-4 py-5 text-sidebar-foreground">
+    <Link to="/" className="flex items-center gap-2.5 px-2 py-1">
+      <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+        <Network className="size-4" />
+      </span>
+      <span className="text-[15px] font-semibold tracking-tight">project-os</span>
     </Link>
     <Link
       to="/"
-      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-      activeProps={{ className: "bg-muted font-medium" }}
+      className={NAV_ITEM}
+      activeProps={{ className: NAV_ACTIVE }}
       activeOptions={{ exact: true }}
     >
-      <Network className="size-4 text-muted-foreground" />
+      <Network className="size-4 shrink-0" />
       System map
     </Link>
     <section>
@@ -158,6 +209,9 @@ export const Sidebar = () => (
       <SectionTitle>Workers</SectionTitle>
       <Workers />
     </section>
-    <SignOut />
+    <div className="mt-auto flex flex-col gap-2 border-t border-sidebar-border pt-4">
+      <ThemeToggle />
+      <SignOut />
+    </div>
   </aside>
 );
