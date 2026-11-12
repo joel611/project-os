@@ -124,6 +124,14 @@ export const sourceUrl = (s: { type: string; externalId: string }): string | nul
 /** Source types whose messages reach the project (see core `CHANNEL_SOURCE_TYPES`). */
 const INBOUND_SOURCE_TYPES: ReadonlySet<string> = new Set(["discord_channel", "email_address"]);
 
+/** What to type before a source is removed: "remove GitHub", "remove drive", else its alias. */
+export const confirmPhrase = (s: { readonly type: string; readonly alias: string }): string =>
+  s.type === "github_repo"
+    ? "remove GitHub"
+    : s.type === "google_drive_folder"
+      ? "remove drive"
+      : `remove ${s.alias}`;
+
 /** What removing a source changes, for the confirmation before it goes. */
 export const removalNote = (s: {
   readonly type: string;

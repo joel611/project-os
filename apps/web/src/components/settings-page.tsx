@@ -9,6 +9,14 @@ import { Empty, QueryError } from "@/components/states";
 import { SOURCE_META } from "@/components/source";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ALIAS_HINT,
   checkSource,
+  confirmPhrase,
   normalizeAlias,
   removalNote,
   sourceUrl,
@@ -127,43 +136,57 @@ const EditSource = ({
 const RemoveSource = ({
   projectId,
   source,
-  onCancel,
+  onClose,
 }: {
   projectId: string;
   source: ProjectSource;
-  onCancel: () => void;
+  onClose: () => void;
 }) => {
   const qc = useQueryClient();
+  const [typed, setTyped] = useState("");
+  const phrase = confirmPhrase(source);
   const remove = useMutation({
     mutationFn: () => api.removeSource(projectId, source.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] }),
   });
+  const confirmed = typed.trim() === phrase;
+  const submit = (e: SyntheticEvent) => {
+    e.preventDefault();
+    if (confirmed) remove.mutate();
+  };
   return (
-    <div
-      role="alertdialog"
-      aria-label={`Remove ${source.alias}?`}
-      className="flex flex-1 flex-col gap-2"
-    >
-      <p className="text-sm">
-        Remove <span className="font-mono font-medium">{source.alias}</span> from this project?{" "}
-        {removalNote(source)}
-      </p>
-      <Problems lines={remove.error ? [describeError(remove.error)] : []} />
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="destructive"
-          disabled={remove.isPending}
-          onClick={() => remove.mutate()}
-        >
-          {remove.isPending ? "Removing…" : "Remove"}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-    </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>
+              Remove <span className="font-mono">{source.alias}</span>?
+            </DialogTitle>
+            <DialogDescription>{removalNote(source)}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="confirm-remove">
+              Type <span className="font-mono font-semibold">{phrase}</span> to confirm
+            </Label>
+            <Input
+              id="confirm-remove"
+              autoComplete="off"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+            <Problems lines={remove.error ? [describeError(remove.error)] : []} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="destructive" disabled={!confirmed || remove.isPending}>
+              {remove.isPending ? "Removing…" : "Remove source"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -191,8 +214,6 @@ const SourceRow = ({
           sources={sources}
           onDone={() => setMode("view")}
         />
-      ) : mode === "remove" ? (
-        <RemoveSource projectId={projectId} source={source} onCancel={() => setMode("view")} />
       ) : (
         <>
           <div className="min-w-0 flex-1">
@@ -240,6 +261,9 @@ const SourceRow = ({
             </a>
           )}
         </>
+      )}
+      {mode === "remove" && (
+        <RemoveSource projectId={projectId} source={source} onClose={() => setMode("view")} />
       )}
     </li>
   );

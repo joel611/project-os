@@ -9,6 +9,7 @@ import {
   workerGroup,
   workerName,
   relativeTime,
+  confirmPhrase,
   removalNote,
   sourceUrl,
   splitTickets,
@@ -105,6 +106,16 @@ describe("checkSource", () => {
 
   it("rejects an alias another source in the project uses", () => {
     expect(check("acme/api", "WEB")).toEqual({ kind: "alias_taken", alias: "web" });
+  });
+});
+
+describe("confirmPhrase", () => {
+  it.each([
+    [{ type: "github_repo", alias: "web" }, "remove GitHub"],
+    [{ type: "google_drive_folder", alias: "docs" }, "remove drive"],
+    [{ type: "discord_channel", alias: "chat" }, "remove chat"],
+  ])("%j", (s, phrase) => {
+    expect(confirmPhrase(s)).toBe(phrase);
   });
 });
 
