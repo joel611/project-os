@@ -62,6 +62,10 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
   const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
   const withAuth = deps.auth ? withHttp.use(authRoutes(deps.auth)) : withHttp;
   const withConnect = deps.connect ? withAuth.use(connectRoutes(deps.connect)) : withAuth;
-  const withAssets = deps.assets ? withConnect.use(assetRoutes(deps.assets)) : withConnect;
+  // One storage config: the limits intake applies to a message's files also bound Worker uploads.
+  const attachments = deps.http?.inbound?.attachments;
+  const withAssets = deps.assets
+    ? withConnect.use(assetRoutes({ ...(attachments && { attachments }), ...deps.assets }))
+    : withConnect;
   return deps.mcp ? withAssets.use(mcpRoutes(deps.mcp)) : withAssets;
 };

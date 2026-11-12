@@ -196,7 +196,7 @@ describe("signed links", () => {
   });
 
   it("signs uploads separately: an upload link can't download and a download link can't upload", async () => {
-    const up = new URL((await Effect.runPromise(store.uploadLink("t1/a1/hero.png")))!);
+    const up = new URL((await Effect.runPromise(store.uploadLink("t1/a1/hero.png")))!.url);
     const exp = Number(up.searchParams.get("exp"));
     const sig = up.searchParams.get("sig")!;
     const run = <A>(effect: Effect.Effect<A>) => Effect.runPromise(effect);

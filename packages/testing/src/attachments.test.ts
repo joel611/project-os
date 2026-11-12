@@ -1,4 +1,5 @@
 import {
+  AssetStore,
   assetKey,
   ChannelGateway,
   completeAttachmentUpload,
@@ -6,6 +7,7 @@ import {
   requestAttachmentUpload,
   handleInbound,
   listTicketAttachments,
+  readAttachmentFile,
   ProjectSourceRepository,
   ProjectRepository,
   TicketRepository,
@@ -13,7 +15,7 @@ import {
 import type { InboundMessage } from "@project-os/contracts";
 import { Effect, ManagedRuntime } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { classifierReturning, makeTestLayer } from "./index.ts";
+import { classifierReturning, makeTestLayer, VALID_ASSET_SIG } from "./index.ts";
 
 const T0 = "2026-11-04T00:00:00.000Z";
 const file = (over: Partial<NonNullable<InboundMessage["attachments"]>[number]> = {}) => ({
@@ -155,15 +157,25 @@ const ticketId = ticketOf;
 
 describe("worker file uploads", () => {
   const body = (size = 3) => new Response(new Uint8Array(size)).body!;
-  const upload = (ticket: string, attachmentId: string, size = 3) =>
-    completeAttachmentUpload({
-      ticketId: ticket,
-      attachmentId,
-      filename: "r.txt",
-      contentType: "text/plain",
-      size,
-      body: body(size),
-    });
+  const upload = (
+    ticket: string,
+    attachmentId: string,
+    size = 3,
+    over: { sig?: string; config?: { maxBytes?: number } } = {},
+  ) =>
+    completeAttachmentUpload(
+      {
+        ticketId: ticket,
+        attachmentId,
+        filename: "r.txt",
+        contentType: "text/plain",
+        size,
+        body: body(size),
+        expires: 9_999_999_999,
+        sig: over.sig ?? VALID_ASSET_SIG,
+      },
+      over.config,
+    );
 
   it("mints a ticket-bound link, then stores, lists and posts the file once", async () => {
     const { test, run, send } = setup();
@@ -236,5 +248,94 @@ describe("worker file uploads", () => {
     await expect(run(requestAttachmentUpload({ ticketId: id, filename: "r.txt" }))).rejects.toThrow(
       "File storage is not configured.",
     );
+  });
+
+  it("reports the store's real link lifetime, not a fixed hour", async () => {
+    const { run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    const minted = await run(
+      requestAttachmentUpload({ ticketId: id, filename: "r.txt" }).pipe(
+        Effect.provideService(AssetStore, {
+          uploadLink: () => Effect.succeed({ url: "https://assets.test/u", expiresInSeconds: 120 }),
+        } as unknown as typeof AssetStore.Service),
+      ),
+    );
+    expect(minted.expiresInSeconds).toBe(120);
+  });
+
+  it("refuses a bad signature before storing anything", async () => {
+    const { test, run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    const stored = test.storedAssets.size;
+    const error = await run(upload(id, "a1", 3, { sig: "forged" }).pipe(Effect.flip));
+    expect(error).toMatchObject({ _tag: "AssetLinkInvalid" });
+    expect(test.storedAssets.size).toBe(stored);
+  });
+
+  it("refuses a file over the configured size limit, for uploads as for intake", async () => {
+    const { test, run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    const stored = test.storedAssets.size;
+    const error = await run(upload(id, "a1", 11, { config: { maxBytes: 10 } }).pipe(Effect.flip));
+    expect(error).toMatchObject({ _tag: "AttachmentTooLarge", size: 11, maxBytes: 10 });
+    expect(test.storedAssets.size).toBe(stored);
+    await run(upload(id, "a1", 10, { config: { maxBytes: 10 } }));
+    expect(test.storedAssets.has(`${id}/a1/r.txt`)).toBe(true);
+  });
+
+  it("fails with TicketNotFound for a ticket that does not exist", async () => {
+    const { test, run } = setup();
+    const error = await run(upload("nope", "a1").pipe(Effect.flip));
+    expect(error).toMatchObject({ _tag: "TicketNotFound" });
+    expect(test.storedAssets.size).toBe(0);
+  });
+});
+
+describe("downloading a stored file", () => {
+  const sign = { expires: 9_999_999_999, sig: VALID_ASSET_SIG };
+  const text = async (stream: ReadableStream<Uint8Array>) => new Response(stream).text();
+
+  it("serves what a Worker uploaded under the key the module derived from the link parts", async () => {
+    const { run, send } = setup();
+    const id = ticketId(await send(message([file()])));
+    await run(
+      completeAttachmentUpload({
+        ticketId: id,
+        attachmentId: "a2",
+        filename: "My Report?.txt",
+        contentType: "text/plain",
+        size: 5,
+        body: new Response("hello").body!,
+        ...sign,
+      }),
+    );
+    // The link carries the safe name; the key it is checked and read under is the same.
+    const object = await run(
+      readAttachmentFile({ ticketId: id, attachmentId: "a2", filename: "My_Report_.txt" }, sign),
+    );
+    expect(object).toMatchObject({ contentType: "text/plain", size: 5 });
+    expect(await text(object.body)).toBe("hello");
+  });
+
+  it("refuses a bad or missing signature without reading storage", async () => {
+    const { run } = setup();
+    const address = { ticketId: "t", attachmentId: "a", filename: "f.txt" };
+    for (const link of [
+      { expires: 9_999_999_999, sig: "forged" },
+      { expires: Number.NaN, sig: VALID_ASSET_SIG },
+    ]) {
+      const error = await run(readAttachmentFile(address, link).pipe(Effect.flip));
+      expect(error).toMatchObject({ _tag: "AssetLinkInvalid" });
+    }
+  });
+
+  it("fails with AssetNotFound when nothing is stored under a valid link", async () => {
+    const { run } = setup();
+    const error = await run(
+      readAttachmentFile({ ticketId: "t", attachmentId: "a", filename: "f.txt" }, sign).pipe(
+        Effect.flip,
+      ),
+    );
+    expect(error).toMatchObject({ _tag: "AssetNotFound" });
   });
 });

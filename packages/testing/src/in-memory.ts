@@ -395,12 +395,17 @@ export const makeChannelGatewayRecording = (options?: {
   };
 };
 
+/** The signature `makeAssetStoreRecording` accepts on download and upload links. */
+export const VALID_ASSET_SIG = "valid";
+
 /**
  * `AssetStore` that records what `ingest` was asked to copy (key to source URL) and links
- * whatever it holds as `https://assets.test/<key>`. `fail` makes every `ingest` fail with it.
+ * whatever it holds as `https://assets.test/<key>`. Bytes written by `put` can be read back with
+ * `get`. A link is valid only with `sig=VALID_ASSET_SIG`. `fail` makes every write fail with it.
  */
 export const makeAssetStoreRecording = (options?: { readonly fail?: string }) => {
   const stored = new Map<string, string>();
+  const files = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
   return {
     stored,
     layer: Layer.succeed(AssetStore, {
@@ -408,17 +413,34 @@ export const makeAssetStoreRecording = (options?: { readonly fail?: string }) =>
         options?.fail === undefined
           ? Effect.sync(() => void stored.set(key, url))
           : Effect.fail(new AssetStoreFailed({ message: options.fail })),
-      get: () => Effect.undefined,
+      get: (key) => {
+        const file = files.get(key);
+        return Effect.succeed(
+          file && {
+            body: new Response(file.bytes).body!,
+            contentType: file.contentType,
+            size: file.bytes.byteLength,
+          },
+        );
+      },
       link: (key) => Effect.succeed(stored.has(key) ? `https://assets.test/${key}` : undefined),
-      verify: () => Effect.succeed(false),
+      verify: (_key, _expires, sig) => Effect.succeed(sig === VALID_ASSET_SIG),
       uploadLink: (key) =>
         Effect.succeed(
-          options?.fail === undefined ? `https://assets.test/upload/${key}` : undefined,
+          options?.fail === undefined
+            ? { url: `https://assets.test/upload/${key}`, expiresInSeconds: 3600 }
+            : undefined,
         ),
-      verifyUpload: () => Effect.succeed(false),
-      put: ({ key }) =>
+      verifyUpload: (_key, _expires, sig) => Effect.succeed(sig === VALID_ASSET_SIG),
+      put: ({ key, body, contentType }) =>
         options?.fail === undefined
-          ? Effect.sync(() => void stored.set(key, "upload"))
+          ? Effect.promise(async () => {
+              files.set(key, {
+                bytes: await new Response(body).arrayBuffer(),
+                contentType,
+              });
+              stored.set(key, "upload");
+            })
           : Effect.fail(new AssetStoreFailed({ message: options.fail })),
     }),
   };
