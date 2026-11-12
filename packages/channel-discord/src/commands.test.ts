@@ -39,6 +39,7 @@ describe("COMMAND_DEFINITIONS", () => {
       "register-worker",
       "workers",
       "unregister-worker",
+      "source-add",
     ]);
     expect(COMMAND_DEFINITIONS[0].options[0]).toMatchObject({ name: "name", required: true });
   });
