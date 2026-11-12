@@ -171,7 +171,10 @@ const githubUserInfo =
 const lower = (email: string) => email.trim().toLowerCase();
 
 /** The domain part of an email, lowercased. */
-const domainOf = (email: string) => lower(email).split("@").pop() ?? "";
+const domainOf = (email: string) => {
+  const e = lower(email);
+  return e.slice(e.lastIndexOf("@") + 1);
+};
 
 /**
  * Google's userinfo, refused unless Google has verified the email and, with `domains`, the
