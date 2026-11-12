@@ -111,7 +111,7 @@ describe("checkSource", () => {
 
 describe("confirmPhrase", () => {
   it.each([
-    [{ type: "github_repo", alias: "web" }, "remove GitHub"],
+    [{ type: "github_repo", alias: "web" }, "remove github"],
     [{ type: "google_drive_folder", alias: "docs" }, "remove drive"],
     [{ type: "discord_channel", alias: "chat" }, "remove chat"],
   ])("%j", (s, phrase) => {
