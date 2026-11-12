@@ -1,7 +1,7 @@
 import {
-  AssetStore,
+  type AttachmentStorageConfig,
   completeAttachmentUpload,
-  DEFAULT_MAX_ATTACHMENT_BYTES,
+  readAttachmentFile,
 } from "@project-os/core";
 import { Effect } from "effect";
 import { Elysia } from "elysia";
@@ -9,41 +9,34 @@ import type { McpServices } from "../mcp/tools.ts";
 
 export interface AssetDeps {
   readonly run: <A>(effect: Effect.Effect<A, never, McpServices>) => Promise<A>;
+  /** Storage limits; `maxBytes` is the largest upload accepted. */
+  readonly attachments?: AttachmentStorageConfig;
 }
 
 const INLINE_TYPES = /^image\/(png|jpeg|gif|webp|avif)$/;
 
+const refuse = (status: number, error: string) => Effect.succeed({ status, error });
+
 /**
- * Downloads for files people attached to a request. The signature in the link is the only
- * credential, so a Worker can fetch with a plain GET; it covers one file and expires.
+ * Downloads for files people attached to a request, and uploads for files Workers send back. The
+ * signature in the link is the only credential, so a Worker can use a plain GET or PUT; it covers
+ * one file and expires. Each typed error from the Attachments module maps to its own status.
  */
-export const assetRoutes = ({ run }: AssetDeps) =>
+export const assetRoutes = ({ run, attachments }: AssetDeps) =>
   new Elysia({ name: "asset-routes" })
     .get("/assets/:ticketId/:attachmentId/:filename", async ({ params, query, set }) => {
-      const key = `${params.ticketId}/${params.attachmentId}/${params.filename}`;
-      const expires = Number(query.exp);
       const outcome = await run(
-        Effect.gen(function* () {
-          const store = yield* AssetStore;
-          if (!Number.isFinite(expires) || !(yield* store.verify(key, expires, query.sig ?? ""))) {
-            return "forbidden" as const;
-          }
-          return yield* store
-            .get(key)
-            .pipe(Effect.catchTag("AssetStoreFailed", () => Effect.succeed("failed" as const)));
-        }),
+        readAttachmentFile(params, { expires: Number(query.exp), sig: query.sig ?? "" }).pipe(
+          Effect.catchTags({
+            AssetLinkInvalid: () => refuse(403, "Forbidden"),
+            AssetNotFound: () => refuse(404, "Not found"),
+            AssetStoreFailed: () => refuse(502, "The file could not be read."),
+          }),
+        ),
       );
-      if (outcome === "forbidden") {
-        set.status = 403;
-        return { error: "Forbidden" };
-      }
-      if (outcome === "failed") {
-        set.status = 502;
-        return { error: "The file could not be read." };
-      }
-      if (outcome === undefined) {
-        set.status = 404;
-        return { error: "Not found" };
+      if ("status" in outcome) {
+        set.status = outcome.status;
+        return { error: outcome.error };
       }
       return new Response(outcome.body, {
         headers: {
@@ -58,51 +51,36 @@ export const assetRoutes = ({ run }: AssetDeps) =>
     .put(
       "/assets/:ticketId/:attachmentId/:filename",
       async ({ params, query, request, set }) => {
-        const key = `${params.ticketId}/${params.attachmentId}/${params.filename}`;
-        const expires = Number(query.exp);
         const size = Number(request.headers.get("content-length"));
-        if (!Number.isInteger(size) || size <= 0) {
+        if (!Number.isInteger(size) || size <= 0 || request.body === null) {
           set.status = 411;
           return { error: "Send the file with a content-length header (curl -T does)." };
         }
-        if (size > DEFAULT_MAX_ATTACHMENT_BYTES) {
-          set.status = 413;
-          return { error: `The file is bigger than ${DEFAULT_MAX_ATTACHMENT_BYTES} bytes.` };
-        }
         const outcome = await run(
-          Effect.gen(function* () {
-            const store = yield* AssetStore;
-            if (
-              !Number.isFinite(expires) ||
-              !(yield* store.verifyUpload(key, expires, query.sig ?? ""))
-            ) {
-              return "forbidden" as const;
-            }
-            if (request.body === null) return "empty" as const;
-            return yield* completeAttachmentUpload({
-              ticketId: params.ticketId,
-              attachmentId: params.attachmentId,
-              filename: params.filename,
+          completeAttachmentUpload(
+            {
+              ...params,
+              expires: Number(query.exp),
+              sig: query.sig ?? "",
               contentType: request.headers.get("content-type") ?? "application/octet-stream",
               size,
               body: request.body,
-            }).pipe(
-              Effect.map(() => "stored" as const),
-              Effect.orElseSucceed(() => "failed" as const),
-            );
-          }),
+            },
+            attachments,
+          ).pipe(
+            Effect.as(undefined),
+            Effect.catchTags({
+              AssetLinkInvalid: () => refuse(403, "Forbidden"),
+              AttachmentTooLarge: ({ maxBytes }) =>
+                refuse(413, `The file is bigger than ${maxBytes} bytes.`),
+              TicketNotFound: () => refuse(404, "Ticket not found."),
+              AssetStoreFailed: () => refuse(502, "The file could not be stored."),
+            }),
+          ),
         );
-        if (outcome === "forbidden") {
-          set.status = 403;
-          return { error: "Forbidden" };
-        }
-        if (outcome === "empty") {
-          set.status = 411;
-          return { error: "No file in the request body." };
-        }
-        if (outcome === "failed") {
-          set.status = 502;
-          return { error: "The file could not be stored." };
+        if (outcome !== undefined) {
+          set.status = outcome.status;
+          return { error: outcome.error };
         }
         return { ok: true };
       },

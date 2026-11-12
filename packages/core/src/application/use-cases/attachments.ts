@@ -4,8 +4,9 @@ import {
   type InboundMessage,
   type TicketAttachment,
 } from "@project-os/contracts";
-import { Effect, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 import {
+  type AssetObject,
   AssetStore,
   AssetStoreFailed,
   ChannelGateway,
@@ -34,13 +35,48 @@ export const DEFAULT_ATTACHMENT_HOSTS: ReadonlyArray<string> = [
 ];
 
 /** Largest file copied into storage; bigger ones stay on the Discord link only. */
-export const DEFAULT_MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+const DEFAULT_MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
 export interface AttachmentStorageConfig {
   /** Hosts a file may be downloaded from. Default: Discord's CDN. */
   readonly hosts?: ReadonlyArray<string>;
-  /** Default 100 MB. */
+  /**
+   * Largest file kept in storage, for files from a message and for a Worker's uploads alike.
+   * Default 100 MB.
+   */
   readonly maxBytes?: number;
+}
+
+const maxBytesOf = (config: AttachmentStorageConfig): number =>
+  config.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
+
+/** The signature on a download or upload link is missing, wrong or past its expiry. */
+export class AssetLinkInvalid extends Data.TaggedError("AssetLinkInvalid")<{
+  readonly key: string;
+}> {}
+
+/** Nothing is stored under the key of a validly signed download link. */
+export class AssetNotFound extends Data.TaggedError("AssetNotFound")<{
+  readonly key: string;
+}> {}
+
+/** An upload is bigger than the configured limit. */
+export class AttachmentTooLarge extends Data.TaggedError("AttachmentTooLarge")<{
+  readonly size: number;
+  readonly maxBytes: number;
+}> {}
+
+/** Where a stored file is addressed: the parts of its key, as they appear in its link. */
+export interface AttachmentAddress {
+  readonly ticketId: string;
+  readonly attachmentId: string;
+  readonly filename: string;
+}
+
+/** A signed link's `exp` and `sig` query values; `expires` is NaN when `exp` was absent or bad. */
+export interface LinkSignature {
+  readonly expires: number;
+  readonly sig: string;
 }
 
 const safeName = (filename: string): string => {
@@ -96,6 +132,12 @@ export const readAttachmentsPayload = (payload: unknown): AttachmentsPayload | u
   return refs.every((ref) => ref.stored) ? { attachments: refs } : undefined;
 };
 
+/** The payload must be an object: callers have read attachments off it already. */
+const channelTypeOf = (payload: object): ChannelType | undefined => {
+  const { channelType } = payload as Record<string, unknown>;
+  return Schema.is(ChannelType)(channelType) ? channelType : undefined;
+};
+
 const hostOf = (url: string): string | undefined => {
   try {
     return new URL(url).hostname;
@@ -117,7 +159,7 @@ export const storeAttachments = (
   Effect.gen(function* () {
     const store = yield* AssetStore;
     const hosts = config.hosts ?? DEFAULT_ATTACHMENT_HOSTS;
-    const maxBytes = config.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
+    const maxBytes = maxBytesOf(config);
     const stored = new Set<string>();
     yield* Effect.forEach(
       message.attachments ?? [],
@@ -159,9 +201,10 @@ export const listTicketAttachments = (ticketId: string) =>
     const out: Array<typeof TicketAttachment.Type> = [];
     for (const event of events) {
       const found = readAttachmentsPayload(event.payload);
-      const channelType = (event.payload as { channelType?: unknown } | null)?.channelType;
+      if (!found) continue;
+      const channelType = channelTypeOf(event.payload as object);
       // A message-sourced event needs a known channel; a Worker's upload has no source message.
-      if (!found || (found.message !== undefined && !Schema.is(ChannelType)(channelType))) continue;
+      if (found.message !== undefined && channelType === undefined) continue;
       const links = new Map<string, string>();
       for (const ref of found.attachments) {
         const link = ref.stored ? yield* store.link(assetKey(ticketId, ref)) : undefined;
@@ -170,7 +213,7 @@ export const listTicketAttachments = (ticketId: string) =>
       const resolved =
         found.attachments.every((ref) => links.has(ref.id)) ||
         found.message === undefined ||
-        !Schema.is(ChannelType)(channelType)
+        channelType === undefined
           ? undefined
           : yield* gateway
               .resolveAttachments({ channelType, ...found.message })
@@ -202,8 +245,9 @@ export const MAX_CHANNEL_FILE_BYTES = 20 * 1024 * 1024;
 
 /**
  * Starts a Worker's file upload: mints the attachment id and a signed PUT link bound to this
- * ticket, id and filename, so the Worker can write nothing else. The file is stored, and the
- * ticket and its thread told, when the PUT arrives (`completeAttachmentUpload`).
+ * ticket, id and filename, so the Worker can write nothing else. `expiresInSeconds` is the
+ * store's real link lifetime. The file is stored, and the ticket and its thread told, when the
+ * PUT arrives (`completeAttachmentUpload`).
  */
 export const requestAttachmentUpload = (input: {
   readonly ticketId: string;
@@ -216,45 +260,76 @@ export const requestAttachmentUpload = (input: {
     yield* tickets.get(input.ticketId);
     const attachmentId = yield* Effect.flatMap(IdGenerator, (g) => g.next);
     const key = assetKey(input.ticketId, { id: attachmentId, filename: input.filename });
-    const uploadUrl = yield* store.uploadLink(key);
-    if (uploadUrl === undefined) {
+    const link = yield* store.uploadLink(key);
+    if (link === undefined) {
       return yield* new AssetStoreFailed({ message: "File storage is not configured." });
     }
     return {
       attachmentId,
-      uploadUrl,
+      uploadUrl: link.url,
       contentType: input.contentType ?? "application/octet-stream",
-      expiresInSeconds: 3600,
+      expiresInSeconds: link.expiresInSeconds,
     };
   });
 
 /**
- * Stores a Worker's uploaded file, records it on the ticket as a worker comment (so listings and
- * the dashboard show it), and posts it to the ticket's thread. Uploading the same attachment
- * again replaces the bytes and records nothing new. A thread that can't be reached, or a file
- * too big for the channel, never fails the upload: the thread gets a note instead.
+ * Serves a stored file to the holder of its signed download link. Fails with `AssetLinkInvalid`
+ * when the signature is wrong or expired, `AssetNotFound` when nothing is stored under the key,
+ * and `AssetStoreFailed` when storage can't be read.
  */
-export const completeAttachmentUpload = (input: {
-  readonly ticketId: string;
-  readonly attachmentId: string;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly size: number;
-  readonly body: ReadableStream<Uint8Array>;
-}) =>
+export const readAttachmentFile = (address: AttachmentAddress, link: LinkSignature) =>
+  Effect.gen(function* () {
+    const store = yield* AssetStore;
+    const key = assetKey(address.ticketId, {
+      id: address.attachmentId,
+      filename: address.filename,
+    });
+    if (!Number.isFinite(link.expires) || !(yield* store.verify(key, link.expires, link.sig))) {
+      return yield* new AssetLinkInvalid({ key });
+    }
+    const object: AssetObject | undefined = yield* store.get(key);
+    if (object === undefined) return yield* new AssetNotFound({ key });
+    return object;
+  });
+
+/**
+ * Accepts a Worker's file PUT: checks the upload signature and the size limit, stores the file,
+ * records it on the ticket as a worker comment (so listings and the dashboard show it), and posts
+ * it to the ticket's thread. Fails with `AssetLinkInvalid`, `AttachmentTooLarge`, `TicketNotFound`
+ * or `AssetStoreFailed`. Uploading the same attachment again replaces the bytes and records
+ * nothing new. A thread that can't be reached, or a file too big for the channel, never fails
+ * the upload: the thread gets a note instead.
+ */
+export const completeAttachmentUpload = (
+  input: AttachmentAddress &
+    LinkSignature & {
+      readonly contentType: string;
+      readonly size: number;
+      readonly body: ReadableStream<Uint8Array>;
+    },
+  config: AttachmentStorageConfig = {},
+) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
     const store = yield* AssetStore;
     const gateway = yield* ChannelGateway;
-    yield* tickets.get(input.ticketId);
     const ref = { id: input.attachmentId, filename: input.filename };
     const key = assetKey(input.ticketId, ref);
+    if (
+      !Number.isFinite(input.expires) ||
+      !(yield* store.verifyUpload(key, input.expires, input.sig))
+    ) {
+      return yield* new AssetLinkInvalid({ key });
+    }
+    const maxBytes = maxBytesOf(config);
+    if (input.size > maxBytes) return yield* new AttachmentTooLarge({ size: input.size, maxBytes });
+    yield* tickets.get(input.ticketId);
     yield* store.put({
       key,
       body: input.body,
       contentType: input.contentType,
       size: input.size,
-      maxBytes: DEFAULT_MAX_ATTACHMENT_BYTES,
+      maxBytes,
     });
     const known = (yield* tickets.listEvents(input.ticketId)).some((event) =>
       readAttachmentsPayload(event.payload)?.attachments.some((a) => a.id === input.attachmentId),

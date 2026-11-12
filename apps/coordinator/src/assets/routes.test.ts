@@ -1,8 +1,14 @@
-import { AssetStore, AssetStoreFailed, ChannelGateway, TicketRepository } from "@project-os/core";
+import {
+  AssetStore,
+  AssetStoreFailed,
+  ChannelGateway,
+  TicketNotFound,
+  TicketRepository,
+} from "@project-os/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import type { McpServices } from "../mcp/tools.ts";
-import { type AssetDeps, assetRoutes } from "./routes.ts";
+import { assetRoutes } from "./routes.ts";
 
 const body = (text: string) =>
   new ReadableStream<Uint8Array>({
@@ -12,11 +18,15 @@ const body = (text: string) =>
     },
   });
 
-const appWith = (store: Partial<typeof AssetStore.Service>) =>
+const appWith = (
+  store: Partial<typeof AssetStore.Service>,
+  options: { ticketMissing?: boolean; maxBytes?: number } = {},
+) =>
   assetRoutes({
+    ...(options.maxBytes !== undefined && { attachments: { maxBytes: options.maxBytes } }),
     run: <A>(effect: Effect.Effect<A, never, McpServices>) =>
       Effect.runPromise(
-        (effect as Effect.Effect<A, never, AssetStore>).pipe(
+        (effect as Effect.Effect<A>).pipe(
           Effect.provideService(AssetStore, {
             ingest: () => Effect.void,
             get: () => Effect.undefined,
@@ -27,6 +37,16 @@ const appWith = (store: Partial<typeof AssetStore.Service>) =>
             put: () => Effect.void,
             ...store,
           }),
+          Effect.provideService(ChannelGateway, {} as typeof ChannelGateway.Service),
+          Effect.provideService(TicketRepository, {
+            get: (ticketId: string) =>
+              options.ticketMissing
+                ? Effect.fail(new TicketNotFound({ ticketId }))
+                : Effect.succeed({}),
+            // The upload is already recorded, so completing it only stores the bytes.
+            listEvents: () =>
+              Effect.succeed([{ payload: { attachments: [{ id: "a1", stored: true }] } }]),
+          } as unknown as typeof TicketRepository.Service),
         ),
       ),
   });
@@ -113,10 +133,15 @@ describe("asset upload route", () => {
     );
   };
 
-  it("answers 411 without a content-length, 413 over the limit", async () => {
+  it("answers 411 without a content-length", async () => {
     expect((await put(appWith({}), { length: null })).status).toBe(411);
     expect((await put(appWith({}), { length: "0" })).status).toBe(411);
-    expect((await put(appWith({}), { length: String(101 * 1024 * 1024) })).status).toBe(413);
+  });
+
+  it("answers 413 over the configured limit", async () => {
+    const res = await put(appWith({}, { maxBytes: 2 }));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "The file is bigger than 2 bytes." });
   });
 
   it("answers 403 for a bad upload signature", async () => {
@@ -139,31 +164,18 @@ describe("asset upload route", () => {
     expect((await put(appWith({}), { body: null })).status).toBe(411);
   });
 
+  it("answers 404 when the ticket does not exist", async () => {
+    expect((await put(appWith({}, { ticketMissing: true }))).status).toBe(404);
+  });
+
   it("answers 502 when the store refuses the bytes", async () => {
-    const app = assetRoutes({
-      run: <A>(effect: Effect.Effect<A, never, McpServices>) =>
-        Effect.runPromise(
-          (effect as Effect.Effect<A>).pipe(
-            Effect.provideService(AssetStore, {
-              verifyUpload: () => Effect.succeed(true),
-              put: () => Effect.fail(new AssetStoreFailed({ message: "r2 down" })),
-            } as unknown as typeof AssetStore.Service),
-            Effect.provideService(ChannelGateway, {} as typeof ChannelGateway.Service),
-            Effect.provideService(TicketRepository, {
-              get: () => Effect.succeed({}),
-            } as unknown as typeof TicketRepository.Service),
-          ),
-        ),
-    });
-    const res = await put(app as never);
+    const app = appWith({ put: () => Effect.fail(new AssetStoreFailed({ message: "r2 down" })) });
+    const res = await put(app);
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "The file could not be stored." });
   });
 
-  it("answers 502 when the file can't be stored and 200 when it is", async () => {
-    const answering = (outcome: string) =>
-      assetRoutes({ run: (async () => outcome) as unknown as AssetDeps["run"] });
-    expect((await put(answering("failed") as never)).status).toBe(502);
-    expect((await put(answering("stored") as never)).status).toBe(200);
+  it("answers 200 when the file is stored", async () => {
+    expect((await put(appWith({}))).status).toBe(200);
   });
 });
