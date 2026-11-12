@@ -25,8 +25,9 @@ const PROVIDER_OPTION = {
  * channel, so the Coordinator refuses admin commands outside the admin channel. Account commands
  * (/connect, /disconnect, /connections) and personal worker commands (/register-worker,
  * /workers, /unregister-worker) work in any server channel and answer privately. Their
- * `shared` option manages the shared pool instead, for admins in the admin channel only. The
- * bot only works in the server, so no command is offered in DMs.
+ * `shared` option manages the shared pool instead, for admins in the admin channel only.
+ * /source-add links a GitHub repo or Google Drive folder to the project whose channel it runs
+ * in. The bot only works in the server, so no command is offered in DMs.
  */
 const SHARED_OPTION = {
   name: "shared",
@@ -123,6 +124,35 @@ export const COMMAND_DEFINITIONS = [
         max_length: 100,
       },
       SHARED_OPTION,
+    ],
+  },
+  {
+    name: "source-add",
+    description: "Link a GitHub repo or Google Drive folder to this channel's project",
+    type: 1,
+    dm_permission: false,
+    options: [
+      {
+        name: "link",
+        description: "GitHub repo or Google Drive folder link (owner/repo also works)",
+        type: 3,
+        required: true,
+        max_length: 500,
+      },
+      {
+        name: "alias",
+        description: "Short name for it, like design-docs (default for a repo: its name)",
+        type: 3,
+        required: false,
+        max_length: 40,
+      },
+      {
+        name: "description",
+        description: "What it's for, so workers know when to use it",
+        type: 3,
+        required: false,
+        max_length: 300,
+      },
     ],
   },
 ] as const;

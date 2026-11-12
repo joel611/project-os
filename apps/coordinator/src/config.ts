@@ -50,6 +50,7 @@ export const coordinatorConfig = (
         ...(adminChannelId && { adminChannelId, adminUserIds }),
         admin,
         connections: run,
+        sources: run,
         workers: {
           run,
           get publicUrl() {
