@@ -74,7 +74,6 @@
       "name": "@project-os/discord-gateway",
       "version": "0.0.0",
       "dependencies": {
-        "@cloudflare/containers": "0.3.7",
         "@project-os/channel-discord": "workspace:*",
         "@project-os/config": "workspace:*",
       },
