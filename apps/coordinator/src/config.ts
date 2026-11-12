@@ -1,4 +1,4 @@
-import { envBool, envNumber, healthConfig } from "@project-os/config";
+import { channelDigestConfig, envBool, envNumber, healthConfig } from "@project-os/config";
 import type { Effect } from "effect";
 import { type AppDeps, parseOrigins } from "./app.ts";
 import type { HttpDeps, HttpEnv } from "./http/routes.ts";
@@ -13,7 +13,7 @@ export interface CoordinatorConfigInput {
   /** The Coordinator's public URL; read when a command needs it, so it may be known late. */
   readonly publicUrl: () => string;
   readonly admin: NonNullable<HttpDeps["commands"]>["admin"];
-  /** Settings that replace the ones env gives for `inbound`, for a test stack. */
+  /** Settings that replace the ones env gives for `inbound` (a test stack, or what the entry file found). */
   readonly inbound?: NonNullable<HttpDeps["inbound"]>;
 }
 
@@ -41,6 +41,7 @@ export const coordinatorConfig = (
       inbound: {
         confidenceThreshold: envNumber("INTENT_CONFIDENCE_THRESHOLD", 0.5, env),
         requireMention: envBool("DISCORD_REQUIRE_MENTION", true, env),
+        channelDigest: channelDigestConfig(env).enabled,
         workerStaleMs: health.workerStaleMs,
         sharedWorkerMaxTickets: health.sharedWorkerMaxTickets,
         ...(adminChannelId && { adminChannelId, adminUserIds }),

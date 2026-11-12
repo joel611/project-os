@@ -110,6 +110,7 @@ Turn on **Developer Mode** in Discord (User Settings → Advanced → Developer 
 Two behaviour switches, both on by default:
 
 - `DISCORD_REQUIRE_MENTION=true`: in project channels, the bot only answers top-level messages that @mention it. Messages inside ticket threads and the admin channel don't need a mention. Set `false` to answer every message.
+- `CHANNEL_DIGEST=true` (default): the Coordinator also keeps the messages it doesn't answer, in linked project channels and their ticket threads, and saves the decisions and facts in them to Project Memory once a conversation has been quiet for 30 minutes (`CHANNEL_DIGEST_QUIET_MIN`). Raw messages are deleted once digested, or after 7 days. It saves silently; `CHANNEL_DIGEST_NOTIFY=true` posts what it saved in the channel. Set `false` to keep nothing.
 - `DISCORD_PROJECT_CHANNEL_AUTO_CREATE=true`: creating a project also creates its channel.
 
 From [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet): the bot only works in server channels. It ignores DMs, and every slash command, `/connect` included, is unavailable in DMs. It also adds one optional setting:

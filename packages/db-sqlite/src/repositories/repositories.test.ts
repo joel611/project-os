@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
-import type { MemoryEntry } from "@project-os/contracts";
+import type { ChannelMessage, MemoryEntry } from "@project-os/contracts";
 import {
+  ChannelMessageRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
@@ -41,6 +42,7 @@ const run = <A, E>(
     | ProjectSourceRepository
     | MemoryRepository
     | WorkerRepository
+    | ChannelMessageRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(SqliteRepositories(db))));
@@ -587,6 +589,60 @@ describe("MemoryRepository", () => {
     expect(out.searchLimited).toEqual(["m3"]);
     expect(out.otherProject).toEqual([]);
     expect(out.first?.sourceMetadata).toEqual({ k: "v" });
+  });
+});
+
+const chat = (over: Partial<ChannelMessage> = {}): ChannelMessage => ({
+  id: "c1",
+  projectId: "p1",
+  channelType: "discord",
+  channelId: "chan",
+  threadId: null,
+  externalId: "x1",
+  senderId: "u1",
+  senderName: "Ada",
+  content: "hi",
+  sentAt: T0,
+  ...over,
+});
+
+describe("ChannelMessageRepository", () => {
+  it("stores each message once, lists oldest first, reports pending, and removes", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* ChannelMessageRepository;
+        const first = yield* repo.append(chat({ id: "c2", externalId: "x2", sentAt: T1 }));
+        const again = yield* repo.append(chat({ id: "c9", externalId: "x2", sentAt: T1 }));
+        yield* repo.append(chat({ id: "c1", externalId: "x1", sentAt: T0, threadId: "th" }));
+        yield* repo.append(chat({ id: "c3", externalId: "x3", sentAt: T2 }));
+        const pending = yield* repo.pending;
+        const listed = (yield* repo.list("p1", 2)).map((m) => [m.id, m.threadId]);
+        yield* repo.remove(["c1", "c2"]);
+        const afterRemove = (yield* repo.list("p1", 10)).map((m) => m.id);
+        yield* repo.append(chat({ id: "c4", externalId: "x4", sentAt: T0 }));
+        const dropped = yield* repo.removeSentBefore(T1);
+        return {
+          first,
+          again,
+          pending,
+          listed,
+          afterRemove,
+          dropped,
+          left: (yield* repo.list("p1", 10)).map((m) => m.id),
+        };
+      }),
+    );
+    expect(out.first).toBe(true);
+    expect(out.again).toBe(false);
+    expect(out.pending).toEqual([{ projectId: "p1", count: 3, oldestAt: T0, newestAt: T2 }]);
+    expect(out.listed).toEqual([
+      ["c1", "th"],
+      ["c2", null],
+    ]);
+    expect(out.afterRemove).toEqual(["c3"]);
+    expect(out.dropped).toBe(1);
+    expect(out.left).toEqual(["c3"]);
   });
 });
 

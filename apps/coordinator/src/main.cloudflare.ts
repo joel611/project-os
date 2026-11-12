@@ -4,7 +4,7 @@ import {
   newModels,
 } from "@project-os/agent-runtime/classifier";
 import { makeAuth } from "@project-os/auth";
-import { env, envBool, healthConfig } from "@project-os/config";
+import { channelDigestConfig, env, envBool, healthConfig } from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { type Effect, Layer, ManagedRuntime } from "effect";
@@ -16,6 +16,7 @@ import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
+import { channelDigesterFromEnv, digestAndLog } from "./digest/index.ts";
 import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
@@ -67,6 +68,9 @@ const buildApp = (bindings: Bindings) => {
   });
 
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
+  const digestConfig = channelDigestConfig();
+  const digester = digestConfig.enabled ? channelDigesterFromEnv(models, process.env) : undefined;
+  const digest = { ...digestConfig, enabled: digester !== undefined };
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
       CloudflareLive({
@@ -86,6 +90,7 @@ const buildApp = (bindings: Bindings) => {
           }),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
+      ...(digester ? [digester] : []),
       Layer.effectDiscard(ensureOrg(bindings.DB)),
       ...(connections ? [connections.layer] : []),
     ),
@@ -107,6 +112,7 @@ const buildApp = (bindings: Bindings) => {
         run: (effect) => runtime.runPromise(effect),
         publicUrl: () => publicUrl ?? "",
         admin: adminActions,
+        inbound: { channelDigest: digest.enabled },
       }),
       access: makeAccess({ serviceToken, auth }),
       mcp: runtime,
@@ -116,7 +122,10 @@ const buildApp = (bindings: Bindings) => {
   ).compile();
 
   const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
-  return { app, sweep };
+  // Same Cron tick as the sweep (ADR 0001); a project is digested only once its chat is quiet.
+  const digestRun = () =>
+    digest.enabled ? runtime.runPromise(digestAndLog(digest)) : Promise.resolve();
+  return { app, sweep, digest: digestRun };
 };
 
 const built = buildApp(workerEnv as unknown as Bindings);
@@ -130,5 +139,6 @@ export default {
     ctx: { waitUntil(p: Promise<unknown>): void },
   ) => {
     ctx.waitUntil(built.sweep().catch((e) => console.error("health sweep failed", e)));
+    ctx.waitUntil(built.digest().catch((e) => console.error("channel digest failed", e)));
   },
 };

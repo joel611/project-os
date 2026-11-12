@@ -66,6 +66,8 @@ export const MemoryEntryType = Schema.Literals([
   "worker_result",
   "worker_note",
   "note",
+  /** A decision people made in a project channel, saved by the Channel Digest. */
+  "decision",
 ]);
 export type MemoryEntryType = typeof MemoryEntryType.Type;
 

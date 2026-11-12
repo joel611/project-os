@@ -51,6 +51,8 @@ jobs:
           ADMIN_USER_IDS: ${{ vars.ADMIN_USER_IDS }}
           DISCORD_MEMBER_ROLE_IDS: ${{ vars.DISCORD_MEMBER_ROLE_IDS }}
           DISCORD_REQUIRE_MENTION: ${{ vars.DISCORD_REQUIRE_MENTION }}
+          CHANNEL_DIGEST: ${{ vars.CHANNEL_DIGEST }}
+          CHANNEL_DIGEST_NOTIFY: ${{ vars.CHANNEL_DIGEST_NOTIFY }}
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GITHUB_CLIENT_ID: ${{ vars.GH_CLIENT_ID }}

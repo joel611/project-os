@@ -1,6 +1,7 @@
 export * from "./activity.ts";
 export * from "./attachments.ts";
 export * from "./admin.ts";
+export * from "./channel-digest.ts";
 export * from "./channels.ts";
 export * from "./handle-inbound.ts";
 export * from "./health-sweep.ts";

@@ -206,6 +206,46 @@ export class AgentRuntime extends Context.Service<
   }
 >()("@project-os/core/AgentRuntime") {}
 
+/** The Channel Digest's model call failed (provider, auth, or an answer it couldn't read). */
+export class ChannelDigestError extends Data.TaggedError("ChannelDigestError")<{
+  readonly message: string;
+}> {}
+
+/** One thing worth remembering from a channel conversation. */
+export interface DigestPoint {
+  readonly type: "decision" | "note";
+  /** Short headline, a sentence at most. */
+  readonly title: string;
+  /** The point itself, standing on its own: who decided what, and why if it was said. */
+  readonly content: string;
+  /** `externalId`s of the messages it came from. */
+  readonly messageIds: ReadonlyArray<string>;
+}
+
+/**
+ * Reads a stretch of a project channel's conversation and picks out the decisions and lasting
+ * facts, skipping ones the project already remembers. Usually finds nothing.
+ */
+export class ChannelDigester extends Context.Service<
+  ChannelDigester,
+  {
+    readonly digest: (input: {
+      readonly projectName: string;
+      readonly projectContext: string;
+      /** Titles of the project's recent memory entries, so it doesn't save them twice. */
+      readonly known: ReadonlyArray<string>;
+      readonly messages: ReadonlyArray<{
+        readonly id: string;
+        readonly sender: string;
+        readonly content: string;
+        readonly sentAt: string;
+        /** Set when said in a ticket thread rather than the channel itself. */
+        readonly threadId?: string;
+      }>;
+    }) => Effect.Effect<ReadonlyArray<DigestPoint>, ChannelDigestError>;
+  }
+>()("@project-os/core/ChannelDigester") {}
+
 export class SidekickError extends Data.TaggedError("SidekickError")<{
   readonly message: string;
 }> {}

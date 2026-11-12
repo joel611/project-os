@@ -76,6 +76,25 @@ export const MemoryEntry = Schema.Struct({
 });
 export type MemoryEntry = typeof MemoryEntry.Type;
 
+/**
+ * Something a person said in a project channel or one of its ticket threads, kept until the
+ * Channel Digest has read it. Deleted once digested.
+ */
+export const ChannelMessage = Schema.Struct({
+  id: Id,
+  projectId: Id,
+  channelType: ChannelType,
+  channelId: Schema.String,
+  threadId: Schema.NullOr(Schema.String),
+  /** The channel's own message id; unique per channel type. */
+  externalId: Schema.String,
+  senderId: Schema.String,
+  senderName: Schema.NullOr(Schema.String),
+  content: Schema.String,
+  sentAt: Timestamp,
+});
+export type ChannelMessage = typeof ChannelMessage.Type;
+
 export const Project = Schema.Struct({
   id: Id,
   orgId: Id,

@@ -5,7 +5,7 @@ import {
   newModels,
   openLocalStorage,
 } from "@project-os/agent-runtime";
-import { env, envBool, envNumber, healthConfig } from "@project-os/config";
+import { channelDigestConfig, env, envBool, envNumber, healthConfig } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { makeAuth } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
@@ -17,6 +17,7 @@ import { assetBaseUrl } from "./assets/base-url.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
+import { channelDigesterFromEnv, startChannelDigest } from "./digest/index.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
@@ -51,6 +52,9 @@ const adminActions = makeAdminActions({
 });
 
 const otel = setupTelemetry(process.env);
+const digestConfig = channelDigestConfig();
+const digester = digestConfig.enabled ? channelDigesterFromEnv(models, process.env) : undefined;
+const digest = { ...digestConfig, enabled: digester !== undefined };
 
 const AiLive = Layer.orDie(
   Layer.mergeAll(
@@ -62,6 +66,7 @@ const AiLive = Layer.orDie(
       adminActions,
       telemetry: otel?.telemetry,
     }),
+    ...(digester ? [digester] : []),
   ),
 );
 
@@ -107,6 +112,11 @@ const runtime = ManagedRuntime.make(
 );
 
 await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));
+if (digest.enabled) {
+  await runtime.runPromise(
+    startChannelDigest({ ...digest, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
+  );
+}
 
 createApp(
   {},
@@ -116,6 +126,7 @@ createApp(
       run: (effect) => runtime.runPromise(effect),
       publicUrl: () => publicUrl,
       admin: adminActions,
+      inbound: { channelDigest: digest.enabled },
     }),
     access: makeAccess({ serviceToken, auth }),
     mcp: runtime,
