@@ -10,10 +10,12 @@ import {
 import { Effect, Layer } from "effect";
 import {
   AgentRuntimeEcho,
+  ChannelMessageRepositoryInMemory,
   IdGeneratorSequential,
   IntentClassifierFake,
   KeyValueStoreInMemory,
   makeAssetStoreRecording,
+  makeChannelDigesterRecording,
   makeChannelGatewayRecording,
   makeSidekickRecording,
   makeUserConnectionsInMemory,
@@ -51,6 +53,8 @@ export const makeTestLayer = (options?: {
   readonly failPrompt?: string;
   /** Make every `AssetStore.ingest` fail with this message. */
   readonly failAssetStore?: string;
+  /** Make every Channel Digest model call fail with this message. */
+  readonly failDigest?: string;
   /** Make every Sidekick turn fail with this message. */
   readonly failSidekick?: string;
   /** Have each Sidekick turn ask for this provider's token, as one of its tools would. */
@@ -73,6 +77,9 @@ export const makeTestLayer = (options?: {
     ...(options?.failReact === undefined ? {} : { failReact: options.failReact }),
     ...(options?.failPrompt === undefined ? {} : { failPrompt: options.failPrompt }),
   });
+  const digester = makeChannelDigesterRecording(
+    options?.failDigest === undefined ? {} : { fail: options.failDigest },
+  );
   const connections = makeUserConnectionsInMemory();
   const assets = makeAssetStoreRecording(
     options?.failAssetStore === undefined ? {} : { fail: options.failAssetStore },
@@ -83,6 +90,7 @@ export const makeTestLayer = (options?: {
     ProjectRepositoryInMemory,
     ProjectSourceRepositoryInMemory,
     MemoryRepositoryInMemory,
+    ChannelMessageRepositoryInMemory,
     WorkerRepositoryInMemory,
     KeyValueStoreInMemory,
     gateway.layer,
@@ -102,6 +110,7 @@ export const makeTestLayer = (options?: {
         }),
     }),
     sidekick.layer,
+    digester.layer,
     IdGeneratorSequential,
     connections.layer,
     assets.layer,
@@ -110,6 +119,8 @@ export const makeTestLayer = (options?: {
     layer,
     /** Files `AssetStore.ingest` copied: storage key to source URL. */
     storedAssets: assets.stored,
+    /** Calls the Channel Digest made to its model. */
+    digestCalls: digester.calls,
     /** Turns the Sidekick took. */
     sidekickCalls: sidekick.calls,
     sent: gateway.sent,

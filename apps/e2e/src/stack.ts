@@ -5,13 +5,23 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type Auth, type Connections, makeAuth } from "@project-os/auth";
 import {
+  type ChannelDigestConfig,
+  DEFAULT_CHANNEL_DIGEST,
+  type DigestRun,
+  digestChannels,
   type IntentClassifier,
   issueSandboxToken,
   UserConnections,
   type WorkerLauncher,
 } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
-import { AgentRuntimeEcho, makeSidekickRecording, type SidekickCall } from "@project-os/testing";
+import {
+  AgentRuntimeEcho,
+  type ChannelDigestCall,
+  makeChannelDigesterRecording,
+  makeSidekickRecording,
+  type SidekickCall,
+} from "@project-os/testing";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
@@ -103,6 +113,13 @@ export interface Stack {
   readonly linkChannel: (channelId: string) => Promise<string>;
   /** Turns the faked Sidekick took, with the requester's GitHub token as a tool would see it. */
   readonly sidekickCalls: SidekickCall[];
+  /** Calls the Channel Digest made to its (faked) model. */
+  readonly digestCalls: ChannelDigestCall[];
+  /**
+   * One Channel Digest run, as the Cron tick does it. Default settings, except nothing waits
+   * for a quiet channel unless `config` says so.
+   */
+  readonly runDigest: (config?: Partial<ChannelDigestConfig>) => Promise<ReadonlyArray<DigestRun>>;
   /** The SQLite file every component shares. */
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
@@ -162,6 +179,8 @@ export const startStack = async (options: {
   readonly sharedWorkerMaxTickets?: number;
   /** Largest file copied into storage. Default: the production limit. */
   readonly maxAttachmentBytes?: number;
+  /** Make every Channel Digest model call fail with this message. */
+  readonly failDigest?: string;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -232,6 +251,9 @@ export const startStack = async (options: {
   });
 
   const sidekick = makeSidekickRecording({ probe: "github" });
+  const digester = makeChannelDigesterRecording(
+    options.failDigest === undefined ? {} : { fail: options.failDigest },
+  );
 
   // Later layers win: the fakes replace LocalLive's AgentRuntime and Sidekick placeholders.
   const runtime = ManagedRuntime.make(
@@ -252,6 +274,7 @@ export const startStack = async (options: {
       options.classifier,
       AgentRuntimeEcho,
       sidekick.layer,
+      digester.layer,
       ...(oauth ? [connectionsLayer] : []),
     ) as Layer.Layer<any, never>,
   ) as McpRuntime;
@@ -282,6 +305,8 @@ export const startStack = async (options: {
             ...(options.maxAttachmentBytes && { maxBytes: options.maxAttachmentBytes }),
           },
           sharedWorkerMaxTickets: options.sharedWorkerMaxTickets ?? 100,
+          // As when the entry file found a digest model.
+          channelDigest: true,
         },
       }),
       mcp: runtime,
@@ -367,6 +392,15 @@ export const startStack = async (options: {
       return `http://localhost:${cdn.port}${path}`;
     },
     sidekickCalls: sidekick.calls,
+    digestCalls: digester.calls,
+    runDigest: (config) =>
+      runtime.runPromise(
+        digestChannels({ ...DEFAULT_CHANNEL_DIGEST, quietMs: 0, ...config }) as Effect.Effect<
+          ReadonlyArray<DigestRun>,
+          never,
+          any
+        >,
+      ),
     dbPath,
     ...(oauth && { oauth }),
     ...(web && { webUrl: web.url.origin }),

@@ -10,7 +10,15 @@ export const memoryEntries = sqliteTable(
       .references(() => projects.id),
     ticketId: text("ticket_id"),
     type: text("type", {
-      enum: ["email_summary", "manual", "status_update", "worker_result", "worker_note", "note"],
+      enum: [
+        "email_summary",
+        "manual",
+        "status_update",
+        "worker_result",
+        "worker_note",
+        "note",
+        "decision",
+      ],
     }).notNull(),
     title: text("title").notNull(),
     content: text("content").notNull(),

@@ -17,6 +17,7 @@ import {
   storeAttachments,
 } from "./attachments.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
+import { recordChannelMessage } from "./channel-digest.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
@@ -38,6 +39,12 @@ export interface HandleInboundConfig {
    * in a thread, and in the admin channel, are handled either way.
    */
   readonly requireMention?: boolean;
+  /**
+   * The Channel Digest runs here: keep every message in a linked Discord project channel and
+   * its threads, mentioned or not, for `digestChannels` to read later, in projects that have
+   * `channelDigest` on.
+   */
+  readonly channelDigest?: boolean;
   /**
    * A registered device (personal or shared) counts as online if it heartbeat within this
    * window; only then does it get new tickets. Default 15 minutes.
@@ -210,6 +217,17 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       return { kind: "admin_handled" } as InboundOutcome;
     }
 
+    const sourceType = sourceTypeFor(message.channelType);
+    const source = sourceType
+      ? yield* sources.findByExternal(sourceType, message.channelId)
+      : undefined;
+
+    // Before the mention gate: the digest reads what people say among themselves too.
+    if (source && config.channelDigest && message.channelType === "discord") {
+      const target = yield* projects.get(source.projectId);
+      if (target.channelDigest) yield* recordChannelMessage(message, target.id);
+    }
+
     if (
       config.requireMention &&
       message.channelType === "discord" &&
@@ -219,10 +237,6 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       return { kind: "not_mentioned" } as InboundOutcome;
     }
 
-    const sourceType = sourceTypeFor(message.channelType);
-    const source = sourceType
-      ? yield* sources.findByExternal(sourceType, message.channelId)
-      : undefined;
     if (!source) return { kind: "unlinked" } as InboundOutcome;
     yield* acknowledge();
 

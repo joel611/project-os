@@ -35,6 +35,8 @@ export const createProject = (input: {
       slug: input.slug ?? null,
       customInstructions: input.customInstructions ?? "",
       defaultResponseChannelId: null,
+      channelDigest: true,
+      channelDigestNotify: false,
       status: "active",
       createdBy: null,
       createdAt: at,
@@ -47,6 +49,8 @@ export const updateProject = (input: {
   readonly name?: string;
   readonly slug?: string | null;
   readonly customInstructions?: string;
+  readonly channelDigest?: boolean;
+  readonly channelDigestNotify?: boolean;
 }) =>
   Effect.gen(function* () {
     const repo = yield* ProjectRepository;
@@ -56,6 +60,8 @@ export const updateProject = (input: {
       name: input.name ?? current.name,
       slug: input.slug === undefined ? current.slug : input.slug,
       customInstructions: input.customInstructions ?? current.customInstructions,
+      channelDigest: input.channelDigest ?? current.channelDigest,
+      channelDigestNotify: input.channelDigestNotify ?? current.channelDigestNotify,
       updatedAt: yield* nowIso,
     });
   });

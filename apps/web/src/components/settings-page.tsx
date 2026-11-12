@@ -294,12 +294,23 @@ const General = ({ project }: { project: ProjectDetail["project"] }) => {
   const qc = useQueryClient();
   const [name, setName] = useState(project.name);
   const [instructions, setInstructions] = useState(project.customInstructions);
+  const [digest, setDigest] = useState(project.channelDigest);
+  const [notify, setNotify] = useState(project.channelDigestNotify);
   const save = useMutation({
     mutationFn: () =>
-      api.updateProject(project.id, { name: name.trim(), customInstructions: instructions }),
+      api.updateProject(project.id, {
+        name: name.trim(),
+        customInstructions: instructions,
+        channelDigest: digest,
+        channelDigestNotify: notify,
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["project", project.id] }),
   });
-  const dirty = name !== project.name || instructions !== project.customInstructions;
+  const dirty =
+    name !== project.name ||
+    instructions !== project.customInstructions ||
+    digest !== project.channelDigest ||
+    notify !== project.channelDigestNotify;
 
   return (
     <form
@@ -322,6 +333,37 @@ const General = ({ project }: { project: ProjectDetail["project"] }) => {
           onChange={(e) => setInstructions(e.target.value)}
         />
       </div>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1.5 text-sm font-medium">Channel digest</legend>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={digest}
+            onChange={(e) => setDigest(e.target.checked)}
+          />
+          <span>
+            Save decisions from channel chat to memory
+            <span className="block text-muted-foreground">
+              Reads what people say in this project's channel and ticket threads, even without
+              @mentioning the bot, and saves decisions and lasting facts once a conversation goes
+              quiet. Each entry keeps the messages it came from.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={notify}
+            disabled={!digest}
+            onChange={(e) => setNotify(e.target.checked)}
+          />
+          <span className={digest ? undefined : "text-muted-foreground"}>
+            Post in the channel what was saved
+          </span>
+        </label>
+      </fieldset>
       <Problems lines={save.error ? [describeError(save.error)] : []} />
       <div>
         <Button type="submit" disabled={!dirty || !name.trim() || save.isPending}>

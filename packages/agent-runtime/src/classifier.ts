@@ -3,3 +3,4 @@
 // `openLocalStorage` (Pi Durable on a SQLite file), which a Worker bundle can't load.
 export * from "./intent-classifier.ts";
 export * from "./models.ts";
+export * from "./channel-digester.ts";

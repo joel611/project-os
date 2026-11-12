@@ -1,6 +1,10 @@
 import {
   AgentRuntime,
   ChannelCreateFailed,
+  ChannelDigester,
+  ChannelDigestError,
+  ChannelMessageRepository,
+  type DigestPoint,
   ChannelGateway,
   claimTicket,
   releaseTicket,
@@ -39,6 +43,7 @@ import {
   type Worker,
 } from "@project-os/core";
 import {
+  type ChannelMessage,
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
   type CreateChannelInstruction,
@@ -241,6 +246,91 @@ export const MemoryRepositoryInMemory = Layer.sync(MemoryRepository, () => {
       }),
   };
 });
+
+export const ChannelMessageRepositoryInMemory = Layer.sync(ChannelMessageRepository, () => {
+  const rows: ChannelMessage[] = [];
+  const oldestFirst = (list: ChannelMessage[]) =>
+    [...list].sort((a, b) => a.sentAt.localeCompare(b.sentAt));
+  return {
+    append: (message) =>
+      Effect.sync(() => {
+        const taken = rows.some(
+          (r) => r.channelType === message.channelType && r.externalId === message.externalId,
+        );
+        if (!taken) rows.push(message);
+        return !taken;
+      }),
+    pending: Effect.sync(() => {
+      const byProject = new Map<string, ChannelMessage[]>();
+      for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
+      return [...byProject].map(([projectId, list]) => {
+        const sorted = oldestFirst(list);
+        return {
+          projectId,
+          count: sorted.length,
+          oldestAt: sorted[0]!.sentAt,
+          newestAt: sorted[sorted.length - 1]!.sentAt,
+        };
+      });
+    }),
+    list: (projectId, limit) =>
+      Effect.sync(() => oldestFirst(rows.filter((r) => r.projectId === projectId)).slice(0, limit)),
+    remove: (ids) =>
+      Effect.sync(() => {
+        const drop = new Set(ids);
+        for (let i = rows.length - 1; i >= 0; i--) if (drop.has(rows[i]!.id)) rows.splice(i, 1);
+      }),
+    removeSentBefore: (at) =>
+      Effect.sync(() => {
+        let removed = 0;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i]!.sentAt < at) {
+            rows.splice(i, 1);
+            removed++;
+          }
+        }
+        return removed;
+      }),
+  };
+});
+
+export type ChannelDigestCall = Parameters<typeof ChannelDigester.Service.digest>[0];
+
+/**
+ * Channel digester that needs no model: every message saying "decided" or "decision" becomes a
+ * decision, and one saying "remember" a note. Records each call; `fail` makes every call fail.
+ */
+export const makeChannelDigesterRecording = (options?: { readonly fail?: string }) => {
+  const calls: ChannelDigestCall[] = [];
+  const layer = Layer.succeed(ChannelDigester, {
+    digest: (input) =>
+      Effect.suspend(() => {
+        calls.push(input);
+        if (options?.fail !== undefined) {
+          return Effect.fail(new ChannelDigestError({ message: options.fail }));
+        }
+        const points: DigestPoint[] = input.messages.flatMap((m): DigestPoint[] => {
+          const type = /\bdecid|\bdecision/i.test(m.content)
+            ? "decision"
+            : /\bremember\b/i.test(m.content)
+              ? "note"
+              : undefined;
+          return type === undefined || input.known.includes(m.content)
+            ? []
+            : [
+                {
+                  type,
+                  title: m.content,
+                  content: `${m.sender}: ${m.content}`,
+                  messageIds: [m.id],
+                },
+              ];
+        });
+        return Effect.succeed(points);
+      }),
+  });
+  return { layer, calls };
+};
 
 export const WorkerRepositoryInMemory = Layer.sync(WorkerRepository, () => {
   const workers = new Map<string, Worker>();
