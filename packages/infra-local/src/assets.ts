@@ -88,14 +88,16 @@ export const makeAssetStore = (config: AssetStoreConfig): typeof AssetStore.Serv
   // workerd throws "Illegal invocation" when the global `fetch` is called detached.
   // The host allowlist is checked on the first URL only, so a redirect elsewhere is refused.
   const download = config.fetch ?? ((url: string) => fetch(url, { redirect: "manual" }));
-  const signedUrl = (key: string, purpose: Purpose) =>
+  const signedLink = (key: string, purpose: Purpose) =>
     Effect.promise(async () => {
       const links = config.links;
       if (!links) return undefined;
-      const expires = Math.floor(now() / 1000) + (links.ttlSeconds ?? 3600);
+      const expiresInSeconds = links.ttlSeconds ?? 3600;
+      const expires = Math.floor(now() / 1000) + expiresInSeconds;
       const sig = await sign(links.secret, key, expires, purpose);
       const path = key.split("/").map(encodeURIComponent).join("/");
-      return `${links.publicUrl.replace(/\/+$/, "")}/assets/${path}?exp=${expires}&sig=${sig}`;
+      const url = `${links.publicUrl.replace(/\/+$/, "")}/assets/${path}?exp=${expires}&sig=${sig}`;
+      return { url, expiresInSeconds };
     });
   const verifySig = (key: string, expires: number, sig: string, purpose: Purpose) =>
     Effect.promise(async () => {
@@ -122,9 +124,9 @@ export const makeAssetStore = (config: AssetStoreConfig): typeof AssetStore.Serv
         try: () => config.backend.get(key),
         catch: (err) => new AssetStoreFailed({ message: messageOf(err) }),
       }),
-    link: (key) => signedUrl(key, "asset"),
+    link: (key) => Effect.map(signedLink(key, "asset"), (link) => link?.url),
     verify: (key, expires, sig) => verifySig(key, expires, sig, "asset"),
-    uploadLink: (key) => signedUrl(key, "upload"),
+    uploadLink: (key) => signedLink(key, "upload"),
     verifyUpload: (key, expires, sig) => verifySig(key, expires, sig, "upload"),
     put: ({ key, body, contentType, size, maxBytes }) =>
       Effect.tryPromise({

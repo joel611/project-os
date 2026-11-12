@@ -93,8 +93,11 @@ export class AssetStore extends Context.Service<
     /**
      * A short-lived signed URL a Worker PUTs a file to, to store it under `key`; undefined when
      * links aren't configured. Not interchangeable with `link`: a download link can't upload.
+     * `expiresInSeconds` is how long the link works.
      */
-    readonly uploadLink: (key: string) => Effect.Effect<string | undefined>;
+    readonly uploadLink: (
+      key: string,
+    ) => Effect.Effect<{ readonly url: string; readonly expiresInSeconds: number } | undefined>;
     /** Whether `sig` is a valid, unexpired upload signature for `key`. */
     readonly verifyUpload: (key: string, expires: number, sig: string) => Effect.Effect<boolean>;
     /**
