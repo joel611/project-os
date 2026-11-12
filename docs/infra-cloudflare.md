@@ -98,6 +98,6 @@ No public URL; reachable only through a binding from another Worker in the same 
 
 ## Conditional resources
 
-- `DiscordGateway` + `Gateway` container: only if `DISCORD_BOT_TOKEN` and `PUBLIC_URL` are set and `DISCORD_SPLIT_GATEWAY_URL` is not. Joins on the second deploy.
+- `DiscordGateway` + `GatewayImage` container: only if `DISCORD_BOT_TOKEN` and `PUBLIC_URL` are set and `DISCORD_SPLIT_GATEWAY_URL` is not. Joins on the second deploy.
 - Sandbox bridge, Daytona, Boat: only if the matching `*_URL` / key vars are set.
 - Coordinator health-sweep cron: not yet (`scheduled` handler missing).
