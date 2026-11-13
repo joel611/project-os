@@ -28,8 +28,8 @@ const when = (iso: string | null, now: Date) => (iso ? relativeTime(iso, now) : 
 const Body = ({ ticket, events }: TicketDetail) => {
   const now = useNow();
   return (
-    <div className="flex flex-col gap-6 overflow-y-auto px-7 pt-6 pb-8">
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-5">
+    <div className="flex flex-col gap-6 overflow-y-auto px-5 pt-6 pb-8 sm:px-7">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:gap-x-6">
         <Field label="Intent">{ticket.intent}</Field>
         <Field label="Worker">{ticket.workerId}</Field>
         <Field label="Created">{when(ticket.createdAt, now)}</Field>
@@ -101,7 +101,7 @@ export const TicketSheet = ({
     // No trigger opens the sheet (the URL does), so any requested change is a close.
     <Sheet open={ticketId !== null} onOpenChange={onClose}>
       <SheetContent className="w-full gap-0 shadow-float sm:inset-y-3! sm:right-3! sm:h-auto! sm:max-w-xl sm:rounded-2xl sm:border">
-        <SheetHeader className="gap-3 border-b px-7 pt-7 pb-5">
+        <SheetHeader className="gap-3 border-b px-5 pt-6 pb-5 sm:px-7 sm:pt-7">
           {detail.data ? (
             <>
               <StatusBadge status={detail.data.ticket.status} />
@@ -115,7 +115,7 @@ export const TicketSheet = ({
           <SheetDescription className="font-mono text-xs">{ticketId}</SheetDescription>
         </SheetHeader>
         {detail.isPending ? (
-          <Skeleton className="mx-7 mt-6 h-60" />
+          <Skeleton className="mx-5 mt-6 h-60 sm:mx-7" />
         ) : detail.isError ? (
           <QueryError error={detail.error} />
         ) : (

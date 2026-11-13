@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { FolderKanban, LogOut, Monitor, Moon, Network, Sun } from "lucide-react";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { FolderKanban, LogOut, Menu, Monitor, Moon, Network, Sun } from "lucide-react";
 import { api, type WorkerView } from "@/api";
 import { authClient } from "@/auth";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { session } from "@/session";
 import { groupWorkers, relativeTime, type WorkerGroup, workerName } from "@/model";
 import { SLOW_MS } from "@/polling";
@@ -184,8 +186,8 @@ const ThemeToggle = () => {
   );
 };
 
-export const Sidebar = () => (
-  <aside className="flex w-66 shrink-0 flex-col gap-7 overflow-y-auto border-r border-sidebar-border bg-sidebar px-4 py-5 text-sidebar-foreground">
+const SidebarBody = () => (
+  <>
     <Link to="/" className="flex items-center gap-2.5 px-2 py-1">
       <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
         <Network className="size-4" />
@@ -213,5 +215,44 @@ export const Sidebar = () => (
       <ThemeToggle />
       <SignOut />
     </div>
+  </>
+);
+
+const PANEL = "flex flex-col gap-7 overflow-y-auto bg-sidebar px-4 py-5 text-sidebar-foreground";
+
+/** The fixed sidebar on wide screens. Below `md` it gives way to {@link MobileNav}. */
+export const Sidebar = () => (
+  <aside className={cn(PANEL, "hidden w-66 shrink-0 border-r border-sidebar-border md:flex")}>
+    <SidebarBody />
   </aside>
 );
+
+/** The top bar on narrow screens; its menu button slides the sidebar in as a drawer. */
+export const MobileNav = () => {
+  const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
+  // Following a link inside the drawer lands on a new page, so the drawer gets out of the way.
+  useEffect(() => setOpen(false), [pathname]);
+  return (
+    <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border bg-sidebar/90 px-2 backdrop-blur md:hidden">
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger render={<Button variant="ghost" size="icon" aria-label="Open navigation" />}>
+          <Menu />
+        </SheetTrigger>
+        <SheetContent
+          side="left"
+          className={cn(PANEL, "w-[85vw] max-w-72 border-sidebar-border sm:max-w-72")}
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SidebarBody />
+        </SheetContent>
+      </Sheet>
+      <Link to="/" className="flex items-center gap-2">
+        <span className="grid size-6 place-items-center rounded-md bg-primary text-primary-foreground">
+          <Network className="size-3.5" />
+        </span>
+        <span className="text-[15px] font-semibold tracking-tight">project-os</span>
+      </Link>
+    </header>
+  );
+};

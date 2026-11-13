@@ -26,7 +26,7 @@ const Header = ({ project, sources }: ProjectDetail) => (
   <header className="flex flex-col gap-4">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="flex max-w-3xl flex-col gap-2.5">
-        <div className="flex items-baseline gap-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[28px] leading-tight font-semibold tracking-tight">{project.name}</h1>
           {project.slug && (
             <span className="font-mono text-[13px] text-muted-foreground">{project.slug}</span>
@@ -89,10 +89,14 @@ const TicketRows = ({
   return tickets.map((t) => (
     // The title link stretches over the whole row, so the row is clickable and keyboard-reachable.
     <TableRow key={t.id} className="relative cursor-pointer focus-within:bg-muted/50">
-      <TableCell className="w-40 py-3.5 pl-6">
+      <TableCell className="hidden w-40 py-3.5 pl-6 sm:table-cell">
         <StatusBadge status={t.status} />
       </TableCell>
-      <TableCell className="max-w-0 py-3.5">
+      <TableCell className="w-full max-w-0 py-3.5 pl-4 sm:pl-2">
+        {/* Narrow screens drop the Status column, so the badge rides above the title. */}
+        <div className="mb-1.5 sm:hidden">
+          <StatusBadge status={t.status} />
+        </div>
         <Link
           to="/projects/$projectId/tickets/$ticketId"
           params={{ projectId, ticketId: t.id }}
@@ -105,7 +109,7 @@ const TicketRows = ({
         )}
       </TableCell>
       <TableCell
-        className="w-40 truncate text-[13px] text-muted-foreground"
+        className="hidden w-40 truncate text-[13px] text-muted-foreground lg:table-cell"
         title={t.workerId ?? undefined}
       >
         {t.workerId === null
@@ -114,7 +118,7 @@ const TicketRows = ({
             : "—"
           : (names.get(t.workerId) ?? t.workerId)}
       </TableCell>
-      <TableCell className="w-28 pr-6 text-right text-[13px] text-muted-foreground tabular-nums">
+      <TableCell className="w-20 pr-4 text-right text-[13px] sm:w-28 sm:pr-6 text-muted-foreground tabular-nums">
         {relativeTime(t.lastActivityAt, now)}
       </TableCell>
     </TableRow>
@@ -125,7 +129,7 @@ const GroupRow = ({ label, count }: { label: string; count: number }) => (
   <TableRow className="hover:bg-transparent">
     <TableCell
       colSpan={4}
-      className="px-6 pt-5 pb-2 text-xs font-medium tracking-wide text-muted-foreground"
+      className="px-4 pt-5 pb-2 text-xs sm:px-6 font-medium tracking-wide text-muted-foreground"
     >
       {label} · {count}
     </TableCell>
@@ -143,13 +147,17 @@ const Tickets = ({ tickets, projectId }: { tickets: ReadonlyArray<Ticket>; proje
   const { active, done } = splitTickets(tickets);
   return (
     <div className="overflow-hidden rounded-xl border bg-card shadow-card">
-      <Table className="table-fixed">
+      <Table>
         <TableHeader className="bg-muted/60">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-40 pl-6 text-xs text-muted-foreground">Status</TableHead>
-            <TableHead className="text-xs text-muted-foreground">Ticket</TableHead>
-            <TableHead className="w-40 text-xs text-muted-foreground">Worker</TableHead>
-            <TableHead className="w-28 pr-6 text-right text-xs text-muted-foreground">
+            <TableHead className="hidden w-40 pl-6 text-xs text-muted-foreground sm:table-cell">
+              Status
+            </TableHead>
+            <TableHead className="pl-4 text-xs text-muted-foreground sm:pl-2">Ticket</TableHead>
+            <TableHead className="hidden w-40 text-xs text-muted-foreground lg:table-cell">
+              Worker
+            </TableHead>
+            <TableHead className="w-20 pr-4 text-right sm:w-28 sm:pr-6 text-xs text-muted-foreground">
               Activity
             </TableHead>
           </TableRow>
@@ -177,8 +185,8 @@ const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
   return (
     <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
       {entries.map((m) => (
-        <li key={m.id} className="flex flex-col gap-1.5 px-6 py-5">
-          <div className="flex items-center gap-2">
+        <li key={m.id} className="flex flex-col gap-1.5 px-4 py-5 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
             <FileText className="size-4 text-muted-foreground" />
             <span className="font-medium">{m.title}</span>
             <Badge variant="secondary" className="font-normal">
