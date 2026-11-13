@@ -203,7 +203,7 @@ const SourceRow = ({
   const url = sourceUrl(source);
   const [mode, setMode] = useState<"view" | "edit" | "remove">("view");
   return (
-    <li className="flex items-start gap-4 px-6 py-5">
+    <li className="flex items-start gap-3 px-4 py-5 sm:gap-4 sm:px-6">
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
         <Icon className="size-4" aria-label={label} />
       </span>
@@ -221,6 +221,12 @@ const SourceRow = ({
             <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
               {label} · {source.name}
             </div>
+            {source.isDefaultResponse && (
+              <div className="mt-1 flex items-center gap-1 text-xs font-medium text-tone-warn sm:hidden">
+                <Star className="size-3 fill-tone-warn-dot text-tone-warn-dot" />
+                replies here
+              </div>
+            )}
             {source.description && (
               <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
                 {source.description}
@@ -228,7 +234,7 @@ const SourceRow = ({
             )}
           </div>
           {source.isDefaultResponse && (
-            <Badge className="h-6 gap-1 border-0 bg-tone-warn-bg px-2.5 font-medium text-tone-warn">
+            <Badge className="hidden h-6 gap-1 border-0 bg-tone-warn-bg sm:inline-flex px-2.5 font-medium text-tone-warn">
               <Star className="size-3 fill-tone-warn-dot text-tone-warn-dot" />
               replies here
             </Badge>

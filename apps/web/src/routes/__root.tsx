@@ -7,7 +7,7 @@ import {
   Scripts,
   useLocation,
 } from "@tanstack/react-router";
-import { Sidebar } from "@/components/sidebar";
+import { MobileNav, Sidebar } from "@/components/sidebar";
 import { LOGIN_PATH, session } from "@/session";
 import { THEME_BOOT } from "@/theme";
 import appCss from "../index.css?url";
@@ -32,9 +32,10 @@ const Layout = () => {
   if (pathname === LOGIN_PATH) return <Outlet />;
   if (!session.token()) return <Navigate to={LOGIN_PATH} replace />;
   return (
-    <div className="flex h-svh">
+    <div className="flex h-svh flex-col md:flex-row">
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto px-6 py-8 md:px-14 md:py-10">
+      <MobileNav />
+      <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-10 lg:px-14">
         <div className="mx-auto max-w-[1120px]">
           <Outlet />
         </div>
