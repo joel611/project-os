@@ -291,10 +291,16 @@ export const startStack = async (options: {
         auth: {
           sessionUser: (token) => auth!.sessionUser(token),
           isAllowed: (email) => auth!.isAllowed(email),
+          memberPerson: (user) => auth!.memberPerson(user),
+          linkedPerson: (userId) => auth!.linkedPerson(userId),
         },
       }),
       ...coordinatorConfig({
-        env: { ADMIN_CHANNEL_ID: ADMIN_CHANNEL, ADMIN_USER_IDS: ADMIN_USER },
+        env: {
+          ADMIN_CHANNEL_ID: ADMIN_CHANNEL,
+          ADMIN_USER_IDS: ADMIN_USER,
+          ...(web && { WEB_ORIGIN: web.url.origin }),
+        },
         run: (effect) => runtime.runPromise(effect as any),
         // Known once the Coordinator listens; read only when a command runs.
         publicUrl: () => url,

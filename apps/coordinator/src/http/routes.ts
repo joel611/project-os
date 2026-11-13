@@ -5,9 +5,13 @@ import {
   SlashCommand,
   WorkerRegisterRequest,
 } from "@project-os/contracts";
+import type { Viewer } from "@project-os/contracts";
 import {
   answerPrompt,
+  getMyTicket,
   getTicket,
+  listMyTicketAttachments,
+  listMyTickets,
   handleInbound,
   listTicketAttachments,
   readActivity,
@@ -34,6 +38,7 @@ import {
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
+import type { Access } from "../access.ts";
 import {
   changeStatusAndNotify,
   CreateProjectBody,
@@ -96,7 +101,11 @@ export const httpRoutes = ({
   workerStaleMs = healthConfig().workerStaleMs,
   commands,
   prompts = inbound,
-}: HttpDeps) => {
+  access,
+}: HttpDeps & {
+  /** Who is calling: members get only their own Tickets on the routes they may use. */
+  readonly access: Access;
+}) => {
   const reply = async (
     set: { status?: number | string },
     effect: Effect.Effect<HttpResult, never, HttpEnv>,
@@ -106,7 +115,29 @@ export const httpRoutes = ({
     return result.body;
   };
 
+  /** The person a member is, so a Ticket route can narrow to theirs; undefined for an Operator. */
+  const memberPerson = async (request: Request) => {
+    const caller = await access.caller(request);
+    return caller.kind === "member" ? caller.person : undefined;
+  };
+
   return new Elysia({ name: "http-routes" })
+    .get("/me", async ({ request }): Promise<Viewer> => {
+      const caller = await access.caller(request);
+      const person = await access.personOf(caller);
+      return {
+        role: caller.kind === "member" ? "member" : "operator",
+        name: caller.kind === "user" ? caller.name : (person?.name ?? person?.id ?? ""),
+        person: person
+          ? { channelType: person.channelType, id: person.id, name: person.name ?? null }
+          : null,
+      };
+    })
+    .get("/me/tickets", async ({ request, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      if (!person) return { tickets: [], projects: [] };
+      return reply(set, toResult(listMyTickets(person)));
+    })
     .post("/inbound", ({ body, set }) =>
       reply(
         set,
@@ -229,15 +260,20 @@ export const httpRoutes = ({
         ),
       );
     })
-    .get("/tickets/:id", ({ params, set }) =>
-      reply(set, toResult(getTicket({ ticketId: params.id }))),
-    )
-    .get("/tickets/:id/attachments", ({ params, set }) =>
-      reply(
+    .get("/tickets/:id", async ({ params, request, set }) => {
+      const person = await memberPerson(request);
+      return reply(
         set,
-        toResult(Effect.map(listTicketAttachments(params.id), (attachments) => ({ attachments }))),
-      ),
-    )
+        toResult(person ? getMyTicket(params.id, person) : getTicket({ ticketId: params.id })),
+      );
+    })
+    .get("/tickets/:id/attachments", async ({ params, request, set }) => {
+      const person = await memberPerson(request);
+      const attachments = person
+        ? listMyTicketAttachments(params.id, person)
+        : listTicketAttachments(params.id);
+      return reply(set, toResult(Effect.map(attachments, (list) => ({ attachments: list }))));
+    })
     .post("/tickets/:id/status", ({ params, body, set }) =>
       reply(
         set,

@@ -74,6 +74,13 @@ export const COMMAND_DEFINITIONS = [
     options: [],
   },
   {
+    name: "dashboard",
+    description: "See the tickets you started or took part in on the web dashboard",
+    type: 1,
+    dm_permission: false,
+    options: [],
+  },
+  {
     name: "register-worker",
     description: "Use your own computer as your worker: get a one-time command to run there",
     type: 1,

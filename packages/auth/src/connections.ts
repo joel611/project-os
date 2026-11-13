@@ -33,6 +33,27 @@ export const emailFor = (person: Person) =>
 export const isChannelIdentityEmail = (email: string) =>
   email.toLowerCase().endsWith(CHANNEL_IDENTITY_DOMAIN);
 
+const CHANNEL_TYPES: ReadonlyArray<string> = ["discord", "email", "chat"];
+
+/**
+ * The person a channel identity's auth user stands for (the inverse of `emailFor`). The id comes
+ * back lowercased, as `emailFor` stored it: Discord ids are digits, so nothing is lost there.
+ */
+export const personFromIdentityEmail = (email: string, name?: string): Person | undefined => {
+  const e = email.toLowerCase();
+  if (!e.endsWith(CHANNEL_IDENTITY_DOMAIN)) return undefined;
+  const local = e.slice(0, -CHANNEL_IDENTITY_DOMAIN.length);
+  const dash = local.indexOf("-");
+  const channelType = local.slice(0, dash);
+  const id = local.slice(dash + 1);
+  if (dash < 1 || !id || !CHANNEL_TYPES.includes(channelType)) return undefined;
+  return {
+    channelType: channelType as Person["channelType"],
+    id,
+    ...(name && name !== id ? { name } : {}),
+  };
+};
+
 const randomToken = () => {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes))

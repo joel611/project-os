@@ -3,6 +3,7 @@ import { makeTestLayer } from "@project-os/testing";
 import { ConnectionsUnavailable, UserConnections, WorkerRepository } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { OPERATOR } from "../access.test-support.ts";
 import { type CommandsConfig, runCommand } from "./commands.ts";
 import { httpRoutes } from "./routes.ts";
 
@@ -114,7 +115,11 @@ describe("POST /commands", () => {
   const appWith = (commands?: CommandsConfig) => {
     const runtime = ManagedRuntime.make(makeTestLayer().layer);
     disposers.push(() => runtime.dispose());
-    return httpRoutes({ run: (e) => runtime.runPromise(e), ...(commands && { commands }) });
+    return httpRoutes({
+      run: (e) => runtime.runPromise(e),
+      access: OPERATOR,
+      ...(commands && { commands }),
+    });
   };
   const post = async (app: ReturnType<typeof appWith>, body: unknown) => {
     const res = await app.handle(
@@ -166,6 +171,50 @@ describe("POST /commands", () => {
       new Request("http://localhost/watcher/install.sh"),
     );
     expect(res.status).toBe(501);
+  });
+});
+
+describe("runCommand /dashboard", () => {
+  const dashboard = command({
+    command: "dashboard",
+    channelId: "general",
+    sender: { id: "u9", name: "Ada" },
+    options: {},
+  });
+  const setup = () => {
+    const test = makeTestLayer();
+    const runtime = ManagedRuntime.make(test.layer);
+    const { config } = recording({
+      dashboardUrl: "https://dash.test/",
+      connections: (effect) => runtime.runPromise(effect),
+    });
+    return { test, runtime, config };
+  };
+
+  it("hands out the Google connect link first when Google isn't linked", async () => {
+    const { runtime, config } = setup();
+    const reply = await runCommand(dashboard, config);
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.content).toContain("http://connect.test/google/u9");
+    expect(reply.content).toContain("https://dash.test/login");
+    await runtime.dispose();
+  });
+
+  it("points straight at the dashboard once Google is linked", async () => {
+    const { test, runtime, config } = setup();
+    test.link({ channelType: "discord", id: "u9" }, "google", "tok");
+    const reply = await runCommand(dashboard, config);
+    expect(reply.content).toContain("https://dash.test/login");
+    expect(reply.content).not.toContain("connect.test");
+    await runtime.dispose();
+  });
+
+  it("refuses without a dashboard URL", async () => {
+    const { config } = recording();
+    expect(await runCommand(dashboard, config)).toEqual({
+      content: "The dashboard isn't set up here.",
+      ephemeral: true,
+    });
   });
 });
 

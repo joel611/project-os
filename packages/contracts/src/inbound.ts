@@ -137,6 +137,7 @@ export const SLASH_COMMANDS = [
   "workers",
   "unregister-worker",
   "source-add",
+  "dashboard",
 ] as const;
 export const SlashCommandName = Schema.Literals(SLASH_COMMANDS);
 export type SlashCommandName = typeof SlashCommandName.Type;

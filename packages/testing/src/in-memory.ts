@@ -9,6 +9,7 @@ import {
   claimTicket,
   releaseTicket,
   IdGenerator,
+  involves,
   IntentClassifier,
   AssetStore,
   AssetStoreFailed,
@@ -120,6 +121,13 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
     findByThread: (channelType, threadId) =>
       Effect.sync(() =>
         [...threads.values()].find((t) => t.channelType === channelType && t.threadId === threadId),
+      ),
+    listInvolving: (person) =>
+      Effect.sync(() =>
+        byKey(
+          [...tickets.values()].filter((t) => involves(t, events.get(t.id) ?? [], person)),
+          (t) => t.lastActivityAt,
+        ).reverse(),
       ),
     listEventsSince: (since, limit) =>
       Effect.sync(() =>

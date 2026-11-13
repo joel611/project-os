@@ -18,6 +18,8 @@ export interface FakeOAuth {
   failRefresh: boolean;
   /** Fail the userinfo call, so linking can't learn who the account is. */
   failUserInfo: boolean;
+  /** The Google account's id (`sub`), the same for every client of one Google project. */
+  sub: string;
   /** The Google account's email. */
   email: string;
   /** What Google says about whether it verified the account's email. */
@@ -80,7 +82,7 @@ export const startFakeOAuth = (): FakeOAuth => {
       return provider === "github"
         ? Response.json({ id: 42, login: "ada-gh", name: null, email: fake.githubEmail })
         : Response.json({
-            sub: "google-ada",
+            sub: fake.sub,
             email: fake.email,
             email_verified: fake.emailVerified,
             ...(fake.hd && { hd: fake.hd }),
@@ -100,6 +102,7 @@ export const startFakeOAuth = (): FakeOAuth => {
     expiresIn: 3600,
     failRefresh: false,
     failUserInfo: false,
+    sub: "google-ada",
     email: "ada@example.com",
     emailVerified: true,
     hd: undefined,

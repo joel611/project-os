@@ -8,7 +8,7 @@ import {
   type TicketStatus,
   type TicketRepository,
 } from "@project-os/core";
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { ticketEvents, tickets, ticketThreads } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
@@ -208,6 +208,37 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
             and(eq(ticketThreads.channelType, channelType), eq(ticketThreads.threadId, threadId)),
           ),
       ).pipe(Effect.map(([row]) => row)),
+    listInvolving: (person) =>
+      q(() =>
+        db
+          .select()
+          .from(tickets)
+          .where(
+            or(
+              and(
+                sql`json_extract(${tickets.requester}, '$.channelType') = ${person.channelType}`,
+                sql`json_extract(${tickets.requester}, '$.id') = ${person.id}`,
+              ),
+              // Same rule as `senderOf`: the sender stored on a `created` or `follow_up` event,
+              // on Discord unless the event names another channel.
+              inArray(
+                tickets.id,
+                db
+                  .select({ id: ticketEvents.ticketId })
+                  .from(ticketEvents)
+                  .where(
+                    and(
+                      inArray(ticketEvents.type, ["created", "follow_up"]),
+                      sql`json_valid(${ticketEvents.payload})`,
+                      sql`json_extract(${ticketEvents.payload}, '$.sender.id') = ${person.id}`,
+                      sql`coalesce(json_extract(${ticketEvents.payload}, '$.channelType'), 'discord') = ${person.channelType}`,
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .orderBy(desc(tickets.lastActivityAt), desc(sql`rowid`)),
+      ),
     listEventsSince: (since, limit) =>
       q(() =>
         db

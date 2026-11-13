@@ -302,6 +302,60 @@ describe("ProjectSourceRepository", () => {
 });
 
 describe("TicketRepository", () => {
+  it("lists the tickets a person asked for or wrote in, newest activity first", async () => {
+    const ada = { channelType: "discord", id: "u-ada" } as const;
+    const from = (id: string, channelType?: string) => ({
+      sender: { id, name: id },
+      ...(channelType && { channelType }),
+    });
+    const ids = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        // Ada asked for t1.
+        yield* repo.insert(ticket({ id: "t1", requester: ada, lastActivityAt: T0 }));
+        // Bob asked for t2; Ada answered in its thread.
+        yield* repo.insert(
+          ticket({ id: "t2", requester: { channelType: "discord", id: "u-bob" } }),
+        );
+        yield* repo.appendEvent(
+          event({ id: "e2", ticketId: "t2", type: "created", payload: from("u-bob", "discord") }),
+        );
+        yield* repo.appendEvent(
+          event({
+            id: "e3",
+            ticketId: "t2",
+            type: "follow_up",
+            payload: from("u-ada", "discord"),
+            createdAt: T2,
+          }),
+        );
+        // Bob's alone.
+        yield* repo.insert(ticket({ id: "t3" }));
+        yield* repo.appendEvent(
+          event({ id: "e4", ticketId: "t3", type: "created", payload: from("u-bob", "discord") }),
+        );
+        // The same id on another channel is someone else.
+        yield* repo.insert(ticket({ id: "t4" }));
+        yield* repo.appendEvent(
+          event({ id: "e5", ticketId: "t4", type: "created", payload: from("u-ada", "email") }),
+        );
+        // A Worker's comment naming Ada's id doesn't count.
+        yield* repo.insert(ticket({ id: "t5" }));
+        yield* repo.appendEvent(
+          event({ id: "e6", ticketId: "t5", type: "comment", payload: from("u-ada", "discord") }),
+        );
+        // An event without a channelType is from Discord, like `senderOf` reads it.
+        yield* repo.insert(ticket({ id: "t6" }));
+        yield* repo.appendEvent(
+          event({ id: "e7", ticketId: "t6", type: "created", payload: from("u-ada") }),
+        );
+        return (yield* repo.listInvolving(ada)).map((t) => t.id);
+      }),
+    );
+    expect(ids).toEqual(["t2", "t6", "t1"]);
+  });
+
   it("inserts, gets, lists by status / assigned (oldest first)", async () => {
     const out = await run(
       Effect.gen(function* () {

@@ -3,11 +3,13 @@ import { schema } from "@project-os/db-sqlite";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer, genericOAuth, type GenericOAuthConfig, oneTimeToken } from "better-auth/plugins";
+import type { Person } from "@project-os/core";
 import {
   type Connections,
   isChannelIdentityEmail,
   type LinkStart,
   makeConnections,
+  personFromIdentityEmail,
 } from "./connections.ts";
 
 /** OAuth endpoints; tests point these at a fake provider on localhost. */
@@ -176,13 +178,26 @@ const domainOf = (email: string) => {
   return e.slice(e.lastIndexOf("@") + 1);
 };
 
+interface GoogleUser {
+  readonly sub: string;
+  readonly email: string;
+  readonly hd?: string;
+}
+
 /**
- * Google's userinfo, refused unless Google has verified the email and, with `domains`, the
- * account belongs to one of them. Google sets `hd` only on Workspace accounts, so a personal
- * account registered with a company address doesn't pass.
+ * Who a verified Google account signs in to the dashboard as: itself (`email`, account id
+ * `sub`), or the channel identity that linked it with `/connect` (that identity's email, account
+ * id `member:<sub>`, so it never shares a sign-in account with an operator). Undefined refuses.
+ */
+type SignInAs = (user: GoogleUser) => Promise<{ id: string; email: string } | undefined>;
+
+/**
+ * Google's userinfo, refused unless Google has verified the email and `signInAs` admits it.
+ * Google sets `hd` only on Workspace accounts, so a personal account registered with a company
+ * address doesn't pass a domain check.
  */
 const verifiedGoogleUser =
-  (userInfoUrl: string, domains: ReadonlySet<string>): GenericOAuthConfig["getUserInfo"] =>
+  (userInfoUrl: string, signInAs: SignInAs): GenericOAuthConfig["getUserInfo"] =>
   async (tokens) => {
     const res = await fetch(userInfoUrl, {
       headers: { authorization: `Bearer ${tokens.accessToken}` },
@@ -197,12 +212,12 @@ const verifiedGoogleUser =
       name: string;
     };
     if (u.email_verified !== true) return null;
-    if (domains.size > 0) {
-      const hd = u.hd?.trim().toLowerCase();
-      if (!hd || !domains.has(hd) || domainOf(u.email) !== hd) return null;
-    }
-    return { id: u.sub, email: u.email, emailVerified: true, name: u.name };
+    const as = await signInAs({ sub: u.sub, email: u.email, ...(u.hd && { hd: u.hd }) });
+    return as ? { id: as.id, email: as.email, emailVerified: true, name: u.name } : null;
   };
+
+/** The account id a member's Google sign-in is stored under (see `SignInAs`). */
+const MEMBER_ACCOUNT_PREFIX = "member:";
 
 /** Dashboard sign-in with Google: identity scopes only, apart from the linking client. */
 export const GOOGLE_SIGN_IN = "google-signin";
@@ -276,7 +291,7 @@ const linkingProviders = (config: AuthConfig): GenericOAuthConfig[] => {
   return out;
 };
 
-const signInProviders = (config: AuthConfig): GenericOAuthConfig[] => {
+const signInProviders = (config: AuthConfig, signInAs: SignInAs): GenericOAuthConfig[] => {
   const google = googleSignInConfig(config);
   if (!google) return [];
   const { client } = google;
@@ -294,12 +309,16 @@ const signInProviders = (config: AuthConfig): GenericOAuthConfig[] => {
       userInfoUrl: client.userInfoUrl,
       scopes: ["openid", "email", "profile"],
       ...(onlyDomain && { authorizationUrlParams: { hd: onlyDomain } }),
-      getUserInfo: verifiedGoogleUser(client.userInfoUrl, domains),
+      getUserInfo: verifiedGoogleUser(client.userInfoUrl, signInAs),
     },
   ];
 };
 
-const betterAuthFor = (config: AuthConfig, isOperator: (email: string) => boolean) =>
+const betterAuthFor = (
+  config: AuthConfig,
+  isOperator: (email: string) => boolean,
+  signInAs: SignInAs,
+) =>
   betterAuth({
     ...(config.baseURL && { baseURL: config.baseURL }),
     secret: config.secret,
@@ -354,7 +373,9 @@ const betterAuthFor = (config: AuthConfig, isOperator: (email: string) => boolea
       },
     },
     plugins: [
-      genericOAuth({ config: [...linkingProviders(config), ...signInProviders(config)] }),
+      genericOAuth({
+        config: [...linkingProviders(config), ...signInProviders(config, signInAs)],
+      }),
       bearer(),
       // Hands a Google sign-in's session from the Coordinator's origin to the dashboard's.
       oneTimeToken({ disableClientRequest: true, storeToken: "hashed" }),
@@ -377,6 +398,7 @@ export interface GoogleSignIn {
 export interface SessionUser {
   readonly userId: string;
   readonly email: string;
+  readonly name: string;
 }
 
 /** `allowedDomains`, lowercased and without a leading `@`. */
@@ -408,7 +430,42 @@ const operatorCheck = (config: AuthConfig) => {
  */
 export const makeAuth = (config: AuthConfig) => {
   const isOperator = operatorCheck(config);
-  const auth = betterAuthFor(config, isOperator);
+  const domains = allowedDomains(config);
+
+  /** The channel identity that linked this Google account (`/connect google`), if any. */
+  const channelIdentityFor = async (sub: string) => {
+    const ctx = await auth.$context;
+    const owner = await ctx.internalAdapter.findAccountOwnerByKey({
+      providerId: "google",
+      accountId: sub,
+    });
+    return owner?.kind === "owned" && isChannelIdentityEmail(owner.user.email)
+      ? owner.user
+      : undefined;
+  };
+
+  /**
+   * Operators first: an allowed email (inside `allowedDomains` when set) signs in as itself.
+   * Anyone else gets in only as the channel person who linked this Google account from a
+   * channel, which proves the same person holds both. Members skip `allowedDomains`: the
+   * channel's own gate (`DISCORD_MEMBER_ROLE_IDS`) already decided who may link.
+   */
+  const signInAs: SignInAs = async (u) => {
+    const hd = u.hd?.trim().toLowerCase();
+    const inDomain = domains.size === 0 || (!!hd && domains.has(hd) && domainOf(u.email) === hd);
+    if (inDomain && isOperator(u.email)) return { id: u.sub, email: u.email };
+    const member = await channelIdentityFor(u.sub);
+    if (!member) return undefined;
+    // Better Auth joins a sign-in to an existing user only when that user's email is verified.
+    // A channel identity's email is a placeholder; owning this Google account is the proof.
+    if (!member.emailVerified) {
+      const ctx = await auth.$context;
+      await ctx.internalAdapter.updateUser(member.id, { emailVerified: true });
+    }
+    return { id: `${MEMBER_ACCOUNT_PREFIX}${u.sub}`, email: member.email };
+  };
+
+  const auth = betterAuthFor(config, isOperator, signInAs);
 
   /** Creates the admin and its password login unless they exist. Safe to run on every boot. */
   const ensureAdmin = async (): Promise<void> => {
@@ -483,7 +540,33 @@ export const makeAuth = (config: AuthConfig) => {
       const session = await auth.api.getSession({
         headers: new Headers({ authorization: `Bearer ${token}` }),
       });
-      return session ? { userId: session.user.id, email: session.user.email } : undefined;
+      return session
+        ? { userId: session.user.id, email: session.user.email, name: session.user.name }
+        : undefined;
+    },
+    /**
+     * The channel person a session user signs in as, when it is a channel identity whose Google
+     * account is still linked: `/disconnect google` ends their dashboard access too.
+     */
+    memberPerson: async (user: SessionUser): Promise<Person | undefined> => {
+      const person = personFromIdentityEmail(user.email, user.name);
+      if (!person) return undefined;
+      const ctx = await auth.$context;
+      const accounts = await ctx.internalAdapter.findAccounts(user.userId);
+      return accounts.some((a) => a.providerId === "google") ? person : undefined;
+    },
+    /**
+     * The channel person an operator's Google sign-in is also linked to with `/connect google`,
+     * so an operator can see their own Tickets too. Undefined for a password-only operator.
+     */
+    linkedPerson: async (userId: string): Promise<Person | undefined> => {
+      const ctx = await auth.$context;
+      const signIn = (await ctx.internalAdapter.findAccounts(userId)).find(
+        (a) => a.providerId === GOOGLE_SIGN_IN && !a.accountId.startsWith(MEMBER_ACCOUNT_PREFIX),
+      );
+      if (!signIn) return undefined;
+      const member = await channelIdentityFor(signIn.accountId);
+      return member && personFromIdentityEmail(member.email, member.name);
     },
     /** Whether this email may use the dashboard and its API. */
     isAllowed: isOperator,
