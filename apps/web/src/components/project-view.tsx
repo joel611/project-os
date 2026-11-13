@@ -1,4 +1,9 @@
-import { isChannelDigestSource, type MemoryEntry, type Ticket } from "@project-os/contracts";
+import {
+  isChannelDigestSource,
+  type InboundLogEntry,
+  type MemoryEntry,
+  type Ticket,
+} from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { FileText, Settings, Star } from "lucide-react";
@@ -237,6 +242,58 @@ const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
   );
 };
 
+const Channel = ({ entries }: { entries: ReadonlyArray<InboundLogEntry> }) => {
+  const now = useNow();
+  if (entries.length === 0)
+    return (
+      <Empty
+        title="No messages received yet"
+        hint="Every message posted in this project's linked channels shows up here once the Coordinator receives it."
+      />
+    );
+  return (
+    <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
+      {entries.map((m) => (
+        <li key={m.id} className="flex flex-col gap-1 px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="text-sm font-medium text-foreground">
+              {m.senderName ?? m.senderId}
+            </span>
+            {m.mentionsBot && (
+              <Badge variant="secondary" className="font-normal">
+                mentions bot
+              </Badge>
+            )}
+            {m.threadId && <span>in a thread</span>}
+            <span className="ml-auto">
+              {m.url ? (
+                <a
+                  href={m.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline-offset-2 hover:underline"
+                >
+                  {relativeTime(m.receivedAt, now)}
+                </a>
+              ) : (
+                relativeTime(m.receivedAt, now)
+              )}
+            </span>
+          </div>
+          <p className="text-sm whitespace-pre-wrap">
+            {m.content || <span className="text-muted-foreground">(no text)</span>}
+          </p>
+          {m.attachmentCount > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {m.attachmentCount} attachment{m.attachmentCount === 1 ? "" : "s"}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 export const ProjectView = ({ projectId }: { projectId: string }) => {
   const detail = useQuery({
     queryKey: ["project", projectId],
@@ -251,6 +308,11 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
   const memory = useQuery({
     queryKey: ["memory", projectId],
     queryFn: () => api.memory(projectId),
+    refetchInterval: SLOW_MS,
+  });
+  const inbound = useQuery({
+    queryKey: ["inbound", projectId],
+    queryFn: () => api.inbound(projectId),
     refetchInterval: SLOW_MS,
   });
   const count = (n: number | undefined) =>
@@ -272,6 +334,7 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
         <TabsList variant="line">
           <TabsTrigger value="tickets">Tickets {count(tickets.data?.length)}</TabsTrigger>
           <TabsTrigger value="memory">Memory {count(memory.data?.length)}</TabsTrigger>
+          <TabsTrigger value="channel">Channel {count(inbound.data?.length)}</TabsTrigger>
         </TabsList>
         <TabsContent value="tickets" className="pt-4">
           {tickets.isPending ? (
@@ -289,6 +352,15 @@ export const ProjectView = ({ projectId }: { projectId: string }) => {
             <QueryError error={memory.error} />
           ) : (
             <Memory entries={memory.data} />
+          )}
+        </TabsContent>
+        <TabsContent value="channel" className="pt-4">
+          {inbound.isPending ? (
+            <Skeleton className="h-40" />
+          ) : inbound.isError ? (
+            <QueryError error={inbound.error} />
+          ) : (
+            <Channel entries={inbound.data} />
           )}
         </TabsContent>
       </Tabs>
