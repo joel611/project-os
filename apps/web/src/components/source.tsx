@@ -20,7 +20,7 @@ type IconProps = {
 };
 
 const DiscordLogo = (props: IconProps) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+  <svg viewBox="0 0 24 24" fill={`#${siDiscord.hex}`} {...props}>
     <path d={siDiscord.path} />
   </svg>
 );
