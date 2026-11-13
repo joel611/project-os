@@ -13,6 +13,7 @@ import {
   listMyTicketAttachments,
   listMyTickets,
   handleInbound,
+  readInbound,
   listTicketAttachments,
   readActivity,
   redeemWorkerRegistration,
@@ -24,6 +25,7 @@ import {
   type Clock,
   type HandleInboundConfig,
   type IdGenerator,
+  type InboundLogRepository,
   type IntentClassifier,
   type KeyValueStore,
   type MemoryRepository,
@@ -76,6 +78,7 @@ export type HttpEnv =
   | IntentClassifier
   | KeyValueStore
   | MemoryRepository
+  | InboundLogRepository
   | ProjectRepository
   | ProjectSourceRepository
   | Sidekick
@@ -195,6 +198,7 @@ export const httpRoutes = ({
     .get("/projects/:id/memory", ({ params, set }) =>
       reply(set, toResult(listProjectMemory(params.id))),
     )
+    .get("/projects/:id/inbound", ({ params, set }) => reply(set, toResult(readInbound(params.id))))
     .post("/projects/:id/sources", ({ params, body, set }) =>
       reply(
         set,

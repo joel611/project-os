@@ -14,6 +14,7 @@ import {
   AssetStore,
   AssetStoreFailed,
   KeyValueStore,
+  InboundLogRepository,
   MemoryRepository,
   NotConnected,
   type Person,
@@ -45,6 +46,7 @@ import {
 } from "@project-os/core";
 import {
   type ChannelMessage,
+  type InboundLogEntry,
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
   type CreateChannelInstruction,
@@ -261,6 +263,27 @@ export const MemoryRepositoryInMemory = Layer.sync(MemoryRepository, () => {
           .filter((e) => `${e.title}\n${e.content}`.toLowerCase().includes(q))
           .slice(0, limit);
       }),
+  };
+});
+
+export const InboundLogRepositoryInMemory = Layer.sync(InboundLogRepository, () => {
+  const rows: InboundLogEntry[] = [];
+  return {
+    append: (entry) =>
+      Effect.sync(() => {
+        const taken = rows.some(
+          (r) => r.channelType === entry.channelType && r.externalId === entry.externalId,
+        );
+        if (!taken) rows.push(entry);
+        return !taken;
+      }),
+    list: (projectId, limit) =>
+      Effect.sync(() =>
+        rows
+          .filter((r) => r.projectId === projectId)
+          .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+          .slice(0, limit),
+      ),
   };
 });
 

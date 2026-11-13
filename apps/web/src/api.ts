@@ -1,5 +1,6 @@
 import {
   ActivityFeed,
+  InboundLogEntry,
   MemoryEntry,
   MyTickets,
   Project,
@@ -128,6 +129,8 @@ export const makeApi = (
     tickets: (projectId: string) => get(`/projects/${id(projectId)}/tickets`, Schema.Array(Ticket)),
     memory: (projectId: string) =>
       get(`/projects/${id(projectId)}/memory`, Schema.Array(MemoryEntry)),
+    inbound: (projectId: string) =>
+      get(`/projects/${id(projectId)}/inbound`, Schema.Array(InboundLogEntry)),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
     ticketAttachments: (ticketId: string) =>
       get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),

@@ -1,5 +1,6 @@
 import type {
   ChannelMessage,
+  InboundLogEntry,
   ChannelType,
   MemoryEntry,
   MemoryEntryType,
@@ -189,6 +190,20 @@ export class ChannelMessageRepository extends Context.Service<
     readonly removeSentBefore: (at: string) => Effect.Effect<number>;
   }
 >()("@project-os/core/ChannelMessageRepository") {}
+
+/** Every message received in a project's channels, newest first on read. For debugging intake. */
+export class InboundLogRepository extends Context.Service<
+  InboundLogRepository,
+  {
+    /** Stores an entry; false when one with the same `(channelType, externalId)` is already there. */
+    readonly append: (entry: InboundLogEntry) => Effect.Effect<boolean>;
+    /** A project's most recent entries, newest first. */
+    readonly list: (
+      projectId: string,
+      limit: number,
+    ) => Effect.Effect<ReadonlyArray<InboundLogEntry>>;
+  }
+>()("@project-os/core/InboundLogRepository") {}
 
 export class WorkerRepository extends Context.Service<
   WorkerRepository,
