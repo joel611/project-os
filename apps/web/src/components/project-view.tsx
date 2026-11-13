@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SOURCE_META } from "@/components/source";
+import { CHANNEL_META, SOURCE_META } from "@/components/source";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
 import { relativeTime, splitTickets, workerName } from "@/model";
@@ -253,43 +253,48 @@ const Channel = ({ entries }: { entries: ReadonlyArray<InboundLogEntry> }) => {
     );
   return (
     <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
-      {entries.map((m) => (
-        <li key={m.id} className="flex flex-col gap-1 px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="text-sm font-medium text-foreground">
-              {m.senderName ?? m.senderId}
-            </span>
-            {m.mentionsBot && (
-              <Badge variant="secondary" className="font-normal">
-                mentions bot
-              </Badge>
-            )}
-            {m.threadId && <span>in a thread</span>}
-            <span className="ml-auto">
-              {m.url ? (
-                <a
-                  href={m.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline-offset-2 hover:underline"
-                >
-                  {relativeTime(m.receivedAt, now)}
-                </a>
-              ) : (
-                relativeTime(m.receivedAt, now)
+      {entries.map((m) => {
+        const { Icon, label } = CHANNEL_META[m.channelType];
+        return (
+          <li key={m.id} className="flex flex-col gap-1 px-4 py-4 sm:px-6">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Icon className="size-4 shrink-0" aria-label={label} role="img" />
+              <span className="text-sm font-medium text-foreground">
+                {m.senderName ?? m.senderId}
+              </span>
+              {m.mentionsBot && (
+                <Badge variant="secondary" className="font-normal">
+                  mentions bot
+                </Badge>
               )}
-            </span>
-          </div>
-          <p className="text-sm whitespace-pre-wrap">
-            {m.content || <span className="text-muted-foreground">(no text)</span>}
-          </p>
-          {m.attachmentCount > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {m.attachmentCount} attachment{m.attachmentCount === 1 ? "" : "s"}
-            </span>
-          )}
-        </li>
-      ))}
+              {m.threadId && <span>in a thread</span>}
+              <span className="ml-auto">
+                {m.url ? (
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline-offset-2 hover:underline"
+                  >
+                    {relativeTime(m.receivedAt, now)}
+                  </a>
+                ) : (
+                  relativeTime(m.receivedAt, now)
+                )}
+              </span>
+            </div>
+            <p className="text-sm whitespace-pre-wrap">
+              {m.content || <span className="text-muted-foreground">(no text)</span>}
+            </p>
+            {m.attachmentCount > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {m.attachmentCount} attachment
+                {m.attachmentCount === 1 ? "" : "s"}
+              </span>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 };
