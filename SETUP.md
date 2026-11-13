@@ -69,10 +69,10 @@ The bot connects with these gateway intents (`packages/channel-discord/src/main.
 
 The invite needs two **scopes**:
 
-| Scope                   | Why                                                                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bot`                   | Adds the bot user to the server                                                                                                                         |
-| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections`, `/register-worker`, `/workers`, `/unregister-worker`, `/source-add` |
+| Scope                   | Why                                                                                                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bot`                   | Adds the bot user to the server                                                                                                                                       |
+| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections`, `/dashboard`, `/register-worker`, `/workers`, `/unregister-worker`, `/source-add` |
 
 And these **bot permissions**:
 
@@ -180,6 +180,10 @@ GOOGLE_ALLOWED_DOMAINS=acme.com
 ```
 
 Once it's set, Google sign-in takes only accounts of those domains, and anyone at them gets in. The Coordinator checks Google's `hd` (hosted domain) claim as well as the email, so a personal Google account registered with an `@acme.com` address is refused. Emails in `ADMIN_EMAILS` outside those domains are refused too. The `ADMIN_EMAIL` operator can always sign in with the password. With one domain, Google's account chooser also shows only that domain's accounts. Linking Google Drive with `/connect` isn't affected.
+
+### Discord members on the dashboard
+
+Anyone on Discord can also sign in to see **My tickets**: the tickets they asked for or wrote in (in the channel, the ticket's thread, or by answering its prompts). Nothing else of the dashboard is theirs. They run `/dashboard` in Discord, open the Google link it gives them (the same one-time link as `/connect provider:Google`), and then choose **Continue with Google** on the dashboard with that same Google account. The Coordinator matches the Google account id, not the email, to the Discord user who linked it. This works outside `ADMIN_EMAILS` and `GOOGLE_ALLOWED_DOMAINS`, since `DISCORD_MEMBER_ROLE_IDS` already decides who may use the bot. `/disconnect provider:Google` ends their dashboard access too. Operators whose Google account is linked the same way also get **My tickets** next to everything else. `/dashboard` needs `WEB_ORIGIN` set.
 
 ---
 

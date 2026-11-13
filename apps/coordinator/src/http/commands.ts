@@ -45,6 +45,8 @@ export interface CommandsConfig {
    * anyone, shared ones (`shared:True`) for admins in the admin channel. Unset: refused.
    */
   readonly workers?: WorkersCommandsConfig;
+  /** The web dashboard's URL (`WEB_ORIGIN`), which /dashboard points people to. Unset: refused. */
+  readonly dashboardUrl?: string;
   /** Links sources to the project of the channel the command ran in (/source-add). Unset: refused. */
   readonly sources?: <A>(effect: Effect.Effect<A, never, SourcesEnv>) => Promise<A>;
 }
@@ -89,6 +91,8 @@ export const runCommand = async (
       return workerCommand(command, config);
     case "source-add":
       return sourceAdd(command, config);
+    case "dashboard":
+      return dashboardCommand(command, config);
   }
 };
 
@@ -178,6 +182,49 @@ const accountCommand = async (
   if (!url) return privately(`${label} linking is not configured here.`);
   return privately(
     `Open this link to connect your ${label} account (works once, for 10 minutes): ${url}\nI'll then use your own ${label} access for what you ask, so I only see what you can see.`,
+  );
+};
+
+/**
+ * /dashboard: where to see your own Tickets. Signing in there takes the Google account linked
+ * with /connect, so without one it hands out the Google connect link first.
+ */
+const dashboardCommand = async (
+  command: SlashCommand,
+  config: CommandsConfig,
+): Promise<CommandReply> => {
+  if (!config.dashboardUrl) return privately("The dashboard isn't set up here.");
+  const login = `${config.dashboardUrl.replace(/\/+$/, "")}/login`;
+  if (!config.connections) {
+    return privately(`The dashboard is at ${login}, but account linking isn't set up here.`);
+  }
+  const person: Person = {
+    channelType: command.channelType,
+    id: command.sender.id,
+    ...(command.sender.name ? { name: command.sender.name } : {}),
+  };
+  const linked = await config.connections(withConnections((c) => c.list(person)));
+  if (linked.some((a) => a.provider === "google")) {
+    return privately(
+      `Open ${login} and choose **Sign in with Google**, with the Google account you linked. You'll see the tickets you started or took part in.`,
+    );
+  }
+  const url = await config.connections(
+    withConnections((c) =>
+      c.connectUrl(person, "google").pipe(Effect.orElseSucceed((): string | null => null)),
+    ),
+  );
+  if (!url) {
+    return privately(
+      "Signing in to the dashboard takes a linked Google account, and Google linking isn't set up here.",
+    );
+  }
+  return privately(
+    [
+      `To see your tickets on the dashboard, first link your Google account (this link works once, for 10 minutes): ${url}`,
+      `Then open ${login} and choose **Sign in with Google**, with that same account.`,
+      "Linking also lets me use your own Google Drive access for what you ask.",
+    ].join("\n"),
   );
 };
 

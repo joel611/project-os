@@ -10,6 +10,7 @@ import {
 import { MobileNav, Sidebar } from "@/components/sidebar";
 import { LOGIN_PATH, session } from "@/session";
 import { THEME_BOOT } from "@/theme";
+import { memberMayVisit, MY_TICKETS_PATH, useViewer } from "@/viewer";
 import appCss from "../index.css?url";
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
@@ -31,6 +32,16 @@ const Layout = () => {
   const { pathname } = useLocation();
   if (pathname === LOGIN_PATH) return <Outlet />;
   if (!session.token()) return <Navigate to={LOGIN_PATH} replace />;
+  return <SignedIn pathname={pathname} />;
+};
+
+const SignedIn = ({ pathname }: { pathname: string }) => {
+  const viewer = useViewer();
+  // Until we know who this is, an operator page would fire queries a member can't make.
+  if (viewer.isPending && !memberMayVisit(pathname)) return null;
+  // A member has only My tickets; anything else would just 403.
+  if (viewer.data?.role === "member" && !memberMayVisit(pathname))
+    return <Navigate to={MY_TICKETS_PATH} replace />;
   return (
     <div className="flex h-svh flex-col md:flex-row">
       <Sidebar />

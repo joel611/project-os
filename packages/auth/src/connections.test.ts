@@ -5,7 +5,7 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { makeAuth, type OAuthClientConfig } from "./auth.ts";
-import { emailFor, isChannelIdentityEmail } from "./connections.ts";
+import { emailFor, isChannelIdentityEmail, personFromIdentityEmail } from "./connections.ts";
 
 // The OAuth round trip runs in apps/e2e (connect-accounts) against a fake provider.
 // These cover what happens without one: unconfigured providers and unknown people.
@@ -24,6 +24,30 @@ const connectionsWith = (providers: { google?: OAuthClientConfig; github?: OAuth
 };
 
 const nameless = { channelType: "discord" as const, id: "u1" };
+
+describe("personFromIdentityEmail", () => {
+  it("reads back the person emailFor stored, with their name unless it is just the id", () => {
+    const email = emailFor({ channelType: "discord", id: "123" });
+    expect(personFromIdentityEmail(email, "Ada")).toEqual({
+      channelType: "discord",
+      id: "123",
+      name: "Ada",
+    });
+    expect(personFromIdentityEmail(email, "123")).toEqual({ channelType: "discord", id: "123" });
+    expect(personFromIdentityEmail(emailFor({ channelType: "email", id: "a@b.co" }))).toEqual({
+      channelType: "email",
+      id: "a@b.co",
+    });
+  });
+
+  it("is undefined for anything that isn't a channel identity", () => {
+    expect(personFromIdentityEmail("ops@example.com")).toBeUndefined();
+    expect(personFromIdentityEmail("discord@people.project-os.invalid")).toBeUndefined();
+    expect(personFromIdentityEmail("-1@people.project-os.invalid")).toBeUndefined();
+    expect(personFromIdentityEmail("discord-@people.project-os.invalid")).toBeUndefined();
+    expect(personFromIdentityEmail("slack-1@people.project-os.invalid")).toBeUndefined();
+  });
+});
 
 describe("channel identities", () => {
   it("get a stable placeholder email that no operator can have", () => {

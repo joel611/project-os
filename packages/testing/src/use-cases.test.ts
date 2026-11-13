@@ -2,8 +2,10 @@ import {
   addSource,
   appendEvent,
   claimTicketUseCase,
+  getMyTicket,
   getTicket,
   handleInbound,
+  listMyTickets,
   heartbeat,
   listAssigned,
   listProjectSources,
@@ -993,5 +995,52 @@ describe("onTicketCompleted", () => {
     );
     expect(value).toBe(false);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("my tickets", () => {
+  const ada = { channelType: "discord", id: "u-ada" } as const;
+  const said = (ticketId: string, type: "created" | "follow_up", sender: string, at: string) =>
+    Effect.flatMap(TicketRepository, (repo) =>
+      repo.appendEvent({
+        id: `${ticketId}-${type}-${sender}`,
+        ticketId,
+        type,
+        actor: "coordinator",
+        actorId: sender,
+        body: "hi",
+        payload: { sender: { id: sender }, channelType: "discord" },
+        createdAt: at,
+      }),
+    );
+
+  const seed = Effect.gen(function* () {
+    const repo = yield* TicketRepository;
+    yield* repo.insert(ticket({ id: "asked", requester: ada }));
+    yield* repo.insert(
+      ticket({ id: "joined", requester: { channelType: "discord", id: "u-bob" } }),
+    );
+    yield* said("joined", "created", "u-bob", T0);
+    yield* said("joined", "follow_up", "u-ada", "2026-11-04T00:05:00.000Z");
+    yield* repo.insert(ticket({ id: "bobs", requester: { channelType: "discord", id: "u-bob" } }));
+    yield* said("bobs", "created", "u-bob", T0);
+  });
+
+  it("lists the tickets someone asked for or wrote in, with their projects' names", async () => {
+    const { value } = await run(Effect.andThen(seed, listMyTickets(ada)));
+    expect(value.tickets.map((t) => t.id)).toEqual(["joined", "asked"]);
+    expect(value.projects).toEqual([{ id: "p1", name: project.name }]);
+  });
+
+  it("opens only a ticket the person is involved in, and 404s the rest", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        yield* seed;
+        const mine = yield* getMyTicket("joined", ada);
+        const theirs = yield* Effect.flip(getMyTicket("bobs", ada));
+        return { mine: mine.ticket.id, theirs: theirs._tag };
+      }),
+    );
+    expect(value).toEqual({ mine: "joined", theirs: "TicketNotFound" });
   });
 });

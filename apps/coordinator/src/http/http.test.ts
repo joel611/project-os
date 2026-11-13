@@ -13,8 +13,15 @@ import { LocalLive, openLocalDb } from "@project-os/infra-local";
 import { classifierReturning, makeTestLayer } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import type { Access } from "../access.ts";
 
 import { type HandleInboundConfig, type HttpEnv, httpRoutes } from "./routes.ts";
+
+/** Takes every caller for an Operator, for tests of the routes alone. */
+const OPERATOR: Access = {
+  caller: async () => ({ kind: "user", userId: "u-op", name: "Op" }),
+  personOf: async () => undefined,
+};
 
 const T0 = "2026-11-04T00:00:00.000Z";
 const disposers: Array<() => Promise<unknown>> = [];
@@ -25,7 +32,11 @@ afterEach(async () => {
 const appFor = (layer: Layer.Layer<HttpEnv>, inbound?: HandleInboundConfig) => {
   const runtime = ManagedRuntime.make(layer);
   disposers.push(() => runtime.dispose());
-  return httpRoutes({ run: (effect) => runtime.runPromise(effect), ...(inbound && { inbound }) });
+  return httpRoutes({
+    run: (effect) => runtime.runPromise(effect),
+    access: OPERATOR,
+    ...(inbound && { inbound }),
+  });
 };
 
 type App = ReturnType<typeof appFor>;
@@ -414,7 +425,7 @@ describe("dashboard reads", () => {
     const { layer } = makeTestLayer();
     const runtime = ManagedRuntime.make(layer);
     disposers.push(() => runtime.dispose());
-    const app = httpRoutes({ run: (effect) => runtime.runPromise(effect) });
+    const app = httpRoutes({ run: (effect) => runtime.runPromise(effect), access: OPERATOR });
     return { app, runtime };
   };
 

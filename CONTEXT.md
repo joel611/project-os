@@ -55,6 +55,9 @@ _Avoid_: worker secret (that is a registered computer's), session token (that is
 **Operator**: a person allowed into the web dashboard: `ADMIN_EMAIL`, signing in with the seeded password, or an email in `ADMIN_EMAILS`, signing in with Google. With `GOOGLE_ALLOWED_DOMAINS` set, anyone with a Google Workspace account at those domains instead of `ADMIN_EMAILS`. Not the same as a Discord admin (`ADMIN_USER_IDS`), who acts in the admin channel.
 _Avoid_: admin (alone), user.
 
+**Member**: a person on a channel signed in to the web dashboard with the Google account they linked from that channel (`/dashboard`, the same link as `/connect` Google). They see only **My tickets**: the Tickets they asked for or wrote in (a `created` or `follow_up` event of theirs). Not an Operator, who sees everything and also gets My tickets when their Google account is linked the same way.
+_Avoid_: user (alone), viewer.
+
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.
 _Avoid_: integration, OAuth app.
 

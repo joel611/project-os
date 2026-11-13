@@ -3,6 +3,7 @@ import type {
   ChannelType,
   MemoryEntry,
   MemoryEntryType,
+  Requester,
 } from "@project-os/contracts";
 import { Context, type Effect } from "effect";
 import type { Project, ProjectNotFound } from "../../domain/project/index.ts";
@@ -77,6 +78,12 @@ export class TicketRepository extends Context.Service<
       channelType: TicketThread["channelType"],
       threadId: string,
     ) => Effect.Effect<TicketThread | undefined>;
+    /**
+     * Tickets this person is involved in: they asked for it (`requester`), or wrote its first
+     * message or a follow-up (a message in its thread, an answer to one of its prompts). Newest
+     * `lastActivityAt` first.
+     */
+    readonly listInvolving: (person: Requester) => Effect.Effect<ReadonlyArray<Ticket>>;
     /** Events on every ticket with `createdAt >= since`: the newest `limit`, oldest first. */
     readonly listEventsSince: (
       since: string,

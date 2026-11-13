@@ -17,6 +17,7 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
 import { makeAccess } from "../../coordinator/src/access.ts";
 import { createApp } from "../../coordinator/src/app.ts";
+import { browse } from "../src/browse.ts";
 import { startFakeOAuth } from "../src/fake-oauth.ts";
 
 /** Dashboard sign-in for the verify stack (the dashboard's /login page takes these). */
@@ -64,6 +65,9 @@ const url = `http://localhost:${coordPort}`;
 // "Continue with Google" signs in as ada@example.com through a fake Google on localhost, and
 // lands back on the dashboard at WEB_PORT.
 const google = startFakeOAuth();
+// VERIFY_GOOGLE_EMAIL=someone@else: the fake Google account isn't on the allowlist, so "Continue
+// with Google" signs in as the Discord member it is linked to (u1 "Ada", below), not an operator.
+if (process.env.VERIFY_GOOGLE_EMAIL) google.email = process.env.VERIFY_GOOGLE_EMAIL;
 const auth = makeAuth({
   db: openLocalDb(dbPath).db,
   baseURL: url,
@@ -80,6 +84,7 @@ createApp(
   {
     access: makeAccess({ serviceToken: SERVICE_TOKEN, auth }),
     auth,
+    connect: auth.connections!,
     http: {
       run: (e) => runtime.runPromise(e as any),
       inbound: { attachments: { hosts: ["localhost"] } },
@@ -131,6 +136,13 @@ writeFileSync(
 );
 // A personal device for someone else, never online: shows up in the dashboard, takes nothing.
 await register(false, "u9", "bob-laptop");
+// Discord user u1 "Ada" has run /connect google with the fake Google account, so that account's
+// sign-in brings her own tickets ("My tickets").
+const connectLink = await Effect.runPromise(
+  auth.connections!.service.connectUrl({ channelType: "discord", id: "u1", name: "Ada" }, "google"),
+);
+const linked = await browse(connectLink, undefined, "POST");
+if (!linked.body.includes("Google account connected")) throw new Error("linking u1 failed");
 console.log(
   `READY coordinator=${url} adapter=http://localhost:${adapterPort} project=${project.id} worker=${shared.worker.id} login=${OPERATOR.email}/${OPERATOR.password}`,
 );
