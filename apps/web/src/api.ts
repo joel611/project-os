@@ -1,11 +1,13 @@
 import {
   ActivityFeed,
   MemoryEntry,
+  MyTickets,
   Project,
   ProjectSource,
   Ticket,
   TicketAttachmentsOutput,
   TicketEvent,
+  Viewer,
   Worker,
   WorkerStatus,
 } from "@project-os/contracts";
@@ -119,6 +121,8 @@ export const makeApi = (
   const id = encodeURIComponent;
 
   return {
+    me: () => get("/me", Viewer),
+    myTickets: () => get("/me/tickets", MyTickets),
     projects: () => get("/projects", Schema.Array(Project)),
     project: (projectId: string) => get(`/projects/${id(projectId)}`, ProjectDetail),
     tickets: (projectId: string) => get(`/projects/${id(projectId)}/tickets`, Schema.Array(Ticket)),

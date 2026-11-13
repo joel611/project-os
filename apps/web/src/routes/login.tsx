@@ -78,7 +78,11 @@ const Login = () => {
       <Card className="w-full max-w-sm shadow-card [--card-spacing:--spacing(7)]">
         <CardHeader>
           <CardTitle className="text-lg font-semibold">Sign in</CardTitle>
-          <CardDescription>The dashboard is for operators of this Coordinator.</CardDescription>
+          <CardDescription>
+            Operators of this Coordinator sign in here. On Discord? Run{" "}
+            <code className="text-xs">/dashboard</code> there first, then continue with Google to
+            see your own tickets.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {providers.data?.google && (

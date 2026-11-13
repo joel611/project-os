@@ -6,15 +6,18 @@ import { type AppDeps, createApp, parseOrigins } from "./app.ts";
 import type { McpRuntime } from "./mcp/server.ts";
 
 const web = "https://dash.example.com";
+const ADA = { channelType: "discord", id: "u-ada", name: "Ada" } as const;
 
 const access: Access = {
   caller: async (request): Promise<Caller> => {
     const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
     if (token === "svc") return { kind: "service" };
-    if (token === "op") return { kind: "user", userId: "u-op" };
+    if (token === "op") return { kind: "user", userId: "u-op", name: "Op" };
+    if (token === "ada") return { kind: "member", userId: "u-ada", person: ADA };
     if (token === "eve") return { kind: "outsider" };
     return { kind: "anonymous" };
   },
+  personOf: async (caller) => (caller.kind === "member" ? caller.person : undefined),
 };
 
 const disposers: Array<() => Promise<unknown>> = [];
@@ -69,6 +72,50 @@ describe("coordinator app", () => {
       });
       expect(routes.length).toBeGreaterThan(20);
       expect(routes.filter((route: string) => !(route in ROUTE_POLICY))).toEqual([]);
+    });
+
+    it("lets a member read only who they are, their tickets and a ticket", async () => {
+      const app = fullApp();
+      expect((await call(app, "/projects", { token: "ada" })).status).toBe(403);
+      expect((await call(app, "/workers", { token: "ada" })).status).toBe(403);
+      expect((await call(app, "/activity", { token: "ada" })).status).toBe(403);
+      const me = await call(app, "/me", { token: "ada" });
+      expect(await me.json()).toEqual({
+        role: "member",
+        name: "Ada",
+        person: { channelType: "discord", id: "u-ada", name: "Ada" },
+      });
+      const mine = await call(app, "/me/tickets", { token: "ada" });
+      expect(await mine.json()).toEqual({ tickets: [], projects: [] });
+      // Someone else's ticket and a missing one look the same.
+      expect((await call(app, "/tickets/nope", { token: "ada" })).status).toBe(404);
+      expect((await call(app, "/me", { token: "eve" })).status).toBe(403);
+      expect((await call(app, "/me", {})).status).toBe(401);
+      const op = await call(app, "/me", { token: "op" });
+      expect(await op.json()).toEqual({ role: "operator", name: "Op", person: null });
+    });
+
+    it("names a member by id when the channel gave no name, and an operator's linked person", async () => {
+      const app = fullApp({
+        access: {
+          caller: async (request) =>
+            request.headers.get("authorization") === "Bearer op"
+              ? { kind: "user", userId: "u-op", name: "Op" }
+              : { kind: "member", userId: "u-x", person: { channelType: "discord", id: "42" } },
+          personOf: async (caller) =>
+            caller.kind === "member" ? caller.person : { channelType: "discord", id: "7" },
+        },
+      });
+      expect(await (await call(app, "/me", { token: "x" })).json()).toEqual({
+        role: "member",
+        name: "42",
+        person: { channelType: "discord", id: "42", name: null },
+      });
+      expect(await (await call(app, "/me", { token: "op" })).json()).toMatchObject({
+        role: "operator",
+        name: "Op",
+        person: { id: "7", name: null },
+      });
     });
 
     it("lets only an allowed operator read the dashboard API", async () => {

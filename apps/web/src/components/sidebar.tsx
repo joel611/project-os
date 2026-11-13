@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { FolderKanban, LogOut, Menu, Monitor, Moon, Network, Sun } from "lucide-react";
+import { FolderKanban, Inbox, LogOut, Menu, Monitor, Moon, Network, Sun } from "lucide-react";
 import { api, type WorkerView } from "@/api";
 import { authClient } from "@/auth";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { ToneDot } from "@/components/tone";
 import { QueryError } from "@/components/states";
 import { cn } from "@/lib/utils";
 import { type ThemePref, useTheme } from "@/theme";
+import { useViewer } from "@/viewer";
 
 const NAV_ITEM =
   "flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground";
@@ -186,37 +187,70 @@ const ThemeToggle = () => {
   );
 };
 
-const SidebarBody = () => (
-  <>
-    <Link to="/" className="flex items-center gap-2.5 px-2 py-1">
-      <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
-        <Network className="size-4" />
-      </span>
-      <span className="text-[15px] font-semibold tracking-tight">project-os</span>
-    </Link>
-    <Link
-      to="/"
-      className={NAV_ITEM}
-      activeProps={{ className: NAV_ACTIVE }}
-      activeOptions={{ exact: true }}
-    >
-      <Network className="size-4 shrink-0" />
-      System map
-    </Link>
-    <section>
-      <SectionTitle>Projects</SectionTitle>
-      <Projects />
-    </section>
-    <section>
-      <SectionTitle>Workers</SectionTitle>
-      <Workers />
-    </section>
-    <div className="mt-auto flex flex-col gap-2 border-t border-sidebar-border pt-4">
-      <ThemeToggle />
-      <SignOut />
-    </div>
-  </>
+const MyTicketsLink = () => (
+  <Link to="/mine" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
+    <Inbox className="size-4 shrink-0" />
+    My tickets
+  </Link>
 );
+
+/** Who is signed in, above Sign out. */
+const SignedInAs = () => {
+  const viewer = useViewer();
+  if (!viewer.data?.name) return null;
+  return (
+    <p className="truncate px-2.5 text-xs text-muted-foreground">
+      Signed in as <span className="font-medium text-foreground">{viewer.data.name}</span>
+      {viewer.data.role === "member" && " · member"}
+    </p>
+  );
+};
+
+const SidebarBody = () => {
+  // A member sees only their own tickets, so the operator sections would only 403.
+  const member = useViewer().data?.role === "member";
+  return (
+    <>
+      <Link to={member ? "/mine" : "/"} className="flex items-center gap-2.5 px-2 py-1">
+        <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <Network className="size-4" />
+        </span>
+        <span className="text-[15px] font-semibold tracking-tight">project-os</span>
+      </Link>
+      {member ? (
+        <MyTicketsLink />
+      ) : (
+        <>
+          <nav className="flex flex-col gap-0.5">
+            <Link
+              to="/"
+              className={NAV_ITEM}
+              activeProps={{ className: NAV_ACTIVE }}
+              activeOptions={{ exact: true }}
+            >
+              <Network className="size-4 shrink-0" />
+              System map
+            </Link>
+            <MyTicketsLink />
+          </nav>
+          <section>
+            <SectionTitle>Projects</SectionTitle>
+            <Projects />
+          </section>
+          <section>
+            <SectionTitle>Workers</SectionTitle>
+            <Workers />
+          </section>
+        </>
+      )}
+      <div className="mt-auto flex flex-col gap-2 border-t border-sidebar-border pt-4">
+        <SignedInAs />
+        <ThemeToggle />
+        <SignOut />
+      </div>
+    </>
+  );
+};
 
 const PANEL = "flex flex-col gap-7 overflow-y-auto bg-sidebar px-4 py-5 text-sidebar-foreground";
 

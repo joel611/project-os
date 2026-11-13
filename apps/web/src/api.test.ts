@@ -36,6 +36,19 @@ describe("makeApi", () => {
     expect(calls).toEqual(["/api/projects"]);
   });
 
+  it("reads who is signed in and their own tickets", async () => {
+    const viewer = { role: "member", name: "Ada", person: null };
+    const me = respond(200, viewer);
+    expect(await me.api.me()).toEqual(viewer);
+    expect(me.calls).toEqual(["/api/me"]);
+    const mine = respond(200, { tickets: [], projects: [{ id: "p1", name: "Acme" }] });
+    expect(await mine.api.myTickets()).toEqual({
+      tickets: [],
+      projects: [{ id: "p1", name: "Acme" }],
+    });
+    expect(mine.calls).toEqual(["/api/me/tickets"]);
+  });
+
   it("picks the API base from the Coordinator URL, else /api", () => {
     expect(apiBase(undefined)).toBe("/api");
     expect(apiBase("")).toBe("/api");

@@ -36,6 +36,7 @@ describe("COMMAND_DEFINITIONS", () => {
       "connect",
       "disconnect",
       "connections",
+      "dashboard",
       "register-worker",
       "workers",
       "unregister-worker",

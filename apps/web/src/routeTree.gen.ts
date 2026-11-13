@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as MineRouteImport } from './routes/mine'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
+import { Route as MineTicketsTicketIdRouteImport } from './routes/mine.tickets.$ticketId'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects.$projectId_.settings'
 import { Route as ProjectsProjectIdTicketsTicketIdRouteImport } from './routes/projects.$projectId.tickets.$ticketId'
 
@@ -25,10 +27,20 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MineRoute = MineRouteImport.update({
+  id: '/mine',
+  path: '/mine',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
   getParentRoute: () => rootRouteImport,
+} as any)
+const MineTicketsTicketIdRoute = MineTicketsTicketIdRouteImport.update({
+  id: '/tickets/$ticketId',
+  path: '/tickets/$ticketId',
+  getParentRoute: () => MineRoute,
 } as any)
 const ProjectsProjectIdSettingsRoute =
   ProjectsProjectIdSettingsRouteImport.update({
@@ -46,14 +58,18 @@ const ProjectsProjectIdTicketsTicketIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/mine': typeof MineRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/tickets/$ticketId': typeof ProjectsProjectIdTicketsTicketIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/mine': typeof MineRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/tickets/$ticketId': typeof ProjectsProjectIdTicketsTicketIdRoute
 }
@@ -61,7 +77,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/mine': typeof MineRouteWithChildren
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
   '/projects/$projectId_/settings': typeof ProjectsProjectIdSettingsRoute
   '/projects/$projectId/tickets/$ticketId': typeof ProjectsProjectIdTicketsTicketIdRoute
 }
@@ -70,21 +88,27 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/mine'
     | '/projects/$projectId'
+    | '/mine/tickets/$ticketId'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/tickets/$ticketId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/mine'
     | '/projects/$projectId'
+    | '/mine/tickets/$ticketId'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/tickets/$ticketId'
   id:
     | '__root__'
     | '/'
     | '/login'
+    | '/mine'
     | '/projects/$projectId'
+    | '/mine/tickets/$ticketId'
     | '/projects/$projectId_/settings'
     | '/projects/$projectId/tickets/$ticketId'
   fileRoutesById: FileRoutesById
@@ -92,6 +116,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  MineRoute: typeof MineRouteWithChildren
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
   ProjectsProjectIdSettingsRoute: typeof ProjectsProjectIdSettingsRoute
 }
@@ -112,12 +137,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mine': {
+      id: '/mine'
+      path: '/mine'
+      fullPath: '/mine'
+      preLoaderRoute: typeof MineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$projectId': {
       id: '/projects/$projectId'
       path: '/projects/$projectId'
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/mine/tickets/$ticketId': {
+      id: '/mine/tickets/$ticketId'
+      path: '/tickets/$ticketId'
+      fullPath: '/mine/tickets/$ticketId'
+      preLoaderRoute: typeof MineTicketsTicketIdRouteImport
+      parentRoute: typeof MineRoute
     }
     '/projects/$projectId_/settings': {
       id: '/projects/$projectId_/settings'
@@ -136,6 +175,16 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface MineRouteChildren {
+  MineTicketsTicketIdRoute: typeof MineTicketsTicketIdRoute
+}
+
+const MineRouteChildren: MineRouteChildren = {
+  MineTicketsTicketIdRoute: MineTicketsTicketIdRoute,
+}
+
+const MineRouteWithChildren = MineRoute._addFileChildren(MineRouteChildren)
+
 interface ProjectsProjectIdRouteChildren {
   ProjectsProjectIdTicketsTicketIdRoute: typeof ProjectsProjectIdTicketsTicketIdRoute
 }
@@ -150,6 +199,7 @@ const ProjectsProjectIdRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  MineRoute: MineRouteWithChildren,
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
   ProjectsProjectIdSettingsRoute: ProjectsProjectIdSettingsRoute,
 }

@@ -59,7 +59,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
       )
     : base;
   const app = withCors.get("/health", () => ({ status: "ok", service: "coordinator" }));
-  const withHttp = deps.http ? app.use(httpRoutes(deps.http)) : app;
+  const withHttp = deps.http ? app.use(httpRoutes({ ...deps.http, access: deps.access })) : app;
   const withAuth = deps.auth ? withHttp.use(authRoutes(deps.auth)) : withHttp;
   const withConnect = deps.connect ? withAuth.use(connectRoutes(deps.connect)) : withAuth;
   // One storage config: the limits intake applies to a message's files also bound Worker uploads.

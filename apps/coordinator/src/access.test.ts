@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vite-plus/test";
 import { authorize, makeAccess, policyFor } from "./access.ts";
 
-const sessions: Record<string, { userId: string; email: string }> = {
-  "ops-session": { userId: "u-ops", email: "Ops@Example.com" },
-  "channel-session": { userId: "u-ch", email: "discord-1@people.project-os.invalid" },
+const sessions: Record<string, { userId: string; email: string; name: string }> = {
+  "ops-session": { userId: "u-ops", email: "Ops@Example.com", name: "Ops" },
+  "channel-session": { userId: "u-ch", email: "discord-1@people.project-os.invalid", name: "1" },
+  "member-session": { userId: "u-m", email: "discord-2@people.project-os.invalid", name: "Ada" },
 };
+
+const ADA = { channelType: "discord", id: "2", name: "Ada" } as const;
 
 const access = makeAccess({
   serviceToken: "the-service-token",
   auth: {
     sessionUser: async (token) => sessions[token],
     isAllowed: (email) => email.toLowerCase() === "ops@example.com",
+    // Only u-m still has Google linked.
+    memberPerson: async (user) => (user.userId === "u-m" ? ADA : undefined),
+    linkedPerson: async (userId) => (userId === "u-ops" ? ADA : undefined),
   },
 });
 
@@ -29,9 +35,47 @@ describe("makeAccess", () => {
   });
 
   it("admits an allowed operator's session and nobody else's", async () => {
-    expect(await caller("Bearer ops-session")).toEqual({ kind: "user", userId: "u-ops" });
+    expect(await caller("Bearer ops-session")).toEqual({
+      kind: "user",
+      userId: "u-ops",
+      name: "Ops",
+    });
     expect(await caller("Bearer channel-session")).toEqual({ kind: "outsider" });
     expect(await caller("Bearer expired")).toEqual({ kind: "anonymous" });
+  });
+
+  it("admits a channel person whose Google link is live as a member", async () => {
+    expect(await caller("Bearer member-session")).toEqual({
+      kind: "member",
+      userId: "u-m",
+      person: ADA,
+    });
+  });
+
+  it("finds the person behind a member and behind a linked operator", async () => {
+    expect(await access.personOf(await caller("Bearer member-session"))).toEqual(ADA);
+    expect(await access.personOf(await caller("Bearer ops-session"))).toEqual(ADA);
+    expect(await access.personOf({ kind: "service" })).toBeUndefined();
+  });
+
+  it("resolves a request's caller once, however often it is asked", async () => {
+    let lookups = 0;
+    const counted = makeAccess({
+      serviceToken: "s",
+      auth: {
+        sessionUser: async (token) => {
+          lookups += 1;
+          return sessions[token];
+        },
+        isAllowed: () => true,
+      },
+    });
+    const request = new Request("http://localhost/x", {
+      headers: { authorization: "Bearer ops-session" },
+    });
+    await counted.caller(request);
+    await counted.caller(request);
+    expect(lookups).toBe(1);
   });
 
   it("reads only the Bearer scheme", async () => {
@@ -56,7 +100,14 @@ describe("authorize", () => {
       error: "Unauthorized",
     });
     expect(authorize("user", { kind: "service" })).toMatchObject({ status: 403 });
-    expect(authorize("service", { kind: "user", userId: "u" })).toMatchObject({ status: 403 });
+    expect(authorize("service", { kind: "user", userId: "u", name: "U" })).toMatchObject({
+      status: 403,
+    });
+    const member = { kind: "member", userId: "m", person: ADA } as const;
+    expect(authorize("member", member)).toBeUndefined();
+    expect(authorize("member", { kind: "user", userId: "u", name: "U" })).toBeUndefined();
+    expect(authorize("user", member)).toMatchObject({ status: 403 });
+    expect(authorize("member", { kind: "outsider" })).toMatchObject({ status: 403 });
     expect(authorize("public", { kind: "anonymous" })).toBeUndefined();
     expect(authorize("token", { kind: "anonymous" })).toBeUndefined();
   });

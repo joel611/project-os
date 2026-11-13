@@ -35,6 +35,7 @@ export const coordinatorConfig = (
   const health = healthConfig();
   const adminChannelId = env.ADMIN_CHANNEL_ID;
   const adminUserIds = parseAdminUserIds(env.ADMIN_USER_IDS);
+  const [dashboardUrl] = parseOrigins(env.WEB_ORIGIN);
   return {
     http: {
       run,
@@ -49,6 +50,7 @@ export const coordinatorConfig = (
       commands: {
         ...(adminChannelId && { adminChannelId, adminUserIds }),
         admin,
+        ...(dashboardUrl && { dashboardUrl }),
         connections: run,
         sources: run,
         workers: {
