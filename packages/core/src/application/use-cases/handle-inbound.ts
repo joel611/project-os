@@ -18,6 +18,7 @@ import {
 } from "./attachments.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { recordChannelMessage } from "./channel-digest.ts";
+import { recordInbound } from "./inbound-log.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
@@ -221,6 +222,8 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const source = sourceType
       ? yield* sources.findByExternal(sourceType, message.channelId)
       : undefined;
+
+    if (source) yield* recordInbound(message, source.projectId);
 
     // Before the mention gate: the digest reads what people say among themselves too.
     if (source && config.channelDigest && message.channelType === "discord") {

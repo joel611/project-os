@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import type { ChannelMessage, MemoryEntry } from "@project-os/contracts";
 import {
   ChannelMessageRepository,
+  InboundLogRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
@@ -43,6 +44,7 @@ const run = <A, E>(
     | MemoryRepository
     | WorkerRepository
     | ChannelMessageRepository
+    | InboundLogRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(SqliteRepositories(db))));
@@ -722,6 +724,42 @@ describe("ChannelMessageRepository", () => {
     expect(out.afterRemove).toEqual(["c3"]);
     expect(out.dropped).toBe(1);
     expect(out.left).toEqual(["c3"]);
+  });
+});
+
+describe("InboundLogRepository", () => {
+  it("stores each message once and lists a project's newest first, up to the limit", async () => {
+    const entry = (id: string, receivedAt: string, over = {}) => ({
+      id,
+      projectId: "p1",
+      channelType: "discord" as const,
+      channelId: "chan",
+      threadId: null,
+      externalId: id,
+      senderId: "u1",
+      senderName: "Ada",
+      content: id,
+      mentionsBot: false,
+      attachmentCount: 0,
+      url: null,
+      receivedAt,
+      ...over,
+    });
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* InboundLogRepository;
+        yield* repo.append(entry("a", T0));
+        yield* repo.append(entry("c", T2, { mentionsBot: true, attachmentCount: 2 }));
+        yield* repo.append(entry("b", T1));
+        const again = yield* repo.append(entry("z", T2, { externalId: "a" }));
+        return { again, all: yield* repo.list("p1", 10), top: yield* repo.list("p1", 1) };
+      }),
+    );
+    expect(out.again).toBe(false);
+    expect(out.all.map((e) => e.id)).toEqual(["c", "b", "a"]);
+    expect(out.all[0]).toMatchObject({ mentionsBot: true, attachmentCount: 2 });
+    expect(out.top.map((e) => e.id)).toEqual(["c"]);
   });
 });
 

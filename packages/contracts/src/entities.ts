@@ -124,6 +124,30 @@ export const ChannelMessage = Schema.Struct({
 });
 export type ChannelMessage = typeof ChannelMessage.Type;
 
+/**
+ * A message the Coordinator received in a project's channel, kept as a debugging record of what
+ * arrived. `content` has Discord mentions removed. Unlike {@link ChannelMessage}, never deleted
+ * by the Channel Digest.
+ */
+export const InboundLogEntry = Schema.Struct({
+  id: Id,
+  projectId: Id,
+  channelType: ChannelType,
+  channelId: Schema.String,
+  threadId: Schema.NullOr(Schema.String),
+  /** The channel's own message id; unique per channel type. */
+  externalId: Schema.String,
+  senderId: Schema.String,
+  senderName: Schema.NullOr(Schema.String),
+  content: Schema.String,
+  /** Whether the message @mentioned the bot (what the Coordinator needs to act on it). */
+  mentionsBot: Schema.Boolean,
+  attachmentCount: Schema.Finite,
+  url: Schema.NullOr(Schema.String),
+  receivedAt: Timestamp,
+});
+export type InboundLogEntry = typeof InboundLogEntry.Type;
+
 export const Project = Schema.Struct({
   id: Id,
   orgId: Id,
