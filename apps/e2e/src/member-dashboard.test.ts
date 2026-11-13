@@ -130,6 +130,9 @@ describe("member dashboard", () => {
     });
     expect((await get(token!, `/tickets/${bobs}/attachments`)).status).toBe(404);
 
+    // Signing in again finds the same member.
+    expect((await get((await signIn())!, "/me")).body.person.id).toBe("u-ada");
+
     // The rest of the dashboard stays Operators'.
     for (const path of ["/projects", "/workers", "/activity"]) {
       expect((await get(token!, path)).status, path).toBe(403);
@@ -199,6 +202,14 @@ describe("operator with a linked Discord identity", () => {
     expect(mine.body.tickets.map((t: { id: string }) => t.id).sort()).toEqual(
       [asked, joined].sort(),
     );
+  });
+
+  it("finds no person behind the password operator", async () => {
+    await start({});
+    expect((await get(stack.operatorToken, "/me")).body).toMatchObject({
+      role: "operator",
+      person: null,
+    });
   });
 
   it("has no tickets of their own without a linked identity", async () => {

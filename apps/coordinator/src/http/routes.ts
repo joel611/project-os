@@ -38,7 +38,7 @@ import {
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
-import type { Access } from "../access.ts";
+import type { Access, Caller } from "../access.ts";
 import {
   changeStatusAndNotify,
   CreateProjectBody,
@@ -123,11 +123,15 @@ export const httpRoutes = ({
 
   return new Elysia({ name: "http-routes" })
     .get("/me", async ({ request }): Promise<Viewer> => {
-      const caller = await access.caller(request);
+      // The route's `member` policy lets in only an Operator (`user`) or a member.
+      const caller = (await access.caller(request)) as Extract<
+        Caller,
+        { kind: "user" } | { kind: "member" }
+      >;
       const person = await access.personOf(caller);
       return {
         role: caller.kind === "member" ? "member" : "operator",
-        name: caller.kind === "user" ? caller.name : (person?.name ?? person?.id ?? ""),
+        name: caller.kind === "member" ? (caller.person.name ?? caller.person.id) : caller.name,
         person: person
           ? { channelType: person.channelType, id: person.id, name: person.name ?? null }
           : null,

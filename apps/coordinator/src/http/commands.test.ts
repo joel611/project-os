@@ -3,9 +3,15 @@ import { makeTestLayer } from "@project-os/testing";
 import { ConnectionsUnavailable, UserConnections, WorkerRepository } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { OPERATOR } from "../access.test-support.ts";
+import type { Access } from "../access.ts";
 import { type CommandsConfig, runCommand } from "./commands.ts";
 import { httpRoutes } from "./routes.ts";
+
+/** Takes every caller for an Operator, for tests of the routes alone. */
+const OPERATOR: Access = {
+  caller: async () => ({ kind: "user", userId: "u-op", name: "Op" }),
+  personOf: async () => undefined,
+};
 
 const command = (over: Partial<SlashCommand> = {}): SlashCommand => ({
   channelType: "discord",
@@ -206,6 +212,32 @@ describe("runCommand /dashboard", () => {
     const reply = await runCommand(dashboard, config);
     expect(reply.content).toContain("https://dash.test/login");
     expect(reply.content).not.toContain("connect.test");
+    await runtime.dispose();
+  });
+
+  it("says linking is off when there is no account linking", async () => {
+    const { config } = recording({ dashboardUrl: "https://dash.test" });
+    expect((await runCommand(dashboard, config)).content).toBe(
+      "The dashboard is at https://dash.test/login, but account linking isn't set up here.",
+    );
+  });
+
+  it("says so when Google has no OAuth client", async () => {
+    const runtime = ManagedRuntime.make(
+      Layer.succeed(UserConnections, {
+        connectUrl: () => Effect.fail(new ConnectionsUnavailable({ message: "no client" })),
+        list: () => Effect.succeed([]),
+        disconnect: () => Effect.succeed(false),
+        accessToken: () => Effect.fail(new ConnectionsUnavailable({ message: "no client" })),
+      }),
+    );
+    const { config } = recording({
+      dashboardUrl: "https://dash.test",
+      connections: (effect) => runtime.runPromise(effect),
+    });
+    expect((await runCommand({ ...dashboard, sender: { id: "u9" } }, config)).content).toContain(
+      "Google linking isn't set up here",
+    );
     await runtime.dispose();
   });
 

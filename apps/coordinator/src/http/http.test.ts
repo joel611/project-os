@@ -13,9 +13,15 @@ import { LocalLive, openLocalDb } from "@project-os/infra-local";
 import { classifierReturning, makeTestLayer } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { OPERATOR } from "../access.test-support.ts";
+import type { Access } from "../access.ts";
 
 import { type HandleInboundConfig, type HttpEnv, httpRoutes } from "./routes.ts";
+
+/** Takes every caller for an Operator, for tests of the routes alone. */
+const OPERATOR: Access = {
+  caller: async () => ({ kind: "user", userId: "u-op", name: "Op" }),
+  personOf: async () => undefined,
+};
 
 const T0 = "2026-11-04T00:00:00.000Z";
 const disposers: Array<() => Promise<unknown>> = [];

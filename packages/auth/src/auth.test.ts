@@ -23,6 +23,34 @@ const post = (auth: ReturnType<typeof authWith>, path: string, body: unknown) =>
     }),
   );
 
+describe("makeAuth members", () => {
+  it("takes no session user for a member unless it is a channel identity", async () => {
+    const auth = authWith({ admin });
+    expect(
+      await auth.memberPerson({ userId: "u", email: "ops@example.com", name: "Ops" }),
+    ).toBeUndefined();
+  });
+
+  it("finds no linked person for a password-only operator", async () => {
+    const auth = authWith({ admin });
+    const res = await post(auth, "/sign-in/email", admin);
+    const user = await auth.sessionUser(res.headers.get("set-auth-token")!);
+    expect(await auth.linkedPerson(user!.userId)).toBeUndefined();
+  });
+
+  it("refuses to create a user who is neither an operator nor a channel identity", async () => {
+    const auth = authWith({ admin });
+    const ctx = await auth.auth.$context;
+    // The hook says no: nothing is created.
+    const created = await ctx.internalAdapter.createUser(
+      { email: "eve@example.com", name: "Eve", emailVerified: true },
+      { method: "test" },
+    );
+    expect(created).toBeNull();
+    expect(await ctx.internalAdapter.findUserByEmail("eve@example.com")).toBeNull();
+  });
+});
+
 describe("makeAuth", () => {
   it("signs the seeded admin in with a bearer session token", async () => {
     const auth = authWith({ admin });

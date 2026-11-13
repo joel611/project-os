@@ -95,6 +95,29 @@ describe("coordinator app", () => {
       expect(await op.json()).toEqual({ role: "operator", name: "Op", person: null });
     });
 
+    it("names a member by id when the channel gave no name, and an operator's linked person", async () => {
+      const app = fullApp({
+        access: {
+          caller: async (request) =>
+            request.headers.get("authorization") === "Bearer op"
+              ? { kind: "user", userId: "u-op", name: "Op" }
+              : { kind: "member", userId: "u-x", person: { channelType: "discord", id: "42" } },
+          personOf: async (caller) =>
+            caller.kind === "member" ? caller.person : { channelType: "discord", id: "7" },
+        },
+      });
+      expect(await (await call(app, "/me", { token: "x" })).json()).toEqual({
+        role: "member",
+        name: "42",
+        person: { channelType: "discord", id: "42", name: null },
+      });
+      expect(await (await call(app, "/me", { token: "op" })).json()).toMatchObject({
+        role: "operator",
+        name: "Op",
+        person: { id: "7", name: null },
+      });
+    });
+
     it("lets only an allowed operator read the dashboard API", async () => {
       const app = fullApp();
       expect((await call(app, "/projects")).status).toBe(401);
