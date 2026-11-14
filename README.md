@@ -10,7 +10,7 @@
 
 <!-- TODO: Add hero GIF of Discord question → ticket → grounded reply -->
 
-**[Quick Start](#quick-start)** · **[Why](docs/why.md)** · **[Docs](docs/)** · **[Architecture](docs/technical-architecture.md)**
+**[Website](https://joel611.github.io/project-os/)** · **[Quick start](docs/quick-start.md)** · **[Why](docs/why.md)** · **[Architecture](docs/technical-architecture.md)**
 
 ---
 
@@ -30,143 +30,26 @@ The full story and design rationale: [docs/why.md](docs/why.md).
 
 ---
 
-## Quick Start
+## Get started
 
 ```sh
 bun install
-cp .env.example .env                 # Discord bot + OPENROUTER_API_KEY + ADMIN_*
-docker compose up --build            # coordinator :8080 (runs the Discord bot too) + Grafana :3000
-
-# one-time seed (replace with your Discord channel ID)
-docker compose exec -e SEED_DISCORD_CHANNEL_ID=<channel-id> coordinator bun run seed
-
-# on the host — start the Watcher (local Claude Code worker)
-set -a; . ./.env; set +a
-bun apps/watcher/src/main.bun.ts
+cp .env.example .env      # Discord bot + OPENROUTER_API_KEY + ADMIN_*
+docker compose up --build
 ```
 
-Open the dashboard:
+The full walkthrough is in [Quick start](docs/quick-start.md).
 
-```sh
-bun run --cwd apps/web dev
-# → http://localhost:5173
-```
+## Documentation
 
-Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env` (see [SETUP.md](SETUP.md)). You should see projects, live tickets, Project Memory, and worker health refreshing every few seconds.
+The same Markdown files are published as the product site at **[joel611.github.io/project-os](https://joel611.github.io/project-os/)**.
 
-Without Docker:
-
-```sh
-bun run --cwd apps/coordinator dev
-curl http://localhost:8080/health
-```
-
-Full setup details → [SETUP.md](SETUP.md)
-
----
-
-## How the tower works
-
-```
- Discord / Email                                         Dev's laptop
- ┌─────────────┐   inbound    ┌───────────────────┐   ┌──────────────┐
- │  Adapters   │ ───────────▶ │    Coordinator    │◀──│   Watcher    │
- │ (thin radar)│ ◀─────────── │   (the Tower)     │   │ polls, then  │
- └─────────────┘   replies    │ Project Memory    │   │ starts       │
-                              │ Tickets + MCP     │   │ Claude Code  │
-                              └───────────────────┘   └──────┬───────┘
-                                        ▲   MCP tools        │
-                                        └────────────────────┘
-                                   claim ticket → work it → write result
-```
-
-| Role                | Real-world analogy      | Responsibility                                               |
-| ------------------- | ----------------------- | ------------------------------------------------------------ |
-| **Coordinator**     | Control Tower           | Owns context, tickets, memory, outbound messages             |
-| **Channel Adapter** | Radar / radio           | Thin translator. No business logic.                          |
-| **Ticket**          | Flight plan / clearance | Single source of truth for status + results                  |
-| **Worker**          | Pilot / aircraft        | Claims one ticket, works it via MCP, never talks to channels |
-| **Watcher**         | Ground crew             | Polls for assigned tickets and launches local Claude Code    |
-| **Project Memory**  | Flight database         | Durable facts the whole team (and future workers) can read   |
-
-Workers speak **MCP only**. Everything they can do is a tool call: read/append ticket, read/write Project Memory.
-
----
-
-## Usage example
-
-In a project Discord channel:
-
-```
-@agent can we ship SSO by end of month?
-```
-
-What happens next:
-
-1. Adapter turns the message into a standard inbound event.
-2. Coordinator loads the Project + its Memory, opens a Ticket, marks it `assigned`.
-3. Watcher on a developer machine sees the ticket and starts a Claude Code session.
-4. The Worker claims the ticket, researches via Project Memory + available sources, writes findings back.
-5. Coordinator posts a cited answer in the channel. The engineer never saw a ping.
-
-The next related question already benefits from the updated Project Memory.
-
----
-
-## Self-hosting & Deployment
-
-**Local (recommended for development)**  
-`docker compose up --build` — Coordinator (with the Discord bot) + observability stack.
-
-**Cloudflare target**  
-The same core runs on Cloudflare Workers + D1 + KV.  
-Deployment is managed by Alchemy:
-
-```sh
-bun run deploy
-```
-
-Estimated cost for a small team: **~$5–7 / month** on the Workers Paid plan (excluding LLM usage).  
-Steps and cost breakdown: [docs/deployment.md](docs/deployment.md).
-
----
-
-## Project layout
-
-```
-apps/
-  coordinator/          # Tower — Elysia HTTP + MCP, agent loop (main.bun.ts local, main.cloudflare.ts Workers)
-  discord-gateway/      # Split mode only: runs channel-discord as its own process
-  watcher/              # Host-run Claude Code launcher
-  web/                  # Read-only dashboard (TanStack Start SPA; `build` exports a static site)
-packages/
-  channel-discord/      # Discord bot, hosted by the Coordinator
-  channel-email/        # Stub
-  core/                 # Domain + ports (provider-free)
-  agent-runtime/        # Intent classifier + agent loop
-  db-sqlite/            # Drizzle schema (SQLite / D1)
-  infra-local/          # Local provider Layer
-  infra-cloudflare/     # Cloudflare provider Layer
-  contracts/            # Shared wire types
-  testing/              # In-memory fakes
-libs/config/            # Env parsing
-alchemy.run.ts          # Cloudflare deployment
-docs/                   # Product brief + technical architecture
-CONTEXT.md              # Precise vocabulary used throughout
-```
-
----
-
-## Development
-
-```sh
-bun run check       # format + lint + dependency rules
-bun run typecheck
-bun run test
-bun run test:integration
-```
-
-Integration suite and the fake Discord adapter: [TESTING.md](TESTING.md).
+- [Why project-os](docs/why.md): the problem and the design choices
+- [How it works](docs/how-it-works.md): the control tower, its roles, and a question's path
+- [Quick start](docs/quick-start.md) and [Setup](SETUP.md): run it and connect Discord, Google, and GitHub
+- [Deploy to Cloudflare](docs/deployment.md)
+- [Development](docs/development.md) and [Testing without Discord](TESTING.md)
+- [Technical architecture](docs/technical-architecture.md) and the [glossary](CONTEXT.md)
 
 ---
 
