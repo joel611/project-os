@@ -1,6 +1,6 @@
 import {
+  AuditLogRepository,
   ChannelMessageRepository,
-  InboundLogRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
@@ -10,7 +10,7 @@ import {
 import { Layer } from "effect";
 import type { SqliteDb } from "./db.ts";
 import { makeChannelMessageRepository } from "./channel-message.ts";
-import { makeInboundLogRepository } from "./inbound-log.ts";
+import { makeAuditLogRepository } from "./audit-log.ts";
 import { makeMemoryRepository } from "./memory.ts";
 import { makeProjectRepository } from "./project.ts";
 import { makeProjectSourceRepository } from "./project-source.ts";
@@ -28,5 +28,5 @@ export const SqliteRepositories = (db: SqliteDb) =>
     Layer.succeed(MemoryRepository, makeMemoryRepository(db)),
     Layer.succeed(WorkerRepository, makeWorkerRepository(db)),
     Layer.succeed(ChannelMessageRepository, makeChannelMessageRepository(db)),
-    Layer.succeed(InboundLogRepository, makeInboundLogRepository(db)),
+    Layer.succeed(AuditLogRepository, makeAuditLogRepository(db)),
   );

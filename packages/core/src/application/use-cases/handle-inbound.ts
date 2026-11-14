@@ -18,7 +18,7 @@ import {
 } from "./attachments.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { recordChannelMessage } from "./channel-digest.ts";
-import { recordInbound } from "./inbound-log.ts";
+import { auditInbound, auditTicket } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
@@ -194,6 +194,16 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const isAdminChannel =
       message.channelType === "discord" && message.channelId === config.adminChannelId;
 
+    const sourceType = sourceTypeFor(message.channelType);
+    const source =
+      sourceType && !isAdminChannel
+        ? yield* sources.findByExternal(sourceType, message.channelId)
+        : undefined;
+
+    // Everything that arrives is logged, even what is refused or ignored below. Admin-channel
+    // and unlinked-channel messages belong to no project, so they show only org-wide.
+    yield* auditInbound(message, source?.projectId ?? null, { admin: isAdminChannel });
+
     if (isAdminChannel && config.adminUserIds && !config.adminUserIds.includes(message.sender.id)) {
       yield* reply("Not authorized: you are not on the admin list.");
       return { kind: "admin_forbidden" } as InboundOutcome;
@@ -217,13 +227,6 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       yield* reply(text);
       return { kind: "admin_handled" } as InboundOutcome;
     }
-
-    const sourceType = sourceTypeFor(message.channelType);
-    const source = sourceType
-      ? yield* sources.findByExternal(sourceType, message.channelId)
-      : undefined;
-
-    if (source) yield* recordInbound(message, source.projectId);
 
     // Before the mention gate: the digest reads what people say among themselves too.
     if (source && config.channelDigest && message.channelType === "discord") {
@@ -321,7 +324,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       case "new_request": {
         const ticketId = yield* ids.next;
         const requester = { channelType: message.channelType, id: message.sender.id };
-        yield* tickets.insert({
+        const created = yield* tickets.insert({
           id: ticketId,
           projectId: project.id,
           status: "open",
@@ -340,6 +343,11 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           lastActivityAt: at,
           completedAt: null,
           updatedAt: at,
+        });
+        yield* auditTicket(created, "created", {
+          type: "person",
+          id: message.sender.id,
+          name: message.sender.name ?? null,
         });
         // A tool-only Sidekick ticket never opens its files, so they are not copied.
         const stored =

@@ -1,8 +1,11 @@
 import { Database } from "bun:sqlite";
-import type { ChannelMessage, MemoryEntry } from "@project-os/contracts";
+import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AuditEntry, ChannelMessage, MemoryEntry } from "@project-os/contracts";
 import {
+  AuditLogRepository,
   ChannelMessageRepository,
-  InboundLogRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
@@ -44,7 +47,7 @@ const run = <A, E>(
     | MemoryRepository
     | WorkerRepository
     | ChannelMessageRepository
-    | InboundLogRepository
+    | AuditLogRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(SqliteRepositories(db))));
@@ -727,39 +730,119 @@ describe("ChannelMessageRepository", () => {
   });
 });
 
-describe("InboundLogRepository", () => {
-  it("stores each message once and lists a project's newest first, up to the limit", async () => {
-    const entry = (id: string, receivedAt: string, over = {}) => ({
-      id,
-      projectId: "p1",
-      channelType: "discord" as const,
-      channelId: "chan",
-      threadId: null,
-      externalId: id,
-      senderId: "u1",
-      senderName: "Ada",
-      content: id,
-      mentionsBot: false,
-      attachmentCount: 0,
-      url: null,
-      receivedAt,
-      ...over,
-    });
+describe("AuditLogRepository", () => {
+  const entry = (id: string, at: string, over: Partial<AuditEntry> = {}): AuditEntry => ({
+    id,
+    at,
+    kind: "worker",
+    action: "registered",
+    actorType: "person",
+    actorId: "u1",
+    actorName: "Ada",
+    projectId: null,
+    ticketId: null,
+    workerId: "w1",
+    summary: id,
+    payload: { n: id },
+    ...over,
+  });
+
+  it("appends, dedupes by key, and lists newest-logged first with filters and paging", async () => {
     const out = await run(
       Effect.gen(function* () {
         yield* seeded;
-        const repo = yield* InboundLogRepository;
-        yield* repo.append(entry("a", T0));
-        yield* repo.append(entry("c", T2, { mentionsBot: true, attachmentCount: 2 }));
-        yield* repo.append(entry("b", T1));
-        const again = yield* repo.append(entry("z", T2, { externalId: "a" }));
-        return { again, all: yield* repo.list("p1", 10), top: yield* repo.list("p1", 1) };
+        const repo = yield* AuditLogRepository;
+        yield* repo.append(entry("a", T1), "k1");
+        yield* repo.append(entry("b", T0, { projectId: "p1", kind: "ticket", payload: null }));
+        yield* repo.append(entry("c", T2, { projectId: "p1" }));
+        const again = yield* repo.append(entry("z", T2), "k1");
+        const page1 = yield* repo.list({ limit: 2 });
+        const page2 = yield* repo.list({ limit: 2, before: page1.next! });
+        return {
+          again,
+          page1,
+          page2,
+          project: yield* repo.list({ projectId: "p1", limit: 10 }),
+          tickets: yield* repo.list({ projectId: "p1", kind: "ticket", limit: 10 }),
+          pruned: yield* repo.removeBefore(T1),
+          left: yield* repo.list({ limit: 10 }),
+        };
       }),
     );
     expect(out.again).toBe(false);
-    expect(out.all.map((e) => e.id)).toEqual(["c", "b", "a"]);
-    expect(out.all[0]).toMatchObject({ mentionsBot: true, attachmentCount: 2 });
-    expect(out.top.map((e) => e.id)).toEqual(["c"]);
+    expect(out.page1.entries.map((e) => e.id)).toEqual(["c", "b"]);
+    expect(out.page1.next).toBe(2);
+    expect(out.page2).toEqual({ entries: [entry("a", T1)], next: null });
+    expect(out.project.entries.map((e) => e.id)).toEqual(["c", "b"]);
+    expect(out.tickets.entries).toEqual([
+      entry("b", T0, { projectId: "p1", kind: "ticket", payload: null }),
+    ]);
+    expect(out.pruned).toBe(1);
+    expect(out.left.entries.map((e) => e.id)).toEqual(["c", "a"]);
+  });
+
+  it("migrates every inbound log row into the audit log", async () => {
+    // Apply every migration but the last, write inbound_log rows, then apply the last.
+    const source = new URL("../../migrations", import.meta.url).pathname;
+    const folders = readdirSync(source).sort();
+    const earlier = mkdtempSync(join(tmpdir(), "audit-migration-"));
+    for (const f of folders.slice(0, -1))
+      cpSync(join(source, f), join(earlier, f), { recursive: true });
+    const sqlite = new Database(":memory:");
+    const db = drizzle({ client: sqlite });
+    migrate(db, { migrationsFolder: earlier });
+    rmSync(earlier, { recursive: true });
+    db.insert(schema.orgs).values({ id: "o1", name: "Org", createdAt: T0 }).run();
+    sqlite.run(
+      `INSERT INTO projects (id, org_id, name, custom_instructions, status, created_at, updated_at, channel_digest, channel_digest_notify)
+       VALUES ('p1', 'o1', 'Proj', '', 'active', '${T0}', '${T0}', 1, 0)`,
+    );
+    const row = (id: string, at: string, content: string, attachments: number, mentions: number) =>
+      sqlite.run(
+        `INSERT INTO inbound_log (id, project_id, channel_type, channel_id, thread_id, external_id, sender_id, sender_name, content, mentions_bot, attachment_count, url, received_at)
+         VALUES ('${id}', 'p1', 'discord', 'chan', NULL, 'x-${id}', 'u1', 'Ada', '${content}', ${mentions}, ${attachments}, 'https://d/${id}', '${at}')`,
+      );
+    row("late", T2, "hi", 0, 1);
+    row("early", T0, "", 2, 0);
+    row("long", T1, "y".repeat(150), 0, 0);
+    migrate(db, { migrationsFolder: source });
+    const { entries } = await Effect.runPromise(
+      Effect.flatMap(AuditLogRepository, (r) => r.list({ limit: 10 })).pipe(
+        Effect.provide(SqliteRepositories(db)),
+      ),
+    );
+    expect(
+      entries.map((e) => [e.id, e.summary.length > 20 ? e.summary.length : e.summary]),
+    ).toEqual([
+      ["late", "hi"],
+      ["long", 140],
+      ["early", "2 attachment(s)"],
+    ]);
+    expect(entries[0]).toEqual({
+      id: "late",
+      at: T2,
+      kind: "inbound_event",
+      action: "received",
+      actorType: "person",
+      actorId: "u1",
+      actorName: "Ada",
+      projectId: "p1",
+      ticketId: null,
+      workerId: null,
+      summary: "hi",
+      payload: {
+        channelType: "discord",
+        channelId: "chan",
+        threadId: null,
+        externalId: "x-late",
+        content: "hi",
+        mentionsBot: true,
+        attachmentCount: 0,
+        url: "https://d/late",
+      },
+    });
+    const tables = sqlite.query("SELECT name FROM sqlite_master WHERE name = 'inbound_log'").all();
+    expect(tables).toEqual([]);
   });
 });
 
