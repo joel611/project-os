@@ -9,6 +9,7 @@ const STATUS = {
   SchemaError: 400,
   TicketNotFound: 404,
   ProjectNotFound: 404,
+  WorkerNotFound: 404,
   SourceNotFound: 404,
   SourceAlreadyLinked: 409,
   SourceAliasTaken: 409,

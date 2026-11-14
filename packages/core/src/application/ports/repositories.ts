@@ -196,6 +196,8 @@ export class ChannelMessageRepository extends Context.Service<
 export interface AuditQuery {
   /** Only this project's entries. Unset: every entry, with or without a project. */
   readonly projectId?: string;
+  /** Only entries about this Worker. */
+  readonly workerId?: string;
   readonly kind?: AuditKind;
   /** Only entries logged before this position: the `next` of the previous page. */
   readonly before?: number;

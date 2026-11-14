@@ -6,6 +6,7 @@ import {
   groupWorkers,
   hasAttachments,
   isShownInline,
+  lastSeen,
   workerGroup,
   workerName,
   relativeTime,
@@ -180,6 +181,12 @@ describe("workers", () => {
     expect(workerGroup(w("daytona-t1", { registered: false }))).toBe("sandbox");
     expect(workerName(w("shared-1", { name: "build-box" }))).toBe("build-box");
     expect(workerName(w("shared-1"))).toBe("shared-1");
+  });
+
+  it("reads a worker's last heartbeat, or never before its first", () => {
+    const now = new Date("2026-11-04T00:05:00.000Z");
+    expect(lastSeen({ lastSeenAt: T }, now)).toBe("5m ago");
+    expect(lastSeen({ lastSeenAt: new Date(0).toISOString() }, now)).toBe("never");
   });
 
   it("groups online first then by name, and keeps only online sandbox sessions", () => {

@@ -13,6 +13,7 @@ import {
   pruneAudit,
   readAudit,
   readProjectAudit,
+  readWorkerAudit,
   redeemWorkerRegistration,
   stripMentions,
   unregisterSharedWorker,
@@ -296,6 +297,25 @@ describe("digest events", () => {
       summary: "Digest failed: provider down",
       payload: { messages: 0, saved: [], error: "provider down" },
     });
+  });
+});
+
+describe("a worker's feed", () => {
+  it("returns only that worker's entries, and fails for an unknown worker", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* heartbeat({ workerId: "daytona-1", workerType: "daytona_pi" });
+        yield* heartbeat({ workerId: "daytona-2", workerType: "daytona_pi" });
+        const page = yield* readWorkerAudit("daytona-1", {});
+        const missing = yield* Effect.flip(readWorkerAudit("nope", {}));
+        return { page, missing };
+      }),
+    );
+    expect(out.page.entries.map((e) => [e.workerId, e.action])).toEqual([
+      ["daytona-1", "first_seen"],
+    ]);
+    expect(out.page.nextCursor).toBeNull();
+    expect(out.missing._tag).toBe("WorkerNotFound");
   });
 });
 
