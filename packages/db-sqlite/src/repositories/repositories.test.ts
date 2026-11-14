@@ -754,7 +754,7 @@ describe("AuditLogRepository", () => {
         const repo = yield* AuditLogRepository;
         yield* repo.append(entry("a", T1), "k1");
         yield* repo.append(entry("b", T0, { projectId: "p1", kind: "ticket", payload: null }));
-        yield* repo.append(entry("c", T2, { projectId: "p1" }));
+        yield* repo.append(entry("c", T2, { projectId: "p1", workerId: "w2" }));
         const again = yield* repo.append(entry("z", T2), "k1");
         const page1 = yield* repo.list({ limit: 2 });
         const page2 = yield* repo.list({ limit: 2, before: page1.next! });
@@ -764,6 +764,7 @@ describe("AuditLogRepository", () => {
           page2,
           project: yield* repo.list({ projectId: "p1", limit: 10 }),
           tickets: yield* repo.list({ projectId: "p1", kind: "ticket", limit: 10 }),
+          worker: yield* repo.list({ workerId: "w2", limit: 10 }),
           pruned: yield* repo.removeBefore(T1),
           left: yield* repo.list({ limit: 10 }),
         };
@@ -772,6 +773,7 @@ describe("AuditLogRepository", () => {
     expect(out.again).toBe(false);
     expect(out.page1.entries.map((e) => e.id)).toEqual(["c", "b"]);
     expect(out.page1.next).toBe(2);
+    expect(out.worker.entries.map((e) => e.id)).toEqual(["c"]);
     expect(out.page2).toEqual({ entries: [entry("a", T1)], next: null });
     expect(out.project.entries.map((e) => e.id)).toEqual(["c", "b"]);
     expect(out.tickets.entries).toEqual([
@@ -782,11 +784,12 @@ describe("AuditLogRepository", () => {
   });
 
   it("migrates every inbound log row into the audit log", async () => {
-    // Apply every migration but the last, write inbound_log rows, then apply the last.
+    // Apply the migrations before the audit log's, write inbound_log rows, then apply the rest.
     const source = new URL("../../migrations", import.meta.url).pathname;
     const folders = readdirSync(source).sort();
+    const auditLog = folders.findIndex((f) => f.endsWith("_audit_log_replaces_inbound_log"));
     const earlier = mkdtempSync(join(tmpdir(), "audit-migration-"));
-    for (const f of folders.slice(0, -1))
+    for (const f of folders.slice(0, auditLog))
       cpSync(join(source, f), join(earlier, f), { recursive: true });
     const sqlite = new Database(":memory:");
     const db = drizzle({ client: sqlite });

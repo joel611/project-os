@@ -278,24 +278,32 @@ const KindFilter = ({
 };
 
 /**
- * The audit log, newest first: org-wide with a project filter (`projects` given), or one
- * project's entries (`projectId`).
+ * The audit log, newest first: org-wide with a project filter (`projects` given), one
+ * project's entries (`projectId`), or one Worker's (`workerId`).
  */
 export const AuditFeed = ({
   projectId,
+  workerId,
   projects,
 }: {
   projectId?: string;
+  workerId?: string;
   projects?: ReadonlyArray<Project>;
 }) => {
   const [kind, setKind] = useState<AuditKind | undefined>();
   const [project, setProject] = useState("");
   const now = useNow();
-  const scope = projectId ?? (project || undefined);
+  const scope = workerId ?? projectId ?? (project || undefined);
   const feed = useInfiniteQuery({
-    queryKey: ["audit", projectId ? "project" : "org", scope ?? null, kind ?? null],
+    queryKey: [
+      "audit",
+      workerId ? "worker" : projectId ? "project" : "org",
+      scope ?? null,
+      kind ?? null,
+    ],
     queryFn: ({ pageParam }) => {
       const query = { ...(kind && { kind }), ...(pageParam && { before: pageParam }) };
+      if (workerId) return api.workerAudit(workerId, query);
       return projectId
         ? api.projectAudit(projectId, query)
         : api.audit({ ...query, ...(scope && { projectId: scope }) });
@@ -355,9 +363,11 @@ export const AuditFeed = ({
         <Empty
           title="Nothing logged yet"
           hint={
-            projectId
-              ? "Messages in this project's channels, Channel Digest runs and ticket changes show up here."
-              : "Messages the Coordinator receives, Channel Digest runs, and Worker and ticket changes show up here."
+            workerId
+              ? "This Worker's registration, outages and the tickets it worked show up here."
+              : projectId
+                ? "Messages in this project's channels, Channel Digest runs and ticket changes show up here."
+                : "Messages the Coordinator receives, Channel Digest runs, and Worker and ticket changes show up here."
           }
         />
       ) : (

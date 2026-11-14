@@ -35,9 +35,10 @@ export const makeAuditLogRepository = (db: SqliteDb): Impl => ({
         .onConflictDoNothing()
         .returning({ id: auditLog.id }),
     ).pipe(Effect.map((rows) => rows.length > 0)),
-  list: ({ projectId, kind, before, limit }) => {
+  list: ({ projectId, workerId, kind, before, limit }) => {
     const where: SQL[] = [];
     if (projectId !== undefined) where.push(eq(auditLog.projectId, projectId));
+    if (workerId !== undefined) where.push(eq(auditLog.workerId, workerId));
     if (kind !== undefined) where.push(eq(auditLog.kind, kind));
     if (before !== undefined) where.push(lt(ROWID, before));
     return q(() =>

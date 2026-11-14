@@ -88,6 +88,9 @@ describe("makeApi", () => {
       api.ticket("t 1"),
       api.ticketAttachments("t 1"),
       api.workers(),
+      api.worker("w/1"),
+      api.workerAudit("w/1"),
+      api.workerAudit("w/1", { kind: "ticket" }),
     ];
     await Promise.allSettled(all);
     expect(calls).toEqual([
@@ -101,6 +104,9 @@ describe("makeApi", () => {
       "/api/tickets/t%201",
       "/api/tickets/t%201/attachments",
       "/api/workers",
+      "/api/workers/w%2F1",
+      "/api/workers/w%2F1/audit",
+      "/api/workers/w%2F1/audit?kind=ticket",
     ]);
   });
 
@@ -164,6 +170,8 @@ describe("makeApi", () => {
     };
     const { api } = respond(200, [worker]);
     expect(await api.workers()).toEqual([worker]);
+    const detail = respond(200, { worker, tickets: [] });
+    expect(await detail.api.worker("w1")).toEqual({ worker, tickets: [] });
   });
 
   it("reads the activity feed, passing the previous read's time as since", async () => {

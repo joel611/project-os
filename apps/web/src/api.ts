@@ -20,6 +20,9 @@ import { session, sessionExpired } from "./session.ts";
 const WorkerView = Schema.Struct({ ...Worker.fields, status: WorkerStatus });
 export type WorkerView = typeof WorkerView.Type;
 
+const WorkerDetail = Schema.Struct({ worker: WorkerView, tickets: Schema.Array(Ticket) });
+export type WorkerDetail = typeof WorkerDetail.Type;
+
 const ProjectDetail = Schema.Struct({ project: Project, sources: Schema.Array(ProjectSource) });
 export type ProjectDetail = typeof ProjectDetail.Type;
 
@@ -153,6 +156,9 @@ export const makeApi = (
     ticketAttachments: (ticketId: string) =>
       get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),
     workers: () => get("/workers", Schema.Array(WorkerView)),
+    worker: (workerId: string) => get(`/workers/${id(workerId)}`, WorkerDetail),
+    workerAudit: (workerId: string, query: Omit<AuditFilter, "projectId"> = {}) =>
+      get(`/workers/${id(workerId)}/audit${auditSearch(query)}`, AuditPage),
     activity: (since: string | null) =>
       get(since === null ? "/activity" : `/activity?since=${id(since)}`, ActivityFeed),
     updateProject: (projectId: string, patch: ProjectPatch) =>
