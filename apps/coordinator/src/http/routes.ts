@@ -5,7 +5,7 @@ import {
   SlashCommand,
   WorkerRegisterRequest,
 } from "@project-os/contracts";
-import type { Viewer } from "@project-os/contracts";
+import { AUDIT_KINDS, type AuditKind, type Viewer } from "@project-os/contracts";
 import {
   answerPrompt,
   getMyTicket,
@@ -13,7 +13,9 @@ import {
   listMyTicketAttachments,
   listMyTickets,
   handleInbound,
-  readInbound,
+  readAudit,
+  readProjectAudit,
+  type AuditRead,
   listTicketAttachments,
   readActivity,
   redeemWorkerRegistration,
@@ -25,7 +27,7 @@ import {
   type Clock,
   type HandleInboundConfig,
   type IdGenerator,
-  type InboundLogRepository,
+  type AuditLogRepository,
   type IntentClassifier,
   type KeyValueStore,
   type MemoryRepository,
@@ -68,6 +70,26 @@ const decodeCommand = Schema.decodeUnknownOption(SlashCommand);
 
 export type { CommandsConfig, HandleInboundConfig };
 
+const isAuditKind = (value: string): value is AuditKind =>
+  (AUDIT_KINDS as ReadonlyArray<string>).includes(value);
+
+/** `?kind=&before=&limit=` for the audit feeds; a string is the 400 message. */
+const auditQuery = (
+  query: Record<string, string | undefined>,
+): Omit<AuditRead, "projectId"> | string => {
+  const { kind, before, limit } = query;
+  if (kind && !isAuditKind(kind)) return `kind must be one of ${AUDIT_KINDS.join(", ")}`;
+  const size = limit ? Number(limit) : undefined;
+  if (size !== undefined && (!Number.isInteger(size) || size < 1)) {
+    return "limit must be a positive whole number";
+  }
+  return {
+    ...(kind && { kind: kind as AuditKind }),
+    ...(before && { before }),
+    ...(size !== undefined && { limit: size }),
+  };
+};
+
 export type HttpEnv =
   | AgentRuntime
   | AssetStore
@@ -78,7 +100,7 @@ export type HttpEnv =
   | IntentClassifier
   | KeyValueStore
   | MemoryRepository
-  | InboundLogRepository
+  | AuditLogRepository
   | ProjectRepository
   | ProjectSourceRepository
   | Sidekick
@@ -198,7 +220,24 @@ export const httpRoutes = ({
     .get("/projects/:id/memory", ({ params, set }) =>
       reply(set, toResult(listProjectMemory(params.id))),
     )
-    .get("/projects/:id/inbound", ({ params, set }) => reply(set, toResult(readInbound(params.id))))
+    .get("/audit", ({ query, set }) => {
+      const read = auditQuery(query);
+      if (typeof read === "string") {
+        set.status = 400;
+        return { error: read };
+      }
+      const projectId =
+        typeof query.projectId === "string" && query.projectId ? query.projectId : undefined;
+      return reply(set, toResult(readAudit({ ...read, ...(projectId && { projectId }) })));
+    })
+    .get("/projects/:id/audit", ({ params, query, set }) => {
+      const read = auditQuery(query);
+      if (typeof read === "string") {
+        set.status = 400;
+        return { error: read };
+      }
+      return reply(set, toResult(readProjectAudit(params.id, read)));
+    })
     .post("/projects/:id/sources", ({ params, body, set }) =>
       reply(
         set,

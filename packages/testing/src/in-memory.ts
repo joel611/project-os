@@ -14,7 +14,7 @@ import {
   AssetStore,
   AssetStoreFailed,
   KeyValueStore,
-  InboundLogRepository,
+  AuditLogRepository,
   MemoryRepository,
   NotConnected,
   type Person,
@@ -46,7 +46,7 @@ import {
 } from "@project-os/core";
 import {
   type ChannelMessage,
-  type InboundLogEntry,
+  type AuditEntry,
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
   type CreateChannelInstruction,
@@ -266,24 +266,35 @@ export const MemoryRepositoryInMemory = Layer.sync(MemoryRepository, () => {
   };
 });
 
-export const InboundLogRepositoryInMemory = Layer.sync(InboundLogRepository, () => {
-  const rows: InboundLogEntry[] = [];
+export const AuditLogRepositoryInMemory = Layer.sync(AuditLogRepository, () => {
+  const rows: Array<{ entry: AuditEntry; dedupeKey: string | null; seq: number }> = [];
+  let seq = 0;
   return {
-    append: (entry) =>
+    append: (entry, dedupeKey) =>
       Effect.sync(() => {
-        const taken = rows.some(
-          (r) => r.channelType === entry.channelType && r.externalId === entry.externalId,
-        );
-        if (!taken) rows.push(entry);
+        const taken = dedupeKey !== undefined && rows.some((r) => r.dedupeKey === dedupeKey);
+        if (!taken) rows.push({ entry, dedupeKey: dedupeKey ?? null, seq: ++seq });
         return !taken;
       }),
-    list: (projectId, limit) =>
-      Effect.sync(() =>
-        rows
-          .filter((r) => r.projectId === projectId)
-          .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
-          .slice(0, limit),
-      ),
+    list: ({ projectId, kind, before, limit }) =>
+      Effect.sync(() => {
+        const page = rows
+          .filter((r) => projectId === undefined || r.entry.projectId === projectId)
+          .filter((r) => kind === undefined || r.entry.kind === kind)
+          .filter((r) => before === undefined || r.seq < before)
+          .reverse()
+          .slice(0, limit);
+        return {
+          entries: page.map((r) => r.entry),
+          next: page.length < limit ? null : page.at(-1)!.seq,
+        };
+      }),
+    removeBefore: (at) =>
+      Effect.sync(() => {
+        const before = rows.length;
+        for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.entry.at < at) rows.splice(i, 1);
+        return before - rows.length;
+      }),
   };
 });
 

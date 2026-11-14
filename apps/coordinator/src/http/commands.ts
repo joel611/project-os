@@ -10,6 +10,7 @@ import {
 } from "@project-os/contracts";
 import {
   addSource,
+  type AuditLogRepository,
   type Clock,
   type IdGenerator,
   issueWorkerRegistration,
@@ -53,7 +54,12 @@ export interface CommandsConfig {
 
 export type SourcesEnv = Clock | IdGenerator | ProjectRepository | ProjectSourceRepository;
 
-export type WorkersEnv = Clock | IdGenerator | KeyValueStore | WorkerRepository;
+export type WorkersEnv =
+  | AuditLogRepository
+  | Clock
+  | IdGenerator
+  | KeyValueStore
+  | WorkerRepository;
 
 export interface WorkersCommandsConfig {
   readonly run: <A>(effect: Effect.Effect<A, never, WorkersEnv>) => Promise<A>;
@@ -307,7 +313,7 @@ const workerCommand = async (
   const which = command.options.worker?.trim();
   if (!which) return privately("Usage: /unregister-worker worker:<name or id> [shared:True]");
   const removed = await workers.run(
-    shared ? unregisterSharedWorker(which) : unregisterWorker(person, which),
+    shared ? unregisterSharedWorker(which, person) : unregisterWorker(person, which),
   );
   if (removed) {
     return privately(`Removed ${workerLabel(removed)}. Its Watcher can no longer pick up tickets.`);

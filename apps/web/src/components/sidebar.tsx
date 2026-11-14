@@ -1,7 +1,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { FolderKanban, Inbox, LogOut, Menu, Monitor, Moon, Network, Sun } from "lucide-react";
+import {
+  FolderKanban,
+  Inbox,
+  LogOut,
+  Menu,
+  Monitor,
+  Moon,
+  Network,
+  ScrollText,
+  Sun,
+} from "lucide-react";
 import { api, type WorkerView } from "@/api";
 import { authClient } from "@/auth";
 import { Button } from "@/components/ui/button";
@@ -230,6 +240,10 @@ const SidebarBody = () => {
             >
               <Network className="size-4 shrink-0" />
               System map
+            </Link>
+            <Link to="/audit" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
+              <ScrollText className="size-4 shrink-0" />
+              Audit log
             </Link>
             <MyTicketsLink />
           </nav>

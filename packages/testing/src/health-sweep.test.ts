@@ -13,6 +13,7 @@ import {
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  AuditLogRepositoryInMemory,
   IdGeneratorSequential,
   KeyValueStoreInMemory,
   makeChannelGatewayRecording,
@@ -70,6 +71,7 @@ const scenario = <A>(
     IdGeneratorSequential,
     tickets,
     WorkerRepositoryInMemory,
+    AuditLogRepositoryInMemory,
     KeyValueStoreInMemory,
     ProjectSourceRepositoryInMemory,
     makeChannelGatewayRecording().layer,
