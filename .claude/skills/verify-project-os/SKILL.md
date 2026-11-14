@@ -10,7 +10,7 @@ Surfaces: **Coordinator** (Elysia, HTTP `/inbound` `/projects` `/tickets` `/work
 ## What is real vs faked
 
 Real: SQLite (fresh file), Coordinator HTTP + MCP, `normalizeMessage` + `/inbound` forwarding, MCP SDK worker client, Vite dashboard, browser.
-Faked (production boundaries to external systems): intent classifier (always `new_request`, no OpenRouter), agent runtime (echo), Discord reply endpoint (appends to `$VERIFY_DIR/data/posted.jsonl` instead of posting to Discord), and the Claude Code session (`drive.ts work` plays `apps/watcher/prompts/session-start.md` over real MCP). Not covered: the real Watcher poll loop / `claude -p` spawn, discord.js, LLM replies, email adapter, Cloudflare target. The real `main.bun.ts` needs `OPENROUTER_API_KEY`+`CHAT_MODEL_ID`, hence the scaffold launcher `apps/e2e/verify/serve.ts` (verification scaffolding; lives in apps/e2e only so workspace deps resolve).
+Faked (production boundaries to external systems): intent classifier (always `new_request`, no OpenRouter), agent runtime (echo), Discord reply endpoint (appends to `$VERIFY_DIR/data/posted.jsonl` instead of posting to Discord), and the Claude Code session (`drive.ts work` plays `apps/watcher/prompts/session-start.md` over real MCP). Not covered: the real Watcher poll loop / `claude -p` spawn, discord.js, LLM replies, email adapter, Cloudflare target. The real `main.bun.ts` needs `OPENROUTER_API_KEY`+`DEFAULT_MODEL`, hence the scaffold launcher `apps/e2e/verify/serve.ts` (verification scaffolding; lives in apps/e2e only so workspace deps resolve).
 
 ## Launch
 

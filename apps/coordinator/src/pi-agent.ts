@@ -1,6 +1,6 @@
 import type { Models } from "@earendil-works/pi-ai";
 import { type AgentRuntimeOptions, makeAgentRuntime, newModels } from "@project-os/agent-runtime";
-import { env, envBool } from "@project-os/config";
+import { envBool, modelConfig } from "@project-os/config";
 import {
   AgentRuntime,
   AgentRuntimeError,
@@ -76,7 +76,7 @@ export class PiAgent extends DurableObject<Bindings> {
   protected chat(): { readonly models: Models; readonly model: AgentRuntimeOptions["model"] } {
     return {
       models: newModels(),
-      model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
+      model: modelConfig().default,
     };
   }
 

@@ -1,27 +1,16 @@
 import { type CompleteClient, makeChannelDigester } from "@project-os/agent-runtime/classifier";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { formatModelRef, type ModelRef } from "@project-os/config";
 import { type ChannelDigestConfig, digestChannels, Scheduler } from "@project-os/core";
 import { Effect } from "effect";
 
-type Env = Readonly<Record<string, string | undefined>>;
-
-/**
- * The Channel Digest's model: `CHANNEL_DIGEST_MODEL_PROVIDER` / `CHANNEL_DIGEST_MODEL_ID`,
- * falling back to the chat model (`CHAT_MODEL_PROVIDER` / `CHAT_MODEL_ID`). Undefined when
- * neither model id is set: the digest is then off, and no channel messages are kept.
- */
-export const channelDigesterFromEnv = (
+/** The Channel Digest's model: `CHANNEL_DIGEST_MODEL`, else `DEFAULT_MODEL` (`modelConfig`). */
+export const channelDigester = (
   models: CompleteClient & { getModel(provider: string, id: string): Model<Api> | undefined },
-  env: Env,
+  ref: ModelRef,
 ) => {
-  const provider = env.CHANNEL_DIGEST_MODEL_PROVIDER || env.CHAT_MODEL_PROVIDER || "openrouter";
-  const modelId = env.CHANNEL_DIGEST_MODEL_ID || env.CHAT_MODEL_ID;
-  if (!modelId) {
-    console.log("Channel Digest off: set CHANNEL_DIGEST_MODEL_ID or CHAT_MODEL_ID to enable it");
-    return undefined;
-  }
-  const model = models.getModel(provider, modelId);
-  if (!model) throw new Error(`Unknown Channel Digest model ${provider}/${modelId}`);
+  const model = models.getModel(ref.provider, ref.modelId);
+  if (!model) throw new Error(`Unknown Channel Digest model ${formatModelRef(ref)}`);
   return makeChannelDigester({ client: models, model });
 };
 

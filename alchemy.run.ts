@@ -17,6 +17,7 @@ import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import { assertNoRenamedModelVars } from "./libs/config/src/models.ts";
 
 const COMPATIBILITY_DATE = "2026-10-01";
 
@@ -66,11 +67,10 @@ const reachableFromContainer = (url: string) => {
   return parsed.origin;
 };
 
-/** Plain vars with the same defaults as `.env.example`. */
+/** Plain vars with the same defaults as `.env.example`; set to "" counts as unset. */
 const vars = {
-  CHAT_MODEL_PROVIDER: "openrouter",
-  CHAT_MODEL_ID: "anthropic/claude-sonnet-4.5",
-  JEV_MODEL_ID: "typesafe/jev-1.14",
+  DEFAULT_MODEL: "openrouter/anthropic/claude-sonnet-4.5",
+  DECISION_MODEL: "openrouter/typesafe/jev-1.14",
   INTENT_CONFIDENCE_THRESHOLD: "0.5",
   DISCORD_PROJECT_CHANNEL_AUTO_CREATE: "true",
 } as const;
@@ -90,7 +90,7 @@ const optionalVars = [
   "CHANNEL_DIGEST_QUIET_MIN",
   "CHANNEL_DIGEST_MAX_WAIT_MIN",
   "CHANNEL_DIGEST_RETENTION_DAYS",
-  "CHANNEL_DIGEST_MODEL_ID",
+  "CHANNEL_DIGEST_MODEL",
   "AUDIT_RETENTION_DAYS",
   "ADMIN_CHANNEL_ID",
   "ADMIN_USER_IDS",
@@ -136,9 +136,12 @@ const optionalSecrets = [
 ] as const;
 
 const readVars = Effect.gen(function* () {
+  // An old model var (CHAT_MODEL_ID, JEV_MODEL_ID, ...) fails the deploy, naming its new name.
+  yield* Effect.sync(() => assertNoRenamedModelVars(process.env));
   const env: Record<string, string> = {};
   for (const [name, fallback] of Object.entries(vars)) {
-    env[name] = yield* Config.String(name).pipe(Config.withDefault(fallback));
+    const value = yield* Config.option(Config.NonEmptyString(name));
+    env[name] = Option.getOrElse(value, () => fallback);
   }
   for (const name of optionalVars) {
     const value = yield* Config.option(Config.NonEmptyString(name));
