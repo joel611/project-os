@@ -5,7 +5,7 @@ import { SLOW_MS } from "./polling.ts";
 /** Where a member lands: the one page of the dashboard that is theirs. */
 export const MY_TICKETS_PATH = "/mine";
 
-/** Whether a member may be on this path: My tickets and its ticket sheets only. */
+/** Whether a member may be on this path: My tickets and its ticket pages only. */
 export const memberMayVisit = (pathname: string): boolean =>
   pathname === MY_TICKETS_PATH || pathname.startsWith(`${MY_TICKETS_PATH}/`);
 
