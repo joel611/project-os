@@ -2,7 +2,10 @@ import type { ClassifierContext, ClassifierResult } from "@earendil-works/pi-ai"
 import { ClassifierError, IntentClassifier } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { JEV_MODEL_ID, makeIntentClassifier, newModels } from "./index.ts";
+import { makeIntentClassifier, newModels } from "./index.ts";
+
+/** The model id of `DEFAULT_DECISION_MODEL` (libs/config). */
+const JEV_MODEL_ID = "typesafe/jev-1.14";
 
 const choice = (c: string, confidence: number) => ({
   type: "choice" as const,
@@ -42,7 +45,6 @@ const call = (layer: Layer.Layer<IntentClassifier>) =>
 
 describe("catalog", () => {
   it("pins the Jev model on OpenRouter", () => {
-    expect(JEV_MODEL_ID).toBe("typesafe/jev-1.14");
     expect(newModels().getModelOfType("classifier", "openrouter", JEV_MODEL_ID)).toBeDefined();
   });
 });

@@ -7,7 +7,7 @@ const runner = (): SandboxRunner => ({ run: async () => ({ exitCode: 0, output: 
 const base = {
   SANDBOX_MCP_URL: "https://tunnel.example/mcp",
   OPENROUTER_API_KEY: "sk-or",
-  CHAT_MODEL_ID: "anthropic/claude-sonnet-4.5",
+  DEFAULT_MODEL: "openrouter/anthropic/claude-sonnet-4.5",
 };
 const launcher = (
   env: Record<string, string>,
@@ -41,7 +41,7 @@ describe("sandbox pool from env", () => {
     expect(logs).toEqual(["sandbox pool: daytona_pi, cloudflare_pi"]);
   });
 
-  it("needs a Pi model when there's no chat model to borrow", () => {
+  it("needs a Pi model when there's no default model to borrow", () => {
     expect(() =>
       sandboxLauncherFromEnv(
         { SANDBOX_MCP_URL: "https://t/mcp", OPENROUTER_API_KEY: "k" },
@@ -85,7 +85,7 @@ describe("sandbox pool from env", () => {
   it("needs a public MCP URL once a provider is in the pool", () => {
     expect(() =>
       sandboxLauncherFromEnv(
-        { OPENROUTER_API_KEY: "k", CHAT_MODEL_ID: "m" },
+        { OPENROUTER_API_KEY: "k", DEFAULT_MODEL: "openrouter/m" },
         { prompt: "p", log: () => {}, runners: { daytona: runner() } },
       ),
     ).toThrow("Missing env var SANDBOX_MCP_URL");

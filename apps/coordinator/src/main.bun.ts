@@ -1,11 +1,18 @@
 import {
-  JEV_MODEL_ID,
   makeAgentRuntime,
   makeIntentClassifier,
   newModels,
   openLocalStorage,
 } from "@project-os/agent-runtime";
-import { channelDigestConfig, env, envBool, envNumber, healthConfig } from "@project-os/config";
+import {
+  channelDigestConfig,
+  env,
+  envBool,
+  envNumber,
+  formatModelRef,
+  healthConfig,
+  modelConfig,
+} from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { makeAuth } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
@@ -17,7 +24,7 @@ import { assetBaseUrl } from "./assets/base-url.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
-import { channelDigesterFromEnv, startChannelDigest } from "./digest/index.ts";
+import { channelDigester, startChannelDigest } from "./digest/index.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
@@ -38,9 +45,16 @@ const connections = auth.connections;
 const serviceToken = serviceTokenFromEnv(process.env);
 
 const models = newModels();
-const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
-const jev = models.getModelOfType("classifier", "openrouter", jevModelId);
-if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
+const modelRefs = modelConfig();
+if (!models.getModel(modelRefs.default.provider, modelRefs.default.modelId)) {
+  throw new Error(`Unknown DEFAULT_MODEL ${formatModelRef(modelRefs.default)}`);
+}
+const jev = models.getModelOfType(
+  "classifier",
+  modelRefs.decision.provider,
+  modelRefs.decision.modelId,
+);
+if (!jev) throw new Error(`Unknown DECISION_MODEL ${formatModelRef(modelRefs.decision)}`);
 
 const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
   runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
@@ -53,8 +67,7 @@ const adminActions = makeAdminActions({
 
 const otel = setupTelemetry(process.env);
 const digestConfig = channelDigestConfig();
-const digester = channelDigesterFromEnv(models, process.env);
-const digest = { ...digestConfig, enabled: digester !== undefined };
+const digester = channelDigester(models, modelRefs.channelDigest);
 
 const AiLive = Layer.orDie(
   Layer.mergeAll(
@@ -62,11 +75,11 @@ const AiLive = Layer.orDie(
     makeAgentRuntime({
       storage: await openLocalStorage(dataPath("pi-durable.sqlite", process.env.PI_STORAGE_PATH)),
       models,
-      model: { provider: env("CHAT_MODEL_PROVIDER", "openrouter"), modelId: env("CHAT_MODEL_ID") },
+      model: modelRefs.default,
       adminActions,
       telemetry: otel?.telemetry,
     }),
-    ...(digester ? [digester] : []),
+    digester,
   ),
 );
 
@@ -112,11 +125,9 @@ const runtime = ManagedRuntime.make(
 );
 
 await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));
-if (digest.enabled) {
-  await runtime.runPromise(
-    startChannelDigest({ ...digest, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
-  );
-}
+await runtime.runPromise(
+  startChannelDigest({ ...digestConfig, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
+);
 
 createApp(
   {},
@@ -126,7 +137,7 @@ createApp(
       run: (effect) => runtime.runPromise(effect),
       publicUrl: () => publicUrl,
       admin: adminActions,
-      inbound: { channelDigest: digest.enabled },
+      inbound: { channelDigest: true },
     }),
     access: makeAccess({ serviceToken, auth }),
     mcp: runtime,
