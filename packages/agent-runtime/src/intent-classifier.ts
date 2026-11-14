@@ -11,6 +11,12 @@ import {
   IntentClassifier,
   type IntentResult,
 } from "@project-os/core";
+import {
+  EXECUTOR_CRITERIA,
+  EXECUTOR_QUESTION,
+  INTENT_CRITERIA,
+  INTENT_QUESTION,
+} from "@project-os/system-prompts";
 import { Effect, Layer } from "effect";
 
 /** Below this the executor answer is dropped and the request goes to a Worker. */
@@ -24,33 +30,17 @@ export interface ClassifyClient {
   ) => Promise<ClassifierResult>;
 }
 
-const INTENTS = {
-  new_request: "The user asks for new work to be done",
-  follow_up: "The user adds to or changes an open request",
-  status_question: "The user asks about the progress or result of existing work",
-  remember: "The user asks to remember a fact about the project, to be kept in its memory",
-  admin_command: "The user wants to configure projects, channels or sources",
-  chit_chat: "Greeting, thanks or small talk",
-  none: "None of the above",
-} as const;
-
-const EXECUTORS: Record<Executor, string> = {
-  worker:
-    "Needs the whole repository pulled, tests run, or a script run. Also any request that changes code or files, or that is unclear",
-  sidekick:
-    "Only needs read-only tool calls: listing Google Drive files, or reading a GitHub repo's status, commit history, pipelines or releases",
-};
+const EXECUTORS: Record<Executor, string> = EXECUTOR_CRITERIA;
 
 const QUESTIONS: ClassifierContext["questions"] = {
   intent: {
     type: "choice",
-    instructions: "What does the message want?",
-    criteria: INTENTS,
+    instructions: INTENT_QUESTION,
+    criteria: INTENT_CRITERIA,
   },
   executor: {
     type: "choice",
-    instructions:
-      "Who does this request? A Worker works in a checkout of the repo. The Sidekick only calls read-only Drive and GitHub tools. Only meaningful for new requests.",
+    instructions: EXECUTOR_QUESTION,
     criteria: EXECUTORS,
   },
 };

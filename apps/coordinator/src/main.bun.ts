@@ -84,7 +84,6 @@ const AiLive = Layer.orDie(
 );
 
 const workerLauncher = sandboxLauncherFromEnv(process.env, {
-  prompt: await Bun.file(new URL("../../watcher/prompts/session-start.md", import.meta.url)).text(),
   log: console.log,
 });
 

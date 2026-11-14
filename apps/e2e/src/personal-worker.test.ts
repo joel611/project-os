@@ -73,7 +73,7 @@ const tickets = async () => {
   return [asked(ADA_ASK), asked(BOB_ASK)].filter(Boolean);
 };
 
-/** Plays session-start.md as Claude Code would, with the MCP config the Watcher wrote. */
+/** Plays the Worker session-start prompt as Claude Code would, with the MCP config the Watcher wrote. */
 const claudeSession = async (workerId: string, secret: string) => {
   const mcp = await stack.worker(secret);
   const tool = async (name: string, args: Record<string, unknown>) => {

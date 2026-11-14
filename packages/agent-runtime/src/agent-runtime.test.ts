@@ -12,6 +12,10 @@ import {
 } from "@earendil-works/pi-ai";
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { AgentRuntime, AgentRuntimeError } from "@project-os/core";
+import {
+  ADMIN_SESSION_INSTRUCTIONS,
+  PROJECT_SESSION_INSTRUCTIONS,
+} from "@project-os/system-prompts";
 import { Context, Effect, Layer } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
@@ -76,22 +80,24 @@ describe("AgentRuntime (Pi Durable)", () => {
     expect(text).toBe("Your ticket is done.");
   });
 
-  it("applies configured instructions to new conversations", async () => {
+  it("gives project and admin sessions the Coordinator's instructions", async () => {
     const { faux, models, model } = setup();
-    let system = "";
-    faux.setResponses([
-      (c) => {
-        system = JSON.stringify(c.messages);
-        return fauxAssistantMessage([fauxText("ok")]);
-      },
-    ]);
+    const transcripts: string[] = [];
+    const answer = (c: { messages: readonly Message[] }) => {
+      transcripts.push(JSON.stringify(c.messages));
+      return fauxAssistantMessage([fauxText("ok")]);
+    };
+    faux.setResponses([(c) => answer(c), (c) => answer(c)]);
 
-    await withRuntime(
-      { storage: new MemoryStorage(), models, model, instructions: "Be terse." },
-      (call) => call({ sessionId: "s", prompt: "hi" }),
+    await withRuntime({ storage: new MemoryStorage(), models, model }, (call) =>
+      Effect.gen(function* () {
+        yield* call({ sessionId: "project:a", prompt: "hi" });
+        yield* call({ sessionId: "admin:chan", prompt: "hi" });
+      }),
     );
 
-    expect(system).toContain("Be terse.");
+    expect(transcripts[0]).toContain(JSON.stringify(PROJECT_SESSION_INSTRUCTIONS).slice(1, -1));
+    expect(transcripts[1]).toContain(JSON.stringify(ADMIN_SESSION_INSTRUCTIONS).slice(1, -1));
   });
 
   it("keeps one conversation per session id", async () => {
@@ -111,7 +117,8 @@ describe("AgentRuntime (Pi Durable)", () => {
       }),
     );
 
-    expect(seen).toEqual([1, 3, 1]);
+    // The first message of every conversation is its instructions.
+    expect(seen).toEqual([2, 4, 2]);
   });
 
   it("creates one conversation for concurrent first messages and ignores thinking blocks", async () => {

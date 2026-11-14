@@ -1,23 +1,12 @@
 import type { Api, AssistantMessage, Context as ChatContext, Model } from "@earendil-works/pi-ai";
 import { ChannelDigester, ChannelDigestError, type DigestPoint } from "@project-os/core";
+import { CHANNEL_DIGEST_INSTRUCTIONS, channelDigestRequest } from "@project-os/system-prompts";
 import { Effect, Layer, Schema } from "effect";
 
 /** The slice of pi-ai `Models` the digester needs. */
 export interface CompleteClient {
   readonly completeSimple: (model: Model<Api>, context: ChatContext) => Promise<AssistantMessage>;
 }
-
-const SYSTEM_PROMPT = `You keep the memory of a software project. You are shown a stretch of its team chat (a Discord channel and its threads). Pick out what the team should still know weeks from now:
-
-- "decision": something the team agreed or settled on (a choice of tool, design, scope, date, owner, policy). Only when it was actually agreed, not merely proposed or still debated.
-- "note": a lasting fact about the project (a constraint, an account or environment detail, a deadline, who owns what).
-
-Skip small talk, questions, status chatter, requests to the bot, and anything already in the known memory list. Most stretches of chat have nothing worth saving: then answer with an empty list.
-
-For each point, list in messageIds the one to three messages that best show where it came from, most relevant first: the message where it was agreed or stated, then the one that raised it. People will read these later to learn who decided and when.
-
-Answer with JSON only, no prose and no code fence:
-{"points":[{"type":"decision"|"note","title":"<headline, under 80 characters>","content":"<one to three sentences that stand on their own: what was decided or learned, by whom, and why if said>","messageIds":["<ids of its source messages, most relevant first>"]}]}`;
 
 const Answer = Schema.Struct({
   points: Schema.Array(
@@ -39,23 +28,6 @@ export const parseDigestAnswer = (text: string): ReadonlyArray<DigestPoint> => {
   return answer.points.filter((p) => p.title.trim() !== "" && p.content.trim() !== "");
 };
 
-type DigestInput = Parameters<(typeof ChannelDigester)["Service"]["digest"]>[0];
-
-export const digestPrompt = (input: DigestInput): string =>
-  [
-    `Project: ${input.projectName}`,
-    ...(input.projectContext.trim() === "" ? [] : [`About the project: ${input.projectContext}`]),
-    "",
-    "Known memory (do not repeat):",
-    ...(input.known.length === 0 ? ["(none)"] : input.known.map((t) => `- ${t}`)),
-    "",
-    "Chat, oldest first:",
-    ...input.messages.map(
-      (m) =>
-        `[${m.id}] ${m.sentAt}${m.threadId === undefined ? "" : ` (thread ${m.threadId})`} ${m.sender}: ${m.content}`,
-    ),
-  ].join("\n");
-
 /** A chat model behind the `ChannelDigester` port: one completion per digest. */
 export const makeChannelDigester = (input: {
   readonly client: CompleteClient;
@@ -66,8 +38,10 @@ export const makeChannelDigester = (input: {
       Effect.tryPromise({
         try: async () => {
           const answer = await input.client.completeSimple(input.model, {
-            systemPrompt: SYSTEM_PROMPT,
-            messages: [{ role: "user", content: digestPrompt(request), timestamp: Date.now() }],
+            systemPrompt: CHANNEL_DIGEST_INSTRUCTIONS,
+            messages: [
+              { role: "user", content: channelDigestRequest(request), timestamp: Date.now() },
+            ],
           });
           if (answer.stopReason !== "stop") {
             throw new Error(answer.errorMessage ?? `digest ${answer.stopReason}`);

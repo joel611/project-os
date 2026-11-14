@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url";
+import { workerSessionStart } from "@project-os/system-prompts";
 import { AGENTS, type Agent } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
 
@@ -6,8 +6,6 @@ export interface Spawner {
   /** Runs one agent session; resolves with its exit code. */
   spawn(): Promise<number>;
 }
-
-const PROMPT_PATH = fileURLToPath(new URL("../prompts/session-start.md", import.meta.url));
 
 export type SpawnProcess = (
   cmd: string[],
@@ -35,7 +33,7 @@ export const bunSpawner = (
 ): Spawner => {
   return {
     spawn: async () => {
-      const prompt = `${await Bun.file(PROMPT_PATH).text()}\nYour worker_id is \`${config.workerId}\`.`;
+      const prompt = workerSessionStart(config.workerId);
       const launch = agent.launch({ config, prompt, configDir: io.configDir, home: io.home });
       for (const file of launch.files) {
         io.writePrivate(file.path, file.update(io.readFile(file.path)));

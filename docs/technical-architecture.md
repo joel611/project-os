@@ -800,8 +800,7 @@ project-os/
 │  │  └─ Dockerfile                    # local target (oven/bun)
 │  ├─ discord-gateway/                 # runs channel-discord alone (split deployment)
 │  ├─ watcher/                         # host-run Bun CLI
-│  │  ├─ src/{config,poll,spawn,main}.ts
-│  │  └─ prompts/session-start.md
+│  │  └─ src/{config,poll,spawn,main}.ts
 │  └─ web/                             # Web UI; worker.ts proxies /api/* on Cloudflare
 │
 ├─ packages/
@@ -830,6 +829,8 @@ project-os/
 │  ├─ infra-cloudflare/                # Layer: D1 db, KV, Cron, DO AgentRuntime
 │  ├─ infra-local/                     # Layer: bun:sqlite db, memory KV, timer
 │  ├─ auth/                            # Better Auth: dashboard sign-in, UserConnections Layer, /connect
+│  ├─ system-prompts/                  # every LLM prompt: Worker session start, Coordinator,
+│  │                                   # Sidekick, Channel Digest, Jev criteria
 │  └─ testing/                         # in-memory fakes of every port
 │
 ├─ libs/
