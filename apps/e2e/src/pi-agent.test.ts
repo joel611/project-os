@@ -84,11 +84,12 @@ describe("PiAgent Durable Object", () => {
     const a2 = await respond({ sessionId: "project:a", prompt: "two" });
     const b1 = await respond({ sessionId: "project:b", prompt: "other" });
 
-    expect(a1).toEqual({ ok: true, text: expect.stringMatching(/^call 1, history 1/) });
+    // History counts the conversation's instructions as its first message.
+    expect(a1).toEqual({ ok: true, text: expect.stringMatching(/^call 1, history 2/) });
     // The second turn of one session carries the first turn's messages.
-    expect(a2).toEqual({ ok: true, text: expect.stringMatching(/history 3$/) });
+    expect(a2).toEqual({ ok: true, text: expect.stringMatching(/history 4$/) });
     // Another session is another object: its own model, its own history.
-    expect(b1).toEqual({ ok: true, text: expect.stringMatching(/^call 1, history 1/) });
+    expect(b1).toEqual({ ok: true, text: expect.stringMatching(/^call 1, history 2/) });
   });
 
   it("does not answer a re-delivered request twice", async () => {
@@ -121,6 +122,6 @@ describe("PiAgent Durable Object", () => {
     const after = await respond({ sessionId: "project:a", prompt: "still there?" });
 
     // Two earlier messages came back from storage: history is 3 (user, assistant, user).
-    expect(after).toEqual({ ok: true, text: expect.stringMatching(/history 3$/) });
+    expect(after).toEqual({ ok: true, text: expect.stringMatching(/history 4$/) });
   });
 });

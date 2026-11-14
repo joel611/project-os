@@ -82,7 +82,6 @@ export const configuredRunners = (
 export const sandboxLauncherFromEnv = (
   env: Env,
   options: {
-    readonly prompt: string;
     readonly log: (message: string) => void;
     readonly runners?: Partial<Record<SandboxProvider, SandboxRunner>>;
   },
@@ -110,7 +109,6 @@ export const sandboxLauncherFromEnv = (
     mcpUrl: required(env, "SANDBOX_MCP_URL", "DAYTONA_MCP_URL"),
     openrouterApiKey: required(env, "OPENROUTER_API_KEY"),
     model,
-    prompt: options.prompt,
     ...(timeout === undefined ? {} : { timeoutSeconds: timeout }),
     log: options.log,
   });

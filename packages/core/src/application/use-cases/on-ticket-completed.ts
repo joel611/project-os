@@ -1,3 +1,4 @@
+import { ticketCompletedReply } from "@project-os/system-prompts";
 import { Effect } from "effect";
 import { AgentRuntime, ChannelGateway, TicketRepository } from "../ports/index.ts";
 import type { TicketStatus } from "../../domain/index.ts";
@@ -24,11 +25,7 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
     const content = yield* runtime.respond({
       sessionId: `project:${ticket.projectId}`,
       requestId: `ticket-completed:${ticket.id}`,
-      prompt: [
-        `Compose a concise reply to the customer for the completed ticket "${ticket.title}".`,
-        `Result: ${JSON.stringify(ticket.result)}`,
-        ...events.map((e) => `[${e.type}] ${e.body}`),
-      ].join("\n"),
+      prompt: ticketCompletedReply({ title: ticket.title, result: ticket.result, events }),
     });
     yield* gateway.send({ ...destination, content });
     return true;

@@ -1,3 +1,4 @@
+import { workerSessionStart } from "@project-os/system-prompts";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -15,7 +16,6 @@ const setup = (run: SandboxRunner["run"], extra: ReadonlyArray<SandboxProvider> 
     mcpUrl: "https://tunnel.example/mcp",
     openrouterApiKey: "sk-or",
     model: "openrouter/m",
-    prompt: "Work one ticket.",
     log: (m) => logs.push(m),
   });
   return { launcher, logs };
@@ -43,7 +43,7 @@ describe("sandbox launcher", () => {
       OPENROUTER_API_KEY: "sk-or",
       PROJECT_OS_MCP_JSON: piMcpJson("https://tunnel.example/mcp", "mcp-token-t1"),
       PROJECT_OS_MODEL: "openrouter/m",
-      PROJECT_OS_PROMPT: "Work one ticket.\nYour worker_id is `daytona-t1`.",
+      PROJECT_OS_PROMPT: workerSessionStart("daytona-t1"),
     });
     expect(JSON.parse(calls[0]!.env.PROJECT_OS_MCP_JSON!)).toEqual({
       mcpServers: {

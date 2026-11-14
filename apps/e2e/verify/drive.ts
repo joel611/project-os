@@ -3,7 +3,7 @@
 //       A Discord user speaks: real normalizeMessage -> POST /inbound (what the Discord adapter does).
 //       --attach sends a file with the message, served to the Coordinator by serve.ts's fake CDN.
 //   bun drive.ts work "<result body>" [--memory "<fact>"]
-//       A Worker plays session-start.md over real MCP: list assigned -> claim -> read memory
+//       A Worker plays the Worker session-start prompt over real MCP: list assigned -> claim -> read memory
 //       -> (optional memory write) -> append result -> complete. Prints the ticket id.
 // Env: COORD_PORT=18080, DATA_DIR (holds worker.json, the shared worker serve.ts registered).
 import { copyFileSync, readFileSync, statSync } from "node:fs";

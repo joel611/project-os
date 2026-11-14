@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { WORKER_SESSION_START } from "@project-os/system-prompts";
 import { classifierReturning } from "@project-os/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
@@ -13,13 +13,10 @@ import { ADMIN_CHANNEL, ADMIN_USER, type Stack, startStack } from "./stack.ts";
 // A shared worker: an admin runs `/register-worker shared:True`, the Watcher on that computer
 // trades the code for credentials, then (real MCP client, real poll loop, against the real
 // Coordinator /mcp) works tickets from anyone without their own worker online. The spawned
-// Claude Code session is played by an SDK MCP client following session-start.md.
+// Claude Code session is played by an SDK MCP client following the Worker session-start prompt.
 
 const CHANNEL = "chan-1";
-const PROMPT = readFileSync(
-  new URL("../../watcher/prompts/session-start.md", import.meta.url),
-  "utf8",
-);
+const PROMPT = WORKER_SESSION_START;
 
 let stack: Stack;
 let WORKER: string;
@@ -62,7 +59,7 @@ const say = async (content: string, userId = "u1") => {
   await forwardInbound(stack.coordinator, inbound!, fetch);
 };
 
-/** Plays session-start.md the way a Claude Code Worker would. */
+/** Plays the Worker session-start prompt the way a Claude Code Worker would. */
 const claudeSession = async () => {
   const mcp = await stack.worker(SECRET);
   const tool = async (name: string, args: Record<string, unknown>) => {

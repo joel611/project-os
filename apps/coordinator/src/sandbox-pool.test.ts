@@ -12,12 +12,12 @@ const base = {
 const launcher = (
   env: Record<string, string>,
   runners = { daytona: runner(), cloudflare: runner() },
-) => sandboxLauncherFromEnv({ ...base, ...env }, { prompt: "p", log: () => {}, runners });
+) => sandboxLauncherFromEnv({ ...base, ...env }, { log: () => {}, runners });
 const pool = (l: ReturnType<typeof launcher>) => Effect.runPromise(l!.pool);
 
 describe("sandbox pool from env", () => {
   it("is off with no provider configured", () => {
-    expect(sandboxLauncherFromEnv(base, { prompt: "p", log: () => {} })).toBeUndefined();
+    expect(sandboxLauncherFromEnv(base, { log: () => {} })).toBeUndefined();
   });
 
   it("builds the real runners from credentials and takes a session timeout", async () => {
@@ -32,7 +32,7 @@ describe("sandbox pool from env", () => {
         CLOUDFLARE_SANDBOX_TOKEN: "t",
         SANDBOX_SESSION_TIMEOUT_SECONDS: "60",
       },
-      { prompt: "p", log: (m) => logs.push(m) },
+      { log: (m) => logs.push(m) },
     );
     expect(await pool(l)).toEqual([
       { workerType: "daytona_pi", sessionTimeoutSeconds: 60 },
@@ -45,7 +45,7 @@ describe("sandbox pool from env", () => {
     expect(() =>
       sandboxLauncherFromEnv(
         { SANDBOX_MCP_URL: "https://t/mcp", OPENROUTER_API_KEY: "k" },
-        { prompt: "p", log: () => {}, runners: { daytona: runner() } },
+        { log: () => {}, runners: { daytona: runner() } },
       ),
     ).toThrow("Missing env var SANDBOX_PI_MODEL");
   });
@@ -75,7 +75,6 @@ describe("sandbox pool from env", () => {
       DAYTONA_PI_MODEL: "m",
     };
     const l = sandboxLauncherFromEnv(env, {
-      prompt: "p",
       log: () => {},
       runners: { daytona: runner() },
     });
@@ -86,7 +85,7 @@ describe("sandbox pool from env", () => {
     expect(() =>
       sandboxLauncherFromEnv(
         { OPENROUTER_API_KEY: "k", DEFAULT_MODEL: "openrouter/m" },
-        { prompt: "p", log: () => {}, runners: { daytona: runner() } },
+        { log: () => {}, runners: { daytona: runner() } },
       ),
     ).toThrow("Missing env var SANDBOX_MCP_URL");
   });

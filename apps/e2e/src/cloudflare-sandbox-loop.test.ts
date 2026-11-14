@@ -98,7 +98,6 @@ const start = async (pool: "cloudflare" | "cloudflare-capped") => {
       mcpUrl: "https://tunnel.example/mcp",
       openrouterApiKey: "sk-or",
       model: "openrouter/m",
-      prompt: "Work one ticket.",
       log: () => {},
     }),
   });
