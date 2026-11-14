@@ -10,6 +10,7 @@ import {
   MemoryRepository,
   ProjectRepository,
 } from "../ports/index.ts";
+import { auditDigest } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 
 /** `createdBy` on memory entries the Channel Digest saves. */
@@ -75,6 +76,9 @@ export interface DigestRun {
   readonly error?: string;
 }
 
+/** A run plus the titles it saved, for the audit log. */
+type DigestOutcome = DigestRun & { readonly titles?: ReadonlyArray<string> };
+
 /**
  * The Channel Digest: for each project whose channel conversation has gone quiet (or waited
  * long enough), reads the waiting messages, saves the decisions and facts in them to Project
@@ -103,7 +107,7 @@ export const digestChannels = (config: ChannelDigestConfig) =>
         ttlSeconds: 300,
       });
       if (!locked) continue;
-      const run = yield* digestProject(pending.projectId, config).pipe(
+      const run: DigestOutcome = yield* digestProject(pending.projectId, config).pipe(
         Effect.catchTag("ChannelDigestError", (e) =>
           Effect.gen(function* () {
             yield* Effect.logWarning(`channel digest failed for ${pending.projectId}`, e.message);
@@ -115,7 +119,21 @@ export const digestChannels = (config: ChannelDigestConfig) =>
         ),
         Effect.ensuring(kv.delete(`digest:lock:${pending.projectId}`)),
       );
-      runs.push(run);
+      // A run over a project with the digest turned off reads nothing; it is not logged.
+      if (run.error !== undefined || run.messages > 0) {
+        yield* auditDigest({
+          projectId: run.projectId,
+          messages: run.messages,
+          saved: run.titles ?? [],
+          ...(run.error === undefined ? {} : { error: run.error }),
+        });
+      }
+      runs.push({
+        projectId: run.projectId,
+        messages: run.messages,
+        saved: run.saved,
+        ...(run.error === undefined ? {} : { error: run.error }),
+      });
     }
     return runs;
   });
@@ -185,5 +203,10 @@ const digestProject = (projectId: string, config: ChannelDigestConfig) =>
         content: digestNotice(points),
       });
     }
-    return { projectId, messages: messages.length, saved: points.length };
+    return {
+      projectId,
+      messages: messages.length,
+      saved: points.length,
+      titles: points.map((p) => p.title.slice(0, TITLE_MAX)),
+    };
   });

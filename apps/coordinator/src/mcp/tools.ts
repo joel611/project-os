@@ -29,12 +29,14 @@ import {
   userTokenForTicket,
   WorkerRepository,
   writeMemory,
+  type AuditLogRepository,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 
 export type McpServices =
   | AgentRuntime
   | AssetStore
+  | AuditLogRepository
   | ChannelGateway
   | Clock
   | IdGenerator

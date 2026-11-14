@@ -2,6 +2,7 @@ import type { Actor, TicketEventType } from "@project-os/contracts";
 import { Effect } from "effect";
 import type { TicketStatus, WorkerType } from "../../domain/index.ts";
 import { Clock, IdGenerator, TicketRepository } from "../ports/index.ts";
+import { type AuditActor, auditTicket } from "./audit.ts";
 
 export const nowIso = Effect.gen(function* () {
   const clock = yield* Clock;
@@ -29,7 +30,9 @@ export const claimTicketUseCase = (input: {
   Effect.gen(function* () {
     const repo = yield* TicketRepository;
     const at = yield* nowIso;
-    return yield* repo.claim(input.ticketId, input.workerId, at);
+    const claimed = yield* repo.claim(input.ticketId, input.workerId, at);
+    yield* auditTicket(claimed, "claimed", { type: "worker", id: input.workerId });
+    return claimed;
   });
 
 export const appendEvent = (input: {
@@ -60,14 +63,27 @@ export const updateStatus = (input: {
   readonly ticketId: string;
   readonly status: TicketStatus;
   readonly error?: string;
+  /** Who changed it, for the audit log. Default: the ticket's worker. */
+  readonly actor?: AuditActor;
 }) =>
   Effect.gen(function* () {
     const repo = yield* TicketRepository;
     const at = yield* nowIso;
-    return yield* repo.updateStatus(
+    const from = (yield* repo.get(input.ticketId)).status;
+    const updated = yield* repo.updateStatus(
       input.ticketId,
       input.status,
       at,
       input.error === undefined ? undefined : { error: input.error },
     );
+    yield* auditTicket(
+      updated,
+      "status_changed",
+      input.actor ??
+        (updated.workerId === null
+          ? { type: "coordinator" }
+          : { type: "worker", id: updated.workerId }),
+      { from },
+    );
+    return updated;
   });

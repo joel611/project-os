@@ -18,6 +18,13 @@ import {
 import { authenticateSandbox } from "./sandbox-credentials.ts";
 import { randomSecret, sha256Hex } from "./secrets.ts";
 import { nowIso } from "./tickets.ts";
+import { auditWorker, COORDINATOR } from "./audit.ts";
+
+const personActor = (person: Person) => ({
+  type: "person" as const,
+  id: person.id,
+  name: person.name ?? null,
+});
 
 /** How long a /register-worker code works, once. */
 export const REGISTRATION_TTL_SECONDS = 10 * 60;
@@ -26,6 +33,8 @@ const PendingRegistration = Schema.fromJsonString(
   Schema.Struct({
     channelType: Schema.Literals(["discord", "email", "chat"]),
     id: Schema.String,
+    /** Who ran /register-worker, for the audit log. */
+    name: Schema.optionalKey(Schema.String),
     /** An admin's code: the device joins the pool as a shared worker instead of theirs. */
     shared: Schema.optionalKey(Schema.Boolean),
   }),
@@ -54,6 +63,7 @@ export const issueWorkerRegistration = (
       JSON.stringify({
         channelType: person.channelType,
         id: person.id,
+        ...(person.name !== undefined && { name: person.name }),
         ...(options.shared && { shared: true }),
       }),
       { ttlSeconds: REGISTRATION_TTL_SECONDS },
@@ -107,6 +117,9 @@ export const redeemWorkerRegistration = (input: {
       secretHash: yield* sha256Hex(secret),
       at: yield* nowIso,
     });
+    yield* auditWorker(worker, "registered", {
+      actor: { type: "person", id: pending.value.id, name: pending.value.name ?? null },
+    });
     return { worker, secret };
   });
 
@@ -156,6 +169,7 @@ export const unregisterWorker = (person: Person, idOrName: string) =>
     );
     if (!target) return undefined;
     yield* workers.remove(target.id);
+    yield* auditWorker(target, "removed", { actor: personActor(person) });
     return target;
   });
 
@@ -170,12 +184,15 @@ export const listSharedWorkers = (staleAfterMs: number) =>
   });
 
 /** Removes a shared device, matched by id or name (admins only, checked by the caller). */
-export const unregisterSharedWorker = (idOrName: string) =>
+export const unregisterSharedWorker = (idOrName: string, admin?: Person) =>
   Effect.gen(function* () {
     const workers = yield* WorkerRepository;
     const target = (yield* workers.list).filter(isSharedDevice).find(named(idOrName));
     if (!target) return undefined;
     yield* workers.remove(target.id);
+    yield* auditWorker(target, "removed", {
+      actor: admin === undefined ? COORDINATOR : personActor(admin),
+    });
     return target;
   });
 

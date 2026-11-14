@@ -1,6 +1,7 @@
 import type {
   ChannelMessage,
-  InboundLogEntry,
+  AuditEntry,
+  AuditKind,
   ChannelType,
   MemoryEntry,
   MemoryEntryType,
@@ -191,19 +192,36 @@ export class ChannelMessageRepository extends Context.Service<
   }
 >()("@project-os/core/ChannelMessageRepository") {}
 
-/** Every message received in a project's channels, newest first on read. For debugging intake. */
-export class InboundLogRepository extends Context.Service<
-  InboundLogRepository,
+/** Filters for reading the audit log; entries come newest first. */
+export interface AuditQuery {
+  /** Only this project's entries. Unset: every entry, with or without a project. */
+  readonly projectId?: string;
+  readonly kind?: AuditKind;
+  /** Only entries logged before this position: the `next` of the previous page. */
+  readonly before?: number;
+  readonly limit: number;
+}
+
+/** Entries newest first, in the order they were logged; `next` is null on the last page. */
+export interface AuditListing {
+  readonly entries: ReadonlyArray<AuditEntry>;
+  readonly next: number | null;
+}
+
+/** The append-only audit log: inbound messages, digest runs, Worker and Ticket changes. */
+export class AuditLogRepository extends Context.Service<
+  AuditLogRepository,
   {
-    /** Stores an entry; false when one with the same `(channelType, externalId)` is already there. */
-    readonly append: (entry: InboundLogEntry) => Effect.Effect<boolean>;
-    /** A project's most recent entries, newest first. */
-    readonly list: (
-      projectId: string,
-      limit: number,
-    ) => Effect.Effect<ReadonlyArray<InboundLogEntry>>;
+    /**
+     * Stores an entry. With a `dedupeKey`, a second entry with the same key is dropped and
+     * this returns false (an inbound message delivered twice, a Worker outage seen twice).
+     */
+    readonly append: (entry: AuditEntry, dedupeKey?: string) => Effect.Effect<boolean>;
+    readonly list: (query: AuditQuery) => Effect.Effect<AuditListing>;
+    /** Drops entries older than `at`. Returns how many. */
+    readonly removeBefore: (at: string) => Effect.Effect<number>;
   }
->()("@project-os/core/InboundLogRepository") {}
+>()("@project-os/core/AuditLogRepository") {}
 
 export class WorkerRepository extends Context.Service<
   WorkerRepository,

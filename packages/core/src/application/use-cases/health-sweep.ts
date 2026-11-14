@@ -4,6 +4,13 @@ import { workerStatus, type Ticket } from "../../domain/index.ts";
 import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
 import { notifyTicket } from "./on-ticket-completed.ts";
 import { placeOrQueue } from "./placement.ts";
+import {
+  auditTicket,
+  auditWorker,
+  COORDINATOR,
+  DEFAULT_AUDIT_RETENTION_MS,
+  pruneAudit,
+} from "./audit.ts";
 
 /** Thresholds in milliseconds (docs/technical-architecture.md §5.5). */
 export interface HealthThresholds {
@@ -17,6 +24,8 @@ export interface HealthThresholds {
   readonly inactivityFailMs: number;
   /** Queued tickets are routed with this (see `PlacementRouting`). */
   readonly sharedWorkerMaxTickets?: number;
+  /** Audit entries older than this are deleted. Default 90 days. */
+  readonly auditRetentionMs?: number;
 }
 
 export type HealthAction =
@@ -26,6 +35,8 @@ export type HealthAction =
   | { readonly kind: "failed"; readonly ticketId: string; readonly reason: string };
 
 const KIND_FLAGGED = "health_assignment_flagged";
+/** How far past the stale threshold a silent worker is still logged as going offline. */
+const OUTAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const KIND_FOLLOW_UP = "health_follow_up";
 
 const payloadOf = (event: TicketEvent): { kind?: unknown; idleSince?: string } =>
@@ -53,10 +64,28 @@ export const healthSweep = (thresholds: HealthThresholds) =>
     const now = yield* Effect.flatMap(Clock, (c) => c.now);
     const at = now.toISOString();
 
-    const offlineWorkers = new Set(
-      (yield* workers.list)
-        .filter((w) => workerStatus(w, now, thresholds.workerStaleMs) === "offline")
-        .map((w) => w.id),
+    yield* pruneAudit(thresholds.auditRetentionMs ?? DEFAULT_AUDIT_RETENTION_MS);
+
+    const silent = (yield* workers.list).filter(
+      (w) => workerStatus(w, now, thresholds.workerStaleMs) === "offline",
+    );
+    const offlineWorkers = new Set(silent.map((w) => w.id));
+    // An outage is logged once: keyed by the last heartbeat before it. Only recent outages are
+    // looked at, so long-gone workers (and ones that never heartbeat) cost nothing per sweep.
+    yield* Effect.forEach(
+      silent.filter((w) => {
+        const silentMs = now.getTime() - Date.parse(w.lastSeenAt);
+        return (
+          Date.parse(w.lastSeenAt) > 0 && silentMs <= thresholds.workerStaleMs + OUTAGE_LOOKBACK_MS
+        );
+      }),
+      (w) =>
+        auditWorker(w, "went_offline", {
+          actor: COORDINATOR,
+          at,
+          dedupeKey: `worker-offline:${w.id}:${w.lastSeenAt}`,
+        }),
+      { discard: true },
     );
     const isOffline = (t: Ticket) => t.workerId !== null && offlineWorkers.has(t.workerId);
     const ageMs = (iso: string) => now.getTime() - Date.parse(iso);
@@ -139,7 +168,8 @@ export const healthSweep = (thresholds: HealthThresholds) =>
           const reason = offline ? "worker offline" : "no activity";
           const error = `Failed by health sweep: ${reason}`;
           yield* systemEvent(t.id, "system", error, { kind: "health_failed", reason });
-          yield* tickets.updateStatus(t.id, "failed", at, { error });
+          const failed = yield* tickets.updateStatus(t.id, "failed", at, { error });
+          yield* auditTicket(failed, "status_changed", COORDINATOR, { from: t.status, reason, at });
           yield* notifyTicket(t.id, `Ticket "${t.title}" failed: ${reason}.`);
           return [{ kind: "failed", ticketId: t.id, reason } as const];
         }

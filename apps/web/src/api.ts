@@ -1,6 +1,7 @@
 import {
   ActivityFeed,
-  InboundLogEntry,
+  AuditPage,
+  type AuditKind,
   MemoryEntry,
   MyTickets,
   Project,
@@ -29,6 +30,22 @@ export interface SourcePatch {
   readonly alias?: string;
   readonly description?: string | null;
 }
+
+/** Narrows an audit feed; `before` is the previous page's `nextCursor`. */
+export interface AuditFilter {
+  readonly kind?: AuditKind;
+  readonly projectId?: string;
+  readonly before?: string;
+}
+
+const auditSearch = (query: AuditFilter) => {
+  const params = new URLSearchParams();
+  if (query.kind) params.set("kind", query.kind);
+  if (query.projectId) params.set("projectId", query.projectId);
+  if (query.before) params.set("before", query.before);
+  const search = params.toString();
+  return search ? `?${search}` : "";
+};
 
 export interface ProjectPatch {
   readonly name?: string;
@@ -129,8 +146,9 @@ export const makeApi = (
     tickets: (projectId: string) => get(`/projects/${id(projectId)}/tickets`, Schema.Array(Ticket)),
     memory: (projectId: string) =>
       get(`/projects/${id(projectId)}/memory`, Schema.Array(MemoryEntry)),
-    inbound: (projectId: string) =>
-      get(`/projects/${id(projectId)}/inbound`, Schema.Array(InboundLogEntry)),
+    audit: (query: AuditFilter = {}) => get(`/audit${auditSearch(query)}`, AuditPage),
+    projectAudit: (projectId: string, query: Omit<AuditFilter, "projectId"> = {}) =>
+      get(`/projects/${id(projectId)}/audit${auditSearch(query)}`, AuditPage),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
     ticketAttachments: (ticketId: string) =>
       get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),

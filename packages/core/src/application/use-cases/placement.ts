@@ -25,6 +25,7 @@ import {
   sandboxWorkerId,
 } from "./sandbox-credentials.ts";
 import { SIDEKICK_WORKER_ID } from "./sidekick.ts";
+import { auditTicket, COORDINATOR } from "./audit.ts";
 
 /** A registered device counts as online if it heartbeat within this window, unless told otherwise. */
 export const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
@@ -235,6 +236,7 @@ export const placeOrQueue = (request: PlaceRequest) =>
     const giveBack = (id: string, workerId: string, reason: string) =>
       Effect.logWarning(`ticket ${id} goes back to the queue: ${reason}`).pipe(
         Effect.andThen(tickets.release(id, workerId, at)),
+        Effect.tap((released) => auditTicket(released, "released", COORDINATOR, { reason, at })),
         Effect.as(true),
         Effect.catchTag("InvalidTransition", () =>
           Effect.map(tickets.get(id), (current) => current.status === "open"),
@@ -243,13 +245,19 @@ export const placeOrQueue = (request: PlaceRequest) =>
       );
 
     if (request.executor === "sidekick") {
-      yield* tickets.assign(ticketId, { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID }, at);
+      const toSidekick = yield* tickets.assign(
+        ticketId,
+        { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
+        at,
+      );
+      yield* auditTicket(toSidekick, "assigned", COORDINATOR, { from: "open", at });
       yield* assignedEvent("Assigned to the Sidekick", {
         workerType: "sidekick",
         workerId: SIDEKICK_WORKER_ID,
       });
       // Just assigned to this id in this turn, so a conflict is a bug, not a state to report.
       const claimed = yield* Effect.orDie(tickets.claim(ticketId, SIDEKICK_WORKER_ID, at));
+      yield* auditTicket(claimed, "claimed", { type: "worker", id: SIDEKICK_WORKER_ID }, { at });
       return {
         kind: "placed",
         ticket: claimed,
@@ -262,6 +270,7 @@ export const placeOrQueue = (request: PlaceRequest) =>
 
     const { workerType, workerId } = target;
     const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
+    yield* auditTicket(assigned, "assigned", COORDINATOR, { from: "open", at });
 
     if (target.slot) {
       const { slot } = target;

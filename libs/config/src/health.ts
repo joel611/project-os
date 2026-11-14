@@ -11,4 +11,6 @@ export const healthConfig = () => ({
   sweepEveryMs: envNumber("HEALTH_SWEEP_EVERY_SEC", 60) * 1000,
   /** Tickets one shared device holds at once before the next goes elsewhere. */
   sharedWorkerMaxTickets: envNumber("SHARED_WORKER_MAX_TICKETS", 1),
+  /** Audit log entries older than this are deleted by the sweep. */
+  auditRetentionMs: envNumber("AUDIT_RETENTION_DAYS", 90) * 24 * 60 * MINUTE_MS,
 });
