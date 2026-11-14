@@ -8,6 +8,7 @@ import {
   type TicketStatus,
   type Worker,
   type WorkerStatus,
+  type WorkerType,
 } from "@project-os/contracts";
 
 export type Tone = "neutral" | "info" | "progress" | "warn" | "success" | "danger";
@@ -148,6 +149,26 @@ export type WorkerGroup = "shared" | "personal" | "sandbox";
 
 export const workerGroup = (w: Worker): WorkerGroup =>
   !w.registered ? "sandbox" : w.ownerId === null ? "shared" : "personal";
+
+/** What a worker is, on its detail page. */
+export const WORKER_GROUP_LABEL: Readonly<Record<WorkerGroup, string>> = {
+  shared: "Shared device",
+  personal: "Personal device",
+  sandbox: "Sandbox session",
+};
+
+/** What runs the worker's sessions. */
+export const WORKER_TYPE_LABEL: Readonly<Record<WorkerType, string>> = {
+  local: "Watcher",
+  daytona_pi: "Pi on Daytona",
+  cloudflare_pi: "Pi on Cloudflare Sandbox",
+  boat_pi: "Pi on boat.dev",
+  sidekick: "Sidekick",
+};
+
+/** A worker's last heartbeat, relative; "never" before its first (`lastSeenAt` at epoch). */
+export const lastSeen = (w: Pick<Worker, "lastSeenAt">, now: Date): string =>
+  Date.parse(w.lastSeenAt) <= 0 ? "never" : relativeTime(w.lastSeenAt, now);
 
 /** How the dashboard names a worker: its registered name, else its id. */
 export const workerName = (w: Worker): string => w.name ?? w.id;

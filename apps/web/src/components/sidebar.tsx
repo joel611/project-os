@@ -17,7 +17,7 @@ import { authClient } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { session } from "@/session";
-import { groupWorkers, relativeTime, type WorkerGroup, workerName } from "@/model";
+import { groupWorkers, lastSeen, type WorkerGroup, workerName } from "@/model";
 import { SLOW_MS } from "@/polling";
 import { useNow } from "@/use-now";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -79,25 +79,31 @@ const WORKER_GROUPS: ReadonlyArray<{ readonly group: WorkerGroup; readonly title
 ];
 
 const WorkerRow = ({ worker: w, now }: { readonly worker: WorkerView; readonly now: Date }) => (
-  <li className="flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-sm">
-    <span className="pt-1.5">
-      <ToneDot tone={w.status === "online" ? "success" : "neutral"} />
-    </span>
-    <div className="min-w-0">
-      <div className="truncate text-[13px] font-medium" title={w.id}>
-        {workerName(w)}
-      </div>
-      <div className="text-xs text-muted-foreground">
-        {w.status === "online" ? "online" : "offline"} · seen{" "}
-        {Date.parse(w.lastSeenAt) <= 0 ? "never" : relativeTime(w.lastSeenAt, now)}
-        {w.currentTicketId && " · working"}
-      </div>
-      {w.ownerId !== null && (
-        <div className="truncate text-xs text-muted-foreground">
-          {w.ownerChannelType} user {w.ownerId}
+  <li>
+    <Link
+      to="/workers/$workerId"
+      params={{ workerId: w.id }}
+      className="flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+      activeProps={{ className: "bg-sidebar-accent" }}
+    >
+      <span className="pt-1.5">
+        <ToneDot tone={w.status === "online" ? "success" : "neutral"} />
+      </span>
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-medium" title={w.id}>
+          {workerName(w)}
         </div>
-      )}
-    </div>
+        <div className="text-xs text-muted-foreground">
+          {w.status === "online" ? "online" : "offline"} · seen {lastSeen(w, now)}
+          {w.currentTicketId && " · working"}
+        </div>
+        {w.ownerId !== null && (
+          <div className="truncate text-xs text-muted-foreground">
+            {w.ownerChannelType} user {w.ownerId}
+          </div>
+        )}
+      </div>
+    </Link>
   </li>
 );
 

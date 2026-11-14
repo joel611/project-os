@@ -276,10 +276,11 @@ export const AuditLogRepositoryInMemory = Layer.sync(AuditLogRepository, () => {
         if (!taken) rows.push({ entry, dedupeKey: dedupeKey ?? null, seq: ++seq });
         return !taken;
       }),
-    list: ({ projectId, kind, before, limit }) =>
+    list: ({ projectId, workerId, kind, before, limit }) =>
       Effect.sync(() => {
         const page = rows
           .filter((r) => projectId === undefined || r.entry.projectId === projectId)
+          .filter((r) => workerId === undefined || r.entry.workerId === workerId)
           .filter((r) => kind === undefined || r.entry.kind === kind)
           .filter((r) => before === undefined || r.seq < before)
           .reverse()

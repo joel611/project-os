@@ -17,6 +17,7 @@ import {
   Clock,
   IdGenerator,
   ProjectRepository,
+  WorkerRepository,
   type AuditQuery,
 } from "../ports/index.ts";
 
@@ -217,6 +218,7 @@ const parseCursor = (cursor: string | undefined) => {
 export interface AuditRead {
   readonly kind?: AuditKind;
   readonly projectId?: string;
+  readonly workerId?: string;
   /** `nextCursor` of the previous page. */
   readonly before?: string;
   readonly limit?: number;
@@ -229,6 +231,7 @@ const readPage = (query: Omit<AuditQuery, "before" | "limit"> & AuditRead) =>
     const { entries, next } = yield* (yield* AuditLogRepository).list({
       limit,
       ...(query.projectId === undefined ? {} : { projectId: query.projectId }),
+      ...(query.workerId === undefined ? {} : { workerId: query.workerId }),
       ...(query.kind === undefined ? {} : { kind: query.kind }),
       ...(before === undefined ? {} : { before }),
     });
@@ -245,6 +248,16 @@ export const readAudit = (query: AuditRead) =>
 /** One project's feed (its Audit tab). */
 export const readProjectAudit = (projectId: string, query: Omit<AuditRead, "projectId">) =>
   readAudit({ ...query, projectId });
+
+/** One Worker's feed (its detail page): registration, outages, and the Tickets it worked. */
+export const readWorkerAudit = (
+  workerId: string,
+  query: Omit<AuditRead, "projectId" | "workerId">,
+) =>
+  Effect.gen(function* () {
+    yield* (yield* WorkerRepository).get(workerId);
+    return yield* readPage({ ...query, workerId });
+  });
 
 /** Drops entries older than the retention window. Returns how many. */
 export const pruneAudit = (retentionMs: number) =>

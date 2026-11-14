@@ -15,6 +15,7 @@ import {
   handleInbound,
   readAudit,
   readProjectAudit,
+  readWorkerAudit,
   type AuditRead,
   listTicketAttachments,
   readActivity,
@@ -57,6 +58,7 @@ import {
   listProjectMemory,
   listProjects,
   listProjectTickets,
+  getWorker,
   listWorkers,
   UpdateProjectBody,
   updateProject,
@@ -266,6 +268,17 @@ export const httpRoutes = ({
       reply(set, toResult(listProjectTickets(params.id))),
     )
     .get("/workers", ({ set }) => reply(set, toResult(listWorkers(workerStaleMs))))
+    .get("/workers/:id", ({ params, set }) =>
+      reply(set, toResult(getWorker(params.id, workerStaleMs))),
+    )
+    .get("/workers/:id/audit", ({ params, query, set }) => {
+      const read = auditQuery(query);
+      if (typeof read === "string") {
+        set.status = 400;
+        return { error: read };
+      }
+      return reply(set, toResult(readWorkerAudit(params.id, read)));
+    })
     .get("/watcher/install.sh", ({ set }) => {
       const workers = commands?.workers;
       if (!workers) {

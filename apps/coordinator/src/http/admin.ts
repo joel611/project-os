@@ -82,6 +82,22 @@ export const listWorkers = (staleAfterMs: number) =>
     return workers.map((w) => ({ ...w, status: workerStatus(w, now, staleAfterMs) }));
   });
 
+/** Most Tickets `GET /workers/:id` returns, newest first. */
+export const WORKER_TICKET_LIMIT = 50;
+
+/** One Worker with its online status and the Tickets assigned to it, newest first. */
+export const getWorker = (workerId: string, staleAfterMs: number) =>
+  Effect.gen(function* () {
+    const now = yield* Effect.flatMap(Clock, (c) => c.now);
+    const worker = yield* (yield* WorkerRepository).get(workerId);
+    const all = yield* (yield* TicketRepository).listByStatus(TICKET_STATUSES);
+    const tickets = all
+      .filter((t) => t.workerId === workerId)
+      .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, WORKER_TICKET_LIMIT);
+    return { worker: { ...worker, status: workerStatus(worker, now, staleAfterMs) }, tickets };
+  });
+
 export const linkSource = (projectId: string, body: typeof CreateSourceBody.Type) =>
   addSource({ projectId, ...body });
 

@@ -30,6 +30,7 @@ export const auditLog = sqliteTable(
     index("audit_log_at_idx").on(t.at),
     // Reads go newest-logged first (rowid), which SQLite keeps at the end of every index.
     index("audit_log_project_idx").on(t.projectId),
+    index("audit_log_worker_idx").on(t.workerId),
     index("audit_log_kind_idx").on(t.kind),
   ],
 );

@@ -1,0 +1,1 @@
+CREATE INDEX `audit_log_worker_idx` ON `audit_log` (`worker_id`);

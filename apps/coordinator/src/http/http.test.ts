@@ -6,6 +6,7 @@ import {
   AgentRuntimeError,
   ClassifierError,
   IntentClassifier,
+  TicketRepository,
   WorkerRepository,
   writeMemory,
 } from "@project-os/core";
@@ -548,5 +549,70 @@ describe("with the infra-local Layer (SQLite)", () => {
       await Promise.all(disposers.splice(0).map((d) => d()));
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("GET /workers/:id", () => {
+  const pooled = () => {
+    const { layer } = makeTestLayer({
+      classifier: classifierReturning("new_request"),
+      sandboxPool: [{ workerType: "daytona_pi" }],
+    });
+    const runtime = ManagedRuntime.make(layer);
+    disposers.push(() => runtime.dispose());
+    const app = httpRoutes({
+      run: (effect) => runtime.runPromise(effect),
+      access: OPERATOR,
+      workerStaleMs: 60_000,
+    });
+    return { app, runtime };
+  };
+
+  it("returns the worker, its status and its tickets, and 404s for unknown workers", async () => {
+    const { app, runtime } = pooled();
+    await linkedProject(app, { isDefaultResponse: true });
+    const created = await call(app, "POST", "/inbound", inbound({ mentionsBot: true }));
+    const first = created.body.ticket;
+    const second = (
+      await call(app, "POST", "/inbound", inbound({ externalId: "m2", mentionsBot: true }))
+    ).body.ticket;
+    const workerId = first.workerId as string;
+    await runtime.runPromise(
+      Effect.flatMap(WorkerRepository, (repo) =>
+        repo.heartbeat({ workerId, workerType: "daytona_pi", ticketId: first.id, at: T0 }),
+      ),
+    );
+    const other = await call(app, "GET", `/workers/${workerId}`);
+    expect(other.body.tickets.map((t: { id: string }) => t.id)).toEqual([first.id]);
+    expect(second.workerId).not.toBe(workerId);
+    // A second ticket on the same worker, so the list has something to order.
+    const later = { ...first, id: "t-later", createdAt: "2026-11-04T01:00:00.000Z" };
+    await runtime.runPromise(Effect.flatMap(TicketRepository, (repo) => repo.insert(later)));
+    const res = await call(app, "GET", `/workers/${workerId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.worker).toMatchObject({
+      id: workerId,
+      status: "online",
+      currentTicketId: first.id,
+    });
+    expect(res.body.tickets.map((t: { id: string }) => t.id)).toEqual([later.id, first.id]);
+
+    const missing = await call(app, "GET", "/workers/nope");
+    expect(missing).toMatchObject({ status: 404, body: { error: "WorkerNotFound" } });
+  });
+
+  it("reads the worker's audit feed, rejects bad queries, and 404s for unknown workers", async () => {
+    const { app, runtime } = pooled();
+    await runtime.runPromise(
+      Effect.flatMap(WorkerRepository, (repo) =>
+        repo.heartbeat({ workerId: "w1", workerType: "local", ticketId: null, at: T0 }),
+      ),
+    );
+    const res = await call(app, "GET", "/workers/w1/audit?kind=worker");
+    expect(res).toEqual({ status: 200, body: { entries: [], nextCursor: null } });
+    const bad = await call(app, "GET", "/workers/w1/audit?limit=0");
+    expect(bad).toMatchObject({ status: 400 });
+    const missing = await call(app, "GET", "/workers/nope/audit");
+    expect(missing).toMatchObject({ status: 404, body: { error: "WorkerNotFound" } });
   });
 });
