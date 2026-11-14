@@ -15,9 +15,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as MineRouteImport } from './routes/mine'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 import { Route as WorkersWorkerIdRouteImport } from './routes/workers.$workerId'
-import { Route as MineTicketsTicketIdRouteImport } from './routes/mine.tickets.$ticketId'
+import { Route as MineTicketsTicketIdRouteImport } from './routes/mine_.tickets.$ticketId'
 import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects.$projectId_.settings'
-import { Route as ProjectsProjectIdTicketsTicketIdRouteImport } from './routes/projects.$projectId.tickets.$ticketId'
+import { Route as ProjectsProjectIdTicketsTicketIdRouteImport } from './routes/projects.$projectId_.tickets.$ticketId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -50,9 +50,9 @@ const WorkersWorkerIdRoute = WorkersWorkerIdRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const MineTicketsTicketIdRoute = MineTicketsTicketIdRouteImport.update({
-  id: '/tickets/$ticketId',
-  path: '/tickets/$ticketId',
-  getParentRoute: () => MineRoute,
+  id: '/mine_/tickets/$ticketId',
+  path: '/mine/tickets/$ticketId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsProjectIdSettingsRoute =
   ProjectsProjectIdSettingsRouteImport.update({
@@ -62,17 +62,17 @@ const ProjectsProjectIdSettingsRoute =
   } as any)
 const ProjectsProjectIdTicketsTicketIdRoute =
   ProjectsProjectIdTicketsTicketIdRouteImport.update({
-    id: '/tickets/$ticketId',
-    path: '/tickets/$ticketId',
-    getParentRoute: () => ProjectsProjectIdRoute,
+    id: '/projects/$projectId_/tickets/$ticketId',
+    path: '/projects/$projectId/tickets/$ticketId',
+    getParentRoute: () => rootRouteImport,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/login': typeof LoginRoute
-  '/mine': typeof MineRouteWithChildren
-  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/mine': typeof MineRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/workers/$workerId': typeof WorkersWorkerIdRoute
   '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
@@ -82,8 +82,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/login': typeof LoginRoute
-  '/mine': typeof MineRouteWithChildren
-  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/mine': typeof MineRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/workers/$workerId': typeof WorkersWorkerIdRoute
   '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
   '/projects/$projectId/settings': typeof ProjectsProjectIdSettingsRoute
@@ -94,12 +94,12 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
   '/login': typeof LoginRoute
-  '/mine': typeof MineRouteWithChildren
-  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/mine': typeof MineRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/workers/$workerId': typeof WorkersWorkerIdRoute
-  '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
+  '/mine_/tickets/$ticketId': typeof MineTicketsTicketIdRoute
   '/projects/$projectId_/settings': typeof ProjectsProjectIdSettingsRoute
-  '/projects/$projectId/tickets/$ticketId': typeof ProjectsProjectIdTicketsTicketIdRoute
+  '/projects/$projectId_/tickets/$ticketId': typeof ProjectsProjectIdTicketsTicketIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -132,19 +132,21 @@ export interface FileRouteTypes {
     | '/mine'
     | '/projects/$projectId'
     | '/workers/$workerId'
-    | '/mine/tickets/$ticketId'
+    | '/mine_/tickets/$ticketId'
     | '/projects/$projectId_/settings'
-    | '/projects/$projectId/tickets/$ticketId'
+    | '/projects/$projectId_/tickets/$ticketId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
   LoginRoute: typeof LoginRoute
-  MineRoute: typeof MineRouteWithChildren
-  ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
+  MineRoute: typeof MineRoute
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   WorkersWorkerIdRoute: typeof WorkersWorkerIdRoute
+  MineTicketsTicketIdRoute: typeof MineTicketsTicketIdRoute
   ProjectsProjectIdSettingsRoute: typeof ProjectsProjectIdSettingsRoute
+  ProjectsProjectIdTicketsTicketIdRoute: typeof ProjectsProjectIdTicketsTicketIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -191,12 +193,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkersWorkerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mine/tickets/$ticketId': {
-      id: '/mine/tickets/$ticketId'
-      path: '/tickets/$ticketId'
+    '/mine_/tickets/$ticketId': {
+      id: '/mine_/tickets/$ticketId'
+      path: '/mine/tickets/$ticketId'
       fullPath: '/mine/tickets/$ticketId'
       preLoaderRoute: typeof MineTicketsTicketIdRouteImport
-      parentRoute: typeof MineRoute
+      parentRoute: typeof rootRouteImport
     }
     '/projects/$projectId_/settings': {
       id: '/projects/$projectId_/settings'
@@ -205,45 +207,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$projectId/tickets/$ticketId': {
-      id: '/projects/$projectId/tickets/$ticketId'
-      path: '/tickets/$ticketId'
+    '/projects/$projectId_/tickets/$ticketId': {
+      id: '/projects/$projectId_/tickets/$ticketId'
+      path: '/projects/$projectId/tickets/$ticketId'
       fullPath: '/projects/$projectId/tickets/$ticketId'
       preLoaderRoute: typeof ProjectsProjectIdTicketsTicketIdRouteImport
-      parentRoute: typeof ProjectsProjectIdRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
-
-interface MineRouteChildren {
-  MineTicketsTicketIdRoute: typeof MineTicketsTicketIdRoute
-}
-
-const MineRouteChildren: MineRouteChildren = {
-  MineTicketsTicketIdRoute: MineTicketsTicketIdRoute,
-}
-
-const MineRouteWithChildren = MineRoute._addFileChildren(MineRouteChildren)
-
-interface ProjectsProjectIdRouteChildren {
-  ProjectsProjectIdTicketsTicketIdRoute: typeof ProjectsProjectIdTicketsTicketIdRoute
-}
-
-const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
-  ProjectsProjectIdTicketsTicketIdRoute: ProjectsProjectIdTicketsTicketIdRoute,
-}
-
-const ProjectsProjectIdRouteWithChildren =
-  ProjectsProjectIdRoute._addFileChildren(ProjectsProjectIdRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
   LoginRoute: LoginRoute,
-  MineRoute: MineRouteWithChildren,
-  ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
+  MineRoute: MineRoute,
+  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   WorkersWorkerIdRoute: WorkersWorkerIdRoute,
+  MineTicketsTicketIdRoute: MineTicketsTicketIdRoute,
   ProjectsProjectIdSettingsRoute: ProjectsProjectIdSettingsRoute,
+  ProjectsProjectIdTicketsTicketIdRoute: ProjectsProjectIdTicketsTicketIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
