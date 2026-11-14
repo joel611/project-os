@@ -7,7 +7,7 @@ import { api } from "./api.ts";
 import { memberMayVisit, useViewer } from "./viewer.ts";
 
 describe("memberMayVisit", () => {
-  it("keeps a member to My tickets and its ticket sheets", () => {
+  it("keeps a member to My tickets and its ticket pages", () => {
     expect(memberMayVisit("/mine")).toBe(true);
     expect(memberMayVisit("/mine/tickets/t1")).toBe(true);
     expect(memberMayVisit("/")).toBe(false);
