@@ -18,9 +18,16 @@ services:
       DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}
       DISCORD_MEMBER_ROLE_IDS: ${DISCORD_MEMBER_ROLE_IDS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      CHAT_MODEL_PROVIDER: ${CHAT_MODEL_PROVIDER:-openrouter}
-      CHAT_MODEL_ID: ${CHAT_MODEL_ID:-anthropic/claude-sonnet-4.5}
-      JEV_MODEL_ID: ${JEV_MODEL_ID:-typesafe/jev-1.14}
+      # Models are provider/model strings. See SETUP.md, "Models".
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-openrouter/anthropic/claude-sonnet-4.5}
+      CHANNEL_DIGEST_MODEL: ${CHANNEL_DIGEST_MODEL:-}
+      DECISION_MODEL: ${DECISION_MODEL:-openrouter/typesafe/jev-1.14}
+      # Renamed: passed through only so the Coordinator stops and names the new var.
+      CHAT_MODEL_ID: ${CHAT_MODEL_ID:-}
+      CHAT_MODEL_PROVIDER: ${CHAT_MODEL_PROVIDER:-}
+      CHANNEL_DIGEST_MODEL_ID: ${CHANNEL_DIGEST_MODEL_ID:-}
+      CHANNEL_DIGEST_MODEL_PROVIDER: ${CHANNEL_DIGEST_MODEL_PROVIDER:-}
+      JEV_MODEL_ID: ${JEV_MODEL_ID:-}
       INTENT_CONFIDENCE_THRESHOLD: ${INTENT_CONFIDENCE_THRESHOLD:-0.5}
       ADMIN_CHANNEL_ID: ${ADMIN_CHANNEL_ID:-}
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}

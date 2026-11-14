@@ -40,8 +40,14 @@ jobs:
           ROOT_DOMAIN: ${{ vars.ROOT_DOMAIN }}
           PUBLIC_URL: ${{ vars.PUBLIC_URL }}
           COORDINATOR_URL: ${{ vars.COORDINATOR_URL }}
-          CHAT_MODEL_PROVIDER: ${{ vars.CHAT_MODEL_PROVIDER }}
+          DEFAULT_MODEL: ${{ vars.DEFAULT_MODEL }}
+          CHANNEL_DIGEST_MODEL: ${{ vars.CHANNEL_DIGEST_MODEL }}
+          DECISION_MODEL: ${{ vars.DECISION_MODEL }}
+          # Renamed model vars: forwarded only so alchemy.run.ts fails the deploy and names the new var.
           CHAT_MODEL_ID: ${{ vars.CHAT_MODEL_ID }}
+          CHAT_MODEL_PROVIDER: ${{ vars.CHAT_MODEL_PROVIDER }}
+          CHANNEL_DIGEST_MODEL_ID: ${{ vars.CHANNEL_DIGEST_MODEL_ID }}
+          CHANNEL_DIGEST_MODEL_PROVIDER: ${{ vars.CHANNEL_DIGEST_MODEL_PROVIDER }}
           JEV_MODEL_ID: ${{ vars.JEV_MODEL_ID }}
           INTENT_CONFIDENCE_THRESHOLD: ${{ vars.INTENT_CONFIDENCE_THRESHOLD }}
           DISCORD_GUILD_ID: ${{ vars.DISCORD_GUILD_ID }}

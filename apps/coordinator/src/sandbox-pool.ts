@@ -99,11 +99,8 @@ export const sandboxLauncherFromEnv = (
     ),
   });
   if (providers.length === 0) return undefined;
-  const chatModel = nonEmpty(env, "CHAT_MODEL_ID");
-  const model =
-    nonEmpty(env, "SANDBOX_PI_MODEL") ??
-    nonEmpty(env, "DAYTONA_PI_MODEL") ??
-    (chatModel ? `openrouter/${chatModel}` : required(env, "SANDBOX_PI_MODEL"));
+  // Pi's --model takes provider/model, the same string as DEFAULT_MODEL.
+  const model = required(env, "SANDBOX_PI_MODEL", "DAYTONA_PI_MODEL", "DEFAULT_MODEL");
   const timeout =
     positiveInt(env, "SANDBOX_SESSION_TIMEOUT_SECONDS") ??
     positiveInt(env, "DAYTONA_SESSION_TIMEOUT_SECONDS");

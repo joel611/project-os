@@ -53,6 +53,7 @@ const boot = async (unset: ReadonlyArray<string> = []) => {
       ADMIN_EMAIL: ADMIN.email,
       ADMIN_PASSWORD: ADMIN.password,
       PUBLIC_URL: "http://coordinator.test",
+      DEFAULT_MODEL: "openrouter/anthropic/claude-sonnet-4.5",
     }),
     d1Databases: ["DB"],
     kvNamespaces: ["KV"],
@@ -93,8 +94,8 @@ describe("Coordinator on Workers", () => {
     expect(await projects.json()).toEqual([]);
   }, 30_000);
 
-  it("does not start without its secrets", async () => {
-    for (const secret of ["BETTER_AUTH_SECRET", "COORDINATOR_SERVICE_TOKEN"]) {
+  it("does not start without its secrets or its default model", async () => {
+    for (const secret of ["BETTER_AUTH_SECRET", "COORDINATOR_SERVICE_TOKEN", "DEFAULT_MODEL"]) {
       await expect(boot([secret])).rejects.toThrow();
     }
   }, 30_000);

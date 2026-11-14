@@ -1,10 +1,12 @@
-import {
-  JEV_MODEL_ID,
-  makeIntentClassifier,
-  newModels,
-} from "@project-os/agent-runtime/classifier";
+import { makeIntentClassifier, newModels } from "@project-os/agent-runtime/classifier";
 import { makeAuth } from "@project-os/auth";
-import { channelDigestConfig, env, envBool, healthConfig } from "@project-os/config";
+import {
+  channelDigestConfig,
+  envBool,
+  formatModelRef,
+  healthConfig,
+  modelConfig,
+} from "@project-os/config";
 import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
 import { drizzle } from "drizzle-orm/d1";
 import { type Effect, Layer, ManagedRuntime } from "effect";
@@ -16,7 +18,7 @@ import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
-import { channelDigesterFromEnv, digestAndLog } from "./digest/index.ts";
+import { channelDigester, digestAndLog } from "./digest/index.ts";
 import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
@@ -40,9 +42,14 @@ interface Bindings {
  */
 const buildApp = (bindings: Bindings) => {
   const models = newModels();
-  const jevModelId = env("JEV_MODEL_ID", JEV_MODEL_ID);
-  const jev = models.getModelOfType("classifier", "openrouter", jevModelId);
-  if (!jev) throw new Error(`Unknown classifier model ${jevModelId}`);
+  // The chat model runs in the PiAgent Durable Object; checking it here fails the Worker fast.
+  const modelRefs = modelConfig();
+  if (!models.getModel(modelRefs.default.provider, modelRefs.default.modelId)) {
+    throw new Error(`Unknown DEFAULT_MODEL ${formatModelRef(modelRefs.default)}`);
+  }
+  const { decision } = modelRefs;
+  const jev = models.getModelOfType("classifier", decision.provider, decision.modelId);
+  if (!jev) throw new Error(`Unknown DECISION_MODEL ${formatModelRef(decision)}`);
 
   const publicUrl = process.env.PUBLIC_URL;
   const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
@@ -69,8 +76,7 @@ const buildApp = (bindings: Bindings) => {
 
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
   const digestConfig = channelDigestConfig();
-  const digester = channelDigesterFromEnv(models, process.env);
-  const digest = { ...digestConfig, enabled: digester !== undefined };
+  const digester = channelDigester(models, modelRefs.channelDigest);
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
       CloudflareLive({
@@ -90,7 +96,7 @@ const buildApp = (bindings: Bindings) => {
           }),
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
-      ...(digester ? [digester] : []),
+      digester,
       Layer.effectDiscard(ensureOrg(bindings.DB)),
       ...(connections ? [connections.layer] : []),
     ),
@@ -112,7 +118,7 @@ const buildApp = (bindings: Bindings) => {
         run: (effect) => runtime.runPromise(effect),
         publicUrl: () => publicUrl ?? "",
         admin: adminActions,
-        inbound: { channelDigest: digest.enabled },
+        inbound: { channelDigest: true },
       }),
       access: makeAccess({ serviceToken, auth }),
       mcp: runtime,
@@ -123,8 +129,7 @@ const buildApp = (bindings: Bindings) => {
 
   const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
   // Same Cron tick as the sweep (ADR 0001); a project is digested only once its chat is quiet.
-  const digestRun = () =>
-    digest.enabled ? runtime.runPromise(digestAndLog(digest)) : Promise.resolve();
+  const digestRun = () => runtime.runPromise(digestAndLog(digestConfig));
   return { app, sweep, digest: digestRun };
 };
 

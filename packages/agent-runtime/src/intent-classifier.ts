@@ -13,9 +13,6 @@ import {
 } from "@project-os/core";
 import { Effect, Layer } from "effect";
 
-/** Pinned, not `~typesafe/jev-latest` (docs/technical-architecture.md §8.6). */
-export const JEV_MODEL_ID = "typesafe/jev-1.14";
-
 /** Below this the executor answer is dropped and the request goes to a Worker. */
 const SIDEKICK_MIN_CONFIDENCE = 0.7;
 
