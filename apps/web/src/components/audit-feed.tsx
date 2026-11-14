@@ -16,6 +16,13 @@ import { Empty, QueryError } from "@/components/states";
 import { ToneDot } from "@/components/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { relativeTime, STATUS, type Tone } from "@/model";
@@ -313,19 +320,31 @@ export const AuditFeed = ({
       <div className="flex flex-wrap items-center gap-3">
         <KindFilter value={kind} onChange={setKind} />
         {projects && (
-          <select
-            aria-label="Project"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            className="h-[34px] rounded-lg border bg-card px-2.5 text-xs font-medium shadow-card outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          <Select
+            items={[
+              { value: null, label: "All projects" },
+              ...projects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            value={project || null}
+            onValueChange={(id) => setProject(id ?? "")}
           >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              aria-label="Project"
+              className="h-[34px] min-w-36 border-border bg-card text-xs font-medium shadow-card data-placeholder:text-foreground dark:bg-card dark:hover:bg-card"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start" alignItemWithTrigger={false}>
+              <SelectItem value={null} className="text-xs">
+                All projects
+              </SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id} className="text-xs">
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
       {feed.isPending ? (
