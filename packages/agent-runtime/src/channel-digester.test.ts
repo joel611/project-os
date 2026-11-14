@@ -2,7 +2,8 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { ChannelDigester } from "@project-os/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { digestPrompt, makeChannelDigester, newModels, parseDigestAnswer } from "./index.ts";
+import { CHANNEL_DIGEST_INSTRUCTIONS, channelDigestRequest } from "@project-os/system-prompts";
+import { makeChannelDigester, newModels, parseDigestAnswer } from "./index.ts";
 
 const input = {
   projectName: "Acme",
@@ -57,13 +58,6 @@ const answering = (
 };
 
 describe("channel digester", () => {
-  it("shows the model the project, what memory has, and each message with its id", () => {
-    const prompt = digestPrompt(input);
-    expect(prompt).toContain("Project: Acme");
-    expect(prompt).toContain("- Use Bun");
-    expect(prompt).toContain("[m2] 2026-11-12T10:01:00Z (thread t1) Bob: agreed, SQLite");
-  });
-
   it("reads the points, dropping message ids the chat doesn't have", async () => {
     const { run, requests } = answering(
       '```json\n{"points":[{"type":"decision","title":"Use SQLite","content":"Bob agreed on SQLite.","messageIds":["m2","m99"]}]}\n```',
@@ -77,6 +71,10 @@ describe("channel digester", () => {
       },
     ]);
     expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      systemPrompt: CHANNEL_DIGEST_INSTRUCTIONS,
+      messages: [{ role: "user", content: channelDigestRequest(input) }],
+    });
   });
 
   it("fails with ChannelDigestError on a bad answer or a provider error", async () => {
@@ -84,12 +82,6 @@ describe("channel digester", () => {
     expect(bad._tag).toBe("ChannelDigestError");
     const failed = await Effect.runPromise(Effect.flip(answering("", "error").run));
     expect(failed.message).toBe("digest error");
-  });
-
-  it("says when the project has no context or memory yet", () => {
-    const prompt = digestPrompt({ ...input, projectContext: " ", known: [] });
-    expect(prompt).not.toContain("About the project");
-    expect(prompt).toContain("(none)");
   });
 
   it("reports the provider's error message, or what it threw", async () => {

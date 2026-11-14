@@ -92,6 +92,7 @@
         "@project-os/infra-local": "workspace:*",
         "@project-os/sandbox-cloudflare": "workspace:*",
         "@project-os/sandbox-core": "workspace:*",
+        "@project-os/system-prompts": "workspace:*",
         "@project-os/testing": "workspace:*",
         "effect": "4.1.2",
       },
@@ -109,6 +110,7 @@
       "dependencies": {
         "@project-os/config": "workspace:*",
         "@project-os/contracts": "workspace:*",
+        "@project-os/system-prompts": "workspace:*",
       },
     },
     "apps/web": {
@@ -162,6 +164,7 @@
         "@opentelemetry/api": "^1.10.0",
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
+        "@project-os/system-prompts": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -212,6 +215,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
+        "@project-os/system-prompts": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -275,6 +279,7 @@
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
+        "@project-os/system-prompts": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -285,6 +290,10 @@
         "@daytona/sdk": "0.230.0",
         "@project-os/sandbox-core": "workspace:*",
       },
+    },
+    "packages/system-prompts": {
+      "name": "@project-os/system-prompts",
+      "version": "0.0.0",
     },
     "packages/testing": {
       "name": "@project-os/testing",
@@ -942,6 +951,8 @@
     "@project-os/sandbox-core": ["@project-os/sandbox-core@workspace:packages/sandbox-core"],
 
     "@project-os/sandbox-daytona": ["@project-os/sandbox-daytona@workspace:packages/sandbox-daytona"],
+
+    "@project-os/system-prompts": ["@project-os/system-prompts@workspace:packages/system-prompts"],
 
     "@project-os/testing": ["@project-os/testing@workspace:packages/testing"],
 

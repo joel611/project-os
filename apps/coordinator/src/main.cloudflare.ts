@@ -22,7 +22,6 @@ import { channelDigester, digestAndLog } from "./digest/index.ts";
 import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
-import sessionStartPrompt from "../../watcher/prompts/session-start.md";
 
 export { PiAgent } from "./pi-agent.ts";
 
@@ -64,7 +63,6 @@ const buildApp = (bindings: Bindings) => {
   const serviceToken = serviceTokenFromEnv(process.env);
 
   const workerLauncher = sandboxLauncherFromEnv(process.env, {
-    prompt: sessionStartPrompt,
     log: console.log,
     runners: Object.fromEntries(
       Object.entries(configuredRunners(process.env)).map(([provider, runner]) => [

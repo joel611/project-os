@@ -1,4 +1,5 @@
 import { SANDBOX_PROVIDER_OF } from "@project-os/contracts";
+import { workerSessionStart } from "@project-os/system-prompts";
 import {
   DEFAULT_SANDBOX_SESSION_SECONDS,
   LaunchFailed,
@@ -32,8 +33,6 @@ export interface SandboxLauncherConfig {
   readonly openrouterApiKey: string;
   /** Pi model pattern, e.g. `openrouter/anthropic/claude-sonnet-4.5`. */
   readonly model: string;
-  /** The session-start instruction; the worker id is appended per ticket. */
-  readonly prompt: string;
   readonly timeoutSeconds?: number;
   readonly log: (message: string) => void;
 }
@@ -65,13 +64,13 @@ export const SESSION_COMMAND = [
 ].join(" && ");
 
 export const sessionEnv = (
-  config: Pick<SandboxLauncherConfig, "mcpUrl" | "openrouterApiKey" | "model" | "prompt">,
+  config: Pick<SandboxLauncherConfig, "mcpUrl" | "openrouterApiKey" | "model">,
   session: { readonly workerId: string; readonly mcpToken: string },
 ): Record<string, string> => ({
   OPENROUTER_API_KEY: config.openrouterApiKey,
   PROJECT_OS_MCP_JSON: piMcpJson(config.mcpUrl, session.mcpToken),
   PROJECT_OS_MODEL: config.model,
-  PROJECT_OS_PROMPT: `${config.prompt}\nYour worker_id is \`${session.workerId}\`.`,
+  PROJECT_OS_PROMPT: workerSessionStart(session.workerId),
 });
 
 /**

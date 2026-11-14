@@ -68,7 +68,6 @@ beforeEach(async () => {
       mcpUrl: "https://tunnel.example/mcp",
       openrouterApiKey: "sk-or",
       model: "openrouter/m",
-      prompt: "Work one ticket.",
       log: () => {},
     }),
   });

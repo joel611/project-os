@@ -19,7 +19,8 @@ const edgeOnly = [
   "@project-os/infra-cloudflare",
 ].map((name) => ({
   name,
-  message: "adapters, the watcher, and the web UI may only use contracts + libs/config.",
+  message:
+    "adapters, the watcher, and the web UI may only use contracts, system-prompts + libs/config.",
 }));
 
 export default defineConfig({

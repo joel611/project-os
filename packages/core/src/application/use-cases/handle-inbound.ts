@@ -1,4 +1,5 @@
 import type { InboundMessage, ReplyInstruction } from "@project-os/contracts";
+import { statusQuestion } from "@project-os/system-prompts";
 import { Effect } from "effect";
 import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
 import {
@@ -298,10 +299,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         const text = yield* runtime.respond({
           sessionId: `project:${project.id}`,
           requestId: message.externalId,
-          prompt: [
-            `Answer this status question from ticket state: ${message.content}`,
-            `- ${threadTicket.title} [${threadTicket.status}]`,
-          ].join("\n"),
+          prompt: statusQuestion({ question: message.content, tickets: [threadTicket] }),
         });
         yield* reply(text);
         return { kind: "status_answered" } as InboundOutcome;
@@ -417,12 +415,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         const text = yield* runtime.respond({
           sessionId: `project:${project.id}`,
           requestId: message.externalId,
-          prompt: [
-            `Answer this status question from ticket state: ${message.content}`,
-            ...(active.length === 0
-              ? ["No open tickets."]
-              : active.map((t) => `- ${t.title} [${t.status}]`)),
-          ].join("\n"),
+          prompt: statusQuestion({ question: message.content, tickets: active }),
         });
         yield* reply(text);
         return { kind: "status_answered" } as InboundOutcome;

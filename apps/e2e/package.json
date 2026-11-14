@@ -14,6 +14,7 @@
     "@project-os/infra-local": "workspace:*",
     "@project-os/sandbox-cloudflare": "workspace:*",
     "@project-os/sandbox-core": "workspace:*",
+    "@project-os/system-prompts": "workspace:*",
     "@project-os/testing": "workspace:*",
     "effect": "4.1.2"
   },

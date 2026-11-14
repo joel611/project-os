@@ -12,12 +12,16 @@ import {
 } from "@earendil-works/pi-durable";
 import type { TelemetryContext } from "@earendil-works/pi-telemetry";
 import { AgentRuntime, AgentRuntimeError, Sidekick, SidekickError } from "@project-os/core";
+import {
+  ADMIN_SESSION_INSTRUCTIONS,
+  PROJECT_SESSION_INSTRUCTIONS,
+  SIDEKICK_INSTRUCTIONS,
+} from "@project-os/system-prompts";
 import { Context, Effect, Layer } from "effect";
 import { type AdminActions, makeAdminExtension } from "./admin-tools.ts";
 import {
   makeSidekickExtension,
   SIDEKICK_ENDPOINTS,
-  SIDEKICK_INSTRUCTIONS,
   type SidekickEndpoints,
   type TokenSource,
 } from "./sidekick-tools.ts";
@@ -30,7 +34,6 @@ export interface AgentRuntimeOptions {
   readonly model: { readonly provider: string; readonly modelId: string };
   /** Coordinator actions exposed as tools to `admin:*` sessions. */
   readonly adminActions?: AdminActions;
-  readonly instructions?: string;
   /** Where the Sidekick's tools call. Default: the real GitHub and Google Drive APIs. */
   readonly sidekickEndpoints?: SidekickEndpoints;
   /** Pi telemetry sink, e.g. `makeOtelTelemetry(...)`. Omitted: no-op. */
@@ -104,12 +107,10 @@ export const makeAgentRuntime = (options: AgentRuntimeOptions) =>
             : [admin];
         const instructions = key.startsWith(SIDEKICK_PREFIX)
           ? SIDEKICK_INSTRUCTIONS
-          : options.instructions;
-        return {
-          model: options.model,
-          extensions,
-          ...(instructions === undefined ? {} : { instructions }),
-        };
+          : key.startsWith(ADMIN_PREFIX)
+            ? ADMIN_SESSION_INSTRUCTIONS
+            : PROJECT_SESSION_INSTRUCTIONS;
+        return { model: options.model, extensions, instructions };
       };
 
       // Serialise lookups so two first messages for one session do not create two conversations.
