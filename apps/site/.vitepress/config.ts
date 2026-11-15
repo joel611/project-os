@@ -25,23 +25,18 @@ const rewrites: Record<string, string> = {
   "docs/technical-architecture.md": "reference/architecture.md",
   "docs/infra-cloudflare.md": "reference/infra-cloudflare.md",
   "CONTEXT.md": "reference/glossary.md",
-  "docs/adr/:slug": "reference/adr/:slug",
 };
 
 const pageFor = (source: string): string | undefined => {
   if (source === "README.md") return "/";
-  if (rewrites[source]) return "/" + rewrites[source].replace(/(index)?\.md$/, "");
-  const adr = source.match(/^docs\/adr\/(.+)\.md$/);
-  return adr ? `/reference/adr/${adr[1]}` : undefined;
+  return rewrites[source] ? "/" + rewrites[source].replace(/(index)?\.md$/, "") : undefined;
 };
 
 // VitePress renders a page with its rewritten path; links must resolve from the source file.
 const sourceOf = (file: string): string => {
   if (file in rewrites || existsSync(path.join(repoRoot, file))) return file;
   const exact = Object.entries(rewrites).find(([, page]) => page === file);
-  if (exact) return exact[0];
-  const adr = file.match(/^reference\/adr\/(.+)$/);
-  return adr ? `docs/adr/${adr[1]}` : file;
+  return exact ? exact[0] : file;
 };
 
 const isRelative = (href: string) => !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(href);
@@ -62,6 +57,8 @@ export default defineConfig({
     "scripts/**",
     ".changeset/**",
     ".github/**",
+    // Internal docs: links to them go to GitHub instead.
+    "docs/adr/**",
     "docs/agents/**",
     "docs/research/**",
     "docs/demo/**",
@@ -126,16 +123,6 @@ export default defineConfig({
           { text: "Technical architecture", link: "/reference/architecture" },
           { text: "Cloudflare infrastructure", link: "/reference/infra-cloudflare" },
           { text: "Glossary", link: "/reference/glossary" },
-          {
-            text: "Decisions (ADRs)",
-            collapsed: true,
-            items: [
-              {
-                text: "0001 Health sweep on Cron",
-                link: "/reference/adr/0001-health-sweep-on-cron-not-durable-object-alarms",
-              },
-            ],
-          },
         ],
       },
     ],
