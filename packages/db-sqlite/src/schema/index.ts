@@ -1,5 +1,4 @@
 export * from "./org.ts";
-export * from "./user.ts";
 export * from "./project.ts";
 export * from "./project-source.ts";
 export * from "./memory-entry.ts";

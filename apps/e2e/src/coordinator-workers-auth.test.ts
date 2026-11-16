@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { makeAssetStore } from "@project-os/infra-local/shared";
 import { Effect } from "effect";
 import { Miniflare } from "miniflare";
@@ -8,13 +8,11 @@ import { afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
 // the guard, Better Auth on D1, and the admin seeded on the first /api/auth request, since a
 // Worker does no I/O at module load. Every outbound fetch is refused.
 
-const migration = readFileSync(
-  new URL(
-    "../../../packages/db-sqlite/migrations/20261107121658_init/migration.sql",
-    import.meta.url,
-  ),
-  "utf8",
-);
+// Every migration, oldest first: the folder names start with a timestamp.
+const migrationsDir = new URL("../../../packages/db-sqlite/migrations/", import.meta.url);
+const migrations = readdirSync(migrationsDir)
+  .sort()
+  .map((name) => readFileSync(new URL(`${name}/migration.sql`, migrationsDir), "utf8"));
 
 const ADMIN = { email: "ops@project-os.test", password: "ops-password" };
 const SERVICE_TOKEN = "workers-service-token";
@@ -64,7 +62,7 @@ const boot = async (unset: ReadonlyArray<string> = []) => {
   });
   instances.push(mf);
   const db = await mf.getD1Database("DB");
-  for (const statement of migration.split("--> statement-breakpoint")) {
+  for (const statement of migrations.flatMap((sql) => sql.split("--> statement-breakpoint"))) {
     await db.prepare(statement).run();
   }
   const call = (path: string, init: { method?: string; token?: string; body?: unknown } = {}) =>

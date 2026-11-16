@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
-export const auth_users = sqliteTable("auth_users", {
+export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
@@ -16,8 +16,8 @@ export const auth_users = sqliteTable("auth_users", {
     .notNull(),
 });
 
-export const auth_sessions = sqliteTable(
-  "auth_sessions",
+export const session = sqliteTable(
+  "session",
   {
     id: text("id").primaryKey(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
@@ -32,20 +32,20 @@ export const auth_sessions = sqliteTable(
     userAgent: text("user_agent"),
     userId: text("user_id")
       .notNull()
-      .references(() => auth_users.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade" }),
   },
-  (table) => [index("auth_sessions_userId_idx").on(table.userId)],
+  (table) => [index("session_userId_idx").on(table.userId)],
 );
 
-export const auth_accounts = sqliteTable(
-  "auth_accounts",
+export const account = sqliteTable(
+  "account",
   {
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
       .notNull()
-      .references(() => auth_users.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade" }),
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
@@ -64,11 +64,11 @@ export const auth_accounts = sqliteTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("auth_accounts_userId_idx").on(table.userId)],
+  (table) => [index("account_userId_idx").on(table.userId)],
 );
 
-export const auth_verifications = sqliteTable(
-  "auth_verifications",
+export const verification = sqliteTable(
+  "verification",
   {
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
@@ -82,5 +82,5 @@ export const auth_verifications = sqliteTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("auth_verifications_identifier_idx").on(table.identifier)],
+  (table) => [index("verification_identifier_idx").on(table.identifier)],
 );

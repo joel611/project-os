@@ -4,7 +4,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { GenericOAuthConfig } from "better-auth/plugins";
 import type { Person } from "@project-os/core";
-import { authModels, authPlugins } from "./auth-options.ts";
+import { authPlugins } from "./auth-options.ts";
 import {
   type Connections,
   isChannelIdentityEmail,
@@ -61,7 +61,7 @@ export interface AdminAccount {
 }
 
 export interface AuthConfig {
-  /** Drizzle database holding the `auth_*` tables (see `@project-os/db-sqlite`). */
+  /** Drizzle database holding the Better Auth tables (see `@project-os/db-sqlite`). */
   readonly db: Parameters<typeof drizzleAdapter>[0];
   /**
    * Public URL of the Coordinator: OAuth callbacks and connect links point here. Unset, Better
@@ -324,19 +324,13 @@ const betterAuthFor = (
     ...(config.baseURL && { baseURL: config.baseURL }),
     secret: config.secret,
     trustedOrigins: [...(config.baseURL ? [config.baseURL] : []), ...(config.webOrigins ?? [])],
-    ...authModels,
     database: drizzleAdapter(config.db, {
       provider: "sqlite",
       schema: {
-        // Keyed by both the model name and the `auth_` table name; the adapter asks either way.
-        user: schema.auth_users,
-        session: schema.auth_sessions,
-        account: schema.auth_accounts,
-        verification: schema.auth_verifications,
-        auth_users: schema.auth_users,
-        auth_sessions: schema.auth_sessions,
-        auth_accounts: schema.auth_accounts,
-        auth_verifications: schema.auth_verifications,
+        user: schema.user,
+        session: schema.session,
+        account: schema.account,
+        verification: schema.verification,
       },
     }),
     // Better Auth skips its origin check when NODE_ENV=test or TEST is set; never skip it.
