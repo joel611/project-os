@@ -14,7 +14,7 @@ import {
   modelConfig,
 } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
-import { makeAuth } from "@project-os/auth";
+import { Auth } from "@project-os/auth";
 import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
@@ -37,9 +37,12 @@ const orgId = ensureOrg(dbPath, DEFAULT_ORG);
 const publicUrl = env("PUBLIC_URL", `http://localhost:${port}`);
 const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
 
-const auth = makeAuth(
+const authLayer = Auth.layer(
   authConfigFromEnv(process.env, { db: openLocalDb(dbPath).db, baseURL: publicUrl, webOrigins }),
 );
+// One instance for the app and the runtime: both runtimes share this memo map.
+const authRuntime = ManagedRuntime.make(authLayer);
+const auth = authRuntime.runSync(Auth);
 await auth.ready();
 const connections = auth.connections;
 const serviceToken = serviceTokenFromEnv(process.env);
@@ -119,8 +122,9 @@ const runtime = ManagedRuntime.make(
       },
     }),
     AiLive,
-    ...(connections ? [connections.layer] : []),
-  ),
+    Auth.connectionsLayer,
+  ).pipe(Layer.provideMerge(authLayer)),
+  { memoMap: authRuntime.memoMap },
 );
 
 await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));

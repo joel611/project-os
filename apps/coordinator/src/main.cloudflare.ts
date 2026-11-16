@@ -1,5 +1,5 @@
 import { makeIntentClassifier, newModels } from "@project-os/agent-runtime/classifier";
-import { makeAuth } from "@project-os/auth";
+import { Auth } from "@project-os/auth";
 import {
   channelDigestConfig,
   envBool,
@@ -52,13 +52,16 @@ const buildApp = (bindings: Bindings) => {
 
   const publicUrl = process.env.PUBLIC_URL;
   const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
-  const auth = makeAuth(
+  const authLayer = Auth.layer(
     authConfigFromEnv(process.env, {
       db: drizzle(bindings.DB),
       ...(publicUrl && { baseURL: publicUrl }),
       webOrigins,
     }),
   );
+  // One instance for the app and the runtime: both runtimes share this memo map.
+  const authRuntime = ManagedRuntime.make(authLayer);
+  const auth = authRuntime.runSync(Auth);
   const connections = auth.connections;
   const serviceToken = serviceTokenFromEnv(process.env);
 
@@ -96,8 +99,9 @@ const buildApp = (bindings: Bindings) => {
       makeIntentClassifier({ classifier: models, model: jev }),
       digester,
       Layer.effectDiscard(ensureOrg(bindings.DB)),
-      ...(connections ? [connections.layer] : []),
-    ),
+      Auth.connectionsLayer,
+    ).pipe(Layer.provideMerge(authLayer)),
+    { memoMap: authRuntime.memoMap },
   );
 
   const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
