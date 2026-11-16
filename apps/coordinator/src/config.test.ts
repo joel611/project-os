@@ -22,6 +22,14 @@ describe("coordinatorConfig", () => {
     expect(config.http.commands).not.toHaveProperty("adminChannelId");
     expect(config.http.commands?.workers).not.toHaveProperty("installCommand");
     expect(config.corsOrigins).toEqual([]);
+    expect(config).not.toHaveProperty("credentialProxy");
+  });
+
+  it("mounts the credential proxy only when SANDBOX_CREDENTIAL_PROXY opts in", () => {
+    const on = coordinatorConfig({ ...base, env: { SANDBOX_CREDENTIAL_PROXY: "true" } });
+    expect(on.credentialProxy).toEqual({});
+    const off = coordinatorConfig({ ...base, env: { SANDBOX_CREDENTIAL_PROXY: "false" } });
+    expect(off).not.toHaveProperty("credentialProxy");
   });
 
   it("gives inbound and commands the same admin channel and parsed user ids", () => {

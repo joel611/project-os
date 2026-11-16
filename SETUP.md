@@ -54,7 +54,7 @@ Each model is one `provider/model` string: the provider is everything before the
 
 The Coordinator also refuses to start when a model isn't one pi-ai knows, and when an old name is set: `CHAT_MODEL_ID` and `CHAT_MODEL_PROVIDER` became `DEFAULT_MODEL`, `CHANNEL_DIGEST_MODEL_ID` and `CHANNEL_DIGEST_MODEL_PROVIDER` became `CHANNEL_DIGEST_MODEL`, and `JEV_MODEL_ID` became `DECISION_MODEL`.
 
-Workers never use a shared Google or GitHub credential. They call the `user_token` MCP tool, which returns the token of the person who asked, so Google's and GitHub's own permissions decide what a Worker can reach.
+Workers never use a shared Google or GitHub credential. They call the `user_token` MCP tool, which returns the token of the person who asked, so Google's and GitHub's own permissions decide what a Worker can reach. Cloud sandbox workers can instead go through the credential proxy (step [6](#credential-proxy)), so the token never reaches the sandbox or its model.
 
 ---
 
@@ -361,6 +361,18 @@ When the Coordinator assigns a ticket, it reads the pool and starts the first pr
 
 The older `DAYTONA_MCP_URL`, `DAYTONA_PI_MODEL` and `DAYTONA_SESSION_TIMEOUT_SECONDS` still work as fallbacks for the `SANDBOX_*` names.
 
+### Credential proxy
+
+By default a sandbox session gets the requester's Google, GitHub or ClickUp token from `user_token`, so the token ends up in the model's context and is sent to the model provider. Set `SANDBOX_CREDENTIAL_PROXY=true` to keep it on the Coordinator instead:
+
+```sh
+SANDBOX_CREDENTIAL_PROXY=true
+# Optional: where sandboxes reach the proxy. Default: SANDBOX_MCP_URL with /mcp swapped for /egress.
+SANDBOX_EGRESS_URL=
+```
+
+With it on, the Coordinator serves `/egress/<service>/<path>` beside `/mcp`. A sandbox calls it with its own MCP token, and the Coordinator forwards the call with the requester's token in its place: `github` goes to api.github.com, `github-git` to github.com (git over HTTPS), `google` to www.googleapis.com and `clickup` to api.clickup.com. Sandbox sessions no longer see `user_token`, their prompt tells them to use `$PROJECT_OS_EGRESS_URL`, and git is set up so clones and pushes of `https://github.com/` repos go through the proxy. `gh` doesn't work this way, so sessions use `curl` for the API. Watcher devices keep `user_token` either way.
+
 ### Daytona
 
 **Paused.** The code stays and works up to launching the sandbox, but a sandbox can only reach the Coordinator's public `/mcp` URL on Daytona's Tier 3, which is too costly for now. On a lower tier Pi installs and runs but never connects, and the ticket stays `assigned`. We are not investing further until that changes; use a registered device, Cloudflare Sandbox or boat.dev instead.
@@ -545,12 +557,14 @@ Read by `apps/watcher` on the computer that works tickets, from its shell.
 
 Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentials are set.
 
-| Variable                          | Required | Default                   | Description                                                                                                                  |
-| --------------------------------- | -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `WORKER_PROVIDERS`                | No       | every configured provider | Providers in the order to try, comma-separated, from `daytona`, `cloudflare`, `boat`. Unset order: daytona, cloudflare, boat |
-| `SANDBOX_MCP_URL`                 | Yes\*    |                           | \*With any provider. The Coordinator's `/mcp` as the sandbox's cloud sees it, never localhost. `DAYTONA_MCP_URL` still works |
-| `SANDBOX_PI_MODEL`                | No       | `DEFAULT_MODEL`           | Pi's model in the sandbox, `provider/model`. `DAYTONA_PI_MODEL` still works                                                  |
-| `SANDBOX_SESSION_TIMEOUT_SECONDS` | No       | `1800`                    | Longest a sandbox session runs. `DAYTONA_SESSION_TIMEOUT_SECONDS` still works                                                |
+| Variable                          | Required | Default                          | Description                                                                                                                         |
+| --------------------------------- | -------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `WORKER_PROVIDERS`                | No       | every configured provider        | Providers in the order to try, comma-separated, from `daytona`, `cloudflare`, `boat`. Unset order: daytona, cloudflare, boat        |
+| `SANDBOX_MCP_URL`                 | Yes\*    |                                  | \*With any provider. The Coordinator's `/mcp` as the sandbox's cloud sees it, never localhost. `DAYTONA_MCP_URL` still works        |
+| `SANDBOX_PI_MODEL`                | No       | `DEFAULT_MODEL`                  | Pi's model in the sandbox, `provider/model`. `DAYTONA_PI_MODEL` still works                                                         |
+| `SANDBOX_SESSION_TIMEOUT_SECONDS` | No       | `1800`                           | Longest a sandbox session runs. `DAYTONA_SESSION_TIMEOUT_SECONDS` still works                                                       |
+| `SANDBOX_CREDENTIAL_PROXY`        | No       | `false`                          | `true`: sandboxes reach Google, GitHub and ClickUp through `/egress` and never hold the person's token ([proxy](#credential-proxy)) |
+| `SANDBOX_EGRESS_URL`              | No       | `SANDBOX_MCP_URL` with `/egress` | The credential proxy as the sandbox's cloud sees it. Needed when `SANDBOX_MCP_URL` doesn't end in `/mcp`                            |
 
 #### Daytona (paused)
 

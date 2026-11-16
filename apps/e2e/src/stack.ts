@@ -30,7 +30,7 @@ import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
 import { makeAccess } from "../../coordinator/src/access.ts";
-import { createApp } from "../../coordinator/src/app.ts";
+import { type AppDeps, createApp } from "../../coordinator/src/app.ts";
 import { coordinatorConfig } from "../../coordinator/src/config.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
@@ -181,6 +181,8 @@ export const startStack = async (options: {
   readonly maxAttachmentBytes?: number;
   /** Make every Channel Digest model call fail with this message. */
   readonly failDigest?: string;
+  /** Mounts the credential proxy (`SANDBOX_CREDENTIAL_PROXY`), forwarding to these origins. */
+  readonly credentialProxy?: NonNullable<AppDeps["credentialProxy"]>;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -316,6 +318,7 @@ export const startStack = async (options: {
         },
       }),
       mcp: runtime,
+      ...(options.credentialProxy && { credentialProxy: options.credentialProxy }),
       auth: {
         handler: (request: Request) => auth!.handler(request),
         ...(oauth && {

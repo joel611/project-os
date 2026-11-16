@@ -12,6 +12,7 @@ import {
   statusQuestion,
   ticketCompletedReply,
   WORKER_SESSION_START,
+  WORKER_SESSION_START_PROXIED,
   workerSessionStart,
 } from "./index.ts";
 
@@ -22,6 +23,14 @@ describe("worker session start", () => {
     const prompt = workerSessionStart("daytona-42");
     expect(prompt.startsWith(WORKER_SESSION_START)).toBe(true);
     expect(prompt.endsWith("\n\nYour worker_id is `daytona-42`.")).toBe(true);
+  });
+
+  it("sends a proxied session through the credential proxy, never user_token", () => {
+    const prompt = workerSessionStart("daytona-42", { credentialProxy: true });
+    expect(prompt.startsWith(WORKER_SESSION_START_PROXIED)).toBe(true);
+    expect(prompt).not.toContain("user_token");
+    expect(prompt).toContain("$PROJECT_OS_EGRESS_URL/github/");
+    expect(WORKER_SESSION_START).toContain("user_token");
   });
 
   it("names the MCP tools a Worker uses, in claim order", () => {
@@ -135,6 +144,7 @@ describe("full text", () => {
   it.each(
     Object.entries({
       WORKER_SESSION_START,
+      WORKER_SESSION_START_PROXIED,
       PROJECT_SESSION_INSTRUCTIONS,
       ADMIN_SESSION_INSTRUCTIONS,
       SIDEKICK_INSTRUCTIONS,

@@ -4,18 +4,24 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   makeSandboxLauncher,
   piMcpJson,
+  PROXIED_SESSION_COMMAND,
   SESSION_COMMAND,
   type SandboxProvider,
   type SandboxRunner,
 } from "./launcher.ts";
 
-const setup = (run: SandboxRunner["run"], extra: ReadonlyArray<SandboxProvider> = []) => {
+const setup = (
+  run: SandboxRunner["run"],
+  extra: ReadonlyArray<SandboxProvider> = [],
+  egressUrl?: string,
+) => {
   const logs: string[] = [];
   const launcher = makeSandboxLauncher({
     providers: [{ workerType: "daytona_pi", runner: { run } }, ...extra],
     mcpUrl: "https://tunnel.example/mcp",
     openrouterApiKey: "sk-or",
     model: "openrouter/m",
+    ...(egressUrl && { egressUrl }),
     log: (m) => logs.push(m),
   });
   return { launcher, logs };
@@ -55,6 +61,27 @@ describe("sandbox launcher", () => {
       },
     });
     // The token reaches Pi through the env, never the shell line.
+    expect(calls[0]!.command).not.toContain("mcp-token-t1");
+  });
+
+  it("behind the credential proxy, hands the session the proxy and points git at it", async () => {
+    const calls: Parameters<SandboxRunner["run"]>[0][] = [];
+    const { launcher } = setup(
+      async (input) => {
+        calls.push(input);
+        return { exitCode: 0, output: "" };
+      },
+      [],
+      "https://tunnel.example/egress/",
+    );
+    await Effect.runPromise(launcher.launch(daytonaTicket));
+    expect(calls[0]!.command).toBe(PROXIED_SESSION_COMMAND);
+    expect(calls[0]!.command).toContain('url."$PROJECT_OS_EGRESS_URL/github-git/".insteadOf');
+    expect(calls[0]!.env).toMatchObject({
+      PROJECT_OS_EGRESS_URL: "https://tunnel.example/egress",
+      PROJECT_OS_EGRESS_TOKEN: "mcp-token-t1",
+      PROJECT_OS_PROMPT: workerSessionStart("daytona-t1", { credentialProxy: true }),
+    });
     expect(calls[0]!.command).not.toContain("mcp-token-t1");
   });
 

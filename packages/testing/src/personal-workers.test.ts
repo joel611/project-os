@@ -226,8 +226,8 @@ describe("MCP credentials", () => {
         };
       }).pipe(Effect.provide(t.layer)) as Effect.Effect<any>,
     );
-    expect(value.byDevice).toEqual({ id: value.ada });
-    expect(value.bySandbox).toEqual({ id: value.sandboxWorker });
+    expect(value.byDevice).toEqual({ id: value.ada, kind: "device" });
+    expect(value.bySandbox).toEqual({ id: value.sandboxWorker, kind: "sandbox" });
     expect(value.sandboxWorker).toMatch(/^daytona-/);
     expect(value.unknown).toBeUndefined();
   });
@@ -243,7 +243,7 @@ describe("MCP credentials", () => {
           return { live, expired: yield* authenticateCaller(token) };
         }),
       );
-      expect(value).toEqual({ live: { id: "daytona-t1" }, expired: undefined });
+      expect(value).toEqual({ live: { id: "daytona-t1", kind: "sandbox" }, expired: undefined });
     } finally {
       vi.useRealTimers();
     }
@@ -332,7 +332,7 @@ describe("MCP guards", () => {
     expect(value.worker.id).toMatch(/^shared-/);
     // Bob has no device of his own: the shared device takes his ticket before the sandbox pool.
     expect(value.ticket.workerId).toBe(value.worker.id);
-    expect(value.caller).toEqual({ id: value.worker.id });
+    expect(value.caller).toEqual({ id: value.worker.id, kind: "device" });
     expect(value).toMatchObject({ self: "ok", ticketSelf: "ok" });
   });
 });

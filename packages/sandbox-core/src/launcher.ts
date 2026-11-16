@@ -31,6 +31,11 @@ export interface SandboxLauncherConfig {
   /** Coordinator MCP URL as the sandbox sees it (public; never the host's localhost). */
   readonly mcpUrl: string;
   readonly openrouterApiKey: string;
+  /**
+   * The Coordinator's credential proxy (`/egress`) as the sandbox sees it. Set: the session
+   * reaches GitHub, Google and ClickUp through it and never holds the person's token.
+   */
+  readonly egressUrl?: string;
   /** Pi model pattern, e.g. `openrouter/anthropic/claude-sonnet-4.5`. */
   readonly model: string;
   readonly timeoutSeconds?: number;
@@ -55,22 +60,42 @@ export const piMcpJson = (mcpUrl: string, mcpToken: string): string =>
   });
 
 // Values arrive as env vars so no ticket-derived text is ever interpolated into the shell line.
-export const SESSION_COMMAND = [
+const PI_SETUP = [
   "set -e",
   "npm install -g @earendil-works/pi-coding-agent",
   "mkdir -p ~/.pi/agent",
   'printf "%s" "$PROJECT_OS_MCP_JSON" > ~/.pi/agent/mcp.json',
-  'pi --print --model "$PROJECT_OS_MODEL" "$PROJECT_OS_PROMPT"',
-].join(" && ");
+];
+const PI_RUN = 'pi --print --model "$PROJECT_OS_MODEL" "$PROJECT_OS_PROMPT"';
+
+// git over HTTPS to github.com goes through the credential proxy, which signs it as the person.
+const EGRESS_GIT_SETUP = [
+  "if command -v git >/dev/null; then " +
+    'git config --global url."$PROJECT_OS_EGRESS_URL/github-git/".insteadOf "https://github.com/" && ' +
+    'git config --global http."$PROJECT_OS_EGRESS_URL/".extraHeader "Authorization: Bearer $PROJECT_OS_EGRESS_TOKEN"; ' +
+    "fi",
+];
+
+export const SESSION_COMMAND = [...PI_SETUP, PI_RUN].join(" && ");
+
+/** The same session, with git pointed at the credential proxy first. */
+export const PROXIED_SESSION_COMMAND = [...PI_SETUP, ...EGRESS_GIT_SETUP, PI_RUN].join(" && ");
 
 export const sessionEnv = (
-  config: Pick<SandboxLauncherConfig, "mcpUrl" | "openrouterApiKey" | "model">,
+  config: Pick<SandboxLauncherConfig, "mcpUrl" | "openrouterApiKey" | "model" | "egressUrl">,
   session: { readonly workerId: string; readonly mcpToken: string },
 ): Record<string, string> => ({
   OPENROUTER_API_KEY: config.openrouterApiKey,
   PROJECT_OS_MCP_JSON: piMcpJson(config.mcpUrl, session.mcpToken),
   PROJECT_OS_MODEL: config.model,
-  PROJECT_OS_PROMPT: workerSessionStart(session.workerId),
+  PROJECT_OS_PROMPT: workerSessionStart(session.workerId, {
+    credentialProxy: config.egressUrl !== undefined,
+  }),
+  // The proxy takes the session's own MCP token; the person's token stays on the Coordinator.
+  ...(config.egressUrl !== undefined && {
+    PROJECT_OS_EGRESS_URL: config.egressUrl.replace(/\/+$/, ""),
+    PROJECT_OS_EGRESS_TOKEN: session.mcpToken,
+  }),
 });
 
 /**
@@ -106,7 +131,7 @@ export const makeSandboxLauncher = (
           provider.runner
             .run({
               env: sessionEnv(config, { workerId, mcpToken }),
-              command: SESSION_COMMAND,
+              command: config.egressUrl === undefined ? SESSION_COMMAND : PROXIED_SESSION_COMMAND,
               timeoutSeconds,
             })
             .then(

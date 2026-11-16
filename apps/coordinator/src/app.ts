@@ -4,6 +4,7 @@ import { type Access, deny } from "./access.ts";
 import { type AssetDeps, assetRoutes } from "./assets/routes.ts";
 import { type AuthDeps, authRoutes } from "./auth/routes.ts";
 import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
+import { type EgressDeps, egressRoutes } from "./egress/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
 
@@ -18,6 +19,12 @@ export interface AppDeps {
   readonly auth?: AuthDeps;
   /** Signed downloads of attached files (`/assets/*`). Omitted: not mounted. */
   readonly assets?: AssetDeps;
+  /**
+   * The credential proxy (`/egress/*`), on the MCP runtime: sandbox sessions reach GitHub,
+   * Google and ClickUp through it and lose `user_token`. Omitted: off, and Workers keep
+   * `user_token` (`SANDBOX_CREDENTIAL_PROXY`).
+   */
+  readonly credentialProxy?: Omit<EgressDeps, "runtime">;
   /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
   /**
@@ -67,5 +74,8 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
   const withAssets = deps.assets
     ? withConnect.use(assetRoutes({ ...(attachments && { attachments }), ...deps.assets }))
     : withConnect;
-  return deps.mcp ? withAssets.use(mcpRoutes(deps.mcp)) : withAssets;
+  if (!deps.mcp) return withAssets;
+  const proxy = deps.credentialProxy;
+  const withMcp = withAssets.use(mcpRoutes(deps.mcp, { credentialProxy: proxy !== undefined }));
+  return proxy ? withMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withMcp;
 };

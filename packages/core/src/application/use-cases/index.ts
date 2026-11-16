@@ -12,6 +12,7 @@ export * from "./on-ticket-completed.ts";
 export * from "./sidekick.ts";
 export * from "./tickets.ts";
 export * from "./connections.ts";
+export * from "./credential-proxy.ts";
 export * from "./prompts.ts";
 export * from "./personal-workers.ts";
 export * from "./placement.ts";

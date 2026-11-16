@@ -5,7 +5,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { schema } from "@project-os/db-sqlite";
 import { LocalLive, openLocalDb } from "@project-os/infra-local";
-import { issueSandboxToken, ProjectRepository, TicketRepository } from "@project-os/core";
+import {
+  issueSandboxToken,
+  ProjectRepository,
+  sha256Hex,
+  TicketRepository,
+  WorkerRepository,
+} from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -121,6 +127,34 @@ describe("coordinator MCP server", () => {
     ]);
     const claim = tools.find((t) => t.name === "ticket_claim")!;
     expect(claim.inputSchema.required).toEqual(["ticketId", "workerId"]);
+  });
+
+  it("hides user_token from sandbox sessions only while the credential proxy is on", async () => {
+    app = new Elysia().use(mcpRoutes(runtime, { credentialProxy: true }));
+    const names = async (c: Client) => (await c.listTools()).tools.map((t) => t.name);
+    expect(await names(await connect(await mint("w1")))).not.toContain("user_token");
+    const sandbox = await connect(await mint("w1"));
+    const refused = (await sandbox.callTool({
+      name: "user_token",
+      arguments: { ticketId: "t1", provider: "github" },
+    })) as { isError?: boolean; content: { text: string }[] };
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]!.text).toContain("UnknownTool");
+
+    // A Watcher device still gets it: it isn't launched with the proxy's env.
+    await runtime.runPromise(
+      Effect.gen(function* () {
+        yield* (yield* WorkerRepository).register({
+          id: "w-box",
+          workerType: "local",
+          owner: null,
+          name: "box",
+          secretHash: yield* sha256Hex("box-secret"),
+          at: T0,
+        });
+      }) as Effect.Effect<void, never, any>,
+    );
+    expect(await names(await connect("box-secret"))).toContain("user_token");
   });
 
   it("runs claim -> append -> complete against infra-local", async () => {

@@ -36,6 +36,7 @@ const fullApp = (extra: Partial<AppDeps> = {}) => {
       mcp: runtime as unknown as McpRuntime,
       auth: { handler: async () => Response.json({ ok: true }) },
       connect: { startLink: async () => null },
+      credentialProxy: {},
       ...extra,
     },
   );

@@ -4,6 +4,7 @@ import { BOAT_SIZES, type BoatSize, boatSandboxRunner } from "@project-os/sandbo
 import { cloudflareSandboxRunnerLive } from "@project-os/sandbox-cloudflare";
 import { daytonaSandboxRunner } from "@project-os/sandbox-daytona";
 import { makeSandboxLauncher, resolvePool, type SandboxRunner } from "@project-os/sandbox-core";
+import { credentialProxyEnabled } from "./config.ts";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -75,6 +76,21 @@ export const configuredRunners = (
 };
 
 /**
+ * `SANDBOX_EGRESS_URL`, else the sandbox's MCP URL with `/mcp` swapped for `/egress` (the
+ * proxy is mounted beside MCP on the same Coordinator).
+ */
+export const sandboxEgressUrl = (env: Env, mcpUrl: string): string => {
+  const explicit = nonEmpty(env, "SANDBOX_EGRESS_URL");
+  if (explicit !== undefined) return explicit;
+  const url = new URL(mcpUrl);
+  if (!/\/mcp\/?$/.test(url.pathname)) {
+    throw new Error("Set SANDBOX_EGRESS_URL: SANDBOX_MCP_URL doesn't end in /mcp");
+  }
+  url.pathname = url.pathname.replace(/\/mcp\/?$/, "/egress");
+  return url.toString();
+};
+
+/**
  * The Coordinator's sandbox pool from env: WORKER_PROVIDERS (comma list, preference order;
  * default every configured provider, Daytona first) and the shared Pi session settings.
  * Undefined when the pool is empty: tickets then wait for a registered device.
@@ -104,9 +120,13 @@ export const sandboxLauncherFromEnv = (
     positiveInt(env, "SANDBOX_SESSION_TIMEOUT_SECONDS") ??
     positiveInt(env, "DAYTONA_SESSION_TIMEOUT_SECONDS");
   options.log(`sandbox pool: ${providers.map((p) => p.workerType).join(", ")}`);
+  const mcpUrl = required(env, "SANDBOX_MCP_URL", "DAYTONA_MCP_URL");
+  const egressUrl = credentialProxyEnabled(env) ? sandboxEgressUrl(env, mcpUrl) : undefined;
+  if (egressUrl) options.log(`credential proxy on: sandboxes call ${egressUrl}`);
   return makeSandboxLauncher({
     providers,
-    mcpUrl: required(env, "SANDBOX_MCP_URL", "DAYTONA_MCP_URL"),
+    mcpUrl,
+    ...(egressUrl && { egressUrl }),
     openrouterApiKey: required(env, "OPENROUTER_API_KEY"),
     model,
     ...(timeout === undefined ? {} : { timeoutSeconds: timeout }),
