@@ -2,8 +2,9 @@ import { CONNECTION_PROVIDERS, type ConnectionProvider } from "@project-os/contr
 import { schema } from "@project-os/db-sqlite";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer, genericOAuth, type GenericOAuthConfig, oneTimeToken } from "better-auth/plugins";
+import type { GenericOAuthConfig } from "better-auth/plugins";
 import type { Person } from "@project-os/core";
+import { authModels, authPlugins } from "./auth-options.ts";
 import {
   type Connections,
   isChannelIdentityEmail,
@@ -323,13 +324,19 @@ const betterAuthFor = (
     ...(config.baseURL && { baseURL: config.baseURL }),
     secret: config.secret,
     trustedOrigins: [...(config.baseURL ? [config.baseURL] : []), ...(config.webOrigins ?? [])],
+    ...authModels,
     database: drizzleAdapter(config.db, {
       provider: "sqlite",
       schema: {
-        user: schema.authUsers,
-        session: schema.authSessions,
-        account: schema.authAccounts,
-        verification: schema.authVerifications,
+        // Keyed by both the model name and the `auth_` table name; the adapter asks either way.
+        user: schema.auth_users,
+        session: schema.auth_sessions,
+        account: schema.auth_accounts,
+        verification: schema.auth_verifications,
+        auth_users: schema.auth_users,
+        auth_sessions: schema.auth_sessions,
+        auth_accounts: schema.auth_accounts,
+        auth_verifications: schema.auth_verifications,
       },
     }),
     // Better Auth skips its origin check when NODE_ENV=test or TEST is set; never skip it.
@@ -372,14 +379,7 @@ const betterAuthFor = (
         },
       },
     },
-    plugins: [
-      genericOAuth({
-        config: [...linkingProviders(config), ...signInProviders(config, signInAs)],
-      }),
-      bearer(),
-      // Hands a Google sign-in's session from the Coordinator's origin to the dashboard's.
-      oneTimeToken({ disableClientRequest: true, storeToken: "hashed" }),
-    ],
+    plugins: authPlugins([...linkingProviders(config), ...signInProviders(config, signInAs)]),
   });
 
 export type BetterAuth = ReturnType<typeof betterAuthFor>;
@@ -577,4 +577,4 @@ export const makeAuth = (config: AuthConfig) => {
   };
 };
 
-export type Auth = ReturnType<typeof makeAuth>;
+export type AuthApi = ReturnType<typeof makeAuth>;

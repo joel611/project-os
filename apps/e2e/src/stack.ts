@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { type Auth, type Connections, makeAuth } from "@project-os/auth";
+import { type AuthApi, type Connections, makeAuth } from "@project-os/auth";
 import {
   type ChannelDigestConfig,
   DEFAULT_CHANNEL_DIGEST,
@@ -127,7 +127,7 @@ export interface Stack {
   /** The stand-in dashboard's origin Google sign-in returns to, when started with `connections`. */
   readonly webUrl?: string;
   /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
-  readonly auth: Auth;
+  readonly auth: AuthApi;
   /**
    * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `token`: a registered
    * device's secret, as the Watcher puts in Claude Code's MCP config, or a sandbox session's.
@@ -243,7 +243,7 @@ export const startStack = async (options: {
   const oauth = options.connections ? startFakeOAuth() : undefined;
   // Stands where the dashboard is served, so Google sign-in has somewhere to return to.
   const web = oauth ? Bun.serve({ port: 0, fetch: () => new Response("dashboard") }) : undefined;
-  let auth: Auth | undefined;
+  let auth: AuthApi | undefined;
   const lazy = (): Connections => auth!.connections!;
   const connectionsLayer = Layer.succeed(UserConnections, {
     connectUrl: (person, provider) => lazy().service.connectUrl(person, provider),
