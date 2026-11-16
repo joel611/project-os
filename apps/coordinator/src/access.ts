@@ -42,6 +42,7 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "POST /commands": "service",
   "POST /prompts/answer": "service",
   "ALL /mcp": "worker",
+  "ALL /egress/:service/*": "worker",
   "GET /projects": "user",
   "POST /projects": "user",
   "GET /projects/:id": "user",

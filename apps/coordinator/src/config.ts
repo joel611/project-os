@@ -25,12 +25,21 @@ export const parseAdminUserIds = (raw: string | undefined): ReadonlyArray<string
     .filter(Boolean);
 
 /**
- * The settings every entry file shares, from env: HTTP ingress and commands, asset routes and
- * CORS. Entry files add what is theirs (access, MCP runtime, auth, connect) and pick the Layers.
+ * `SANDBOX_CREDENTIAL_PROXY`: sandbox sessions reach GitHub, Google and ClickUp through the
+ * Coordinator's `/egress` instead of holding the person's token. Off unless set.
+ */
+export const credentialProxyEnabled = (env: Env): boolean =>
+  envBool("SANDBOX_CREDENTIAL_PROXY", false, env);
+
+/**
+ * The settings every entry file shares, from env: HTTP ingress and commands, asset routes,
+ * CORS and the credential proxy. Entry files add what is theirs (access, MCP runtime, auth,
+ * connect) and pick the Layers.
  */
 export const coordinatorConfig = (
   input: CoordinatorConfigInput,
-): Required<Pick<AppDeps, "http" | "assets" | "corsOrigins">> => {
+): Required<Pick<AppDeps, "http" | "assets" | "corsOrigins">> &
+  Pick<AppDeps, "credentialProxy"> => {
   const { env, run, publicUrl, admin } = input;
   const health = healthConfig();
   const adminChannelId = env.ADMIN_CHANNEL_ID;
@@ -65,5 +74,6 @@ export const coordinatorConfig = (
     },
     assets: { run },
     corsOrigins: parseOrigins(env.WEB_ORIGIN),
+    ...(credentialProxyEnabled(env) && { credentialProxy: {} }),
   };
 };

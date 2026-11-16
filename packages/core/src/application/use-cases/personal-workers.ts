@@ -130,16 +130,24 @@ export const authenticateWorker = (secret: string) =>
     return yield* workers.findBySecretHash(yield* sha256Hex(secret));
   });
 
-/** Who is calling MCP: the worker id its Bearer credentials belong to. */
+/**
+ * Who is calling MCP: the worker id its Bearer credentials belong to, and whether that is a
+ * registered device (Watcher) or a sandbox session the Coordinator launched.
+ */
 export interface McpCaller {
   readonly id: string;
+  readonly kind: "device" | "sandbox";
 }
 
 /** A registered device's secret or a sandbox session's token; undefined for anything else. */
 export const authenticateCaller = (token: string) =>
   Effect.gen(function* () {
-    const id = (yield* authenticateWorker(token))?.id ?? (yield* authenticateSandbox(token));
-    return id === undefined ? undefined : ({ id } satisfies McpCaller);
+    const device = yield* authenticateWorker(token);
+    if (device) return { id: device.id, kind: "device" } satisfies McpCaller;
+    const sandbox = yield* authenticateSandbox(token);
+    return sandbox === undefined
+      ? undefined
+      : ({ id: sandbox, kind: "sandbox" } satisfies McpCaller);
   });
 
 /** This person's registered devices, with online/offline from their last heartbeat. */
@@ -200,7 +208,7 @@ const unauthorized = (workerId: string, message: string) =>
   new WorkerUnauthorized({ workerId, message });
 
 /** MCP guard for tools that act as `workerId` (list, claim, heartbeat): only as itself. */
-export const guardActingAs = (workerId: string, caller: McpCaller) =>
+export const guardActingAs = (workerId: string, caller: Pick<McpCaller, "id">) =>
   caller.id === workerId
     ? Effect.void
     : Effect.fail(unauthorized(workerId, "A worker can only act as itself."));
@@ -209,7 +217,7 @@ export const guardActingAs = (workerId: string, caller: McpCaller) =>
  * MCP guard for tools on one ticket: only its assignee reaches it (it may carry the requester's
  * OAuth tokens).
  */
-export const guardTicketAccess = (ticketId: string, caller: McpCaller) =>
+export const guardTicketAccess = (ticketId: string, caller: Pick<McpCaller, "id">) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
     const ticket = yield* tickets.get(ticketId).pipe(Effect.option);

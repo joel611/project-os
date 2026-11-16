@@ -59,6 +59,8 @@ _Avoid_: admin (alone), user.
 _Avoid_: user (alone), viewer.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.
+
+**Credential Proxy**: the Coordinator's `/egress` route, opt-in with `SANDBOX_CREDENTIAL_PROXY`. A sandbox session calls GitHub, Google or ClickUp through it with its own MCP token, and the Coordinator adds the Connection's token on the way out, so the token never reaches the sandbox or its model. Sandbox sessions then get no `user_token`.
 _Avoid_: integration, OAuth app.
 
 **Port**: an interface in `packages/core/src/application/ports`, declared as an Effect `Context.Service` (e.g. `TicketRepository`, `KeyValueStore`, `Scheduler`). Core code depends only on ports.
