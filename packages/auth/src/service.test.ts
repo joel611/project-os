@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
+import { makeAuth } from "./auth.ts";
 import { Auth } from "./service.ts";
 
 const admin = { email: "ops@example.com", password: "correct horse battery" };
@@ -25,5 +26,15 @@ describe("Auth service", () => {
       }).pipe(Effect.provide(Auth.layer(config()))),
     );
     expect(allowed).toEqual({ admin: admin.email, isAllowed: true });
+  });
+
+  it("wraps an instance built elsewhere", async () => {
+    const built = makeAuth(config());
+    const got = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Auth;
+      }).pipe(Effect.provide(Auth.from(built))),
+    );
+    expect(got).toBe(built);
   });
 });
