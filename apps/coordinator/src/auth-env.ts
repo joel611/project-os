@@ -1,4 +1,4 @@
-import type { AuthConfig, OAuthClientConfig } from "@project-os/auth";
+import type { AuthSettings, OAuthClientConfig } from "@project-os/auth";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -36,8 +36,8 @@ const list = (raw: string | undefined) =>
  */
 export const authConfigFromEnv = (
   env: Env,
-  base: Pick<AuthConfig, "db" | "baseURL" | "webOrigins">,
-): AuthConfig => {
+  base: Pick<AuthSettings, "baseURL" | "webOrigins">,
+): AuthSettings => {
   const google = oauthClient(env, "GOOGLE");
   const github = oauthClient(env, "GITHUB");
   const clickup = oauthClient(env, "CLICKUP");

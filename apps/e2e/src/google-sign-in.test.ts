@@ -43,19 +43,19 @@ const query = <T>(sql: string, ...params: string[]): T[] => {
 };
 
 const usersWithEmail = (email: string) =>
-  query<{ n: number }>("select count(*) as n from auth_users where email = ?", email)[0]!.n;
+  query<{ n: number }>("select count(*) as n from user where email = ?", email)[0]!.n;
 
 /** How each sign-in method and linked account hangs off the user(s) with this email. */
 const accountsOf = (email: string) =>
   query<{ userId: string; providerId: string }>(
-    `select u.id as userId, a.provider_id as providerId from auth_users u
-     join auth_accounts a on a.user_id = u.id where u.email = ? order by a.provider_id`,
+    `select u.id as userId, a.provider_id as providerId from user u
+     join account a on a.user_id = u.id where u.email = ? order by a.provider_id`,
     email,
   );
 
 const sessionsOf = (email: string) =>
   query<{ n: number }>(
-    `select count(*) as n from auth_sessions s join auth_users u on u.id = s.user_id
+    `select count(*) as n from session s join user u on u.id = s.user_id
      where u.email = ?`,
     email,
   )[0]!.n;

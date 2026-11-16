@@ -1,5 +1,5 @@
 import { makeIntentClassifier, newModels } from "@project-os/agent-runtime/classifier";
-import { makeAuth } from "@project-os/auth";
+import { Auth } from "@project-os/auth";
 import {
   channelDigestConfig,
   envBool,
@@ -7,8 +7,13 @@ import {
   healthConfig,
   modelConfig,
 } from "@project-os/config";
-import { CloudflareLive, DEFAULT_ORG, ensureOrg, serviceFetch } from "@project-os/infra-cloudflare";
-import { drizzle } from "drizzle-orm/d1";
+import {
+  CloudflareLive,
+  DEFAULT_ORG,
+  DrizzleD1,
+  ensureOrg,
+  serviceFetch,
+} from "@project-os/infra-cloudflare";
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
@@ -52,13 +57,12 @@ const buildApp = (bindings: Bindings) => {
 
   const publicUrl = process.env.PUBLIC_URL;
   const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
-  const auth = makeAuth(
-    authConfigFromEnv(process.env, {
-      db: drizzle(bindings.DB),
-      ...(publicUrl && { baseURL: publicUrl }),
-      webOrigins,
-    }),
-  );
+  const authLayer = Auth.layer(
+    authConfigFromEnv(process.env, { ...(publicUrl && { baseURL: publicUrl }), webOrigins }),
+  ).pipe(Layer.provide(DrizzleD1(bindings.DB)));
+  // One instance for the app and the runtime: both runtimes share this memo map.
+  const authRuntime = ManagedRuntime.make(authLayer);
+  const auth = authRuntime.runSync(Auth);
   const connections = auth.connections;
   const serviceToken = serviceTokenFromEnv(process.env);
 
@@ -96,8 +100,9 @@ const buildApp = (bindings: Bindings) => {
       makeIntentClassifier({ classifier: models, model: jev }),
       digester,
       Layer.effectDiscard(ensureOrg(bindings.DB)),
-      ...(connections ? [connections.layer] : []),
-    ),
+      Auth.connectionsLayer,
+    ).pipe(Layer.provideMerge(authLayer)),
+    { memoMap: authRuntime.memoMap },
   );
 
   const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>

@@ -1,9 +1,10 @@
 import { CONNECTION_PROVIDERS, type ConnectionProvider } from "@project-os/contracts";
-import { schema } from "@project-os/db-sqlite";
+import { schema, type SqliteDb } from "@project-os/db-sqlite";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer, genericOAuth, type GenericOAuthConfig, oneTimeToken } from "better-auth/plugins";
+import type { GenericOAuthConfig } from "better-auth/plugins";
 import type { Person } from "@project-os/core";
+import { authPlugins } from "./auth-options.ts";
 import {
   type Connections,
   isChannelIdentityEmail,
@@ -59,9 +60,12 @@ export interface AdminAccount {
   readonly name?: string;
 }
 
+/** `AuthConfig` without the database, which comes from the `DrizzleSqlite` service. */
+export type AuthSettings = Omit<AuthConfig, "db">;
+
 export interface AuthConfig {
-  /** Drizzle database holding the `auth_*` tables (see `@project-os/db-sqlite`). */
-  readonly db: Parameters<typeof drizzleAdapter>[0];
+  /** Drizzle database holding the Better Auth tables (see `@project-os/db-sqlite`). */
+  readonly db: SqliteDb;
   /**
    * Public URL of the Coordinator: OAuth callbacks and connect links point here. Unset, Better
    * Auth reads it off each request and account linking stays off.
@@ -326,10 +330,10 @@ const betterAuthFor = (
     database: drizzleAdapter(config.db, {
       provider: "sqlite",
       schema: {
-        user: schema.authUsers,
-        session: schema.authSessions,
-        account: schema.authAccounts,
-        verification: schema.authVerifications,
+        user: schema.user,
+        session: schema.session,
+        account: schema.account,
+        verification: schema.verification,
       },
     }),
     // Better Auth skips its origin check when NODE_ENV=test or TEST is set; never skip it.
@@ -372,14 +376,7 @@ const betterAuthFor = (
         },
       },
     },
-    plugins: [
-      genericOAuth({
-        config: [...linkingProviders(config), ...signInProviders(config, signInAs)],
-      }),
-      bearer(),
-      // Hands a Google sign-in's session from the Coordinator's origin to the dashboard's.
-      oneTimeToken({ disableClientRequest: true, storeToken: "hashed" }),
-    ],
+    plugins: authPlugins([...linkingProviders(config), ...signInProviders(config, signInAs)]),
   });
 
 export type BetterAuth = ReturnType<typeof betterAuthFor>;
@@ -577,4 +574,4 @@ export const makeAuth = (config: AuthConfig) => {
   };
 };
 
-export type Auth = ReturnType<typeof makeAuth>;
+export type AuthApi = ReturnType<typeof makeAuth>;

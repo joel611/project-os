@@ -633,7 +633,7 @@ Workers read Drive and GitHub with the token of the person who asked, never a sh
 - **Passed to Workers.** The tool returns the access token itself, so `gh`, `git` and the Drive API work directly (Joel, 2026-11-06). Workers must not store or print it.
 - **Not linked.** The tool fails `NotConnected` and the Coordinator asks the person in the project channel to `/connect` (once a day per ticket); the Worker sets the ticket `blocked`.
 - **Refresh.** Better Auth refreshes an access token that has under 5 s left before returning it. A failed refresh reads as `NotConnected` (link again).
-- **Storage.** Better Auth's `auth_users` / `auth_accounts` / `auth_sessions` / `auth_verifications` tables, tokens encrypted with `BETTER_AUTH_SECRET`. An auth user is either a dashboard operator (§3.1) or one channel identity, whose email is a placeholder (`discord-<id>@people.project-os.invalid`) that is never on the dashboard allowlist.
+- **Storage.** Better Auth's `user` / `account` / `session` / `verification` tables, tokens encrypted with `BETTER_AUTH_SECRET`. An auth user is either a dashboard operator (§3.1) or one channel identity, whose email is a placeholder (`discord-<id>@people.project-os.invalid`) that is never on the dashboard allowlist.
 - **Providers.** Google: OAuth web client, `drive.readonly`, offline access. In Testing mode, refresh tokens last 7 days, so people re-link weekly until the app is verified (accepted, Joel, 2026-11-06). GitHub: a GitHub App's user tokens (8 h, refreshable), limited to repos the app is installed on and the person can access.
 - **Commands.** `/connect`, `/disconnect`, `/connections`.
 

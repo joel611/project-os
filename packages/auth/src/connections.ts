@@ -71,7 +71,7 @@ export interface LinkStart {
 /**
  * Account linking on Better Auth. Each person gets an auth user; `/connect` hands out a
  * one-time link that signs the browser in as that user just long enough to run Better Auth's
- * link-social flow, which stores the provider tokens (encrypted) on an `auth_accounts` row.
+ * link-social flow, which stores the provider tokens (encrypted) on an `account` row.
  */
 export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => {
   const configured = new Set<string>(config.providers);
