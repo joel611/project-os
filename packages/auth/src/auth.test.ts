@@ -3,7 +3,8 @@ import { migrationsFolder } from "@project-os/db-sqlite/migrations-folder";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { describe, expect, it } from "vite-plus/test";
-import { type AuthConfig, makeAuth } from "./auth.ts";
+import type { AuthConfig } from "./auth.ts";
+import { authOf } from "./test-auth.ts";
 
 const BASE = "http://localhost:8080";
 const admin = { email: "Ops@Example.com", password: "correct horse battery" };
@@ -11,7 +12,7 @@ const admin = { email: "Ops@Example.com", password: "correct horse battery" };
 const authWith = (config: Partial<AuthConfig> = {}) => {
   const db = drizzle({ client: new Database(":memory:") });
   migrate(db, { migrationsFolder });
-  return makeAuth({ db, baseURL: BASE, secret: "unit-test-secret-unit-test-secret", ...config });
+  return authOf({ db, baseURL: BASE, secret: "unit-test-secret-unit-test-secret", ...config });
 };
 
 const post = (auth: ReturnType<typeof authWith>, path: string, body: unknown) =>
@@ -23,7 +24,7 @@ const post = (auth: ReturnType<typeof authWith>, path: string, body: unknown) =>
     }),
   );
 
-describe("makeAuth members", () => {
+describe("Auth members", () => {
   it("takes no session user for a member unless it is a channel identity", async () => {
     const auth = authWith({ admin });
     expect(
@@ -51,7 +52,7 @@ describe("makeAuth members", () => {
   });
 });
 
-describe("makeAuth", () => {
+describe("Auth", () => {
   it("signs the seeded admin in with a bearer session token", async () => {
     const auth = authWith({ admin });
     const res = await post(auth, "/sign-in/email", {
@@ -121,8 +122,8 @@ describe("makeAuth", () => {
     const db = drizzle({ client: new Database(":memory:") });
     migrate(db, { migrationsFolder });
     const config = { db, baseURL: BASE, secret: "unit-test-secret-unit-test-secret", admin };
-    await makeAuth(config).ready();
-    const second = makeAuth(config);
+    await authOf(config).ready();
+    const second = authOf(config);
     await second.ready();
     const res = await post(second, "/sign-in/email", admin);
     expect(res.status).toBe(200);
@@ -132,7 +133,7 @@ describe("makeAuth", () => {
     const db = drizzle({ client: new Database(":memory:") });
     migrate(db, { migrationsFolder });
     const config = { db, baseURL: BASE, secret: "unit-test-secret-unit-test-secret" };
-    const ctx = await makeAuth({ ...config, allowedEmails: [admin.email] }).auth.$context;
+    const ctx = await authOf({ ...config, allowedEmails: [admin.email] }).auth.$context;
     const google = await ctx.internalAdapter.createUser(
       { email: "ops@example.com", name: "Ops", emailVerified: true },
       { method: "oauth", oauth: { providerId: "google-signin" } },
@@ -143,7 +144,7 @@ describe("makeAuth", () => {
       userId: google.id,
     });
 
-    const auth = makeAuth({ ...config, admin });
+    const auth = authOf({ ...config, admin });
     const token = (await post(auth, "/sign-in/email", admin)).headers.get("set-auth-token")!;
     expect((await auth.sessionUser(token))?.userId).toBe(google.id);
   });
@@ -188,7 +189,7 @@ describe("makeAuth", () => {
     expect(authWith().connections).toBeUndefined();
     expect(authWith({ google }).connections).toBeDefined();
     const db = drizzle({ client: new Database(":memory:") });
-    const noUrl = makeAuth({ db, secret: "unit-test-secret-unit-test-secret", google });
+    const noUrl = authOf({ db, secret: "unit-test-secret-unit-test-secret", google });
     expect(noUrl.connections).toBeUndefined();
   });
 });

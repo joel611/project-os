@@ -36,6 +36,8 @@ export default defineConfig({
       exclude: [
         "**/*.test.ts",
         "**/main.*.ts",
+        // Written by `bun run auth:generate` (Better Auth CLI); not hand-maintained.
+        "packages/db-sqlite/src/schema/auth.ts",
         // Imports `cloudflare:workers`, so it runs only in workerd. apps/e2e/src/pi-agent.test.ts covers it there.
         "apps/coordinator/src/pi-agent.ts",
         // Bundled and run in workerd by pi-agent.test.ts.

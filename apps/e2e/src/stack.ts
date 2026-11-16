@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { type Auth, type Connections, makeAuth } from "@project-os/auth";
+import { Auth, type AuthApi, type Connections } from "@project-os/auth";
 import {
   type ChannelDigestConfig,
   DEFAULT_CHANNEL_DIGEST,
@@ -14,7 +14,7 @@ import {
   UserConnections,
   type WorkerLauncher,
 } from "@project-os/core";
-import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
+import { DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
 import {
   AgentRuntimeEcho,
   type ChannelDigestCall,
@@ -127,7 +127,7 @@ export interface Stack {
   /** The stand-in dashboard's origin Google sign-in returns to, when started with `connections`. */
   readonly webUrl?: string;
   /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
-  readonly auth: Auth;
+  readonly auth: AuthApi;
   /**
    * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `token`: a registered
    * device's secret, as the Watcher puts in Claude Code's MCP config, or a sandbox session's.
@@ -243,7 +243,8 @@ export const startStack = async (options: {
   const oauth = options.connections ? startFakeOAuth() : undefined;
   // Stands where the dashboard is served, so Google sign-in has somewhere to return to.
   const web = oauth ? Bun.serve({ port: 0, fetch: () => new Response("dashboard") }) : undefined;
-  let auth: Auth | undefined;
+  let auth: AuthApi | undefined;
+  let authRuntime: ManagedRuntime.ManagedRuntime<Auth, never> | undefined;
   const lazy = (): Connections => auth!.connections!;
   const connectionsLayer = Layer.succeed(UserConnections, {
     connectUrl: (person, provider) => lazy().service.connectUrl(person, provider),
@@ -337,21 +338,22 @@ export const startStack = async (options: {
     },
   ).listen(0);
   const url: string = `http://localhost:${coordinator.server!.port}`;
-  const authDb = openLocalDb(dbPath);
-  auth = makeAuth({
-    db: authDb.db,
-    baseURL: url,
-    secret: "integration-secret-integration-secret",
-    admin: OPERATOR,
-    ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
-    ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
-    ...(web && { webOrigins: [web.url.origin] }),
-    ...(oauth && {
-      google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
-      github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
-      clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
-    }),
-  });
+  authRuntime = ManagedRuntime.make(
+    Auth.layer({
+      baseURL: url,
+      secret: "integration-secret-integration-secret",
+      admin: OPERATOR,
+      ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
+      ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
+      ...(web && { webOrigins: [web.url.origin] }),
+      ...(oauth && {
+        google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
+        github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
+        clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
+      }),
+    }).pipe(Layer.provide(DrizzleBun(dbPath))),
+  );
+  auth = authRuntime.runSync(Auth);
   await auth.ready();
   const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
     method: "POST",
@@ -450,7 +452,7 @@ export const startStack = async (options: {
       oauth?.stop();
       await cdn.stop(true);
       await web?.stop(true);
-      authDb.sqlite.close();
+      await authRuntime?.dispose();
       await runtime.dispose();
       globalThis.fetch = realFetch;
       rmSync(dir, { recursive: true, force: true });

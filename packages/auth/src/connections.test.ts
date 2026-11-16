@@ -4,7 +4,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { makeAuth, type OAuthClientConfig } from "./auth.ts";
+import type { OAuthClientConfig } from "./auth.ts";
+import { authOf } from "./test-auth.ts";
 import { emailFor, isChannelIdentityEmail, personFromIdentityEmail } from "./connections.ts";
 
 // The OAuth round trip runs in apps/e2e (connect-accounts) against a fake provider.
@@ -15,7 +16,7 @@ const client: OAuthClientConfig = { clientId: "id", clientSecret: "secret" };
 const connectionsWith = (providers: { google?: OAuthClientConfig; github?: OAuthClientConfig }) => {
   const db = drizzle({ client: new Database(":memory:") });
   migrate(db, { migrationsFolder });
-  return makeAuth({
+  return authOf({
     db,
     baseURL: "http://localhost:8080",
     secret: "unit-test-secret-unit-test-secret",

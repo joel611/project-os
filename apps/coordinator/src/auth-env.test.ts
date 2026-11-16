@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 
-const base = { db: {} as never, baseURL: "http://localhost:8080" };
+const base = { baseURL: "http://localhost:8080" };
 
 describe("authConfigFromEnv", () => {
   it("refuses to start without BETTER_AUTH_SECRET, set or blank", () => {

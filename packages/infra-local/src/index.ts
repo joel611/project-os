@@ -2,7 +2,7 @@ import { type ChannelType } from "@project-os/contracts";
 import { AssetStore, KeyValueStore, Scheduler, WorkerLauncher } from "@project-os/core";
 import { ChannelGateway } from "@project-os/core";
 import { Layer } from "effect";
-import { openLocalDb, SqliteLive } from "./database.ts";
+import { DrizzleBun, openLocalDb, SqliteLive } from "./database.ts";
 import { makeMemoryKeyValueStore } from "./kv.ts";
 import { makeTimerScheduler } from "./scheduler.ts";
 import { makeDiskBackend } from "./assets-disk.ts";
@@ -18,7 +18,7 @@ import {
   UserConnectionsUnavailable,
 } from "./shared.ts";
 
-export { SystemClockLive, UserConnectionsUnavailable, openLocalDb };
+export { DrizzleBun, SystemClockLive, UserConnectionsUnavailable, openLocalDb };
 export { DEFAULT_ORG, ensureOrg } from "./org.ts";
 
 export interface LocalConfig {
