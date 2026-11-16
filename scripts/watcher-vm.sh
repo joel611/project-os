@@ -17,7 +17,7 @@ case "${1:-}" in
     else
       echo "no $codex_auth: codex won't be signed in inside the VM" >&2
     fi
-    until curl -sf "$url/workers" >/dev/null; do sleep 1; done
+    until curl -sf "$url/health" >/dev/null; do sleep 1; done
     "${compose[@]}" exec -e SEED_DISCORD_CHANNEL_ID=sim-channel coordinator bun run src/main.seed.ts
     ;;
   register)
@@ -26,11 +26,25 @@ case "${1:-}" in
     if [ "$agent" = pi ] && [ -z "$model" ]; then
       model=${SANDBOX_PI_MODEL:-openrouter/deepseek/deepseek-v4.1-flash-1017}
     fi
-    reply=$(curl -sf -X POST "$url/commands" -H 'content-type: application/json' -d '{
+    # /commands takes the service token; Compose reads it from .env, so fall back to that.
+    token=${COORDINATOR_SERVICE_TOKEN:-$(sed -n 's/^COORDINATOR_SERVICE_TOKEN=//p' .env 2>/dev/null | head -1)}
+    if [ -z "$token" ]; then
+      echo "COORDINATOR_SERVICE_TOKEN is not set (shell or .env)" >&2
+      exit 1
+    fi
+    reply=$(curl -sf -X POST "$url/commands" -H 'content-type: application/json' \
+      -H "authorization: Bearer $token" -d '{
       "channelType":"discord","command":"register-worker","externalId":"sim-1",
       "channelId":"sim-channel","sender":{"id":"sim-user"},
       "options":{"name":"vm-sim","agent":"'"$agent"'","model":"'"$model"'"}}')
     line=$(printf '%s' "$reply" | sed -E 's/.*(curl -fsSL [^ ]*\/watcher\/install\.sh [^\\]*)\\n.*/\1/')
+    case "$line" in
+      "curl -fsSL "*) ;;
+      *)
+        echo "/register-worker gave no install line: $reply" >&2
+        exit 1
+        ;;
+    esac
     echo "in the VM: $line"
     "${compose[@]}" exec -d watcher-vm sh -c "$line > /tmp/watcher.log 2>&1"
     sleep 5
