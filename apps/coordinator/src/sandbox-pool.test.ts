@@ -1,7 +1,7 @@
 import type { SandboxRunner } from "@project-os/sandbox-core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
+import { configuredRunners, sandboxEgressUrl, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 
 const runner = (): SandboxRunner => ({ run: async () => ({ exitCode: 0, output: "" }) });
 const base = {
@@ -39,6 +39,45 @@ describe("sandbox pool from env", () => {
       { workerType: "cloudflare_pi", sessionTimeoutSeconds: 60 },
     ]);
     expect(logs).toEqual(["sandbox pool: daytona_pi, cloudflare_pi"]);
+  });
+
+  it("hands sandboxes the credential proxy beside MCP when it's on", async () => {
+    const envs: Array<Readonly<Record<string, string>>> = [];
+    const logs: string[] = [];
+    const l = sandboxLauncherFromEnv(
+      { ...base, SANDBOX_CREDENTIAL_PROXY: "1" },
+      {
+        log: (m) => logs.push(m),
+        runners: {
+          daytona: {
+            run: async ({ env }) => {
+              envs.push(env);
+              return { exitCode: 0, output: "" };
+            },
+          },
+        },
+      },
+    );
+    await Effect.runPromise(
+      l!.launch({
+        ticketId: "t1",
+        workerType: "daytona_pi",
+        workerId: "daytona-t1",
+        mcpToken: "m",
+      }),
+    );
+    expect(envs[0]).toMatchObject({ PROJECT_OS_EGRESS_URL: "https://tunnel.example/egress" });
+    expect(logs).toContain("credential proxy on: sandboxes call https://tunnel.example/egress");
+  });
+
+  it("derives the proxy URL from the MCP URL unless SANDBOX_EGRESS_URL says", () => {
+    expect(sandboxEgressUrl({}, "https://c.example/base/mcp/")).toBe(
+      "https://c.example/base/egress",
+    );
+    expect(sandboxEgressUrl({ SANDBOX_EGRESS_URL: "https://p.example/e" }, "https://c/x")).toBe(
+      "https://p.example/e",
+    );
+    expect(() => sandboxEgressUrl({}, "https://c.example/rpc")).toThrow("SANDBOX_EGRESS_URL");
   });
 
   it("needs a Pi model when there's no default model to borrow", () => {

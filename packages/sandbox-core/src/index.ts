@@ -3,6 +3,7 @@ export {
   MCP_SERVER_NAME,
   makeSandboxLauncher,
   piMcpJson,
+  PROXIED_SESSION_COMMAND,
   SESSION_COMMAND,
   sessionEnv,
   type SandboxLauncherConfig,

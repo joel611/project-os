@@ -101,10 +101,16 @@ const define = <I extends Schema.Constraint, O extends Schema.Constraint, E, R>(
  * `caller` is the worker the Bearer token belongs to: it acts only as itself and reaches only
  * the tickets assigned to it. Project memory and sources are open to any authenticated worker.
  */
-export const makeTools = (caller: McpCaller): readonly McpTool<McpServices>[] => {
+export const makeTools = (
+  caller: McpCaller,
+  options: {
+    /** Offer `user_token`. Off for sandbox sessions while the credential proxy is on. */
+    readonly userToken: boolean;
+  },
+): readonly McpTool<McpServices>[] => {
   const actingAs = (i: { readonly workerId: string }) => guardActingAs(i.workerId, caller);
   const onTicket = (i: { readonly ticketId: string }) => guardTicketAccess(i.ticketId, caller);
-  return [
+  const tools = [
     define({
       name: "ticket_list_assigned",
       description: "List tickets with status=assigned for this worker, oldest first.",
@@ -239,4 +245,5 @@ export const makeTools = (caller: McpCaller): readonly McpTool<McpServices>[] =>
       run: (i) => Effect.map(heartbeat(i), (w) => ({ lastSeenAt: w.lastSeenAt })),
     }),
   ];
+  return options.userToken ? tools : tools.filter((t) => t.name !== "user_token");
 };

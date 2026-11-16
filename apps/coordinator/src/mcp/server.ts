@@ -66,7 +66,13 @@ export const makeMcpServer = (runtime: McpRuntime, tools: readonly McpTool<McpSe
  * JSON responses). Every caller sends a Bearer token: a registered device its secret, a sandbox
  * session the token it was launched with. No token, or an unknown one, is refused outright.
  */
-export const mcpRoutes = (runtime: McpRuntime) =>
+export const mcpRoutes = (
+  runtime: McpRuntime,
+  options: {
+    /** The credential proxy is on: sandbox sessions get no `user_token`. */
+    readonly credentialProxy?: boolean;
+  } = {},
+) =>
   new Elysia({ name: "mcp" }).all(
     "/mcp",
     async ({ request }) => {
@@ -77,7 +83,8 @@ export const mcpRoutes = (runtime: McpRuntime) =>
       }
       // Omitting sessionIdGenerator selects stateless mode.
       const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
-      const server = makeMcpServer(runtime, makeTools(caller));
+      const userToken = !(options.credentialProxy && caller.kind === "sandbox");
+      const server = makeMcpServer(runtime, makeTools(caller, { userToken }));
       await server.connect(transport);
       try {
         return await transport.handleRequest(request);
