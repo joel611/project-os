@@ -4,6 +4,7 @@ export type {
   AdminAccount,
   AuthApi,
   AuthConfig,
+  AuthSettings,
   GoogleSignIn,
   OAuthClientConfig,
   SessionUser,

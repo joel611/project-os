@@ -15,7 +15,7 @@ import {
 } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { Auth } from "@project-os/auth";
-import { DEFAULT_ORG, ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
+import { DEFAULT_ORG, DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
@@ -38,8 +38,8 @@ const publicUrl = env("PUBLIC_URL", `http://localhost:${port}`);
 const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
 
 const authLayer = Auth.layer(
-  authConfigFromEnv(process.env, { db: openLocalDb(dbPath).db, baseURL: publicUrl, webOrigins }),
-);
+  authConfigFromEnv(process.env, { baseURL: publicUrl, webOrigins }),
+).pipe(Layer.provide(DrizzleBun(dbPath)));
 // One instance for the app and the runtime: both runtimes share this memo map.
 const authRuntime = ManagedRuntime.make(authLayer);
 const auth = authRuntime.runSync(Auth);

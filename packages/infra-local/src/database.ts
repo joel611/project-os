@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { SqliteRepositories } from "@project-os/db-sqlite";
+import { DrizzleSqlite, SqliteRepositories } from "@project-os/db-sqlite";
 import { migrationsFolder } from "@project-os/db-sqlite/migrations-folder";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
@@ -14,14 +14,19 @@ export const openLocalDb = (path: string) => {
   return { sqlite, db };
 };
 
-/** Repository ports over `bun:sqlite`; migrates on start, closes the file on release. */
-export const SqliteLive = (path: string) =>
-  Layer.unwrap(
+/** The Drizzle db over `bun:sqlite`; migrates on start, closes the file on release. */
+export const DrizzleBun = (path: string): Layer.Layer<DrizzleSqlite> =>
+  Layer.effect(
+    DrizzleSqlite,
     Effect.map(
       Effect.acquireRelease(
         Effect.sync(() => openLocalDb(path)),
         ({ sqlite }) => Effect.sync(() => sqlite.close()),
       ),
-      ({ db }) => SqliteRepositories(db),
+      ({ db }) => db,
     ),
   );
+
+/** Repository ports over `bun:sqlite`. */
+export const SqliteLive = (path: string) =>
+  SqliteRepositories.pipe(Layer.provide(DrizzleBun(path)));

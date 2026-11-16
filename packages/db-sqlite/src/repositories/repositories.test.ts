@@ -18,10 +18,10 @@ import {
 } from "@project-os/core";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import * as schema from "../schema/index.ts";
-import { SqliteRepositories } from "./index.ts";
+import { DrizzleSqlite, SqliteRepositories } from "./index.ts";
 
 const T0 = "2026-11-04T00:00:00.000Z";
 const T1 = "2026-11-04T00:01:00.000Z";
@@ -35,6 +35,9 @@ const makeDb = () => {
   db.insert(schema.orgs).values({ id: "o1", name: "Org", createdAt: T0 }).run();
   return db;
 };
+
+const reposOf = (db: ReturnType<typeof makeDb>) =>
+  SqliteRepositories.pipe(Layer.provide(DrizzleSqlite.from(db)));
 
 /** Fresh in-memory db per call, repos provided. */
 const run = <A, E>(
@@ -50,7 +53,7 @@ const run = <A, E>(
     | AuditLogRepository
   >,
   db = makeDb(),
-) => Effect.runPromise(program.pipe(Effect.provide(SqliteRepositories(db))));
+) => Effect.runPromise(program.pipe(Effect.provide(reposOf(db))));
 
 const project = (over: Partial<Project> = {}): Project => ({
   id: "p1",
@@ -811,7 +814,7 @@ describe("AuditLogRepository", () => {
     migrate(db, { migrationsFolder: source });
     const { entries } = await Effect.runPromise(
       Effect.flatMap(AuditLogRepository, (r) => r.list({ limit: 10 })).pipe(
-        Effect.provide(SqliteRepositories(db)),
+        Effect.provide(reposOf(db)),
       ),
     );
     expect(

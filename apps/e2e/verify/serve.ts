@@ -11,7 +11,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Auth } from "@project-os/auth";
 import { issueWorkerRegistration, redeemWorkerRegistration } from "@project-os/core";
-import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
+import { DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { AgentRuntimeEcho, classifierReturning, makeSidekickRecording } from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
@@ -70,14 +70,13 @@ const google = startFakeOAuth();
 if (process.env.VERIFY_GOOGLE_EMAIL) google.email = process.env.VERIFY_GOOGLE_EMAIL;
 const auth = ManagedRuntime.make(
   Auth.layer({
-    db: openLocalDb(dbPath).db,
     baseURL: url,
     secret: "verify-secret-verify-secret-verify",
     admin: OPERATOR,
     allowedEmails: ["ada@example.com"],
     webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
     google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
-  }),
+  }).pipe(Layer.provide(DrizzleBun(dbPath))),
 ).runSync(Auth);
 await auth.ready();
 

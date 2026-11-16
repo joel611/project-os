@@ -14,7 +14,7 @@ import {
   UserConnections,
   type WorkerLauncher,
 } from "@project-os/core";
-import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
+import { DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
 import {
   AgentRuntimeEcho,
   type ChannelDigestCall,
@@ -244,6 +244,7 @@ export const startStack = async (options: {
   // Stands where the dashboard is served, so Google sign-in has somewhere to return to.
   const web = oauth ? Bun.serve({ port: 0, fetch: () => new Response("dashboard") }) : undefined;
   let auth: AuthApi | undefined;
+  let authRuntime: ManagedRuntime.ManagedRuntime<Auth, never> | undefined;
   const lazy = (): Connections => auth!.connections!;
   const connectionsLayer = Layer.succeed(UserConnections, {
     connectUrl: (person, provider) => lazy().service.connectUrl(person, provider),
@@ -337,10 +338,8 @@ export const startStack = async (options: {
     },
   ).listen(0);
   const url: string = `http://localhost:${coordinator.server!.port}`;
-  const authDb = openLocalDb(dbPath);
-  auth = ManagedRuntime.make(
+  authRuntime = ManagedRuntime.make(
     Auth.layer({
-      db: authDb.db,
       baseURL: url,
       secret: "integration-secret-integration-secret",
       admin: OPERATOR,
@@ -352,8 +351,9 @@ export const startStack = async (options: {
         github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
         clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
       }),
-    }),
-  ).runSync(Auth);
+    }).pipe(Layer.provide(DrizzleBun(dbPath))),
+  );
+  auth = authRuntime.runSync(Auth);
   await auth.ready();
   const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
     method: "POST",
@@ -452,7 +452,7 @@ export const startStack = async (options: {
       oauth?.stop();
       await cdn.stop(true);
       await web?.stop(true);
-      authDb.sqlite.close();
+      await authRuntime?.dispose();
       await runtime.dispose();
       globalThis.fetch = realFetch;
       rmSync(dir, { recursive: true, force: true });

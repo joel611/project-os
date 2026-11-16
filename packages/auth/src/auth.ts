@@ -1,5 +1,5 @@
 import { CONNECTION_PROVIDERS, type ConnectionProvider } from "@project-os/contracts";
-import { schema } from "@project-os/db-sqlite";
+import { schema, type SqliteDb } from "@project-os/db-sqlite";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { GenericOAuthConfig } from "better-auth/plugins";
@@ -60,9 +60,12 @@ export interface AdminAccount {
   readonly name?: string;
 }
 
+/** `AuthConfig` without the database, which comes from the `DrizzleSqlite` service. */
+export type AuthSettings = Omit<AuthConfig, "db">;
+
 export interface AuthConfig {
   /** Drizzle database holding the Better Auth tables (see `@project-os/db-sqlite`). */
-  readonly db: Parameters<typeof drizzleAdapter>[0];
+  readonly db: SqliteDb;
   /**
    * Public URL of the Coordinator: OAuth callbacks and connect links point here. Unset, Better
    * Auth reads it off each request and account linking stays off.

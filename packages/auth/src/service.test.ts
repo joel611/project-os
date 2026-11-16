@@ -6,7 +6,7 @@ import { UserConnections } from "@project-os/core";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import type { AuthConfig } from "./auth.ts";
-import { authOf } from "./test-auth.ts";
+import { authOf, layerOf } from "./test-auth.ts";
 import { Auth } from "./service.ts";
 
 const admin = { email: "ops@example.com", password: "correct horse battery" };
@@ -26,7 +26,7 @@ describe("Auth service", () => {
         const ctx = yield* Effect.promise(() => auth.auth.$context);
         const found = yield* Effect.promise(() => ctx.internalAdapter.findUserByEmail(admin.email));
         return { admin: found?.user.email, isAllowed: auth.isAllowed(admin.email) };
-      }).pipe(Effect.provide(Auth.layer(makeConfig()))),
+      }).pipe(Effect.provide(layerOf(makeConfig()))),
     );
     expect(allowed).toEqual({ admin: admin.email, isAllowed: true });
   });
@@ -42,7 +42,7 @@ describe("Auth service", () => {
   const connections = (config: ReturnType<typeof makeConfig>) =>
     Effect.runPromise(
       Effect.serviceOption(UserConnections).pipe(
-        Effect.provide(Auth.connectionsLayer.pipe(Layer.provideMerge(Auth.layer(config)))),
+        Effect.provide(Auth.connectionsLayer.pipe(Layer.provideMerge(layerOf(config)))),
       ),
     );
 

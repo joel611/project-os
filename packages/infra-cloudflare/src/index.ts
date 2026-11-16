@@ -8,7 +8,7 @@ import {
   type Sidekick,
   WorkerLauncher,
 } from "@project-os/core";
-import { schema, SqliteRepositories } from "@project-os/db-sqlite";
+import { DrizzleSqlite, schema, SqliteRepositories } from "@project-os/db-sqlite";
 import {
   AgentRuntimePending,
   AssetStoreUnavailable,
@@ -43,6 +43,10 @@ export const ensureOrg = (
       .onConflictDoNothing();
     return org.id;
   });
+
+/** The Drizzle db over the Worker's D1 binding. The binding is the handle; nothing is opened. */
+export const DrizzleD1 = (binding: D1Database): Layer.Layer<DrizzleSqlite> =>
+  Layer.sync(DrizzleSqlite, () => drizzle(binding));
 
 /** Sends adapter requests through a service binding, so the adapter needs no public URL. */
 export const serviceFetch =
@@ -84,7 +88,7 @@ export const CloudflareLive = (config: CloudflareConfig) =>
   Layer.mergeAll(
     SystemClockLive,
     IdGeneratorUuid,
-    SqliteRepositories(drizzle(config.db)),
+    SqliteRepositories.pipe(Layer.provide(DrizzleD1(config.db))),
     Layer.succeed(KeyValueStore, makeWorkersKeyValueStore(config.kv)),
     SchedulerNoop,
     Layer.succeed(
