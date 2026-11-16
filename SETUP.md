@@ -1,6 +1,6 @@
 # Setup
 
-How to connect project-os to Discord, Google Drive, and GitHub, step by step, with the exact permissions each one needs. For what the system does, see [`README.md`](README.md).
+How to connect project-os to Discord, Google Drive, and GitHub, step by step, with the exact permissions each one needs. For what the system does, see [How it works](docs/how-it-works.md).
 
 You need three things working, in this order:
 
