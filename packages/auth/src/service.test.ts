@@ -5,7 +5,8 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { UserConnections } from "@project-os/core";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { type AuthConfig, makeAuth } from "./auth.ts";
+import type { AuthConfig } from "./auth.ts";
+import { authOf } from "./test-auth.ts";
 import { Auth } from "./service.ts";
 
 const admin = { email: "ops@example.com", password: "correct horse battery" };
@@ -31,11 +32,9 @@ describe("Auth service", () => {
   });
 
   it("wraps an instance built elsewhere", async () => {
-    const built = makeAuth(makeConfig());
+    const built = authOf(makeConfig());
     const got = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* Auth;
-      }).pipe(Effect.provide(Auth.from(built))),
+      Effect.service(Auth).pipe(Effect.provide(Auth.from(built))),
     );
     expect(got).toBe(built);
   });

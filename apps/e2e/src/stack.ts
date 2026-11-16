@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { type AuthApi, type Connections, makeAuth } from "@project-os/auth";
+import { Auth, type AuthApi, type Connections } from "@project-os/auth";
 import {
   type ChannelDigestConfig,
   DEFAULT_CHANNEL_DIGEST,
@@ -338,20 +338,22 @@ export const startStack = async (options: {
   ).listen(0);
   const url: string = `http://localhost:${coordinator.server!.port}`;
   const authDb = openLocalDb(dbPath);
-  auth = makeAuth({
-    db: authDb.db,
-    baseURL: url,
-    secret: "integration-secret-integration-secret",
-    admin: OPERATOR,
-    ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
-    ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
-    ...(web && { webOrigins: [web.url.origin] }),
-    ...(oauth && {
-      google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
-      github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
-      clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
+  auth = ManagedRuntime.make(
+    Auth.layer({
+      db: authDb.db,
+      baseURL: url,
+      secret: "integration-secret-integration-secret",
+      admin: OPERATOR,
+      ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
+      ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
+      ...(web && { webOrigins: [web.url.origin] }),
+      ...(oauth && {
+        google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
+        github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
+        clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
+      }),
     }),
-  });
+  ).runSync(Auth);
   await auth.ready();
   const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
     method: "POST",

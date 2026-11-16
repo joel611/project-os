@@ -9,7 +9,7 @@
 // default Discord channel `verify-chan` exist.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { makeAuth } from "@project-os/auth";
+import { Auth } from "@project-os/auth";
 import { issueWorkerRegistration, redeemWorkerRegistration } from "@project-os/core";
 import { ensureOrg, LocalLive, openLocalDb } from "@project-os/infra-local";
 import { AgentRuntimeEcho, classifierReturning, makeSidekickRecording } from "@project-os/testing";
@@ -68,15 +68,17 @@ const google = startFakeOAuth();
 // VERIFY_GOOGLE_EMAIL=someone@else: the fake Google account isn't on the allowlist, so "Continue
 // with Google" signs in as the Discord member it is linked to (u1 "Ada", below), not an operator.
 if (process.env.VERIFY_GOOGLE_EMAIL) google.email = process.env.VERIFY_GOOGLE_EMAIL;
-const auth = makeAuth({
-  db: openLocalDb(dbPath).db,
-  baseURL: url,
-  secret: "verify-secret-verify-secret-verify",
-  admin: OPERATOR,
-  allowedEmails: ["ada@example.com"],
-  webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
-  google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
-});
+const auth = ManagedRuntime.make(
+  Auth.layer({
+    db: openLocalDb(dbPath).db,
+    baseURL: url,
+    secret: "verify-secret-verify-secret-verify",
+    admin: OPERATOR,
+    allowedEmails: ["ada@example.com"],
+    webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
+    google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
+  }),
+).runSync(Auth);
 await auth.ready();
 
 createApp(
