@@ -1,7 +1,9 @@
 import { Effect, Result } from "effect";
+import { normalizeGithubRepo } from "@project-os/contracts";
 import {
   aliasFrom,
   InvalidSourceAlias,
+  InvalidSourceLink,
   normalizeAlias,
   SourceAlreadyLinked,
   sourceUrl,
@@ -95,6 +97,25 @@ const blankToNull = (text: string | null | undefined) => {
 };
 
 /**
+ * The id a source is stored under. A GitHub repo may arrive as any link form people paste
+ * (`github.com/o/r`, `https://github.com/o/r.git`, …) and is stored as canonical `owner/repo`,
+ * so every way in (dashboard, Discord, API, admin dialogue) keys on the same id.
+ */
+const checkExternalId = (type: ProjectSourceType, externalId: string) => {
+  if (type !== "github_repo") return Effect.succeed(externalId);
+  const repo = normalizeGithubRepo(externalId);
+  return repo === null
+    ? Effect.fail(
+        new InvalidSourceLink({
+          type,
+          externalId,
+          message: `"${externalId}" isn't a GitHub repo. Use owner/repo or https://github.com/owner/repo.`,
+        }),
+      )
+    : Effect.succeed(repo);
+};
+
+/**
  * Links a source to a project. `alias` names what the source is for and must be unique in the
  * project; people and the admin dialogue always give one. When it is left out (channels the
  * Coordinator links itself) it is derived from `name` (or the type, when the name is just the
@@ -113,6 +134,9 @@ export const addSource = (input: {
 }) =>
   Effect.gen(function* () {
     yield* (yield* ProjectRepository).get(input.projectId);
+    const externalId = yield* checkExternalId(input.type, input.externalId);
+    // A repo's name was usually copied from the link it came with; keep it in step.
+    const name = input.name === input.externalId ? externalId : input.name;
     const sources = yield* ProjectSourceRepository;
     const alias =
       input.alias === undefined
@@ -129,8 +153,8 @@ export const addSource = (input: {
       id: yield* (yield* IdGenerator).next,
       projectId: input.projectId,
       type: input.type,
-      externalId: input.externalId,
-      name: input.name,
+      externalId,
+      name,
       alias,
       description: blankToNull(input.description),
       direction: input.direction ?? "both",

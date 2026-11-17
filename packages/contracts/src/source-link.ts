@@ -10,16 +10,38 @@ export interface DetectedSource {
   readonly name: string;
 }
 
+/**
+ * A repo link in any form people paste: `https://github.com/o/r`, the same without the scheme or
+ * with `www.`, the SSH remote `git@github.com:o/r.git`, or the `o/r` shorthand. Anything after
+ * the repo (a branch path, `?query`, `#anchor`, a trailing slash) is dropped.
+ */
 const GITHUB_REPO =
-  /^(?:https?:\/\/(?:www\.)?github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#].*)?$/;
+  /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/|git@github\.com:)?([^/?#\s]+)\/([^/?#\s]+)(?:[/?#].*)?$/i;
+/** GitHub user and org names: letters, digits and hyphens, not starting with one, at most 39. */
+const GITHUB_OWNER = /^[a-z\d][a-z\d-]{0,38}$/i;
+/** GitHub repo names: letters, digits, `.`, `-` and `_`, at most 100 characters, never `.` or `..`. */
+const GITHUB_NAME = /^(?!\.{1,2}$)[\w.-]{1,100}$/;
 const DRIVE_FOLDER =
   /^(?:(?:https?:\/\/)?drive\.google\.com\/.*?\/folders\/)?([\w-]{10,})(?:[/?#].*)?$/;
 
-const parseRepo = (text: string): DetectedSource | null => {
-  const m = GITHUB_REPO.exec(text);
+/**
+ * The canonical `owner/repo` (lowercased, since GitHub names are case-insensitive) for a repo
+ * link in any accepted form, or null when it isn't a GitHub repo. `gitlab.com/o/r` is rejected
+ * because an owner never has a dot.
+ */
+export const normalizeGithubRepo = (raw: string): string | null => {
+  const m = GITHUB_REPO.exec(raw.trim());
   if (!m) return null;
-  const externalId = `${m[1]}/${m[2]}`.toLowerCase();
-  return { type: "github_repo", externalId, name: externalId };
+  const owner = m[1] as string;
+  const name = (m[2] as string).replace(/\.git$/i, "");
+  return GITHUB_OWNER.test(owner) && GITHUB_NAME.test(name)
+    ? `${owner}/${name}`.toLowerCase()
+    : null;
+};
+
+const parseRepo = (text: string): DetectedSource | null => {
+  const externalId = normalizeGithubRepo(text);
+  return externalId ? { type: "github_repo", externalId, name: externalId } : null;
 };
 
 const parseFolder = (text: string): DetectedSource | null => {

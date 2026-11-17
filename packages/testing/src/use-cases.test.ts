@@ -799,6 +799,45 @@ describe("project sources", () => {
     expect(value.invalid._tag).toBe("InvalidSourceAlias");
   });
 
+  it("stores a pasted GitHub link as canonical owner/repo and rejects one that isn't a repo", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const pasted = yield* addSource({
+          projectId: "p1",
+          type: "github_repo",
+          externalId: "github.com/Acme/Web.git",
+          name: "github.com/Acme/Web.git",
+          alias: "web",
+        });
+        const again = yield* Effect.flip(
+          addSource({
+            projectId: "p1",
+            type: "github_repo",
+            externalId: "https://www.github.com/acme/web/",
+            name: "the web repo",
+            alias: "web-2",
+          }),
+        );
+        const broken = yield* Effect.flip(
+          addSource({
+            projectId: "p1",
+            type: "github_repo",
+            externalId: "gitlab.com/acme/web",
+            name: "x",
+            alias: "gl",
+          }),
+        );
+        return { pasted, again, broken };
+      }),
+    );
+    expect(value.pasted).toMatchObject({ externalId: "acme/web", name: "acme/web" });
+    expect(value.again._tag).toBe("SourceAlreadyLinked");
+    expect(value.broken).toMatchObject({
+      _tag: "InvalidSourceLink",
+      externalId: "gitlab.com/acme/web",
+    });
+  });
+
   it("updates alias and description, and lists active sources the way Workers see them", async () => {
     const { value } = await run(
       Effect.gen(function* () {

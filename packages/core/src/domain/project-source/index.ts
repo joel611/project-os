@@ -26,6 +26,13 @@ export class InvalidSourceAlias extends Data.TaggedError("InvalidSourceAlias")<{
   readonly message: string;
 }> {}
 
+/** The external id isn't a valid link for its type, e.g. a GitHub repo that isn't `owner/repo`. */
+export class InvalidSourceLink extends Data.TaggedError("InvalidSourceLink")<{
+  readonly type: ProjectSourceType;
+  readonly externalId: string;
+  readonly message: string;
+}> {}
+
 export const ALIAS_MAX_LENGTH = 40;
 const ALIAS_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
 
