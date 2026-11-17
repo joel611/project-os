@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   checkSource,
   formatBytes,
+  groupSources,
   groupWorkers,
   hasAttachments,
   isShownInline,
@@ -107,6 +108,38 @@ describe("checkSource", () => {
 
   it("rejects an alias another source in the project uses", () => {
     expect(check("acme/api", "WEB")).toEqual({ kind: "alias_taken", alias: "web" });
+  });
+});
+
+describe("groupSources", () => {
+  it("groups by provider in page order, keeping order within a group", () => {
+    const groups = groupSources([
+      { type: "discord_channel", alias: "chat" },
+      { type: "github_repo", alias: "web" },
+      { type: "google_drive_folder", alias: "docs" },
+      { type: "github_repo", alias: "api" },
+    ]);
+    expect(groups.map((g) => [g.provider, g.sources.map((s) => s.alias)])).toEqual([
+      ["github", ["web", "api"]],
+      ["google_drive", ["docs"]],
+      ["discord", ["chat"]],
+    ]);
+  });
+
+  it("puts a type it doesn't know under other, last", () => {
+    const groups = groupSources([
+      { type: "notion_page", alias: "wiki" },
+      { type: "toString", alias: "odd" },
+      { type: "email_address", alias: "inbox" },
+    ]);
+    expect(groups.map((g) => [g.provider, g.sources.length])).toEqual([
+      ["email", 1],
+      ["other", 2],
+    ]);
+  });
+
+  it("returns no groups for no sources", () => {
+    expect(groupSources([])).toEqual([]);
   });
 });
 

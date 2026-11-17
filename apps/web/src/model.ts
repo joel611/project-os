@@ -1,6 +1,7 @@
 import {
   type DetectedSource,
   detectSource,
+  type ProjectSourceType,
   TERMINAL_STATUSES,
   type Ticket,
   type TicketEvent,
@@ -122,6 +123,39 @@ export const sourceUrl = (s: { type: string; externalId: string }): string | nul
  * Where a worker sits: a `shared` device an admin registered into the pool, someone's
  * `personal` device, or a `sandbox` session the Coordinator started for one ticket.
  */
+/** Who hosts a source; the settings page groups sources under one header per provider. */
+export type SourceProvider = "github" | "google_drive" | "discord" | "clickup" | "email" | "other";
+
+const SOURCE_PROVIDER: Readonly<Record<ProjectSourceType, SourceProvider>> = {
+  github_repo: "github",
+  google_drive_folder: "google_drive",
+  discord_channel: "discord",
+  clickup_list: "clickup",
+  email_address: "email",
+};
+
+/** Group order on the page; "other" catches a type this build doesn't know yet. */
+const PROVIDER_ORDER: ReadonlyArray<SourceProvider> = [
+  "github",
+  "google_drive",
+  "discord",
+  "clickup",
+  "email",
+  "other",
+];
+
+export const sourceProvider = (type: string): SourceProvider =>
+  Object.hasOwn(SOURCE_PROVIDER, type) ? SOURCE_PROVIDER[type as ProjectSourceType] : "other";
+
+/** Sources bucketed by provider in page order, keeping each bucket's order; empty buckets are dropped. */
+export const groupSources = <S extends { readonly type: string }>(
+  sources: ReadonlyArray<S>,
+): ReadonlyArray<{ readonly provider: SourceProvider; readonly sources: ReadonlyArray<S> }> =>
+  PROVIDER_ORDER.map((provider) => ({
+    provider,
+    sources: sources.filter((s) => sourceProvider(s.type) === provider),
+  })).filter((g) => g.sources.length > 0);
+
 /** Source types whose messages reach the project (see core `CHANNEL_SOURCE_TYPES`). */
 const INBOUND_SOURCE_TYPES: ReadonlySet<string> = new Set(["discord_channel", "email_address"]);
 
