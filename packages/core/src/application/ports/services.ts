@@ -179,6 +179,16 @@ export interface IntentResult {
    * run. `sidekick`: read-only lookups through Google Drive or GitHub tools. Unset: `worker`.
    */
   readonly executor?: Executor;
+  /** The classifier's probability for every intent option; the audit log's "why". */
+  readonly probabilities?: Readonly<Record<string, number>>;
+  /** The executor question's raw answer, before the Sidekick confidence floor drops it. */
+  readonly executorAnswer?: {
+    readonly choice: string;
+    readonly confidence: number;
+    readonly probabilities: Readonly<Record<string, number>>;
+  };
+  /** The model that answered, as `provider/model`. */
+  readonly model?: string;
 }
 
 export type Executor = "worker" | "sidekick";

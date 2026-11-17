@@ -58,6 +58,35 @@ export const InboundAuditPayload = Schema.Struct({
 });
 export type InboundAuditPayload = typeof InboundAuditPayload.Type;
 
+/** A classifier answer to one question: what it chose, how sure, and every option's odds. */
+export const ClassifierAnswerPayload = Schema.Struct({
+  choice: Schema.String,
+  confidence: Schema.Finite,
+  probabilities: Schema.Record(Schema.String, Schema.Finite),
+});
+export type ClassifierAnswerPayload = typeof ClassifierAnswerPayload.Type;
+
+/**
+ * `inbound_event` / `classified` or `classify_failed`: what the decision model made of a
+ * message, and what the Coordinator did with it. Only messages that passed every gate are
+ * classified. `externalId` ties it to the message's `received` row.
+ */
+export const ClassifiedAuditPayload = Schema.Struct({
+  channelType: ChannelType,
+  externalId: Schema.String,
+  /** The model that answered, as `provider/model`, when it reported one. */
+  model: Schema.NullOr(Schema.String),
+  /** Absent when the classifier call failed. */
+  intent: Schema.optionalKey(ClassifierAnswerPayload),
+  executor: Schema.optionalKey(ClassifierAnswerPayload),
+  /** The confidence the intent needed; below it the Coordinator asks to clarify. */
+  threshold: Schema.Finite,
+  /** The `InboundOutcome` kind, or `error` when handling failed. */
+  outcome: Schema.String,
+  error: Schema.optionalKey(Schema.String),
+});
+export type ClassifiedAuditPayload = typeof ClassifiedAuditPayload.Type;
+
 /** `digest_event` / `digested` or `failed`: one Channel Digest run over a project's chat. */
 export const DigestAuditPayload = Schema.Struct({
   messages: Schema.Finite,

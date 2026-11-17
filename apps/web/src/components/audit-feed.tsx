@@ -3,6 +3,7 @@ import {
   type AuditEntry,
   type AuditKind,
   type ChannelType,
+  type ClassifiedAuditPayload,
   type Project,
   type TicketStatus,
 } from "@project-os/contracts";
@@ -40,6 +41,8 @@ export const KIND_META: Readonly<
 
 const ACTION_LABEL: Readonly<Record<string, string>> = {
   received: "received",
+  classified: "classified",
+  classify_failed: "classify failed",
   digested: "digested",
   failed: "failed",
   registered: "registered",
@@ -58,8 +61,13 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
 export const actionTone = (entry: AuditEntry): Tone => {
   switch (entry.action) {
     case "failed":
+    case "classify_failed":
     case "went_offline":
       return "danger";
+    case "classified":
+      return (entry.payload as ClassifiedAuditPayload | null)?.outcome === "error"
+        ? "danger"
+        : "info";
     case "first_seen":
     case "back_online":
     case "registered":
@@ -111,6 +119,88 @@ const named = (text: string, workers: WorkerNames) => {
   return out;
 };
 
+const pct = (p: number) => `${Math.round(p * 100)}%`;
+
+/** One classifier question: every option's probability as a bar, the chosen one highlighted. */
+const AnswerBars = ({
+  label,
+  answer,
+  threshold,
+}: {
+  label: string;
+  answer: NonNullable<ClassifiedAuditPayload["intent"]>;
+  threshold?: number;
+}) => {
+  const options = Object.entries(answer.probabilities).sort(([, a], [, b]) => b - a);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline gap-2 text-xs">
+        <span className="font-medium text-foreground">{label}</span>
+        <span className="text-muted-foreground">
+          {answer.choice} at {pct(answer.confidence)}
+          {threshold !== undefined && `, needs ${pct(threshold)}`}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-1" aria-label={`${label} probabilities`}>
+        {options.map(([option, p]) => {
+          const chosen = option === answer.choice;
+          return (
+            <li
+              key={option}
+              className="grid grid-cols-[minmax(0,9rem)_1fr_2.75rem] items-center gap-2 text-xs"
+            >
+              <span
+                className={cn(
+                  "truncate font-mono",
+                  chosen ? "text-foreground" : "text-muted-foreground",
+                )}
+                title={option}
+              >
+                {option}
+              </span>
+              <span className="relative h-1.5 overflow-hidden rounded-full bg-muted">
+                <span
+                  className={cn(
+                    "absolute inset-y-0 left-0 rounded-full",
+                    chosen ? "bg-tone-info" : "bg-muted-foreground/40",
+                  )}
+                  style={{ width: `${Math.max(p * 100, 0.5)}%` }}
+                />
+                {threshold !== undefined && (
+                  <span
+                    className="absolute inset-y-0 w-px bg-foreground/50"
+                    style={{ left: `${threshold * 100}%` }}
+                    aria-hidden
+                  />
+                )}
+              </span>
+              <span className="text-right tabular-nums text-muted-foreground">{pct(p)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
+/** Why the decision model chose what it did: each option's odds, and the model that answered. */
+const Classification = ({ payload }: { payload: ClassifiedAuditPayload }) => (
+  <div className="mt-1 flex flex-col gap-3 rounded-lg border px-3 py-2.5">
+    {payload.intent && (
+      <AnswerBars label="Intent" answer={payload.intent} threshold={payload.threshold} />
+    )}
+    {payload.executor && payload.intent?.choice === "new_request" && (
+      <AnswerBars label="Executor" answer={payload.executor} />
+    )}
+    {payload.error && <p className="text-xs text-tone-danger">{payload.error}</p>}
+    {payload.model && (
+      <p className="text-xs text-muted-foreground">
+        Model <span className="font-mono">{payload.model}</span>
+      </p>
+    )}
+  </div>
+);
+
 interface InboundPayload {
   readonly channelType?: ChannelType;
   readonly url?: string | null;
@@ -143,7 +233,10 @@ const Row = ({
   workers: WorkerNames;
 }) => {
   const [open, setOpen] = useState(false);
+  const received = e.kind === "inbound_event" && e.action === "received";
   const inbound = e.kind === "inbound_event" ? (e.payload as InboundPayload) : null;
+  const classified =
+    e.kind === "inbound_event" && !received ? (e.payload as ClassifiedAuditPayload) : null;
   const time = relativeTime(e.at, now);
   return (
     <li className="flex gap-3 px-4 py-3.5 sm:px-6">
@@ -163,9 +256,7 @@ const Row = ({
           {inbound?.mentionsBot && <span>mentioned the bot</span>}
           {inbound?.threadId && <span>in a thread</span>}
           {inbound?.admin && <span>admin channel</span>}
-          {e.kind === "inbound_event" && e.projectId === null && !inbound?.admin && (
-            <span>unlinked channel</span>
-          )}
+          {received && e.projectId === null && !inbound?.admin && <span>unlinked channel</span>}
           {projects && e.projectId && (
             <Link
               to="/projects/$projectId"
@@ -191,7 +282,7 @@ const Row = ({
           </span>
         </div>
         <p className="text-sm break-words whitespace-pre-wrap">
-          {(inbound ? inbound.content : named(e.summary, workers)) || (
+          {(received && inbound ? inbound.content : named(e.summary, workers)) || (
             <span className="text-muted-foreground">{e.summary || "(no text)"}</span>
           )}
         </p>
@@ -220,6 +311,7 @@ const Row = ({
             <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
           </button>
         </div>
+        {open && classified && <Classification payload={classified} />}
         {open && (
           <pre className="mt-1 overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs leading-relaxed">
             {JSON.stringify(

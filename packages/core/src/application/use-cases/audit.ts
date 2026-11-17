@@ -2,6 +2,7 @@ import type {
   AuditActorType,
   AuditEntry,
   AuditKind,
+  ClassifiedAuditPayload,
   DigestAuditPayload,
   InboundAuditPayload,
   InboundMessage,
@@ -19,6 +20,7 @@ import {
   ProjectRepository,
   WorkerRepository,
   type AuditQuery,
+  type IntentResult,
 } from "../ports/index.ts";
 
 /** Most entries one read returns, and the default page size. */
@@ -112,6 +114,65 @@ export const auditInbound = (
     payload,
     at: message.receivedAt,
     dedupeKey: `inbound:${message.channelType}:${message.externalId}`,
+  });
+};
+
+/** How a classified row's summary names what the Coordinator did next. */
+const OUTCOME_LABEL: Readonly<Record<string, string>> = {
+  ticket_created: "ticket created",
+  follow_up_added: "follow-up added",
+  ticket_closed: "ticket closed",
+  status_answered: "status answered",
+  memory_saved: "memory saved",
+  sidekick_answered: "Sidekick answered",
+  admin_handled: "admin handled",
+  clarification_sent: "asked to clarify",
+  error: "failed",
+};
+
+/**
+ * Logs what the decision model made of a message and what came of it, beside the message's
+ * `received` row. `result` is absent when the classifier call itself failed (`error` says why).
+ */
+export const auditClassification = (input: {
+  readonly message: InboundMessage;
+  readonly projectId: string | null;
+  readonly result?: IntentResult;
+  readonly threshold: number;
+  readonly outcome: string;
+  readonly ticketId?: string;
+  readonly error?: string;
+}) => {
+  const { message, result } = input;
+  const payload: ClassifiedAuditPayload = {
+    channelType: message.channelType,
+    externalId: message.externalId,
+    model: result?.model ?? null,
+    ...(result && {
+      intent: {
+        choice: result.intent,
+        confidence: result.confidence,
+        probabilities: result.probabilities ?? { [result.intent]: result.confidence },
+      },
+    }),
+    ...(result?.executorAnswer && { executor: result.executorAnswer }),
+    threshold: input.threshold,
+    outcome: input.outcome,
+    ...(input.error !== undefined && { error: input.error }),
+  };
+  const next = OUTCOME_LABEL[input.outcome] ?? input.outcome.replaceAll("_", " ");
+  const summary = result
+    ? `${result.intent} ${Math.round(result.confidence * 100)}% → ${next}`
+    : `classifier failed: ${input.error ?? "unknown error"}`;
+  return audit({
+    kind: "inbound_event",
+    action: result ? "classified" : "classify_failed",
+    actor: { type: "person", id: message.sender.id, name: message.sender.name ?? null },
+    projectId: input.projectId,
+    ticketId: input.ticketId ?? null,
+    summary: summary.length > 140 ? `${summary.slice(0, 139)}…` : summary,
+    payload,
+    dedupeKey: `classified:${message.channelType}:${message.externalId}`,
   });
 };
 
