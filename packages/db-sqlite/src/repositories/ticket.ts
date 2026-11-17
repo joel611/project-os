@@ -2,6 +2,7 @@ import {
   ClaimConflict,
   InvalidTransition,
   releaseTicket,
+  reopenTicket,
   TicketNotFound,
   transitionTicket,
   type Ticket,
@@ -127,6 +128,43 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
                   Effect.fail(new InvalidTransition({ ticketId, from: t.status, to: "open" })),
                 ),
               ),
+        ),
+      ),
+    reopen: (ticketId, at) =>
+      find(ticketId).pipe(
+        Effect.flatMap((current) =>
+          reopenTicket(current, at).pipe(
+            Effect.flatMap((next) =>
+              // Guard on the status we read: two follow-ups racing reopen it once.
+              q(() =>
+                db
+                  .update(tickets)
+                  .set({
+                    status: next.status,
+                    workerType: null,
+                    workerId: null,
+                    result: null,
+                    error: null,
+                    assignedAt: null,
+                    startedAt: null,
+                    completedAt: null,
+                    lastActivityAt: next.lastActivityAt,
+                    updatedAt: next.updatedAt,
+                  })
+                  .where(and(eq(tickets.id, ticketId), eq(tickets.status, current.status)))
+                  .returning(),
+              ),
+            ),
+            Effect.flatMap(([row]) =>
+              row
+                ? Effect.succeed(row)
+                : find(ticketId).pipe(
+                    Effect.flatMap((t) =>
+                      Effect.fail(new InvalidTransition({ ticketId, from: t.status, to: "open" })),
+                    ),
+                  ),
+            ),
+          ),
         ),
       ),
     claim: (ticketId, workerId, at) =>

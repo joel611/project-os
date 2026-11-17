@@ -85,8 +85,12 @@ export const CreateThreadInstruction = Schema.Struct({
   channelType: ChannelType,
   /** Channel the message is in. */
   channelId: Schema.String,
-  /** Platform id of the message to start the thread from (the inbound `externalId`). */
-  messageId: Schema.String,
+  /**
+   * Platform id of the message to start the thread from (the inbound `externalId`). Unset:
+   * a new thread in the channel with no starter message (a message said inside a thread
+   * can't start one of its own).
+   */
+  messageId: Schema.optionalKey(Schema.String),
   name: Schema.String,
 });
 export type CreateThreadInstruction = typeof CreateThreadInstruction.Type;

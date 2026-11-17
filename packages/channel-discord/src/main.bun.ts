@@ -209,9 +209,21 @@ export const createDiscord = ({
       if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) {
         throw new Error(`channel ${channelId} can't hold threads`);
       }
-      const message = await channel.messages.fetch(messageId);
       // Discord thread names are 1–100 characters.
-      const thread = await message.startThread({ name: name.slice(0, 100) || "Ticket" });
+      const threadName = name.slice(0, 100) || "Ticket";
+      if (messageId === undefined) {
+        if (channel.type !== ChannelType.GuildText) {
+          throw new Error(`channel ${channelId} can't hold threads without a starter message`);
+        }
+        const thread = await channel.threads.create({
+          name: threadName,
+          type: ChannelType.PublicThread,
+          reason: "Project OS: new ticket",
+        });
+        return { threadId: thread.id };
+      }
+      const message = await channel.messages.fetch(messageId);
+      const thread = await message.startThread({ name: threadName });
       return { threadId: thread.id };
     },
     async ({ channelId, threadId, messageId, emoji }) => {

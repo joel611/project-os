@@ -30,7 +30,8 @@ export type CreateDiscordChannel = (name: string) => Promise<{ channelId: string
 /** Starts a public thread on a message; resolves to the thread's id. */
 export type CreateDiscordThread = (input: {
   channelId: string;
-  messageId: string;
+  /** Unset: a thread in the channel with no starter message. */
+  messageId?: string;
   name: string;
 }) => Promise<{ threadId: string }>;
 /** Adds a reaction to a message; `threadId` is set when the message is inside a thread. */
@@ -151,7 +152,11 @@ export const createReplyApp = (
       }
       const { channelId, messageId, name } = parsed.value;
       try {
-        return await createThread({ channelId, messageId, name });
+        return await createThread({
+          channelId,
+          ...(messageId === undefined ? {} : { messageId }),
+          name,
+        });
       } catch (err) {
         set.status = 502;
         return { error: err instanceof Error ? err.message : "discord thread create failed" };

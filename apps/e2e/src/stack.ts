@@ -58,7 +58,7 @@ export interface Posted {
 
 export interface CreatedThreadCall {
   readonly channelId: string;
-  readonly messageId: string;
+  readonly messageId?: string;
   readonly name: string;
 }
 

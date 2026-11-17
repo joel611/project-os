@@ -106,6 +106,36 @@ export const releaseTicket = (
       })
     : Effect.fail(new InvalidTransition({ ticketId: ticket.id, from: ticket.status, to: "open" }));
 
+/** Finished statuses a follow-up in the ticket's thread can reopen. `cancelled` stays closed. */
+export const REOPENABLE_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed"];
+
+export const canReopen = (status: TicketStatus): boolean => REOPENABLE_STATUSES.includes(status);
+
+/**
+ * Reopen: `completed | failed → open`, for a follow-up in the ticket's thread. The ticket goes
+ * back to Queued with no worker, its last run cleared (the run's events stay), so it is placed
+ * again like a new one, keeping its `createdAt`.
+ */
+export const reopenTicket = (
+  ticket: Ticket,
+  at: string,
+): Effect.Effect<Ticket, InvalidTransition> =>
+  canReopen(ticket.status)
+    ? Effect.succeed({
+        ...ticket,
+        status: "open" as const,
+        workerType: null,
+        workerId: null,
+        result: null,
+        error: null,
+        assignedAt: null,
+        startedAt: null,
+        completedAt: null,
+        lastActivityAt: at,
+        updatedAt: at,
+      })
+    : Effect.fail(new InvalidTransition({ ticketId: ticket.id, from: ticket.status, to: "open" }));
+
 /**
  * Claim: the atomic `assigned → in_progress` transition. Only the assigned worker may claim,
  * and only from `assigned`. Repositories must apply this atomically.
