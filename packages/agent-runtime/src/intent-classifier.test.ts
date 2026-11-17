@@ -63,6 +63,9 @@ describe("makeIntentClassifier", () => {
       intent: "new_request",
       confidence: 0.9,
       executor: "sidekick",
+      probabilities: { new_request: 0.9 },
+      executorAnswer: { choice: "sidekick", confidence: 0.95, probabilities: { sidekick: 0.95 } },
+      model: `openrouter/${JEV_MODEL_ID}`,
     });
     expect(s.requests).toHaveLength(1);
     const [req] = s.requests;
@@ -86,10 +89,11 @@ describe("makeIntentClassifier", () => {
         executor: choice("sidekick", 0.9),
       },
     });
-    expect(await call(makeIntentClassifier(s))).toEqual({
-      intent: "status_question",
-      confidence: 0.7,
-    });
+    const result = await call(makeIntentClassifier(s));
+    expect(result).toMatchObject({ intent: "status_question", confidence: 0.7 });
+    expect(result.executor).toBeUndefined();
+    // The raw answer is still kept for the audit log.
+    expect(result.executorAnswer?.choice).toBe("sidekick");
   });
 
   it("ignores an answer the classifier wasn't asked for", async () => {
@@ -97,7 +101,27 @@ describe("makeIntentClassifier", () => {
       answers: { intent: choice("new_request", 0.9), worker_type: choice("local", 0.9) },
     });
     const result = await call(makeIntentClassifier(s));
-    expect(result).toEqual({ intent: "new_request", confidence: 0.9 });
+    expect(result).toEqual({
+      intent: "new_request",
+      confidence: 0.9,
+      probabilities: { new_request: 0.9 },
+      model: `openrouter/${JEV_MODEL_ID}`,
+    });
+  });
+
+  it("keeps every intent option's probability for the audit log", async () => {
+    const s = scripted({
+      answers: {
+        intent: {
+          type: "choice",
+          choice: "follow_up",
+          probabilities: { follow_up: 0.6, new_request: 0.3, none: 0.1 },
+          confidence: 0.6,
+        },
+      },
+    });
+    const result = await call(makeIntentClassifier(s));
+    expect(result.probabilities).toEqual({ follow_up: 0.6, new_request: 0.3, none: 0.1 });
   });
 
   it("describes the executor choice by what the job needs", async () => {
