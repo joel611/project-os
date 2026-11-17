@@ -14,6 +14,7 @@ const STATUS = {
   SourceAlreadyLinked: 409,
   SourceAliasTaken: 409,
   InvalidSourceAlias: 400,
+  InvalidSourceLink: 400,
   InvalidTransition: 409,
   RegistrationInvalid: 401,
   AgentRuntimeError: 502,
