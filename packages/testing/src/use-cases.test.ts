@@ -29,6 +29,7 @@ import {
   THREAD_OPENED_MESSAGE,
   TICKET_CLOSED_MESSAGE,
   TICKET_REOPENED_MESSAGE,
+  TICKET_RESUMED_MESSAGE,
   type Ticket,
 } from "@project-os/core";
 import type { InboundMessage } from "@project-os/contracts";
@@ -567,6 +568,36 @@ describe("handleInbound ticket threads", () => {
       ]),
     );
     expect(sent.map((s) => s.content)).toEqual([TICKET_REOPENED_MESSAGE]);
+  });
+
+  it("a follow-up in a blocked ticket's thread resumes it and places it again", async () => {
+    const { value, sent } = await run(
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ status: "blocked", startedAt: T0 }));
+        yield* repo.linkThread({
+          ticketId: "t1",
+          channelType: "discord",
+          channelId: "chan-1",
+          threadId: "th1",
+          createdAt: T0,
+        });
+        // "try again" after /connect reads as small talk, and still resumes a blocked ticket.
+        const out = yield* handleInbound(msg({ threadId: "th1", content: "try again" }), config);
+        const { ticket: after, events } = yield* getTicket({ ticketId: "t1" });
+        return { out, after, events };
+      }),
+      inbound("chit_chat"),
+    );
+    expect(value.out.kind).toBe("ticket_reopened");
+    expect(value.after).toMatchObject({ status: "assigned", workerId: "w1" });
+    expect(value.events.map((e) => [e.type, e.body])).toEqual(
+      expect.arrayContaining([
+        ["follow_up", "try again"],
+        ["system", "Resumed by a follow-up (was blocked)"],
+      ]),
+    );
+    expect(sent.map((s) => s.content)).toEqual([TICKET_RESUMED_MESSAGE]);
   });
 
   it("a follow-up that loses the race to reopen is just a follow-up on the ticket", async () => {

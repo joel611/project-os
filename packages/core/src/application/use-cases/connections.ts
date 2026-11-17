@@ -5,11 +5,10 @@ import {
   KeyValueStore,
   NotConnected,
   type Person,
-  ProjectSourceRepository,
   TicketRepository,
   UserConnections,
 } from "../ports/index.ts";
-import { channelTypeFor } from "./channels.ts";
+import { ticketChannel } from "./prompts.ts";
 
 export const PROVIDER_LABELS: Record<ConnectionProvider, string> = {
   google: "Google",
@@ -42,11 +41,20 @@ const mention = (person: Person) =>
 
 const EVENT_SCAN = 500;
 
+/** Asked in the ticket's thread when a Worker needs an account the person hasn't linked. */
+export const connectAskMessage = (
+  who: string,
+  label: string,
+  title: string,
+  provider: ConnectionProvider,
+) =>
+  `${who}, I need your ${label} access for "${title}". Run \`/connect provider:${provider}\`, then reply here and I'll carry on.`;
+
 /**
  * The access token a Worker should use for `provider` on this ticket: the token of whoever
  * wrote the ticket's latest message (the requester, or the latest follow-up's author). If they
- * haven't linked the provider, asks them in the project's channel (once a day per ticket) and
- * fails with `NotConnected`.
+ * haven't linked the provider, asks them in the ticket's thread (once a day per ticket) and
+ * fails with `NotConnected`; their reply there resumes the blocked ticket.
  */
 export const userTokenForTicket = (input: {
   readonly ticketId: string;
@@ -71,7 +79,7 @@ export const userTokenForTicket = (input: {
       .accessToken(person, input.provider)
       .pipe(
         Effect.tapErrorTag("NotConnected", () =>
-          askToConnect(ticket.id, ticket.projectId, ticket.title, person, input.provider),
+          askToConnect(ticket.id, ticket.title, person, input.provider),
         ),
       );
     return { ...token, person: { ...person, name: person.name ?? null } };
@@ -79,29 +87,24 @@ export const userTokenForTicket = (input: {
 
 const askToConnect = (
   ticketId: string,
-  projectId: string,
   title: string,
   person: Person,
   provider: ConnectionProvider,
 ) =>
   Effect.gen(function* () {
     const kv = yield* KeyValueStore;
-    const sources = yield* ProjectSourceRepository;
     const gateway = yield* ChannelGateway;
 
     const fresh = yield* kv.setIfAbsent(`connect-ask:${ticketId}:${provider}:${person.id}`, "1", {
       ttlSeconds: 86_400,
     });
     if (!fresh) return;
-    const target = (yield* sources.listByProject(projectId)).find(
-      (s) => s.isDefaultResponse && s.status === "active",
-    );
-    const channelType = target && channelTypeFor(target.type);
-    if (!target || !channelType) return;
+    // The ticket's thread, where their reply resumes the blocked ticket; else the channel.
+    const target = yield* ticketChannel(ticketId);
+    if (!target) return;
     const label = PROVIDER_LABELS[provider];
     yield* gateway.send({
-      channelType,
-      channelId: target.externalId,
-      content: `${mention(person)}, I need your ${label} access for "${title}". Run \`/connect provider:${provider}\` and I'll carry on.`,
+      ...target,
+      content: connectAskMessage(mention(person), label, title, provider),
     });
   });
