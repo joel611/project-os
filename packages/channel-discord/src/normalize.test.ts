@@ -84,6 +84,41 @@ describe("normalizeMessage", () => {
     expect(out).toMatchObject({ mentionsBot: true, content: "hello" });
   });
 
+  it("counts a mention of the bot's managed role and strips it", () => {
+    const out = normalizeMessage(
+      {
+        ...base,
+        content: "<@&r1> ship it <@&r2>",
+        mentions: {
+          users: { has: () => false },
+          roles: {
+            values: () => [
+              { id: "r1", tags: { botId: "b1" } },
+              { id: "r2", tags: null },
+            ],
+          },
+        },
+      },
+      "b1",
+    );
+    expect(out).toMatchObject({ mentionsBot: true, content: "ship it <@&r2>" });
+  });
+
+  it("is not a mention when only another bot's role is mentioned", () => {
+    const out = normalizeMessage(
+      {
+        ...base,
+        content: "<@&r3> hi",
+        mentions: {
+          users: { has: () => false },
+          roles: { values: () => [{ id: "r3", tags: { botId: "other-bot" } }] },
+        },
+      },
+      "b1",
+    );
+    expect(out).toMatchObject({ mentionsBot: false, content: "<@&r3> hi" });
+  });
+
   it("is not a mention when only someone else is mentioned", () => {
     const out = normalizeMessage(
       { ...base, content: "hey <@u2>", mentions: { users: { has: (id) => id === "u2" } } },

@@ -11,8 +11,14 @@ export interface DiscordMessageLike {
   /** Server the message was sent in; null in DMs. */
   guildId?: string | null;
   channel: { isThread(): boolean; parentId?: string | null };
-  /** Direct user mentions (not @everyone or roles). */
-  mentions?: { users: { has(id: string): boolean } };
+  /**
+   * Direct user mentions (not @everyone), plus mentioned roles. Discord gives every bot a managed
+   * role named after it, and picking that role from the @ menu sends `<@&roleId>`, not `<@botId>`.
+   */
+  mentions?: {
+    users: { has(id: string): boolean };
+    roles?: { values(): Iterable<{ id: string; tags?: { botId?: string | null } | null }> };
+  };
   /** discord.js `Collection<Snowflake, Attachment>`; only the values are read. */
   attachments?: {
     values(): Iterable<{
@@ -25,12 +31,21 @@ export interface DiscordMessageLike {
   };
 }
 
-/** Removes `<@id>` / `<@!id>` mentions of `botUserId` so the classifier sees only the ask. */
-const stripMention = (content: string, botUserId: string): string =>
-  content
-    .replace(new RegExp(`<@!?${botUserId}>`, "g"), " ")
+/**
+ * Removes `<@id>` / `<@!id>` mentions of `botUserId`, and `<@&id>` mentions of its managed role,
+ * so the classifier sees only the ask.
+ */
+const stripMention = (content: string, botUserId: string, botRoleIds: string[]): string =>
+  [...botRoleIds.map((id) => `<@&${id}>`), `<@!?${botUserId}>`]
+    .reduce((text, pattern) => text.replace(new RegExp(pattern, "g"), " "), content)
     .replace(/\s+/g, " ")
     .trim();
+
+/** Ids of mentioned roles that are `botUserId`'s own managed role. */
+const mentionedBotRoles = (m: DiscordMessageLike, botUserId: string): string[] =>
+  [...(m.mentions?.roles?.values() ?? [])]
+    .filter((role) => role.tags?.botId === botUserId)
+    .map((role) => role.id);
 
 /**
  * Normalizes a human Discord message; returns null for bots and for messages with neither text
@@ -50,16 +65,19 @@ export const normalizeMessage = (
   }));
   if (m.author.bot || (m.content.trim() === "" && attachments.length === 0)) return null;
   const inThread = m.channel.isThread();
+  const botRoleIds = botUserId === undefined ? [] : mentionedBotRoles(m, botUserId);
   const mentionsBot =
     botUserId !== undefined &&
-    (m.mentions?.users.has(botUserId) === true || new RegExp(`<@!?${botUserId}>`).test(m.content));
+    (m.mentions?.users.has(botUserId) === true ||
+      botRoleIds.length > 0 ||
+      new RegExp(`<@!?${botUserId}>`).test(m.content));
   return {
     channelType: "discord",
     externalId: m.id,
     channelId: inThread ? (m.channel.parentId ?? m.channelId) : m.channelId,
     ...(inThread ? { threadId: m.channelId } : {}),
     sender: { id: m.author.id, name: m.member?.displayName ?? m.author.username },
-    content: mentionsBot ? stripMention(m.content, botUserId!) : m.content,
+    content: mentionsBot ? stripMention(m.content, botUserId!, botRoleIds) : m.content,
     ...(attachments.length === 0 ? {} : { attachments }),
     ...(botUserId === undefined ? {} : { mentionsBot }),
     ...(m.guildId
