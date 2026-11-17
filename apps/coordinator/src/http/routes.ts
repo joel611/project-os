@@ -7,7 +7,7 @@ import {
 } from "@project-os/contracts";
 import { AUDIT_KINDS, type AuditKind, type Viewer } from "@project-os/contracts";
 import {
-  answerPrompt,
+  answerScopePrompt,
   getMyTicket,
   getTicket,
   listMyTicketAttachments,
@@ -196,7 +196,7 @@ export const httpRoutes = ({
         set,
         toResult(
           decode(PromptAnswer, body).pipe(
-            Effect.flatMap((answer) => answerPrompt(answer, prompts)),
+            Effect.flatMap((answer) => answerScopePrompt(answer, prompts, inbound)),
           ),
         ),
       ),

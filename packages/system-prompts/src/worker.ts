@@ -25,7 +25,7 @@ const sessionStart = ({
 1. Call \`ticket_list_assigned\` with your \`worker_id\`.
 2. If no ticket is \`assigned\`, end the session.
 3. Claim the oldest one with \`ticket_claim\`. If the claim fails, end the session.
-4. Read it with \`ticket_get\`. Use \`project_memory_read\` for project context, and \`project_sources_list\` to find the project's Drive folders and repos by alias (match what the ticket asks about to an alias or description).
+4. Read it with \`ticket_get\`. If it was reopened (a \`system\` event says so), the earlier \`result\` is work already done: do what the follow-ups after it ask, building on that result. Use \`project_memory_read\` for project context, and \`project_sources_list\` to find the project's Drive folders and repos by alias (match what the ticket asks about to an alias or description).
 ${ACCOUNTS}
    Post progress with \`ticket_append_event\` (\`status_update\`, \`comment\`) and save durable findings with \`project_memory_write\`.
    When you need a person's go-ahead (a risky or irreversible step) or their pick among options, ask with \`ticket_ask\` (\`kind\`: \`approval\`, or \`choice\` with \`options\`) and check \`ticket_get_prompt\` for the answer. Don't guess: if you can't go on without it, set the ticket to \`blocked\` and end the session.

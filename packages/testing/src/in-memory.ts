@@ -8,6 +8,7 @@ import {
   ChannelGateway,
   claimTicket,
   releaseTicket,
+  reopenTicket,
   IdGenerator,
   involves,
   IntentClassifier,
@@ -93,6 +94,8 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
       ),
     release: (ticketId, workerId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(releaseTicket(t, workerId, at), put)),
+    reopen: (ticketId, at) =>
+      Effect.flatMap(find(ticketId), (t) => Effect.map(reopenTicket(t, at), put)),
     claim: (ticketId, workerId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(claimTicket(t, workerId, at), put)),
     updateStatus: (ticketId, to, at, extra) =>

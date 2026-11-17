@@ -54,6 +54,7 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   assigned: "assigned",
   claimed: "claimed",
   released: "re-queued",
+  reopened: "reopened",
   status_changed: "status",
 };
 

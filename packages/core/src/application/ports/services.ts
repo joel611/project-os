@@ -189,9 +189,13 @@ export interface IntentResult {
   };
   /** The model that answered, as `provider/model`. */
   readonly model?: string;
+  /** Only when `ticketContext` was given: is the message about that ticket? */
+  readonly scope?: { readonly choice: TicketScope; readonly confidence: number };
 }
 
 export type Executor = "worker" | "sidekick";
+
+export type TicketScope = "in_scope" | "out_of_scope";
 
 export class IntentClassifier extends Context.Service<
   IntentClassifier,
@@ -199,6 +203,8 @@ export class IntentClassifier extends Context.Service<
     readonly classify: (input: {
       readonly content: string;
       readonly projectContext: string;
+      /** The ticket whose thread the message was said in (see `ticketContext`). */
+      readonly ticketContext?: string;
     }) => Effect.Effect<IntentResult, ClassifierError>;
   }
 >()("@project-os/core/IntentClassifier") {}
