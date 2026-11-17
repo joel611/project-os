@@ -185,6 +185,26 @@ describe("projects and sources", () => {
     expect(res.body.error).toBe("SourceAlreadyLinked");
   });
 
+  it("normalizes a pasted GitHub link and 400s one that isn't a repo", async () => {
+    const { app } = setup();
+    const { project } = await linkedProject(app);
+    const add = (externalId: string, alias: string) =>
+      call(app, "POST", `/projects/${project.id}/sources`, {
+        type: "github_repo",
+        externalId,
+        name: externalId,
+        alias,
+      });
+    expect(await add("github.com/acme/web", "web")).toMatchObject({
+      status: 201,
+      body: { externalId: "acme/web", name: "acme/web" },
+    });
+    expect(await add("github.com/acme", "nope")).toMatchObject({
+      status: 400,
+      body: { error: "InvalidSourceLink" },
+    });
+  });
+
   it("requires an alias, unique and well-formed within the project", async () => {
     const { app } = setup();
     const { project } = await linkedProject(app, { description: "  where the team talks  " });

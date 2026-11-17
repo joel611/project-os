@@ -61,6 +61,9 @@ const Problems = ({ lines }: { lines: ReadonlyArray<string> }) =>
     </ul>
   );
 
+const INVALID_LINK =
+  "Not a GitHub repo or Google Drive folder link. Try owner/repo, github.com/owner/repo or a Drive folder URL.";
+
 const sourceProblem = (e: Error, alias: string, externalId?: string) =>
   e instanceof ApiError && e.code === "SourceAlreadyLinked"
     ? `${externalId ?? "That source"} is already linked to another project.`
@@ -68,7 +71,9 @@ const sourceProblem = (e: Error, alias: string, externalId?: string) =>
       ? `Another source in this project is already called "${alias}".`
       : e instanceof ApiError && e.code === "InvalidSourceAlias"
         ? ALIAS_HINT
-        : describeError(e);
+        : e instanceof ApiError && e.code === "InvalidSourceLink"
+          ? INVALID_LINK
+          : describeError(e);
 
 const EditSource = ({
   projectId,
@@ -336,7 +341,7 @@ const AddSource = ({
             : "Give it an alias that says what it's for, e.g. design-docs."
           : check.kind === "alias_taken"
             ? `Another source in this project is already called "${check.alias}".`
-            : "Not a GitHub repo or Google Drive folder link.",
+            : INVALID_LINK,
     );
   };
 
