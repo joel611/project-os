@@ -6,7 +6,7 @@ import { useState, type SyntheticEvent } from "react";
 import { api, ApiError, describeError, type ProjectDetail } from "@/api";
 import { SLOW_MS } from "@/polling";
 import { Empty, QueryError } from "@/components/states";
-import { SOURCE_META } from "@/components/source";
+import { PROVIDER_META, SOURCE_META, sourceMeta } from "@/components/source";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ALIAS_HINT,
   checkSource,
+  groupSources,
   confirmPhrase,
   normalizeAlias,
   removalNote,
@@ -204,7 +205,7 @@ const SourceRow = ({
   source: ProjectSource;
   sources: ReadonlyArray<ProjectSource>;
 }) => {
-  const { Icon, label } = SOURCE_META[source.type];
+  const { Icon, label } = sourceMeta(source.type);
   const url = sourceUrl(source);
   const [mode, setMode] = useState<"view" | "edit" | "remove">("view");
   return (
@@ -223,9 +224,7 @@ const SourceRow = ({
         <>
           <div className="min-w-0 flex-1">
             <div className="truncate font-mono text-sm font-medium">{source.alias}</div>
-            <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
-              {label} · {source.name}
-            </div>
+            <div className="mt-0.5 truncate text-[13px] text-muted-foreground">{source.name}</div>
             {source.isDefaultResponse && (
               <div className="mt-1 flex items-center gap-1 text-xs font-medium text-tone-warn sm:hidden">
                 <Star className="size-3 fill-tone-warn-dot text-tone-warn-dot" />
@@ -290,11 +289,30 @@ const SourceList = ({
   sources.length === 0 ? (
     <Empty title="No sources yet" hint="Link a repo or Drive folder above." />
   ) : (
-    <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
-      {sources.map((s) => (
-        <SourceRow key={s.id} projectId={projectId} source={s} sources={sources} />
-      ))}
-    </ul>
+    <div className="flex flex-col gap-6">
+      {groupSources(sources).map(({ provider, sources: group }) => {
+        const { Logo, label } = PROVIDER_META[provider];
+        const headingId = `sources-${provider}`;
+        return (
+          <section key={provider} aria-labelledby={headingId} className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-2.5 px-1">
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg border bg-card text-foreground shadow-card">
+                <Logo className="size-4" />
+              </span>
+              <h3 id={headingId} className="text-sm font-semibold">
+                {label}
+              </h3>
+              <span className="text-[13px] text-muted-foreground tabular-nums">{group.length}</span>
+            </div>
+            <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
+              {group.map((s) => (
+                <SourceRow key={s.id} projectId={projectId} source={s} sources={sources} />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
   );
 
 const AddSource = ({

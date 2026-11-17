@@ -17,10 +17,10 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AuditFeed } from "@/components/audit-feed";
-import { SOURCE_META } from "@/components/source";
+import { PROVIDER_META } from "@/components/source";
 import { Empty, QueryError } from "@/components/states";
 import { StatusBadge } from "@/components/tone";
-import { relativeTime, splitTickets, workerName } from "@/model";
+import { relativeTime, sourceProvider, splitTickets, workerName } from "@/model";
 import { useNow } from "@/use-now";
 
 const Header = ({ project, sources }: ProjectDetail) => (
@@ -50,14 +50,14 @@ const Header = ({ project, sources }: ProjectDetail) => (
     </div>
     <div className="flex flex-wrap gap-2">
       {sources.map((s) => {
-        const { Icon } = SOURCE_META[s.type];
+        const { Logo, label } = PROVIDER_META[sourceProvider(s.type)];
         return (
           <Badge
             key={s.id}
             variant="outline"
             className="h-7 gap-1.5 rounded-lg bg-card px-2.5 text-[13px] font-normal text-muted-foreground"
           >
-            <Icon className="size-3.5" />
+            <Logo className="size-3.5" role="img" aria-label={label} />
             {s.name}
             {s.isDefaultResponse && (
               <Star
