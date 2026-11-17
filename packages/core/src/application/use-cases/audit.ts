@@ -12,6 +12,7 @@ import type {
   WorkerAuditPayload,
 } from "@project-os/contracts";
 import { Effect } from "effect";
+import type { InboundOutcome } from "./handle-inbound.ts";
 import { isSharedDevice, type Ticket, workerLabel } from "../../domain/index.ts";
 import {
   AuditLogRepository,
@@ -28,6 +29,9 @@ export const AUDIT_PAGE_LIMIT = 200;
 
 /** How long entries are kept when `AUDIT_RETENTION_DAYS` is unset. */
 export const DEFAULT_AUDIT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** Keeps a summary to one line's worth. */
+const clip = (text: string) => (text.length > 140 ? `${text.slice(0, 139)}…` : text);
 
 /** Discord user, role and channel mentions plus @everyone/@here. */
 const MENTION = /<(?:@[!&]?|#)\d+>|@everyone|@here/g;
@@ -110,15 +114,20 @@ export const auditInbound = (
     action: "received",
     actor: { type: "person", id: message.sender.id, name: message.sender.name ?? null },
     projectId,
-    summary: preview.length > 140 ? `${preview.slice(0, 139)}…` : preview,
+    summary: clip(preview),
     payload,
     at: message.receivedAt,
     dedupeKey: `inbound:${message.channelType}:${message.externalId}`,
   });
 };
 
+/** What can follow a classification: an `InboundOutcome` past every gate, or a failure. */
+export type ClassifiedOutcome =
+  | Exclude<InboundOutcome["kind"], "duplicate" | "unlinked" | "not_mentioned" | "admin_forbidden">
+  | "error";
+
 /** How a classified row's summary names what the Coordinator did next. */
-const OUTCOME_LABEL: Readonly<Record<string, string>> = {
+const OUTCOME_LABEL: Readonly<Record<ClassifiedOutcome, string>> = {
   ticket_created: "ticket created",
   follow_up_added: "follow-up added",
   ticket_closed: "ticket closed",
@@ -139,7 +148,7 @@ export const auditClassification = (input: {
   readonly projectId: string | null;
   readonly result?: IntentResult;
   readonly threshold: number;
-  readonly outcome: string;
+  readonly outcome: ClassifiedOutcome;
   readonly ticketId?: string;
   readonly error?: string;
 }) => {
@@ -160,17 +169,16 @@ export const auditClassification = (input: {
     outcome: input.outcome,
     ...(input.error !== undefined && { error: input.error }),
   };
-  const next = OUTCOME_LABEL[input.outcome] ?? input.outcome.replaceAll("_", " ");
   const summary = result
-    ? `${result.intent} ${Math.round(result.confidence * 100)}% → ${next}`
-    : `classifier failed: ${input.error ?? "unknown error"}`;
+    ? `${result.intent} ${Math.round(result.confidence * 100)}% → ${OUTCOME_LABEL[input.outcome]}`
+    : `classifier failed: ${String(input.error)}`;
   return audit({
     kind: "inbound_event",
     action: result ? "classified" : "classify_failed",
     actor: { type: "person", id: message.sender.id, name: message.sender.name ?? null },
     projectId: input.projectId,
     ticketId: input.ticketId ?? null,
-    summary: summary.length > 140 ? `${summary.slice(0, 139)}…` : summary,
+    summary: clip(summary),
     payload,
     dedupeKey: `classified:${message.channelType}:${message.externalId}`,
   });

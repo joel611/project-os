@@ -20,7 +20,7 @@ import {
 } from "./attachments.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { recordChannelMessage } from "./channel-digest.ts";
-import { auditClassification, auditInbound, auditTicket } from "./audit.ts";
+import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
@@ -95,14 +95,9 @@ interface Classification {
   readonly error?: string;
 }
 
-const errorMessage = (cause: Cause.Cause<unknown>): string => {
-  const error = Cause.squash(cause);
-  return error instanceof Error
-    ? error.message
-    : typeof error === "object" && error !== null && "message" in error
-      ? String(error.message)
-      : String(error);
-};
+/** Every failure here is a tagged `Error`; an interruption squashes to one too. */
+const errorMessage = (cause: Cause.Cause<unknown>): string =>
+  (Cause.squash(cause) as Error).message;
 
 export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) => {
   const threshold = config.confidenceThreshold ?? 0.5;
@@ -484,7 +479,8 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         projectId: classified.projectId,
         ...(classified.result && { result: classified.result }),
         threshold,
-        outcome: outcome?.kind ?? "error",
+        // Every gate that ends handling runs before the classifier.
+        outcome: (outcome?.kind ?? "error") as ClassifiedOutcome,
         ...(ticketId !== undefined && { ticketId }),
         ...(error !== undefined && { error }),
       });
