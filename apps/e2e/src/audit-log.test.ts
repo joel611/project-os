@@ -1,4 +1,6 @@
+import { ClassifierError, IntentClassifier, type IntentResult } from "@project-os/core";
 import { classifierReturning } from "@project-os/testing";
+import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { fakeInbound, type FakeSpeaker } from "../../../packages/channel-discord/src/fake.ts";
 import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
@@ -17,6 +19,7 @@ interface Entry {
   actorType: string;
   actorName: string | null;
   projectId: string | null;
+  ticketId: string | null;
   summary: string;
   payload: any;
 }
@@ -67,19 +70,23 @@ describe("audit log", () => {
       "inbound_event/received (project)",
       "ticket/created (project)",
       "ticket/assigned (project)",
+      "inbound_event/classified (project)",
       "inbound_event/received",
       "inbound_event/received",
+      "inbound_event/classified",
       "ticket/claimed (project)",
       "ticket/status_changed (project)",
       "digest_event/digested (project)",
     ]);
-    const first = org.entries.find((e) => e.payload?.externalId === "m1")!;
+    const received = (id: string) =>
+      org.entries.find((e) => e.action === "received" && e.payload?.externalId === id)!;
+    const first = received("m1");
     expect(first).toMatchObject({ actorName: "Ada", summary: "ok we decided: SQLite" });
-    expect(org.entries.find((e) => e.payload?.externalId === "m4")!.payload.admin).toBe(true);
+    expect(received("m4").payload.admin).toBe(true);
 
     const project = (await stack.json("GET", `/projects/${projectId}/audit`)) as Page;
     expect(project.entries.every((e) => e.projectId === projectId)).toBe(true);
-    expect(project.entries).toHaveLength(7);
+    expect(project.entries).toHaveLength(8);
 
     const tickets = (await stack.json(
       "GET",
@@ -94,6 +101,76 @@ describe("audit log", () => {
 
     const workers = (await stack.json("GET", `/audit?kind=worker&projectId=${projectId}`)) as Page;
     expect(workers.entries).toEqual([]);
+  });
+
+  it("records what the classifier made of a message and what came of it", async () => {
+    const answers: Array<IntentResult | "fail"> = [
+      {
+        intent: "new_request",
+        confidence: 0.82,
+        probabilities: { new_request: 0.82, follow_up: 0.12, none: 0.06 },
+        executorAnswer: {
+          choice: "worker",
+          confidence: 0.9,
+          probabilities: { worker: 0.9, sidekick: 0.1 },
+        },
+        model: "openrouter/typesafe/jev-1.14",
+      },
+      { intent: "follow_up", confidence: 0.3, probabilities: { follow_up: 0.3, none: 0.7 } },
+      "fail",
+    ];
+    stack = await startStack({
+      classifier: Layer.succeed(IntentClassifier, {
+        classify: () => {
+          const next = answers.shift()!;
+          return next === "fail"
+            ? Effect.fail(new ClassifierError({ message: "provider down" }))
+            : Effect.succeed(next);
+        },
+      }),
+    });
+    const projectId = await stack.linkChannel(CHANNEL);
+
+    await send(ada, "please add dark mode", { id: "c1", mention: true });
+    await send(ada, "hmm", { id: "c2", mention: true });
+    await send(ada, "and this?", { id: "c3", mention: true }).catch(() => undefined);
+
+    const page = (await stack.json(
+      "GET",
+      `/projects/${projectId}/audit?kind=inbound_event`,
+    )) as Page;
+    const classified = (id: string) =>
+      page.entries.find((e) => e.action !== "received" && e.payload?.externalId === id)!;
+
+    const [ticket] = await stack.json("GET", `/projects/${projectId}/tickets`);
+    expect(classified("c1")).toMatchObject({
+      action: "classified",
+      actorName: "Ada",
+      ticketId: ticket.id,
+      summary: "new_request 82% → ticket created",
+      payload: {
+        model: "openrouter/typesafe/jev-1.14",
+        intent: {
+          choice: "new_request",
+          confidence: 0.82,
+          probabilities: { new_request: 0.82, follow_up: 0.12, none: 0.06 },
+        },
+        executor: { choice: "worker", probabilities: { worker: 0.9, sidekick: 0.1 } },
+        threshold: 0.5,
+        outcome: "ticket_created",
+      },
+    });
+    expect(classified("c2")).toMatchObject({
+      action: "classified",
+      summary: "follow_up 30% → asked to clarify",
+      payload: { model: null, outcome: "clarification_sent" },
+    });
+    expect(classified("c3")).toMatchObject({
+      action: "classify_failed",
+      summary: "classifier failed: provider down",
+      payload: { outcome: "error", error: "provider down" },
+    });
+    expect(classified("c3").payload.intent).toBeUndefined();
   });
 
   it("refuses a bad kind or limit, and an unknown project", async () => {

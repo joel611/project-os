@@ -57,6 +57,15 @@ const toResult = (result: ClassifierResult): IntentResult => {
   return {
     intent: intent.choice,
     confidence: intent.confidence,
+    probabilities: intent.probabilities,
+    model: `${result.provider}/${result.model}`,
+    ...(executor && {
+      executorAnswer: {
+        choice: executor.choice,
+        confidence: executor.confidence,
+        probabilities: executor.probabilities,
+      },
+    }),
     // A Sidekick answer must be sure of itself: a doubtful one goes to a Worker, which can do both.
     ...(intent.choice === "new_request" &&
     executor &&

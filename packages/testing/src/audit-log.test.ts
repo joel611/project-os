@@ -1,4 +1,6 @@
 import {
+  AgentRuntime,
+  AgentRuntimeError,
   AuditLogRepository,
   ChannelMessageRepository,
   claimTicketUseCase,
@@ -23,7 +25,7 @@ import {
   type Project,
 } from "@project-os/core";
 import type { AuditEntry, InboundMessage } from "@project-os/contracts";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { classifierReturning, fixedClock, makeTestLayer } from "./index.ts";
 
@@ -113,6 +115,30 @@ describe("stripMentions", () => {
 });
 
 describe("inbound events", () => {
+  it("logs a classified message whose handling then failed, with the error", async () => {
+    const failing = Layer.succeed(AgentRuntime, {
+      respond: () => Effect.fail(new AgentRuntimeError({ message: "model down" })),
+    });
+    const out = await run(
+      Effect.gen(function* () {
+        yield* handleInbound(inbound({ mentionsBot: true }), {}).pipe(
+          Effect.provide(failing),
+          Effect.ignore,
+        );
+        return yield* all;
+      }),
+    );
+    expect(brief(out)).toEqual(["inbound_event/classified@p1", "inbound_event/received@p1"]);
+    expect(out[0]).toMatchObject({
+      summary: "status_question 100% → failed",
+      payload: {
+        intent: { choice: "status_question", confidence: 1, probabilities: { status_question: 1 } },
+        outcome: "error",
+        error: "model down",
+      },
+    });
+  });
+
   it("logs every message once, in its project or org-wide, without mentions", async () => {
     const out = await run(
       Effect.gen(function* () {

@@ -1,12 +1,13 @@
 import type { InboundMessage, ReplyInstruction } from "@project-os/contracts";
 import { statusQuestion } from "@project-os/system-prompts";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
   IdGenerator,
   IntentClassifier,
+  type IntentResult,
   KeyValueStore,
   ProjectRepository,
   ProjectSourceRepository,
@@ -19,7 +20,7 @@ import {
 } from "./attachments.ts";
 import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
 import { recordChannelMessage } from "./channel-digest.ts";
-import { auditInbound, auditTicket } from "./audit.ts";
+import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
@@ -87,8 +88,21 @@ export const MEMORY_SAVED_MESSAGE = "Noted. I saved that to the project memory."
 export const sidekickFailedMessage = (reason: string) =>
   `Sorry, I couldn't look that up: ${reason}`;
 
-export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) =>
-  Effect.gen(function* () {
+/** What the classifier said about this message, kept for its `classified` audit row. */
+interface Classification {
+  readonly projectId: string | null;
+  readonly result?: IntentResult;
+  readonly error?: string;
+}
+
+/** Every failure here is a tagged `Error`; an interruption squashes to one too. */
+const errorMessage = (cause: Cause.Cause<unknown>): string =>
+  (Cause.squash(cause) as Error).message;
+
+export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) => {
+  const threshold = config.confidenceThreshold ?? 0.5;
+  let classification: Classification | undefined;
+  return Effect.gen(function* () {
     const kv = yield* KeyValueStore;
     const sources = yield* ProjectSourceRepository;
     const projects = yield* ProjectRepository;
@@ -210,13 +224,24 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       return { kind: "admin_forbidden" } as InboundOutcome;
     }
 
-    const classify = (projectContext: string) =>
-      classifier.classify({ content: message.content, projectContext });
-    const isConfident = (confidence: number) => confidence >= (config.confidenceThreshold ?? 0.5);
+    const classify = (projectContext: string, projectId: string | null) =>
+      classifier.classify({ content: message.content, projectContext }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            classification = { projectId, result };
+          }),
+        ),
+        Effect.tapError((e) =>
+          Effect.sync(() => {
+            classification = { projectId, error: e.message };
+          }),
+        ),
+      );
+    const isConfident = (confidence: number) => confidence >= threshold;
 
     if (isAdminChannel) {
       yield* acknowledge();
-      const result = yield* classify("");
+      const result = yield* classify("", null);
       if (!isConfident(result.confidence) || result.intent !== "admin_command") {
         return yield* clarify();
       }
@@ -294,7 +319,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         yield* reply(answered.ok ? answered.text : sidekickFailedMessage(answered.text));
         return { kind: "sidekick_answered", ticketId: threadTicket.id } as InboundOutcome;
       }
-      const result = yield* classify(project.customInstructions);
+      const result = yield* classify(project.customInstructions, project.id);
       if (isConfident(result.confidence) && result.intent === "status_question") {
         const text = yield* runtime.respond({
           sessionId: `project:${project.id}`,
@@ -311,7 +336,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       return yield* addFollowUp(threadTicket.id);
     }
 
-    const result = yield* classify(project.customInstructions);
+    const result = yield* classify(project.customInstructions, project.id);
     if (!isConfident(result.confidence)) return yield* clarify();
 
     const active = (yield* tickets.listByStatus(ACTIVE_STATUSES))
@@ -434,4 +459,31 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       default:
         return yield* clarify();
     }
-  });
+  }).pipe(
+    // Only messages that reached the classifier get a `classified` row, written once the
+    // outcome is known so the row says what the Coordinator did with the answer.
+    Effect.onExit((exit) => {
+      const classified = classification;
+      if (!classified) return Effect.void;
+      const outcome = Exit.isSuccess(exit) ? exit.value : undefined;
+      const ticketId =
+        outcome?.kind === "ticket_created"
+          ? outcome.ticket.id
+          : outcome && "ticketId" in outcome
+            ? outcome.ticketId
+            : undefined;
+      const error =
+        classified.error ?? (Exit.isFailure(exit) ? errorMessage(exit.cause) : undefined);
+      return auditClassification({
+        message,
+        projectId: classified.projectId,
+        ...(classified.result && { result: classified.result }),
+        threshold,
+        // Every gate that ends handling runs before the classifier.
+        outcome: (outcome?.kind ?? "error") as ClassifiedOutcome,
+        ...(ticketId !== undefined && { ticketId }),
+        ...(error !== undefined && { error }),
+      });
+    }),
+  );
+};
