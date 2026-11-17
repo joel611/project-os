@@ -89,7 +89,12 @@ describe("Sidekick", () => {
     expect(stack.createdThreads).toHaveLength(1);
     expect(
       stack.posted.filter((p) => p.target.threadId === "discord-thread-1").map((p) => p.content),
-    ).toEqual([THREAD_OPENED_MESSAGE, "sidekick: lookup the latest release of acme/web"]);
+    ).toEqual([
+      THREAD_OPENED_MESSAGE,
+      // Ada hasn't linked GitHub: the ask goes in the ticket's thread.
+      expect.stringContaining("<@u-ada>, I need your GitHub access"),
+      "sidekick: lookup the latest release of acme/web",
+    ]);
     expect(await assignedToWorker()).toEqual([]);
   });
 

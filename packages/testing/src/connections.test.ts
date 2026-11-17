@@ -67,7 +67,11 @@ const bob = { id: "u-bob", name: "Bob" };
 const run = async (
   events: TicketEvent[],
   links: Array<[string, "google" | "github"] | [Person, "google" | "github"]>,
-  options: { readonly calls?: number; readonly replyChannel?: boolean } = {},
+  options: {
+    readonly calls?: number;
+    readonly replyChannel?: boolean;
+    readonly thread?: boolean;
+  } = {},
 ) => {
   const t = makeTestLayer();
   for (const [who, provider] of links) {
@@ -95,6 +99,15 @@ const run = async (
       });
       const repo = yield* TicketRepository;
       yield* repo.insert(ticket);
+      if (options.thread) {
+        yield* repo.linkThread({
+          ticketId: "t1",
+          channelType: "discord",
+          channelId: "chan-1",
+          threadId: "thread-9",
+          createdAt: T0,
+        });
+      }
       for (const e of events) yield* repo.appendEvent(e);
       const call = Effect.result(userTokenForTicket({ ticketId: "t1", provider: "google" }));
       for (let i = 1; i < (options.calls ?? 1); i++) yield* call;
@@ -140,9 +153,15 @@ describe("userTokenForTicket", () => {
         channelType: "discord",
         channelId: "chan-1",
         content:
-          '<@u-ada>, I need your Google access for "Summarize the Q3 doc". Run `/connect provider:google` and I\'ll carry on.',
+          '<@u-ada>, I need your Google access for "Summarize the Q3 doc". Run `/connect provider:google`, then reply here and I\'ll carry on.',
       },
     ]);
+  });
+
+  it("asks in the ticket's thread, where the reply resumes it", async () => {
+    const t = [event(1, "created", { sender: ada, channelType: "discord" })];
+    const { sent } = await run(t, [], { thread: true });
+    expect(sent).toEqual([expect.objectContaining({ channelId: "chan-1", threadId: "thread-9" })]);
   });
 
   it("reads senders without a name or a channel type, skipping malformed events", async () => {
@@ -171,7 +190,7 @@ describe("userTokenForTicket", () => {
       { calls: 2 },
     );
     expect(sent.map((s) => s.content)).toEqual([
-      'ada@example.com, I need your Google access for "Summarize the Q3 doc". Run `/connect provider:google` and I\'ll carry on.',
+      'ada@example.com, I need your Google access for "Summarize the Q3 doc". Run `/connect provider:google`, then reply here and I\'ll carry on.',
     ]);
   });
 

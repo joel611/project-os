@@ -1,5 +1,7 @@
 import {
   answerScopePrompt,
+  askOnTicket,
+  askPrompt,
   getTicket,
   handleInbound,
   heartbeat,
@@ -15,6 +17,7 @@ import {
   THREAD_OPENED_MESSAGE,
   TicketRepository,
   TICKET_REOPENED_MESSAGE,
+  TICKET_RESUMED_MESSAGE,
   WorkerRepository,
   type Project,
   type Ticket,
@@ -318,5 +321,92 @@ describe("thread messages, classified with their ticket", () => {
     expect(value.garbled.accepted).toBe(true);
     expect(value.missing.accepted).toBe(false);
     expect(value.created).toBe(0);
+  });
+});
+
+describe("answers to a blocked ticket's question", () => {
+  const followUp: IntentResult = { intent: "follow_up", confidence: 0.9 };
+  const ask = (ticketId = "t1") =>
+    Effect.map(askOnTicket({ ticketId, kind: "approval", question: "Deploy now?" }), (p) => p.id);
+
+  it("resumes the ticket and tells its thread", async () => {
+    const { value, t } = await run(
+      Effect.gen(function* () {
+        const promptId = yield* ask();
+        const replied = yield* answerScopePrompt(click(promptId, 0), {}, {});
+        const { ticket: after, events } = yield* getTicket({ ticketId: "t1" });
+        return { replied, after, events };
+      }),
+      followUp,
+      { status: "blocked" },
+    );
+    expect(value.replied.accepted).toBe(true);
+    expect(value.after).toMatchObject({ status: "assigned", workerId: "w1" });
+    expect(value.events.map((e) => e.body)).toContain("Resumed by a follow-up (was blocked)");
+    expect(t.sent.at(-1)).toMatchObject({ threadId: "th1", content: TICKET_RESUMED_MESSAGE });
+  });
+
+  it("says it is queued when no worker is free", async () => {
+    const { t } = await run(
+      Effect.gen(function* () {
+        const promptId = yield* ask();
+        yield* (yield* WorkerRepository).remove("w1");
+        yield* answerScopePrompt(click(promptId, 0), {}, {});
+      }),
+      followUp,
+      { status: "blocked" },
+    );
+    expect(t.sent.at(-1)!.content).toMatch(/^Picking this back up\. No worker is free/);
+  });
+
+  it("only records the answer on a ticket that isn't blocked, or a prompt with no ticket", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const onTicket = yield* ask();
+        const loose = yield* askPrompt({
+          target: { channelType: "discord", channelId: "chan-1" },
+          kind: "approval",
+          question: "Ok?",
+        });
+        yield* answerScopePrompt(click(onTicket, 0), {}, {});
+        yield* answerScopePrompt(click(loose.id, 0), {}, {});
+        return (yield* getTicket({ ticketId: "t1" })).ticket;
+      }),
+      followUp,
+      { status: "in_progress" },
+    );
+    expect(value).toMatchObject({ status: "in_progress", workerId: "w1" });
+  });
+
+  it("keeps the answer when the resume fails or loses a race", async () => {
+    const { value } = await run(
+      Effect.gen(function* () {
+        const gone = yield* ask();
+        const raced = yield* ask();
+        const repo = yield* TicketRepository;
+        const missing = yield* answerScopePrompt(click(gone, 0), {}, {}).pipe(
+          Effect.updateService(TicketRepository, (r) => ({
+            ...r,
+            get: (id: string) => Effect.flatMap(r.get(id), () => r.get("nope")),
+          })),
+        );
+        const lost = yield* answerScopePrompt(click(raced, 0), {}, {}).pipe(
+          Effect.updateService(TicketRepository, (r) => ({
+            ...r,
+            reopen: (id: string, at: string) =>
+              Effect.andThen(
+                r.reopen(id, at),
+                Effect.suspend(() => r.reopen(id, at)),
+              ),
+          })),
+        );
+        return { missing, lost, after: yield* repo.get("t1") };
+      }),
+      followUp,
+      { status: "blocked" },
+    );
+    expect(value.missing.accepted).toBe(true);
+    expect(value.lost.accepted).toBe(true);
+    expect(value.after.status).toBe("open");
   });
 });

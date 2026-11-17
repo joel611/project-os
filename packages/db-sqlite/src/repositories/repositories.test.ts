@@ -487,7 +487,7 @@ describe("TicketRepository", () => {
     expect([out.stillAssigned, out.stillRunning]).toEqual(["assigned", "in_progress"]);
   });
 
-  it("reopens a completed or failed ticket to open, clearing its last run", async () => {
+  it("reopens a completed, failed or blocked ticket to open, clearing its last run", async () => {
     const out = await run(
       Effect.gen(function* () {
         yield* seeded;
@@ -497,16 +497,26 @@ describe("TicketRepository", () => {
         );
         yield* repo.insert(ticket({ id: "t2", status: "failed", error: "boom", completedAt: T0 }));
         yield* repo.insert(ticket({ id: "t3", status: "cancelled", completedAt: T0 }));
+        yield* repo.insert(
+          ticket({
+            id: "t4",
+            status: "blocked",
+            workerType: "local",
+            workerId: "w1",
+            startedAt: T0,
+          }),
+        );
         return {
           completed: yield* repo.reopen("t1", T1),
           failed: yield* repo.reopen("t2", T1),
+          blocked: yield* repo.reopen("t4", T1),
           stored: yield* repo.get("t1"),
           cancelled: yield* Effect.flip(repo.reopen("t3", T1)),
           running: yield* Effect.flip(repo.reopen("t1", T1)),
         };
       }),
     );
-    for (const t of [out.completed, out.failed, out.stored]) {
+    for (const t of [out.completed, out.failed, out.blocked, out.stored]) {
       expect(t).toMatchObject({
         status: "open",
         workerType: null,

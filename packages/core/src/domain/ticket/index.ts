@@ -106,15 +106,18 @@ export const releaseTicket = (
       })
     : Effect.fail(new InvalidTransition({ ticketId: ticket.id, from: ticket.status, to: "open" }));
 
-/** Finished statuses a follow-up in the ticket's thread can reopen. `cancelled` stays closed. */
-export const REOPENABLE_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed"];
+/**
+ * Statuses a follow-up in the ticket's thread can reopen: finished ones, and `blocked`, whose
+ * Worker ended its session waiting for that follow-up. `cancelled` stays closed.
+ */
+export const REOPENABLE_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed", "blocked"];
 
 export const canReopen = (status: TicketStatus): boolean => REOPENABLE_STATUSES.includes(status);
 
 /**
- * Reopen: `completed | failed → open`, for a follow-up in the ticket's thread. The ticket goes
- * back to Queued with no worker, its last run cleared (the run's events stay), so it is placed
- * again like a new one, keeping its `createdAt`.
+ * Reopen: `completed | failed | blocked → open`, for a follow-up in the ticket's thread (or a
+ * button answer on a blocked one). The ticket goes back to Queued with no worker, its last run
+ * cleared (the run's events stay), so it is placed again like a new one, keeping its `createdAt`.
  */
 export const reopenTicket = (
   ticket: Ticket,

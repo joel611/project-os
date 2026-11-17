@@ -1,7 +1,13 @@
 import { InboundMessage, type PromptAnswer, type ReplyInstruction } from "@project-os/contracts";
 import { statusQuestion, ticketContext } from "@project-os/system-prompts";
 import { Cause, Effect, Exit, Schema } from "effect";
-import { ACTIVE_STATUSES, canReopen, isTerminal, type Ticket } from "../../domain/index.ts";
+import {
+  ACTIVE_STATUSES,
+  canReopen,
+  isTerminal,
+  type Ticket,
+  type TicketStatus,
+} from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -9,6 +15,7 @@ import {
   IntentClassifier,
   type IntentResult,
   KeyValueStore,
+  type Person,
   ProjectRepository,
   ProjectSourceRepository,
   TicketRepository,
@@ -24,7 +31,14 @@ import { recordChannelMessage } from "./channel-digest.ts";
 import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
-import { answerPrompt, askPrompt, PROMPT_TTL_SECONDS, type PromptAnswerConfig } from "./prompts.ts";
+import { notifyTicket } from "./on-ticket-completed.ts";
+import {
+  answerPrompt,
+  askPrompt,
+  getPrompt,
+  PROMPT_TTL_SECONDS,
+  type PromptAnswerConfig,
+} from "./prompts.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { nowIso, updateStatus } from "./tickets.ts";
 
@@ -88,6 +102,56 @@ export const THREAD_OPENED_MESSAGE =
 export const TICKET_CLOSED_MESSAGE =
   "This ticket was cancelled. Post in the channel to start something new.";
 export const TICKET_REOPENED_MESSAGE = "I reopened this ticket. A worker will pick it up again.";
+export const TICKET_RESUMED_MESSAGE = "Picking this back up. A worker will carry on with it.";
+
+/** What the thread is told when a follow-up reopens a ticket (or resumes a blocked one). */
+export const reopenedMessage = (from: TicketStatus, queued: boolean) => {
+  const lead = from === "blocked" ? "Picking this back up." : "I reopened this ticket.";
+  if (queued) return `${lead} ${QUEUED_MESSAGE}`;
+  return from === "blocked" ? TICKET_RESUMED_MESSAGE : TICKET_REOPENED_MESSAGE;
+};
+
+/**
+ * Reopens `ticket` for a follow-up from `by` and places it again (`reopenTicket`). A blocked
+ * ticket's Worker ended its session waiting for this, so it is resumed the same way. Undefined
+ * when it can't be reopened, e.g. another follow-up got there first.
+ */
+const reopenForFollowUp = (ticket: Ticket, by: Person, routing: HandleInboundConfig, at: string) =>
+  Effect.gen(function* () {
+    const tickets = yield* TicketRepository;
+    const ids = yield* IdGenerator;
+    const reopened = yield* tickets.reopen(ticket.id, at).pipe(
+      Effect.map((t) => t as Ticket | undefined),
+      Effect.catchTag("InvalidTransition", () => Effect.undefined),
+    );
+    if (!reopened) return undefined;
+    yield* auditTicket(
+      reopened,
+      "reopened",
+      { type: "person", id: by.id, name: by.name ?? null },
+      { from: ticket.status, at },
+    );
+    yield* tickets.appendEvent({
+      id: yield* ids.next,
+      ticketId: reopened.id,
+      type: "system",
+      actor: "coordinator",
+      actorId: null,
+      body:
+        ticket.status === "blocked"
+          ? "Resumed by a follow-up (was blocked)"
+          : `Reopened by a follow-up (was ${ticket.status})`,
+      payload: { kind: "reopened", from: ticket.status },
+      createdAt: at,
+    });
+    const placement = yield* placeOrQueue({
+      ticketId: reopened.id,
+      requester: reopened.requester ?? { channelType: by.channelType, id: by.id },
+      routing,
+      at,
+    });
+    return { ticket: placement.ticket, queued: placement.kind === "queued" };
+  });
 
 /** Asked when a message in a ticket's thread looks like different work. */
 export const SCOPE_PROMPT_QUESTION =
@@ -453,47 +517,19 @@ export const handleInbound = (
           if (asked) return asked;
         }
       }
-      // A follow-up on a finished ticket reopens it and places it again; the next Worker reads
-      // the earlier result and the new ask on the ticket. Only a cancelled ticket stays closed.
+      // A follow-up on a finished or blocked ticket reopens it and places it again; the next
+      // Worker reads the earlier events and the new ask on the ticket. A cancelled one stays closed.
       if (canReopen(threadTicket.status)) {
         const added = yield* addFollowUp(threadTicket.id);
-        const reopened = yield* tickets.reopen(threadTicket.id, at).pipe(
-          Effect.map((t) => t as Ticket | undefined),
-          // Another follow-up reopened it first: this one is just a follow-up on it.
-          Effect.catchTag("InvalidTransition", () => Effect.undefined),
+        const reopened = yield* reopenForFollowUp(
+          threadTicket,
+          { channelType: message.channelType, ...message.sender },
+          config,
+          at,
         );
         if (!reopened) return added;
-        yield* auditTicket(
-          reopened,
-          "reopened",
-          { type: "person", id: message.sender.id, name: message.sender.name ?? null },
-          { from: threadTicket.status, at },
-        );
-        yield* tickets.appendEvent({
-          id: yield* ids.next,
-          ticketId: reopened.id,
-          type: "system",
-          actor: "coordinator",
-          actorId: null,
-          body: `Reopened by a follow-up (was ${threadTicket.status})`,
-          payload: { kind: "reopened", from: threadTicket.status },
-          createdAt: at,
-        });
-        const placement = yield* placeOrQueue({
-          ticketId: reopened.id,
-          requester: reopened.requester ?? {
-            channelType: message.channelType,
-            id: message.sender.id,
-          },
-          routing: config,
-          at,
-        });
-        yield* reply(
-          placement.kind === "queued"
-            ? `I reopened this ticket. ${QUEUED_MESSAGE}`
-            : TICKET_REOPENED_MESSAGE,
-        );
-        return { kind: "ticket_reopened", ticket: placement.ticket } as InboundOutcome;
+        yield* reply(reopenedMessage(threadTicket.status, reopened.queued));
+        return { kind: "ticket_reopened", ticket: reopened.ticket } as InboundOutcome;
       }
       if (isTerminal(threadTicket.status)) {
         yield* reply(TICKET_CLOSED_MESSAGE);
@@ -655,6 +691,30 @@ export const handleInbound = (
 };
 
 /**
+ * A Worker that asked with `ticket_ask` and couldn't go on without the answer set its ticket to
+ * blocked and ended its session, so the answer resumes the ticket like a thread follow-up.
+ */
+const resumeAnsweredTicket = (answer: PromptAnswer, inbound: HandleInboundConfig) =>
+  Effect.gen(function* () {
+    const prompt = yield* getPrompt({ promptId: answer.promptId });
+    if (prompt.ticketId === null) return;
+    const ticket = yield* Effect.flatMap(TicketRepository, (r) => r.get(prompt.ticketId!));
+    if (ticket.status !== "blocked") return;
+    const at = yield* nowIso;
+    const resumed = yield* reopenForFollowUp(
+      ticket,
+      { channelType: answer.channelType, ...answer.sender },
+      inbound,
+      at,
+    );
+    if (resumed) yield* notifyTicket(ticket.id, reopenedMessage(ticket.status, resumed.queued));
+  }).pipe(
+    Effect.catch((err) =>
+      Effect.logWarning(`could not resume the ticket of prompt ${answer.promptId}`, err.message),
+    ),
+  );
+
+/**
  * Records a click on a prompt (`answerPrompt`). A scope prompt's click then routes the message
  * it asked about: "New ticket" opens one in a new thread and links it, "Part of this ticket"
  * makes it a follow-up on the thread's ticket (reopening a finished one).
@@ -669,7 +729,10 @@ export const answerScopePrompt = (
     if (!replied.accepted) return replied;
     const kv = yield* KeyValueStore;
     const raw = yield* kv.get(scopeKey(answer.promptId));
-    if (raw === undefined) return replied;
+    if (raw === undefined) {
+      yield* resumeAnsweredTicket(answer, inbound);
+      return replied;
+    }
     yield* kv.delete(scopeKey(answer.promptId));
     const asked = decodeScopeAsk(raw);
     if (asked._tag === "None") return replied;
