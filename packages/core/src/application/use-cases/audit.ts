@@ -136,6 +136,9 @@ const OUTCOME_LABEL: Readonly<Record<ClassifiedOutcome, string>> = {
   sidekick_answered: "Sidekick answered",
   admin_handled: "admin handled",
   clarification_sent: "asked to clarify",
+  ticket_reopened: "ticket reopened",
+  chit_chat_ignored: "small talk ignored",
+  scope_asked: "asked if it's a new ticket",
   error: "failed",
 };
 

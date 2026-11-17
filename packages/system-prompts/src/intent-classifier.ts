@@ -24,3 +24,38 @@ export const INTENT_QUESTION = "What does the message want?";
 
 export const EXECUTOR_QUESTION =
   "Who does this request? A Worker works in a checkout of the repo. The Sidekick only calls read-only Drive and GitHub tools. Only meaningful for new requests.";
+
+/**
+ * Asked only for a message said in a ticket's thread: is it about that ticket? The ticket is
+ * described in the `ticket_context` state (see `ticketContext`).
+ */
+export const SCOPE_CRITERIA = {
+  in_scope:
+    "The message is about the ticket in ticket_context: it adds to, corrects, continues or asks about that work, even if the ticket is finished",
+  out_of_scope:
+    "The message asks for different work that has nothing to do with the ticket in ticket_context",
+} as const;
+
+export const SCOPE_QUESTION =
+  "Is the message about the ticket described in ticket_context? Only meaningful when ticket_context is given.";
+
+/** The longest part of a ticket's last result that goes into `ticket_context`. */
+const RESULT_EXCERPT_MAX = 600;
+
+/** The ticket a thread message was said in, as the classifier's `ticket_context`. */
+export const ticketContext = (ticket: {
+  readonly title: string;
+  readonly inputSummary: string;
+  readonly status: string;
+  readonly lastResult?: string;
+}): string => {
+  const result =
+    ticket.lastResult === undefined
+      ? ""
+      : `\nLast result: ${
+          ticket.lastResult.length > RESULT_EXCERPT_MAX
+            ? `${ticket.lastResult.slice(0, RESULT_EXCERPT_MAX)}…`
+            : ticket.lastResult
+        }`;
+  return `Ticket: ${ticket.title}\nStatus: ${ticket.status}\nAsked: ${ticket.inputSummary}${result}`;
+};

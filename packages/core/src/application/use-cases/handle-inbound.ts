@@ -1,6 +1,6 @@
-import type { InboundMessage, ReplyInstruction } from "@project-os/contracts";
-import { statusQuestion } from "@project-os/system-prompts";
-import { Cause, Effect, Exit } from "effect";
+import { InboundMessage, type PromptAnswer, type ReplyInstruction } from "@project-os/contracts";
+import { statusQuestion, ticketContext } from "@project-os/system-prompts";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { ACTIVE_STATUSES, canReopen, isTerminal, type Ticket } from "../../domain/index.ts";
 import {
   AgentRuntime,
@@ -12,6 +12,7 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   TicketRepository,
+  type TicketScope,
 } from "../ports/index.ts";
 import {
   type AttachmentStorageConfig,
@@ -23,6 +24,7 @@ import { recordChannelMessage } from "./channel-digest.ts";
 import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
+import { answerPrompt, askPrompt, PROMPT_TTL_SECONDS, type PromptAnswerConfig } from "./prompts.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { nowIso, updateStatus } from "./tickets.ts";
 
@@ -66,6 +68,8 @@ export type InboundOutcome =
   | { readonly kind: "ticket_created"; readonly ticket: Ticket }
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
   | { readonly kind: "ticket_reopened"; readonly ticket: Ticket }
+  | { readonly kind: "chit_chat_ignored"; readonly ticketId: string }
+  | { readonly kind: "scope_asked"; readonly ticketId: string; readonly promptId: string }
   | { readonly kind: "ticket_closed"; readonly ticketId: string }
   | { readonly kind: "status_answered" }
   | { readonly kind: "memory_saved" }
@@ -85,6 +89,40 @@ export const TICKET_CLOSED_MESSAGE =
   "This ticket was cancelled. Post in the channel to start something new.";
 export const TICKET_REOPENED_MESSAGE = "I reopened this ticket. A worker will pick it up again.";
 
+/** Asked when a message in a ticket's thread looks like different work. */
+export const SCOPE_PROMPT_QUESTION =
+  "This looks like a new request, not part of this ticket. Should I open a new ticket for it?";
+export const NEW_TICKET_OPTION = "New ticket";
+export const SAME_TICKET_OPTION = "Part of this ticket";
+export const newTicketLinkMessage = (threadId: string) =>
+  `I opened a new ticket for this: <#${threadId}>`;
+export const newTicketThreadIntro = (fromThreadId: string, content: string) =>
+  `New ticket from <#${fromThreadId}>:\n> ${content.replaceAll("\n", "\n> ")}`;
+
+/**
+ * A replay of a thread message once its scope prompt is answered: route it as `scope` says,
+ * without asking again. `result` is the classifier's first answer, reused for a new ticket.
+ */
+export interface ScopeOverride {
+  readonly scope: TicketScope;
+  readonly result: IntentResult;
+}
+
+const scopeKey = (promptId: string) => `scope-ask:${promptId}`;
+
+/** What a scope prompt remembers about the message it asked about. */
+const ScopeAsk = Schema.fromJsonString(
+  Schema.Struct({
+    message: InboundMessage,
+    result: Schema.Struct({
+      intent: Schema.String,
+      confidence: Schema.Finite,
+      executor: Schema.optionalKey(Schema.Literals(["worker", "sidekick"])),
+    }),
+  }),
+);
+const decodeScopeAsk = Schema.decodeUnknownOption(ScopeAsk);
+
 export const MEMORY_SAVED_MESSAGE = "Noted. I saved that to the project memory.";
 
 export const sidekickFailedMessage = (reason: string) =>
@@ -101,7 +139,11 @@ interface Classification {
 const errorMessage = (cause: Cause.Cause<unknown>): string =>
   (Cause.squash(cause) as Error).message;
 
-export const handleInbound = (message: InboundMessage, config: HandleInboundConfig) => {
+export const handleInbound = (
+  message: InboundMessage,
+  config: HandleInboundConfig,
+  override?: ScopeOverride,
+) => {
   const threshold = config.confidenceThreshold ?? 0.5;
   let classification: Classification | undefined;
   return Effect.gen(function* () {
@@ -135,13 +177,16 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     const openTicketThread = (ticketId: string, at: string) =>
       Effect.gen(function* () {
         if (!supportsThreads(message.channelType)) return undefined;
+        // Said in another ticket's thread: a new thread in the channel, since a message in a
+        // thread can't start one of its own.
+        const fromThread = override?.scope === "out_of_scope" ? message.threadId : undefined;
         const threadId =
-          message.threadId ??
+          (fromThread === undefined ? message.threadId : undefined) ??
           (yield* gateway
             .createThread({
               channelType: message.channelType,
               channelId: message.channelId,
-              messageId: message.externalId,
+              ...(fromThread === undefined ? { messageId: message.externalId } : {}),
               name: message.content.slice(0, TITLE_MAX),
             })
             .pipe(
@@ -165,8 +210,12 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
           channelType: message.channelType,
           channelId: message.channelId,
           threadId,
-          content: THREAD_OPENED_MESSAGE,
+          content:
+            fromThread === undefined
+              ? THREAD_OPENED_MESSAGE
+              : `${newTicketThreadIntro(fromThread, message.content)}\n\n${THREAD_OPENED_MESSAGE}`,
         });
+        if (fromThread !== undefined) yield* reply(newTicketLinkMessage(threadId));
         return threadId;
       });
 
@@ -201,11 +250,13 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
             content,
           });
 
-    const fresh = yield* kv.setIfAbsent(
-      `inbound:${message.channelType}:${message.externalId}`,
-      "1",
-      { ttlSeconds: config.dedupeTtlSeconds ?? 86_400 },
-    );
+    // A replay was taken in, logged and acknowledged the first time round.
+    const replay = override !== undefined;
+    const fresh =
+      replay ||
+      (yield* kv.setIfAbsent(`inbound:${message.channelType}:${message.externalId}`, "1", {
+        ttlSeconds: config.dedupeTtlSeconds ?? 86_400,
+      }));
     if (!fresh) return { kind: "duplicate" } satisfies InboundOutcome as InboundOutcome;
 
     const isAdminChannel =
@@ -219,26 +270,32 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
 
     // Everything that arrives is logged, even what is refused or ignored below. Admin-channel
     // and unlinked-channel messages belong to no project, so they show only org-wide.
-    yield* auditInbound(message, source?.projectId ?? null, { admin: isAdminChannel });
+    if (!replay) yield* auditInbound(message, source?.projectId ?? null, { admin: isAdminChannel });
 
     if (isAdminChannel && config.adminUserIds && !config.adminUserIds.includes(message.sender.id)) {
       yield* reply("Not authorized: you are not on the admin list.");
       return { kind: "admin_forbidden" } as InboundOutcome;
     }
 
-    const classify = (projectContext: string, projectId: string | null) =>
-      classifier.classify({ content: message.content, projectContext }).pipe(
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            classification = { projectId, result };
-          }),
-        ),
-        Effect.tapError((e) =>
-          Effect.sync(() => {
-            classification = { projectId, error: e.message };
-          }),
-        ),
-      );
+    const classify = (projectContext: string, projectId: string | null, ticket?: string) =>
+      classifier
+        .classify({
+          content: message.content,
+          projectContext,
+          ...(ticket === undefined ? {} : { ticketContext: ticket }),
+        })
+        .pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              classification = { projectId, result };
+            }),
+          ),
+          Effect.tapError((e) =>
+            Effect.sync(() => {
+              classification = { projectId, error: e.message };
+            }),
+          ),
+        );
     const isConfident = (confidence: number) => confidence >= threshold;
 
     if (isAdminChannel) {
@@ -257,7 +314,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     }
 
     // Before the mention gate: the digest reads what people say among themselves too.
-    if (source && config.channelDigest && message.channelType === "discord") {
+    if (!replay && source && config.channelDigest && message.channelType === "discord") {
       const target = yield* projects.get(source.projectId);
       if (target.channelDigest) yield* recordChannelMessage(message, target.id);
     }
@@ -272,7 +329,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     }
 
     if (!source) return { kind: "unlinked" } as InboundOutcome;
-    yield* acknowledge();
+    if (!replay) yield* acknowledge();
 
     const project = yield* projects.get(source.projectId);
     const at = yield* nowIso;
@@ -305,14 +362,59 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         return { kind: "follow_up_added", ticketId } as InboundOutcome;
       });
 
-    // A message in a ticket's thread belongs to that ticket, whatever the classifier says,
-    // unless it asks how the ticket is going.
+    /** The ticket as the classifier sees it: what was asked, where it is, its last result. */
+    const describeTicket = (ticket: Ticket) =>
+      Effect.map(tickets.listEvents(ticket.id), (events) => {
+        const lastResult = events.findLast((e) => e.type === "result")?.body;
+        return ticketContext({
+          title: ticket.title,
+          inputSummary: ticket.inputSummary,
+          status: ticket.status,
+          ...(lastResult === undefined ? {} : { lastResult }),
+        });
+      });
+
+    /** Asks whether a thread message is new work; the click replays it (`answerScopePrompt`). */
+    const askScope = (ticketId: string, threadId: string, result: IntentResult) =>
+      askPrompt({
+        target: { channelType: message.channelType, channelId: message.channelId, threadId },
+        kind: "choice",
+        question: SCOPE_PROMPT_QUESTION,
+        options: [NEW_TICKET_OPTION, SAME_TICKET_OPTION],
+      }).pipe(
+        Effect.tap((prompt) =>
+          kv.set(scopeKey(prompt.id), JSON.stringify({ message, result }), {
+            ttlSeconds: PROMPT_TTL_SECONDS,
+          }),
+        ),
+        Effect.map(
+          (prompt) => ({ kind: "scope_asked", ticketId, promptId: prompt.id }) as InboundOutcome,
+        ),
+        // No buttons (e.g. no permission): keep the message on this ticket, as before.
+        Effect.catch((err) =>
+          Effect.as(
+            Effect.logWarning(
+              `could not ask about the scope of ${message.externalId}`,
+              err.message,
+            ),
+            undefined,
+          ),
+        ),
+      );
+
+    // A message in a ticket's thread belongs to that ticket, unless it asks how the ticket is
+    // going, is small talk on a finished ticket, or is clearly different work (then a click
+    // decides). Once that click says it's different work, it is routed as a channel message.
     const thread =
       message.threadId === undefined
         ? undefined
         : yield* tickets.findByThread(message.channelType, message.threadId);
     const threadTicket = thread && (yield* tickets.get(thread.ticketId));
-    if (threadTicket && threadTicket.projectId === project.id) {
+    if (
+      threadTicket &&
+      threadTicket.projectId === project.id &&
+      override?.scope !== "out_of_scope"
+    ) {
       // A Sidekick ticket is finished the moment it is answered, so its thread keeps talking
       // to the same Sidekick conversation instead of hitting the closed-ticket reply.
       if (threadTicket.workerType === "sidekick") {
@@ -321,15 +423,35 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         yield* reply(answered.ok ? answered.text : sidekickFailedMessage(answered.text));
         return { kind: "sidekick_answered", ticketId: threadTicket.id } as InboundOutcome;
       }
-      const result = yield* classify(project.customInstructions, project.id);
-      if (isConfident(result.confidence) && result.intent === "status_question") {
-        const text = yield* runtime.respond({
-          sessionId: `project:${project.id}`,
-          requestId: message.externalId,
-          prompt: statusQuestion({ question: message.content, tickets: [threadTicket] }),
-        });
-        yield* reply(text);
-        return { kind: "status_answered" } as InboundOutcome;
+      if (!replay) {
+        const result = yield* classify(
+          project.customInstructions,
+          project.id,
+          yield* describeTicket(threadTicket),
+        );
+        const confident = isConfident(result.confidence);
+        if (confident && result.intent === "status_question") {
+          const text = yield* runtime.respond({
+            sessionId: `project:${project.id}`,
+            requestId: message.externalId,
+            prompt: statusQuestion({ question: message.content, tickets: [threadTicket] }),
+          });
+          yield* reply(text);
+          return { kind: "status_answered" } as InboundOutcome;
+        }
+        // "thanks!" under a finished ticket is not a reason to start it again.
+        if (confident && result.intent === "chit_chat" && isTerminal(threadTicket.status)) {
+          return { kind: "chit_chat_ignored", ticketId: threadTicket.id } as InboundOutcome;
+        }
+        if (
+          confident &&
+          result.intent === "new_request" &&
+          result.scope?.choice === "out_of_scope" &&
+          isConfident(result.scope.confidence)
+        ) {
+          const asked = yield* askScope(threadTicket.id, thread.threadId, result);
+          if (asked) return asked;
+        }
       }
       // A follow-up on a finished ticket reopens it and places it again; the next Worker reads
       // the earlier result and the new ask on the ticket. Only a cancelled ticket stays closed.
@@ -380,7 +502,7 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
       return yield* addFollowUp(threadTicket.id);
     }
 
-    const result = yield* classify(project.customInstructions, project.id);
+    const result = override?.result ?? (yield* classify(project.customInstructions, project.id));
     if (!isConfident(result.confidence)) return yield* clarify();
 
     const active = (yield* tickets.listByStatus(ACTIVE_STATUSES))
@@ -531,3 +653,29 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
     }),
   );
 };
+
+/**
+ * Records a click on a prompt (`answerPrompt`). A scope prompt's click then routes the message
+ * it asked about: "New ticket" opens one in a new thread and links it, "Part of this ticket"
+ * makes it a follow-up on the thread's ticket (reopening a finished one).
+ */
+export const answerScopePrompt = (
+  answer: PromptAnswer,
+  prompts: PromptAnswerConfig,
+  inbound: HandleInboundConfig,
+) =>
+  Effect.gen(function* () {
+    const replied = yield* answerPrompt(answer, prompts);
+    if (!replied.accepted) return replied;
+    const kv = yield* KeyValueStore;
+    const raw = yield* kv.get(scopeKey(answer.promptId));
+    if (raw === undefined) return replied;
+    yield* kv.delete(scopeKey(answer.promptId));
+    const asked = decodeScopeAsk(raw);
+    if (asked._tag === "None") return replied;
+    yield* handleInbound(asked.value.message, inbound, {
+      scope: answer.choice === 0 ? "out_of_scope" : "in_scope",
+      result: asked.value.result,
+    });
+    return replied;
+  });

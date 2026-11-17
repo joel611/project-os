@@ -140,6 +140,40 @@ describe("makeIntentClassifier", () => {
     }
   });
 
+  it("asks whether a thread message is about its ticket when given the ticket", async () => {
+    const s = scripted({
+      answers: { intent: choice("new_request", 0.9), scope: choice("out_of_scope", 0.8) },
+    });
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.flatMap(IntentClassifier, (c) =>
+          c.classify({
+            content: "also build a billing page",
+            projectContext: "Acme web app",
+            ticketContext: "Ticket: Fix login",
+          }),
+        ),
+        makeIntentClassifier(s),
+      ),
+    );
+    expect(result.scope).toEqual({ choice: "out_of_scope", confidence: 0.8 });
+    const [req] = s.requests;
+    expect(Object.keys(req!.questions)).toEqual(["intent", "executor", "scope"]);
+    expect(req!.state).toEqual({
+      message: "also build a billing page",
+      project_context: "Acme web app",
+      ticket_context: "Ticket: Fix login",
+    });
+  });
+
+  it("drops an unknown scope answer, and asks no scope without a ticket", async () => {
+    const s = scripted({
+      answers: { intent: choice("follow_up", 0.9), scope: choice("bogus", 0.9) },
+    });
+    expect((await call(makeIntentClassifier(s))).scope).toBeUndefined();
+    expect(Object.keys(s.requests[0]!.questions)).toEqual(["intent", "executor"]);
+  });
+
   it("maps stopReason error to ClassifierError", async () => {
     const s = scripted({ stopReason: "error", errorMessage: "401 unauthorized" });
     const err = await Effect.runPromise(

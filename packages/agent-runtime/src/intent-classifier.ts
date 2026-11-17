@@ -10,12 +10,15 @@ import {
   type Executor,
   IntentClassifier,
   type IntentResult,
+  type TicketScope,
 } from "@project-os/core";
 import {
   EXECUTOR_CRITERIA,
   EXECUTOR_QUESTION,
   INTENT_CRITERIA,
   INTENT_QUESTION,
+  SCOPE_CRITERIA,
+  SCOPE_QUESTION,
 } from "@project-os/system-prompts";
 import { Effect, Layer } from "effect";
 
@@ -45,7 +48,16 @@ const QUESTIONS: ClassifierContext["questions"] = {
   },
 };
 
+const SCOPES: Record<TicketScope, string> = SCOPE_CRITERIA;
+
+/** Asked as well for a message in a ticket's thread. */
+const WITH_SCOPE: ClassifierContext["questions"] = {
+  ...QUESTIONS,
+  scope: { type: "choice", instructions: SCOPE_QUESTION, criteria: SCOPES },
+};
+
 const isExecutor = (value: string): value is Executor => value in EXECUTORS;
+const isScope = (value: string): value is TicketScope => value in SCOPES;
 
 const choiceOf = (answer: ClassifierAnswer | undefined) =>
   answer?.type === "choice" ? answer : undefined;
@@ -54,7 +66,11 @@ const toResult = (result: ClassifierResult): IntentResult => {
   const intent = choiceOf(result.answers.intent);
   if (!intent) throw new ClassifierError({ message: "classifier returned no `intent` answer" });
   const executor = choiceOf(result.answers.executor);
+  const scope = choiceOf(result.answers.scope);
   return {
+    ...(scope && isScope(scope.choice)
+      ? { scope: { choice: scope.choice, confidence: scope.confidence } }
+      : {}),
     intent: intent.choice,
     confidence: intent.confidence,
     probabilities: intent.probabilities,
@@ -86,13 +102,25 @@ export const makeIntentClassifier = (input: {
   readonly model: ClassifierModel<ClassifierApi>;
 }) =>
   Layer.succeed(IntentClassifier, {
-    classify: ({ content, projectContext }) =>
+    classify: ({ content, projectContext, ticketContext }) =>
       Effect.tryPromise({
         try: () =>
-          input.classifier.classify(input.model, {
-            state: { message: content, project_context: projectContext },
-            questions: QUESTIONS,
-          }),
+          input.classifier.classify(
+            input.model,
+            ticketContext === undefined
+              ? {
+                  state: { message: content, project_context: projectContext },
+                  questions: QUESTIONS,
+                }
+              : {
+                  state: {
+                    message: content,
+                    project_context: projectContext,
+                    ticket_context: ticketContext,
+                  },
+                  questions: WITH_SCOPE,
+                },
+          ),
         catch: (e) => new ClassifierError({ message: e instanceof Error ? e.message : String(e) }),
       }).pipe(
         Effect.flatMap((result) =>

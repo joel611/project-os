@@ -188,6 +188,21 @@ describe("threads endpoint", () => {
     expect(calls).toEqual([{ channelId: "c1", messageId: "m1", name: "Fix it" }]);
   });
 
+  it("opens a thread with no starter message when no message is given", async () => {
+    const calls: unknown[] = [];
+    const app = createReplyApp(
+      async () => {},
+      noChannel,
+      async (input) => {
+        calls.push(input);
+        return { threadId: "th-2" };
+      },
+    );
+    const { messageId: _, ...withoutMessage } = request;
+    expect((await thread(app, withoutMessage)).status).toBe(200);
+    expect(calls).toEqual([{ channelId: "c1", name: "Fix it" }]);
+  });
+
   it("rejects invalid bodies and non-discord channel types", async () => {
     const app = createReplyApp(
       async () => {},

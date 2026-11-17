@@ -7,6 +7,9 @@ import {
   EXECUTOR_QUESTION,
   INTENT_CRITERIA,
   INTENT_QUESTION,
+  SCOPE_CRITERIA,
+  SCOPE_QUESTION,
+  ticketContext,
   PROJECT_SESSION_INSTRUCTIONS,
   SIDEKICK_INSTRUCTIONS,
   statusQuestion,
@@ -137,6 +140,19 @@ describe("intent classifier", () => {
       "none",
     ]);
     expect(Object.keys(EXECUTOR_CRITERIA)).toEqual(["worker", "sidekick"]);
+    expect(Object.keys(SCOPE_CRITERIA)).toEqual(["in_scope", "out_of_scope"]);
+  });
+
+  it("describes a thread's ticket, with a short excerpt of its last result", () => {
+    const base = { title: "Fix login", inputSummary: "fix the login bug", status: "completed" };
+    expect(ticketContext(base)).toBe(
+      "Ticket: Fix login\nStatus: completed\nAsked: fix the login bug",
+    );
+    expect(ticketContext({ ...base, lastResult: "Fixed in #12" })).toContain(
+      "\nLast result: Fixed in #12",
+    );
+    const long = ticketContext({ ...base, lastResult: "x".repeat(1000) });
+    expect(long.endsWith(`${"x".repeat(600)}…`)).toBe(true);
   });
 });
 
@@ -153,6 +169,8 @@ describe("full text", () => {
       EXECUTOR_QUESTION,
       INTENT_CRITERIA,
       EXECUTOR_CRITERIA,
+      SCOPE_QUESTION,
+      SCOPE_CRITERIA,
     }),
   )("%s", (_name, text) => {
     expect(text).toMatchSnapshot();
