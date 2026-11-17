@@ -246,13 +246,14 @@ const TICKET_SUMMARY: Record<string, (t: Ticket) => string> = {
   assigned: (t) => `Assigned to ${t.workerId}`,
   claimed: (t) => `Claimed by ${t.workerId}`,
   released: () => "Sent back to the queue",
+  reopened: () => "Reopened by a follow-up",
   status_changed: (t) => `Status changed to ${t.status}`,
 };
 
 /** Logs a Ticket lifecycle change; `ticket` is its state after the change. */
 export const auditTicket = (
   ticket: Ticket,
-  action: "created" | "assigned" | "claimed" | "released" | "status_changed",
+  action: "created" | "assigned" | "claimed" | "released" | "reopened" | "status_changed",
   actor: AuditActor,
   extra?: { readonly from?: TicketStatus; readonly reason?: string; readonly at?: string },
 ) => {

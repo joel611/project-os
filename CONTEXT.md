@@ -21,7 +21,7 @@ _Avoid_: summary, transcript (nothing keeps the conversation itself).
 **Ticket**: the internal work item the Coordinator creates for each piece of work. All status, follow-ups, and results live on it as TicketEvents. Channels only see what the Coordinator chooses to surface.
 _Avoid_: task, job.
 
-**Ticket thread**: the channel thread a Ticket's conversation lives in (one each way). On Discord the Coordinator opens it on the message that created the Ticket; everything said there belongs to that Ticket.
+**Ticket thread**: the channel thread a Ticket's conversation lives in (one each way). On Discord the Coordinator opens it on the message that created the Ticket; everything said there belongs to that Ticket. A follow-up there on a `completed` or `failed` Ticket reopens it (back to `open`, placed again); a `cancelled` Ticket stays closed.
 
 **TicketEvent**: one entry in a Ticket's activity log (created, assigned, status_update, comment, follow_up, result, error, system).
 

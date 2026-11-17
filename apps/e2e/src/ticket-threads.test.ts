@@ -1,4 +1,9 @@
-import { IntentClassifier, THREAD_OPENED_MESSAGE, TICKET_CLOSED_MESSAGE } from "@project-os/core";
+import {
+  IntentClassifier,
+  THREAD_OPENED_MESSAGE,
+  TICKET_CLOSED_MESSAGE,
+  TICKET_REOPENED_MESSAGE,
+} from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { fakeInbound, type FakeSpeaker } from "../../../packages/channel-discord/src/fake.ts";
@@ -115,7 +120,7 @@ describe("ticket threads", () => {
     expect(stack.posted[0]!.content).not.toContain("dark mode");
   });
 
-  it("posts the result in the ticket's thread and closes the thread to new follow-ups", async () => {
+  it("posts the result in the ticket's thread, and a follow-up there reopens the ticket", async () => {
     await say(ada, "please add dark mode");
     const [ticket] = await tickets();
     await tool("ticket_claim", { ticketId: ticket.id, workerId: WORKER });
@@ -128,9 +133,38 @@ describe("ticket threads", () => {
     await say(inThread("discord-thread-1"), "one more thing");
     expect(stack.posted.at(-1)).toEqual({
       target: { channelId: CHANNEL, threadId: "discord-thread-1" },
-      content: TICKET_CLOSED_MESSAGE,
+      content: TICKET_REOPENED_MESSAGE,
     });
     expect(await tickets()).toHaveLength(1);
+    const [reopened] = await tickets();
+    expect(reopened).toMatchObject({ id: ticket.id, status: "assigned", workerId: WORKER });
+    expect((await events(ticket.id)).map((e) => [e.type, e.body])).toEqual(
+      expect.arrayContaining([
+        ["follow_up", "one more thing"],
+        ["system", "Reopened by a follow-up (was completed)"],
+      ]),
+    );
+
+    // The Worker picks it up again, and the second result is posted in the thread too.
+    stack.posted.length = 0;
+    await tool("ticket_claim", { ticketId: ticket.id, workerId: WORKER });
+    await tool("ticket_update_status", { ticketId: ticket.id, status: "completed" });
+    expect(stack.posted).toHaveLength(1);
+    expect(stack.posted[0]!.target).toEqual({ channelId: CHANNEL, threadId: "discord-thread-1" });
+  });
+
+  it("keeps a cancelled ticket's thread closed to follow-ups", async () => {
+    await say(ada, "please add dark mode");
+    const [ticket] = await tickets();
+    await tool("ticket_update_status", { ticketId: ticket.id, status: "cancelled" });
+
+    await say(inThread("discord-thread-1"), "one more thing");
+    expect(stack.posted.at(-1)).toEqual({
+      target: { channelId: CHANNEL, threadId: "discord-thread-1" },
+      content: TICKET_CLOSED_MESSAGE,
+    });
+    const [after] = await tickets();
+    expect(after).toMatchObject({ status: "cancelled" });
   });
 
   it("uses the thread a new request was made in instead of opening another", async () => {

@@ -487,6 +487,43 @@ describe("TicketRepository", () => {
     expect([out.stillAssigned, out.stillRunning]).toEqual(["assigned", "in_progress"]);
   });
 
+  it("reopens a completed or failed ticket to open, clearing its last run", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(
+          ticket({ status: "completed", result: "done", startedAt: T0, completedAt: T0 }),
+        );
+        yield* repo.insert(ticket({ id: "t2", status: "failed", error: "boom", completedAt: T0 }));
+        yield* repo.insert(ticket({ id: "t3", status: "cancelled", completedAt: T0 }));
+        return {
+          completed: yield* repo.reopen("t1", T1),
+          failed: yield* repo.reopen("t2", T1),
+          stored: yield* repo.get("t1"),
+          cancelled: yield* Effect.flip(repo.reopen("t3", T1)),
+          running: yield* Effect.flip(repo.reopen("t1", T1)),
+        };
+      }),
+    );
+    for (const t of [out.completed, out.failed, out.stored]) {
+      expect(t).toMatchObject({
+        status: "open",
+        workerType: null,
+        workerId: null,
+        result: null,
+        error: null,
+        assignedAt: null,
+        startedAt: null,
+        completedAt: null,
+        createdAt: T0,
+        lastActivityAt: T1,
+      });
+    }
+    expect(out.cancelled).toMatchObject({ _tag: "InvalidTransition", from: "cancelled" });
+    expect(out.running).toMatchObject({ _tag: "InvalidTransition", from: "open" });
+  });
+
   it("double claim: exactly one of two concurrent claims wins", async () => {
     const db = makeDb();
     await run(

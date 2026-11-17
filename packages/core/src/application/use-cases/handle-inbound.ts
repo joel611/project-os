@@ -1,7 +1,7 @@
 import type { InboundMessage, ReplyInstruction } from "@project-os/contracts";
 import { statusQuestion } from "@project-os/system-prompts";
 import { Cause, Effect, Exit } from "effect";
-import { ACTIVE_STATUSES, isTerminal, type Ticket } from "../../domain/index.ts";
+import { ACTIVE_STATUSES, canReopen, isTerminal, type Ticket } from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -65,6 +65,7 @@ export type InboundOutcome =
   | { readonly kind: "not_mentioned" }
   | { readonly kind: "ticket_created"; readonly ticket: Ticket }
   | { readonly kind: "follow_up_added"; readonly ticketId: string }
+  | { readonly kind: "ticket_reopened"; readonly ticket: Ticket }
   | { readonly kind: "ticket_closed"; readonly ticketId: string }
   | { readonly kind: "status_answered" }
   | { readonly kind: "memory_saved" }
@@ -81,7 +82,8 @@ export const ACK_EMOJI = "👀";
 export const THREAD_OPENED_MESSAGE =
   "I opened a ticket for this. Keep the conversation for it in this thread.";
 export const TICKET_CLOSED_MESSAGE =
-  "This ticket is finished. Post in the channel to start something new.";
+  "This ticket was cancelled. Post in the channel to start something new.";
+export const TICKET_REOPENED_MESSAGE = "I reopened this ticket. A worker will pick it up again.";
 
 export const MEMORY_SAVED_MESSAGE = "Noted. I saved that to the project memory.";
 
@@ -328,6 +330,48 @@ export const handleInbound = (message: InboundMessage, config: HandleInboundConf
         });
         yield* reply(text);
         return { kind: "status_answered" } as InboundOutcome;
+      }
+      // A follow-up on a finished ticket reopens it and places it again; the next Worker reads
+      // the earlier result and the new ask on the ticket. Only a cancelled ticket stays closed.
+      if (canReopen(threadTicket.status)) {
+        const added = yield* addFollowUp(threadTicket.id);
+        const reopened = yield* tickets.reopen(threadTicket.id, at).pipe(
+          Effect.map((t) => t as Ticket | undefined),
+          // Another follow-up reopened it first: this one is just a follow-up on it.
+          Effect.catchTag("InvalidTransition", () => Effect.undefined),
+        );
+        if (!reopened) return added;
+        yield* auditTicket(
+          reopened,
+          "reopened",
+          { type: "person", id: message.sender.id, name: message.sender.name ?? null },
+          { from: threadTicket.status, at },
+        );
+        yield* tickets.appendEvent({
+          id: yield* ids.next,
+          ticketId: reopened.id,
+          type: "system",
+          actor: "coordinator",
+          actorId: null,
+          body: `Reopened by a follow-up (was ${threadTicket.status})`,
+          payload: { kind: "reopened", from: threadTicket.status },
+          createdAt: at,
+        });
+        const placement = yield* placeOrQueue({
+          ticketId: reopened.id,
+          requester: reopened.requester ?? {
+            channelType: message.channelType,
+            id: message.sender.id,
+          },
+          routing: config,
+          at,
+        });
+        yield* reply(
+          placement.kind === "queued"
+            ? `I reopened this ticket. ${QUEUED_MESSAGE}`
+            : TICKET_REOPENED_MESSAGE,
+        );
+        return { kind: "ticket_reopened", ticket: placement.ticket } as InboundOutcome;
       }
       if (isTerminal(threadTicket.status)) {
         yield* reply(TICKET_CLOSED_MESSAGE);

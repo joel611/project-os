@@ -53,6 +53,14 @@ export class TicketRepository extends Context.Service<
       workerId: string,
       at: string,
     ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
+    /**
+     * Atomic `completed | failed → open` (see `reopenTicket`): the ticket is Queued again with
+     * no worker and its last run cleared. Fails `InvalidTransition` from any other status.
+     */
+    readonly reopen: (
+      ticketId: string,
+      at: string,
+    ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
     /** Atomic `assigned → in_progress`. Two concurrent claims: exactly one wins. */
     readonly claim: (
       ticketId: string,

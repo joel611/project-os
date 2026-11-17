@@ -24,7 +24,8 @@ export const onTicketCompleted = (input: { readonly ticketId: string }) =>
 
     const content = yield* runtime.respond({
       sessionId: `project:${ticket.projectId}`,
-      requestId: `ticket-completed:${ticket.id}`,
+      // Per run: a reopened ticket completes again and needs a reply of its own.
+      requestId: `ticket-completed:${ticket.id}:${ticket.completedAt ?? ""}`,
       prompt: ticketCompletedReply({ title: ticket.title, result: ticket.result, events }),
     });
     yield* gateway.send({ ...destination, content });
