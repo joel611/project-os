@@ -139,6 +139,14 @@ export const UserTokenOutput = Schema.Struct({
     id: Schema.String,
     name: Schema.NullOr(Schema.String),
   }),
+  /** Set when the token is a team account an admin assigned them, not their own link. */
+  sharedAccount: Schema.optionalKey(
+    Schema.Struct({
+      id: Schema.String,
+      label: Schema.String,
+      identity: Schema.optionalKey(Schema.String),
+    }),
+  ),
 });
 
 export const TicketAskInput = Schema.Struct({

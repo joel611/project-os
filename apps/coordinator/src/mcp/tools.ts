@@ -231,6 +231,8 @@ export const makeTools = (
       description:
         "Get an OAuth access token (google, github or clickup) for the person behind this ticket's latest message, " +
         "so you read Drive, GitHub or ClickUp with their own permissions. Use it as a Bearer token (GH_TOKEN for gh/git). " +
+        "If `sharedAccount` is set, it is a team account an admin assigned them because they linked none of their own: " +
+        "you act with that account's permissions. " +
         "Fails with NotConnected if they haven't linked that account: the Coordinator has already asked them to " +
         "run /connect, so set the ticket to blocked and stop. Never store or print the token.",
       input: C.UserTokenInput,

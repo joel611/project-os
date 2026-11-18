@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Auth, type AuthApi, type Connections } from "@project-os/auth";
+import { Auth, type AuthApi, type Connections, type SharedAccounts } from "@project-os/auth";
 import {
   type ChannelDigestConfig,
   DEFAULT_CHANNEL_DIGEST,
@@ -333,6 +333,12 @@ export const startStack = async (options: {
         }),
       },
       members: () => auth!.members(),
+      // The auth instance is built after the app, so each call looks it up when it is made.
+      ...(oauth && {
+        sharedAccounts: new Proxy({} as SharedAccounts, {
+          get: (_, name) => (auth!.sharedAccounts as Record<string | symbol, unknown>)[name],
+        }),
+      }),
       ...(oauth && {
         connect: { startLink: (token: string) => lazy().startLink(token) },
       }),

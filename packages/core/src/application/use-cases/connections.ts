@@ -5,9 +5,11 @@ import {
   KeyValueStore,
   NotConnected,
   type Person,
+  type SharedAccountRef,
   TicketRepository,
   UserConnections,
 } from "../ports/index.ts";
+import { audit, COORDINATOR } from "./audit.ts";
 import { ticketChannel } from "./prompts.ts";
 
 export const PROVIDER_LABELS: Record<ConnectionProvider, string> = {
@@ -53,6 +55,54 @@ export const actingAs = (person: Person) =>
 
 const EVENT_SCAN = 500;
 
+/** What a ticket's Worker acted with from a shared account, kept for the thread's notices. */
+interface SharedUse extends SharedAccountRef {
+  readonly provider: ConnectionProvider;
+}
+
+const sharedUseKey = (ticketId: string) => `shared-use:${ticketId}`;
+const SHARED_USE_TTL_SECONDS = 7 * 86_400;
+
+const describeShared = (use: SharedAccountRef & { readonly provider: ConnectionProvider }) =>
+  `${PROVIDER_LABELS[use.provider]} account "${use.label}"${use.identity ? ` (${use.identity})` : ""}`;
+
+/** The shared accounts a ticket's Worker has used, as one clause: ``, via shared GitHub …``. */
+export const sharedUseClause = (ticketId: string) =>
+  Effect.gen(function* () {
+    const raw = yield* (yield* KeyValueStore).get(sharedUseKey(ticketId));
+    if (!raw) return "";
+    const uses = JSON.parse(raw) as ReadonlyArray<SharedUse>;
+    return `, via shared ${uses.map(describeShared).join("; ")}`;
+  });
+
+/** Notes in the ticket's thread and audit log that a shared account was used, once each. */
+const noteSharedUse = (
+  ticketId: string,
+  projectId: string,
+  person: Person,
+  provider: ConnectionProvider,
+  shared: SharedAccountRef,
+) =>
+  Effect.gen(function* () {
+    const kv = yield* KeyValueStore;
+    const key = sharedUseKey(ticketId);
+    const known = JSON.parse((yield* kv.get(key)) ?? "[]") as ReadonlyArray<SharedUse>;
+    if (known.some((u) => u.provider === provider && u.id === shared.id)) return;
+    yield* kv.set(key, JSON.stringify([...known, { ...shared, provider }]), {
+      ttlSeconds: SHARED_USE_TTL_SECONDS,
+    });
+    yield* audit({
+      kind: "connection",
+      action: "shared_account_used",
+      actor: COORDINATOR,
+      projectId,
+      ticketId,
+      summary: `Ticket acted for ${actingAs(person)} with shared ${describeShared({ ...shared, provider })}`,
+      payload: { provider, sharedAccountId: shared.id, label: shared.label, person },
+      dedupeKey: `shared-used:${ticketId}:${provider}:${shared.id}`,
+    });
+  }).pipe(Effect.ignore);
+
 /** Asked in the ticket's thread when a Worker needs an account the person hasn't linked. */
 export const connectAskMessage = (
   person: Person,
@@ -90,10 +140,27 @@ export const userTokenForTicket = (input: {
     const token = yield* connections
       .accessToken(person, input.provider)
       .pipe(
-        Effect.tapErrorTag("NotConnected", () =>
-          askToConnect(ticket.id, ticket.title, person, input.provider),
+        Effect.tapErrorTag("NotConnected", (error) =>
+          error.sharedAccount
+            ? askAdminToReconnect(
+                ticket.id,
+                ticket.title,
+                person,
+                input.provider,
+                error.sharedAccount,
+              )
+            : askToConnect(ticket.id, ticket.title, person, input.provider),
         ),
       );
+    if (token.sharedAccount) {
+      yield* noteSharedUse(
+        ticket.id,
+        ticket.projectId,
+        person,
+        input.provider,
+        token.sharedAccount,
+      );
+    }
     return { ...token, person: { ...person, name: person.name ?? null } };
   });
 
@@ -118,5 +185,30 @@ const askToConnect = (
     yield* gateway.send({
       ...target,
       content: connectAskMessage(person, label, title, provider),
+    });
+  });
+
+/** The shared account someone acts with stopped working: say so, once a day per ticket. */
+const askAdminToReconnect = (
+  ticketId: string,
+  title: string,
+  person: Person,
+  provider: ConnectionProvider,
+  shared: SharedAccountRef,
+) =>
+  Effect.gen(function* () {
+    const kv = yield* KeyValueStore;
+    const gateway = yield* ChannelGateway;
+    const fresh = yield* kv.setIfAbsent(
+      `connect-ask:${ticketId}:${provider}:shared:${shared.id}`,
+      "1",
+      { ttlSeconds: 86_400 },
+    );
+    if (!fresh) return;
+    const target = yield* ticketChannel(ticketId);
+    if (!target) return;
+    yield* gateway.send({
+      ...target,
+      content: `I couldn't use the shared ${describeShared({ ...shared, provider })} for "${title}": its link has expired or was revoked. An admin needs to reconnect it in the dashboard (Members → Shared accounts), then reply here and I'll carry on. (The Worker acted as ${actingAs(person)}.)`,
     });
   });

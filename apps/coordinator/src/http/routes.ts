@@ -1,5 +1,8 @@
 import { healthConfig } from "@project-os/config";
+import type { SharedAccounts } from "@project-os/auth";
 import {
+  AssignSharedAccount,
+  CreateSharedAccount,
   InboundMessage,
   PromptAnswer,
   SlashCommand,
@@ -8,6 +11,7 @@ import {
 import { AUDIT_KINDS, type AuditKind, type Member, type Viewer } from "@project-os/contracts";
 import {
   answerScopePrompt,
+  audit,
   getMyTicket,
   getTicket,
   listMyTicketAttachments,
@@ -72,6 +76,12 @@ import { installScript } from "./watcher-install.ts";
 
 const decodeCommand = Schema.decodeUnknownOption(SlashCommand);
 
+/** The body as `schema` says, or undefined when it doesn't fit. */
+const decodeBody = <S extends Schema.Decoder<unknown>>(schema: S, body: unknown) => {
+  const parsed = Schema.decodeUnknownOption(schema)(body);
+  return parsed._tag === "Some" ? (parsed.value as S["Type"]) : undefined;
+};
+
 export type { CommandsConfig, HandleInboundConfig };
 
 const isAuditKind = (value: string): value is AuditKind =>
@@ -124,6 +134,8 @@ export interface HttpDeps {
   readonly prompts?: PromptAnswerConfig;
   /** People with a dashboard sign-in or channel identity (`GET /members`). Omitted: 501. */
   readonly members?: () => Promise<ReadonlyArray<Member>>;
+  /** Shared connector accounts admins link and assign (`/shared-accounts`). Omitted: 501. */
+  readonly sharedAccounts?: SharedAccounts;
 }
 
 export const httpRoutes = ({
@@ -133,6 +145,7 @@ export const httpRoutes = ({
   commands,
   prompts = inbound,
   members,
+  sharedAccounts,
   access,
 }: HttpDeps & {
   /** Who is calling: members get only their own Tickets on the routes they may use. */
@@ -151,6 +164,17 @@ export const httpRoutes = ({
   const memberPerson = async (request: Request) => {
     const caller = await access.caller(request);
     return caller.kind === "member" ? caller.person : undefined;
+  };
+
+  /** The admin calling, as an audit actor: `shared-accounts` routes admit only Operators. */
+  const adminActor = async (request: Request) => {
+    const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+    return { type: "person", id: caller.userId, name: caller.name } as const;
+  };
+
+  const unconfigured = (set: { status?: number | string }) => {
+    set.status = 501;
+    return { error: "shared accounts need an OAuth client and PUBLIC_URL" };
   };
 
   return new Elysia({ name: "http-routes" })
@@ -180,6 +204,101 @@ export const httpRoutes = ({
         return { error: "the member list is not configured" };
       }
       return members();
+    })
+    .get("/shared-accounts", ({ set }) =>
+      sharedAccounts ? sharedAccounts.list() : unconfigured(set),
+    )
+    .post("/shared-accounts", async ({ body, request, set }) => {
+      if (!sharedAccounts) return unconfigured(set);
+      const parsed = decodeBody(CreateSharedAccount, body);
+      const label = parsed?.label.trim().slice(0, 60);
+      if (!parsed || !label) {
+        set.status = 400;
+        return { error: "provider and a label are required" };
+      }
+      const actor = await adminActor(request);
+      const created = await sharedAccounts.create({
+        provider: parsed.provider,
+        label,
+        createdBy: actor.id,
+      });
+      await run(
+        audit({
+          kind: "connection",
+          action: "shared_account_added",
+          actor,
+          summary: `Added shared ${parsed.provider} account "${label}"`,
+          payload: { provider: parsed.provider, sharedAccountId: created.account.id, label },
+        }),
+      );
+      return created;
+    })
+    .post("/shared-accounts/:id/connect", async ({ params, set }) => {
+      if (!sharedAccounts) return unconfigured(set);
+      const link = await sharedAccounts.reconnect(params.id);
+      if (!link) {
+        set.status = 404;
+        return { error: "SharedAccountNotFound" };
+      }
+      return link;
+    })
+    .delete("/shared-accounts/:id", async ({ params, request, set }) => {
+      if (!sharedAccounts) return unconfigured(set);
+      const removed = await sharedAccounts.remove(params.id);
+      if (!removed) {
+        set.status = 404;
+        return { error: "SharedAccountNotFound" };
+      }
+      await run(
+        audit({
+          kind: "connection",
+          action: "shared_account_removed",
+          actor: await adminActor(request),
+          summary: `Removed shared ${removed.provider} account "${removed.label}" and its assignments`,
+          payload: {
+            provider: removed.provider,
+            sharedAccountId: removed.id,
+            label: removed.label,
+          },
+        }),
+      );
+      return { removed: true };
+    })
+    .post("/shared-accounts/assignments", async ({ body, request, set }) => {
+      if (!sharedAccounts) return unconfigured(set);
+      const parsed = decodeBody(AssignSharedAccount, body);
+      if (!parsed) {
+        set.status = 400;
+        return {
+          error: "channelType, personId, provider and sharedAccountId (or null) are required",
+        };
+      }
+      const actor = await adminActor(request);
+      const result = await sharedAccounts.assign({ ...parsed, assignedBy: actor.id });
+      if (!result.ok) {
+        set.status = result.error === "not_found" ? 404 : 400;
+        return { error: result.error };
+      }
+      // Unassigning someone who had nothing assigned changes nothing, so isn't logged.
+      const account = result.account;
+      if (!account) return { ok: true };
+      const who = `${parsed.channelType}:${parsed.personId}`;
+      const unassigned = parsed.sharedAccountId === null;
+      await run(
+        audit({
+          kind: "connection",
+          action: unassigned ? "shared_account_unassigned" : "shared_account_assigned",
+          actor,
+          summary: `${unassigned ? "Unassigned" : "Assigned"} shared ${parsed.provider} account "${account.label}" ${unassigned ? "from" : "to"} ${who}`,
+          payload: {
+            provider: parsed.provider,
+            sharedAccountId: account.id,
+            label: account.label,
+            person: { channelType: parsed.channelType, id: parsed.personId },
+          },
+        }),
+      );
+      return { ok: true };
     })
     .post("/inbound", ({ body, set }) =>
       reply(

@@ -29,6 +29,8 @@ export interface AppDeps {
   readonly connect?: ConnectDeps;
   /** The Members page's data (`GET /members`), from the auth instance. Omitted: 501. */
   readonly members?: HttpDeps["members"];
+  /** Shared connector accounts (`/shared-accounts`), from the auth instance. Omitted: 501. */
+  readonly sharedAccounts?: HttpDeps["sharedAccounts"];
   /**
    * Origins a browser may call this API from (the web dashboard when it is served from
    * another origin). Omitted or empty: no CORS headers, so browsers block cross-origin calls.
@@ -73,6 +75,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
         httpRoutes({
           ...deps.http,
           ...(deps.members && { members: deps.members }),
+          ...(deps.sharedAccounts && { sharedAccounts: deps.sharedAccounts }),
           access: deps.access,
         }),
       )

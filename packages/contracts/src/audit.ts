@@ -3,7 +3,13 @@ import { ChannelType, WorkerType } from "./enums.ts";
 import { TicketStatus } from "./ticket-status.ts";
 
 /** What an audit entry is about. */
-export const AUDIT_KINDS = ["inbound_event", "digest_event", "worker", "ticket"] as const;
+export const AUDIT_KINDS = [
+  "inbound_event",
+  "digest_event",
+  "worker",
+  "ticket",
+  "connection",
+] as const;
 export const AuditKind = Schema.Literals(AUDIT_KINDS);
 export type AuditKind = typeof AuditKind.Type;
 

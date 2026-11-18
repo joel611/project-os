@@ -349,6 +349,16 @@ export interface UserAccessToken {
   readonly accessToken: string;
   readonly expiresAt: string | null;
   readonly scopes: ReadonlyArray<string>;
+  /** Set when the token is an admin's shared account's, not the person's own link. */
+  readonly sharedAccount?: SharedAccountRef;
+}
+
+/** A shared account as a ticket's thread and the audit log name it. */
+export interface SharedAccountRef {
+  readonly id: string;
+  readonly label: string;
+  /** The provider's own name for it (GitHub login, Google email), when it could be read. */
+  readonly identity?: string;
 }
 
 export interface LinkedAccount {
@@ -373,6 +383,11 @@ export class UserConnections extends Context.Service<
     readonly list: (person: Person) => Effect.Effect<ReadonlyArray<LinkedAccount>>;
     /** Removes the link. Returns false if there was none. */
     readonly disconnect: (person: Person, provider: ConnectionProvider) => Effect.Effect<boolean>;
+    /**
+     * The person's own token. Only when they never linked `provider` does it fall back to the
+     * shared account an admin assigned them (`sharedAccount` on the result); an expired
+     * personal link is `NotConnected`, never a silent switch of whose account is used.
+     */
     readonly accessToken: (
       person: Person,
       provider: ConnectionProvider,
@@ -385,6 +400,11 @@ export class NotConnected extends Data.TaggedError("NotConnected")<{
   readonly provider: ConnectionProvider;
   readonly personId: string;
   readonly message: string;
+  /**
+   * Set when the person acts with a shared account whose token no longer works: their own
+   * `/connect` wouldn't help, an admin has to reconnect it in the dashboard.
+   */
+  readonly sharedAccount?: SharedAccountRef;
 }> {}
 
 /** Account linking is not configured here (no secret, or no client for the provider). */
