@@ -512,6 +512,25 @@ describe("GET /members", () => {
   });
 });
 
+describe("/shared-accounts", () => {
+  it("answers 501 until account linking is wired in", async () => {
+    const { layer } = makeTestLayer();
+    const app = appFor(layer);
+    const calls: Array<[string, string, unknown?]> = [
+      ["GET", "/shared-accounts"],
+      ["POST", "/shared-accounts", { provider: "github", label: "Bot" }],
+      ["POST", "/shared-accounts/s1/connect"],
+      ["DELETE", "/shared-accounts/s1"],
+      ["POST", "/shared-accounts/assignments", {}],
+    ];
+    for (const [method, path, body] of calls) {
+      expect(await call(app, method, path, body), `${method} ${path}`).toMatchObject({
+        status: 501,
+      });
+    }
+  });
+});
+
 describe("POST /tickets/:id/assign", () => {
   const withStuckTicket = async () => {
     const { layer } = makeTestLayer();

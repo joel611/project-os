@@ -4,6 +4,8 @@ import {
   type LinkedAccount,
   NotConnected,
   type Person,
+  type SharedAccountRef,
+  type UserAccessToken,
   UserConnections,
 } from "@project-os/core";
 import { Effect, Layer } from "effect";
@@ -17,6 +19,13 @@ export interface ConnectionsConfig {
   readonly userInfoUrls: Record<ConnectionProvider, string>;
   /** How long a connect link works. Default 10 minutes. */
   readonly linkTtlSeconds?: number;
+  /** The shared account an admin assigned `person` for `provider`, if any. */
+  readonly sharedFor?: (
+    person: Person,
+    provider: ConnectionProvider,
+  ) => Promise<
+    { readonly id: string; readonly label: string; readonly userId: string } | undefined
+  >;
 }
 
 /** Where the OAuth flow lands the browser when it's done. Served by the Coordinator. */
@@ -108,6 +117,86 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
     return account ? { user, account } : null;
   };
 
+  /** Each linked account of an auth user, with the provider's own name for it when readable. */
+  const linkedAccounts = async (userId: string): Promise<ReadonlyArray<LinkedAccount>> => {
+    const ctx = await context();
+    const accounts = (await ctx.internalAdapter.findAccounts(userId)).filter((a) =>
+      configured.has(a.providerId),
+    );
+    return Promise.all(
+      accounts.map(async (account): Promise<LinkedAccount> => {
+        const provider = account.providerId as ConnectionProvider;
+        const linked: LinkedAccount = { provider, accountId: account.accountId };
+        const url = config.userInfoUrls[provider];
+        try {
+          const tokens = await auth.api.getAccessToken({
+            body: { accountId: account.id, userId },
+          });
+          const response = await fetch(url, {
+            headers: {
+              authorization: `Bearer ${tokens.accessToken}`,
+              accept: "application/json",
+              ...(provider === "github" && { "user-agent": "project-os" }),
+            },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!response.ok) return linked;
+          const body = (await response.json()) as Record<string, unknown>;
+          const profile = provider === "clickup" ? body.user : body;
+          if (!profile || typeof profile !== "object") return linked;
+          const info = profile as Record<string, unknown>;
+          const id = provider === "google" ? info.sub : info.id;
+          if (String(id) !== account.accountId) return linked;
+          const identity =
+            provider === "google" ? info.email : provider === "github" ? info.login : info.username;
+          const valid =
+            typeof identity === "string" &&
+            identity.length <= 254 &&
+            (provider === "google"
+              ? /^[A-Za-z0-9.+_-]+@[A-Za-z0-9.-]+$/.test(identity)
+              : provider === "github"
+                ? /^[A-Za-z0-9-]{1,39}$/.test(identity)
+                : /^[\p{L}\p{N}_.@ -]{1,100}$/u.test(identity));
+          return valid ? { ...linked, displayIdentity: identity } : linked;
+        } catch {
+          return linked;
+        }
+      }),
+    );
+  };
+
+  /** A fresh access token for one of an auth user's linked accounts, or null once it's dead. */
+  const tokenOf = async (userId: string, provider: ConnectionProvider) => {
+    const ctx = await context();
+    const account = (await ctx.internalAdapter.findAccounts(userId)).find(
+      (a) => a.providerId === provider,
+    );
+    if (!account) return null;
+    // Refreshes first when the stored token is (nearly) expired.
+    return auth.api
+      .getAccessToken({ body: { accountId: account.id, userId } })
+      .then((tokens): UserAccessToken => ({
+        accessToken: tokens.accessToken,
+        expiresAt: tokens.accessTokenExpiresAt
+          ? new Date(tokens.accessTokenExpiresAt).toISOString()
+          : null,
+        scopes: tokens.scopes,
+      }))
+      .catch(() => null);
+  };
+
+  /** A one-time link that runs `provider`'s OAuth flow for an auth user, when opened. */
+  const connectLink = async (userId: string, provider: ConnectionProvider) => {
+    const token = randomToken();
+    const ctx = await context();
+    await ctx.internalAdapter.createVerificationValue({
+      identifier: `connect:${token}`,
+      value: JSON.stringify({ userId, provider }),
+      expiresAt: new Date(Date.now() + linkTtlMs),
+    });
+    return `${config.baseURL}/connect/${token}`;
+  };
+
   const unavailable = (provider: ConnectionProvider) =>
     new ConnectionsUnavailable({
       message: `${provider} accounts can't be linked here: no OAuth client is configured.`,
@@ -116,71 +205,13 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
   const service: UserConnections["Service"] = {
     connectUrl: (person, provider) =>
       configured.has(provider)
-        ? Effect.promise(async () => {
-            const user = await ensureUser(person);
-            const token = randomToken();
-            const ctx = await context();
-            await ctx.internalAdapter.createVerificationValue({
-              identifier: `connect:${token}`,
-              value: JSON.stringify({ userId: user.id, provider }),
-              expiresAt: new Date(Date.now() + linkTtlMs),
-            });
-            return `${config.baseURL}/connect/${token}`;
-          })
+        ? Effect.promise(async () => connectLink((await ensureUser(person)).id, provider))
         : Effect.fail(unavailable(provider)),
 
     list: (person) =>
       Effect.promise(async (): Promise<ReadonlyArray<LinkedAccount>> => {
         const user = await findUser(person);
-        if (!user) return [];
-        const ctx = await context();
-        const accounts = (await ctx.internalAdapter.findAccounts(user.id)).filter((a) =>
-          configured.has(a.providerId),
-        );
-        return Promise.all(
-          accounts.map(async (account): Promise<LinkedAccount> => {
-            const provider = account.providerId as ConnectionProvider;
-            const linked: LinkedAccount = { provider, accountId: account.accountId };
-            const url = config.userInfoUrls[provider];
-            try {
-              const tokens = await auth.api.getAccessToken({
-                body: { accountId: account.id, userId: user.id },
-              });
-              const response = await fetch(url, {
-                headers: {
-                  authorization: `Bearer ${tokens.accessToken}`,
-                  accept: "application/json",
-                  ...(provider === "github" && { "user-agent": "project-os" }),
-                },
-                signal: AbortSignal.timeout(5000),
-              });
-              if (!response.ok) return linked;
-              const body = (await response.json()) as Record<string, unknown>;
-              const profile = provider === "clickup" ? body.user : body;
-              if (!profile || typeof profile !== "object") return linked;
-              const info = profile as Record<string, unknown>;
-              const id = provider === "google" ? info.sub : info.id;
-              if (String(id) !== account.accountId) return linked;
-              const identity =
-                provider === "google"
-                  ? info.email
-                  : provider === "github"
-                    ? info.login
-                    : info.username;
-              const valid =
-                typeof identity === "string" &&
-                identity.length <= 254 &&
-                (provider === "google"
-                  ? /^[A-Za-z0-9.+_-]+@[A-Za-z0-9.-]+$/.test(identity)
-                  : provider === "github"
-                    ? /^[A-Za-z0-9-]{1,39}$/.test(identity)
-                    : /^[\p{L}\p{N}_.@ -]{1,100}$/u.test(identity));
-              return valid ? { ...linked, displayIdentity: identity } : linked;
-            } catch {
-              return linked;
-            }
-          }),
-        );
+        return user ? linkedAccounts(user.id) : [];
       }),
 
     disconnect: (person, provider) =>
@@ -195,30 +226,46 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
     accessToken: (person, provider) =>
       Effect.gen(function* () {
         if (!configured.has(provider)) return yield* unavailable(provider);
-        const notConnected = (message: string) =>
-          new NotConnected({ provider, personId: person.id, message });
+        const notConnected = (message: string, sharedAccount?: SharedAccountRef) =>
+          new NotConnected({
+            provider,
+            personId: person.id,
+            message,
+            ...(sharedAccount && { sharedAccount }),
+          });
         const found = yield* Effect.promise(() => findAccount(person, provider));
         if (!found) {
-          return yield* notConnected(`${who(person)} has not linked a ${provider} account.`);
+          // Never linked their own: the shared account an admin assigned them, if any.
+          const shared = yield* Effect.promise(async () => config.sharedFor?.(person, provider));
+          if (!shared) {
+            return yield* notConnected(`${who(person)} has not linked a ${provider} account.`);
+          }
+          const ref = (identity?: string): SharedAccountRef => ({
+            id: shared.id,
+            label: shared.label,
+            ...(identity && { identity }),
+          });
+          const sharedToken = yield* Effect.promise(() => tokenOf(shared.userId, provider));
+          if (!sharedToken) {
+            return yield* notConnected(
+              `The shared ${provider} account "${shared.label}" has expired or was revoked; an admin needs to connect it again.`,
+              ref(),
+            );
+          }
+          const identity = yield* Effect.promise(
+            async () =>
+              (await linkedAccounts(shared.userId)).find((a) => a.provider === provider)
+                ?.displayIdentity,
+          );
+          return { ...sharedToken, sharedAccount: ref(identity) };
         }
-        // Refreshes first when the stored token is (nearly) expired.
-        const tokens = yield* Effect.tryPromise({
-          try: () =>
-            auth.api.getAccessToken({
-              body: { accountId: found.account.id, userId: found.user.id },
-            }),
-          catch: () =>
-            notConnected(
-              `The ${provider} link for ${who(person)} has expired or was revoked; it needs connecting again.`,
-            ),
-        });
-        return {
-          accessToken: tokens.accessToken,
-          expiresAt: tokens.accessTokenExpiresAt
-            ? new Date(tokens.accessTokenExpiresAt).toISOString()
-            : null,
-          scopes: tokens.scopes,
-        };
+        const token = yield* Effect.promise(() => tokenOf(found.user.id, provider));
+        if (!token) {
+          return yield* notConnected(
+            `The ${provider} link for ${who(person)} has expired or was revoked; it needs connecting again.`,
+          );
+        }
+        return token;
       }),
   };
 
@@ -257,6 +304,8 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
     service,
     layer: Layer.succeed(UserConnections, service),
     startLink,
+    /** For shared accounts, which are auth users of their own rather than channel people. */
+    forUser: { linkedAccounts, connectLink },
   };
 };
 

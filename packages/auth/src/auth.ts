@@ -6,6 +6,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { GenericOAuthConfig } from "better-auth/plugins";
 import type { Person } from "@project-os/core";
 import { authPlugins } from "./auth-options.ts";
+import { isSharedAccountEmail, makeSharedAccounts, sharedLookup } from "./shared-accounts.ts";
 import {
   type Connections,
   isChannelIdentityEmail,
@@ -358,21 +359,29 @@ const betterAuthFor = (
     databaseHooks: {
       user: {
         create: {
-          // Users are operators on the allowlist, or people's channel identities for linking.
+          // Users are operators on the allowlist, people's channel identities for linking, or the
+          // placeholder users shared accounts hang their tokens on.
           before: async (user) =>
-            isOperator(user.email) || isChannelIdentityEmail(user.email) ? undefined : false,
+            isOperator(user.email) ||
+            isChannelIdentityEmail(user.email) ||
+            isSharedAccountEmail(user.email)
+              ? undefined
+              : false,
         },
       },
       account: {
         create: {
-          // `/connect` links only to a channel identity. Refusing these on an operator keeps a
-          // GitHub account claiming the operator's (unverified) email from taking it over.
+          // `/connect` links only to a channel identity (or a shared account's user). Refusing
+          // these on an operator keeps a GitHub account claiming the operator's (unverified)
+          // email from taking it over.
           before: async (account, ctx) => {
             if (!(CONNECTION_PROVIDERS as ReadonlyArray<string>).includes(account.providerId)) {
               return undefined;
             }
             const user = await ctx!.context.internalAdapter.findUserById(account.userId);
-            return isChannelIdentityEmail(user!.email) ? undefined : false;
+            return isChannelIdentityEmail(user!.email) || isSharedAccountEmail(user!.email)
+              ? undefined
+              : false;
           },
         },
       },
@@ -496,6 +505,7 @@ export const makeAuth = (config: AuthConfig) => {
       ? makeConnections(auth, {
           baseURL: config.baseURL,
           providers,
+          sharedFor: sharedLookup(config.db),
           userInfoUrls: {
             google: config.google?.userInfoUrl ?? GOOGLE_ENDPOINTS.userInfoUrl,
             github: config.github?.userInfoUrl ?? GITHUB_ENDPOINTS.userInfoUrl,
@@ -503,6 +513,8 @@ export const makeAuth = (config: AuthConfig) => {
           },
         })
       : undefined;
+
+  const sharedAccounts = connections && makeSharedAccounts(config.db, auth, connections);
 
   /**
    * Everyone who has a dashboard sign-in or a channel identity, one row per person. A dashboard
@@ -545,7 +557,7 @@ export const makeAuth = (config: AuthConfig) => {
     const rows: Array<{ member: Member; person?: Person }> = [];
 
     for (const user of users) {
-      if (isChannelIdentityEmail(user.email)) continue;
+      if (isChannelIdentityEmail(user.email) || isSharedAccountEmail(user.email)) continue;
       const signIn = accountsOf(user.id).find(
         (a) => a.providerId === GOOGLE_SIGN_IN && !a.accountId.startsWith(MEMBER_ACCOUNT_PREFIX),
       );
@@ -674,6 +686,8 @@ export const makeAuth = (config: AuthConfig) => {
     },
     /** Everyone with a dashboard sign-in or a channel identity, matched by Google account. */
     members,
+    /** Team-wide accounts admins link and assign; undefined without account linking. */
+    sharedAccounts,
     /** Whether this email may use the dashboard and its API. */
     isAllowed: isOperator,
     /** Account linking; undefined without `baseURL` or an OAuth client. */

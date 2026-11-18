@@ -1,4 +1,4 @@
-import type { Member } from "@project-os/contracts";
+import type { Member, SharedAccountsView } from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api";
 import { CHANNEL_META, PROVIDER_META } from "@/components/source";
@@ -15,6 +15,12 @@ import {
 } from "@/components/ui/table";
 import { relativeTime } from "@/model";
 import { SLOW_MS } from "@/polling";
+import {
+  AssignCell,
+  SharedAccountsLoading,
+  SharedAccountsSection,
+  useSharedAccounts,
+} from "@/components/shared-accounts";
 import { useNow } from "@/use-now";
 
 const NOT_CONNECTED = <span className="text-muted-foreground">Not connected</span>;
@@ -60,7 +66,9 @@ const Who = ({ m }: { m: Member }) => (
   </div>
 );
 
-const Row = ({ m, now }: { m: Member; now: Date }) => (
+const NO_SHARED: SharedAccountsView = { accounts: [], assignments: [] };
+
+const Row = ({ m, now, shared }: { m: Member; now: Date; shared: SharedAccountsView }) => (
   <TableRow>
     <TableCell className="max-w-64 py-3.5 pl-6">
       <Who m={m} />
@@ -68,10 +76,13 @@ const Row = ({ m, now }: { m: Member; now: Date }) => (
     <TableCell className="py-3.5">{dashboardCell(m, now)}</TableCell>
     <TableCell className="py-3.5">{channelCell(m)}</TableCell>
     <TableCell className="py-3.5">{githubCell(m)}</TableCell>
+    <TableCell className="py-3.5 pr-6">
+      <AssignCell member={m} view={shared} />
+    </TableCell>
   </TableRow>
 );
 
-const Card = ({ m, now }: { m: Member; now: Date }) => (
+const Card = ({ m, now, shared }: { m: Member; now: Date; shared: SharedAccountsView }) => (
   <li className="flex flex-col gap-3 rounded-xl border bg-card p-4">
     <Who m={m} />
     <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1.5 text-sm">
@@ -81,6 +92,10 @@ const Card = ({ m, now }: { m: Member; now: Date }) => (
       <dd>{channelCell(m)}</dd>
       <dt className="text-muted-foreground">GitHub</dt>
       <dd>{githubCell(m)}</dd>
+      <dt className="text-muted-foreground">Shared</dt>
+      <dd>
+        <AssignCell member={m} view={shared} />
+      </dd>
     </dl>
   </li>
 );
@@ -92,6 +107,8 @@ export const MembersView = () => {
     queryFn: api.members,
     refetchInterval: SLOW_MS,
   });
+  const sharedQuery = useSharedAccounts();
+  const shared = sharedQuery.data ?? NO_SHARED;
   const list = members.data ?? [];
   return (
     <div className="flex flex-col gap-8">
@@ -103,6 +120,8 @@ export const MembersView = () => {
           email.
         </p>
       </header>
+      <SharedAccountsLoading query={sharedQuery} />
+      {sharedQuery.data && <SharedAccountsSection view={sharedQuery.data} />}
       {members.error ? (
         <QueryError error={members.error} />
       ) : members.isPending ? (
@@ -116,7 +135,7 @@ export const MembersView = () => {
         <>
           <ul className="flex flex-col gap-3 sm:hidden">
             {list.map((m) => (
-              <Card key={m.key} m={m} now={now} />
+              <Card key={m.key} m={m} now={now} shared={shared} />
             ))}
           </ul>
           <div className="hidden rounded-xl border bg-card sm:block">
@@ -127,11 +146,12 @@ export const MembersView = () => {
                   <TableHead>Dashboard</TableHead>
                   <TableHead>Discord</TableHead>
                   <TableHead>GitHub</TableHead>
+                  <TableHead className="pr-6">Shared accounts</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {list.map((m) => (
-                  <Row key={m.key} m={m} now={now} />
+                  <Row key={m.key} m={m} now={now} shared={shared} />
                 ))}
               </TableBody>
             </Table>

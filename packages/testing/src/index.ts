@@ -142,6 +142,7 @@ export const makeTestLayer = (options?: {
     },
     /** Link a person's account, as if they had finished `/connect`. */
     link: connections.link,
+    linkShared: connections.linkShared,
     createdThreads: gateway.threads,
     reactions: gateway.reactions,
     /** Prompts passed to `ChannelGateway.ask`. */

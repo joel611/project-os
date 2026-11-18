@@ -9,4 +9,5 @@ export * from "./ticket-thread.ts";
 export * from "./auth.ts";
 export * from "./channel-message.ts";
 export * from "./audit-log.ts";
+export * from "./shared-account.ts";
 export * from "./skill.ts";

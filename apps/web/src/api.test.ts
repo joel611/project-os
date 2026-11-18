@@ -157,6 +157,52 @@ describe("makeApi", () => {
     expect(JSON.parse(String(seen[0]?.init?.body))).toEqual({ name: "Acme" });
   });
 
+  it("reads, adds, reconnects, removes and assigns shared accounts", async () => {
+    const account = {
+      id: "sa/1",
+      provider: "github",
+      label: "Ops bot",
+      identity: "ops-bot",
+      connected: true,
+      createdAt: T,
+    };
+    const seen: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      seen.push({ url, method: init?.method, body: init?.body && JSON.parse(String(init.body)) });
+      if (!init?.method) {
+        return Response.json({ accounts: [account], assignments: [] });
+      }
+      if (init.method === "DELETE") return Response.json({ removed: true });
+      if (url.endsWith("/assignments")) return Response.json({ ok: true });
+      return Response.json({ account, connectUrl: "http://coordinator/connect/tok" });
+    }) as typeof fetch;
+    const api = makeApi(fetchFn);
+    expect(await api.sharedAccounts()).toEqual({ accounts: [account], assignments: [] });
+    expect((await api.addSharedAccount({ provider: "github", label: "Ops bot" })).connectUrl).toBe(
+      "http://coordinator/connect/tok",
+    );
+    await api.reconnectSharedAccount("sa/1");
+    expect(await api.removeSharedAccount("sa/1")).toEqual({ removed: true });
+    const assignment = {
+      channelType: "discord",
+      personId: "u1",
+      provider: "github",
+      sharedAccountId: null,
+    } as const;
+    expect(await api.assignSharedAccount(assignment)).toEqual({ ok: true });
+    expect(seen).toEqual([
+      { url: "/api/shared-accounts", method: undefined, body: undefined },
+      {
+        url: "/api/shared-accounts",
+        method: "POST",
+        body: { provider: "github", label: "Ops bot" },
+      },
+      { url: "/api/shared-accounts/sa%2F1/connect", method: "POST", body: undefined },
+      { url: "/api/shared-accounts/sa%2F1", method: "DELETE", body: undefined },
+      { url: "/api/shared-accounts/assignments", method: "POST", body: assignment },
+    ]);
+  });
+
   it("POSTs the worker to assign a ticket to and decodes the ticket back", async () => {
     const ticket = {
       id: "t/1",
@@ -291,6 +337,7 @@ describe("describeError", () => {
     [new ApiError(401, "Unauthorized"), "Your session ended. Sign in again."],
     [new ApiError(403, "Forbidden"), "This account isn't allowed to use the dashboard."],
     [new ApiError(404, "TicketNotFound"), "Not found."],
+    [new ApiError(501, "x"), "The Coordinator isn't set up for that yet."],
     [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
     [new ApiError(409, "SkillSetNameTaken"), "A skill set with that name already exists."],
     [new ApiError(400, "InvalidSkillSet"), 'Use a name of 1 to 60 characters, other than "none".'],

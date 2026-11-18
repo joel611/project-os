@@ -9,7 +9,14 @@ import {
 } from "@project-os/contracts";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { BookOpenText, ChevronDown, Cpu, MessageSquare, Ticket as TicketIcon } from "lucide-react";
+import {
+  BookOpenText,
+  ChevronDown,
+  Cpu,
+  KeyRound,
+  MessageSquare,
+  Ticket as TicketIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { api } from "@/api";
 import { CHANNEL_META } from "@/components/source";
@@ -37,6 +44,7 @@ export const KIND_META: Readonly<
   digest_event: { label: "Digest", Icon: BookOpenText },
   worker: { label: "Workers", Icon: Cpu },
   ticket: { label: "Tickets", Icon: TicketIcon },
+  connection: { label: "Accounts", Icon: KeyRound },
 };
 
 const ACTION_LABEL: Readonly<Record<string, string>> = {
@@ -56,6 +64,11 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   released: "re-queued",
   reopened: "reopened",
   status_changed: "status",
+  shared_account_added: "shared account added",
+  shared_account_removed: "shared account removed",
+  shared_account_assigned: "shared account assigned",
+  shared_account_unassigned: "shared account unassigned",
+  shared_account_used: "shared account used",
 };
 
 /** The tone of an entry's action pill: good news green, trouble red, the rest quiet. */
