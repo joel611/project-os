@@ -67,7 +67,11 @@ describe("per-person account linking", () => {
     expect(page.url).toContain("/connect/done?provider=google");
     expect(page.body).toContain("Google account connected");
 
-    expect((await slash(ada, "connections")).content).toContain("Linked: Google");
+    const connections = await slash(ada, "connections");
+    expect(connections.ephemeral).toBe(true);
+    expect(connections.content).toContain("Linked: Google (ada@example.com)");
+    expect(connections.content).not.toContain("at-google-1");
+    expect((await slash(bob, "connections")).content).toContain("haven't linked");
 
     const ticketId = await say(ada, "summarize the Q3 planning doc");
     const res = await userToken(ticketId, "google");
@@ -89,11 +93,40 @@ describe("per-person account linking", () => {
     ]);
   });
 
+  it("omits missing or mismatched Google identities", async () => {
+    await connect(ada, "google");
+    stack.oauth!.email = "";
+    expect((await slash(ada, "connections")).content).toContain("Linked: Google.");
+    stack.oauth!.email = "other@example.com";
+    stack.oauth!.sub = "different-account";
+    const reply = await slash(ada, "connections");
+    expect(reply.content).toContain("Linked: Google.");
+    expect(reply.content).not.toContain("other@example.com");
+  });
+
+  it("shows the GitHub username and falls back when userinfo is unavailable", async () => {
+    await connect(ada, "github");
+    const reply = await slash(ada, "connections");
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.content).toContain("GitHub (ada-gh)");
+    expect(reply.content).not.toContain("at-github-1");
+
+    stack.oauth!.failUserInfo = true;
+    const fallback = await slash(ada, "connections");
+    expect(fallback.ephemeral).toBe(true);
+    expect(fallback.content).toContain("Linked: GitHub.");
+  });
+
   it("links ClickUp (JSON code exchange, token that never expires) for a PM", async () => {
     const { page } = await connect(ada, "clickup");
     expect(page.url).toContain("/connect/done?provider=clickup");
     expect(page.body).toContain("ClickUp account connected");
-    expect((await slash(ada, "connections")).content).toContain("ClickUp");
+    expect((await slash(ada, "connections")).content).toContain("ClickUp (ada-cu)");
+    stack.oauth!.malformedUserInfo = "missing";
+    expect((await slash(ada, "connections")).content).toContain("Linked: ClickUp.");
+    stack.oauth!.malformedUserInfo = "invalid-json";
+    expect((await slash(ada, "connections")).content).toContain("Linked: ClickUp.");
+    stack.oauth!.malformedUserInfo = undefined;
 
     const ticketId = await say(ada, "use the demo video from our ClickUp task");
     const res = await userToken(ticketId, "clickup");
