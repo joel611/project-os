@@ -95,7 +95,19 @@ describe("blocked tickets", () => {
       target: { channelId: CHANNEL, threadId: THREAD },
       content: expect.stringContaining("<@u-ada>, I need your GitHub access"),
     });
-    await tool("ticket_update_status", { ticketId, status: "blocked" });
+    await tool("ticket_update_status", {
+      ticketId,
+      status: "blocked",
+      reason: "Ada hasn't connected GitHub, so I can't read acme/web.",
+    });
+    // The thread hears the Worker's reason, not only a generic line (the fake runtime echoes
+    // the summary prompt, which quotes it).
+    expect(stack.posted.at(-1)).toEqual({
+      target: { channelId: CHANNEL, threadId: THREAD },
+      content: expect.stringMatching(
+        /^Ticket "[^"]+" is blocked: .*Ada hasn't connected GitHub.*\nReply here and I'll pick it back up\.$/s,
+      ),
+    });
 
     await connect("github");
     stack.posted.length = 0;

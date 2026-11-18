@@ -34,6 +34,20 @@ export const ticketCompletedReply = (ticket: TicketCompletedInput): string =>
     ...ticket.events.map((e) => `[${e.type}] ${e.body}`),
   ].join("\n");
 
+export interface TicketBlockedInput {
+  readonly title: string;
+  /** What the Worker said it needs. */
+  readonly reason: string;
+}
+
+/** Asks the project session to shorten a Worker's reason for blocking a ticket. */
+export const ticketBlockedSummary = (ticket: TicketBlockedInput): string =>
+  [
+    `A Worker stopped work on the ticket "${ticket.title}" because it is blocked.`,
+    "Shorten its message into one or two plain sentences telling the team what is needed from them. Keep links, names, numbers and file paths exactly as given. Say nothing the message doesn't say, and never repeat a token or secret.",
+    `Worker message: ${JSON.stringify(ticket.reason)}`,
+  ].join("\n");
+
 export interface StatusQuestionInput {
   readonly question: string;
   /** The tickets it may be about: the thread's own, or every open one in the project. */
