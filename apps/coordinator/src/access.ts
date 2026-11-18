@@ -63,6 +63,7 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /tickets/:id": "member",
   "GET /tickets/:id/attachments": "member",
   "POST /tickets/:id/status": "user",
+  "POST /tickets/:id/assign": "user",
 };
 
 export const policyFor = (method: string, route: string): RoutePolicy =>

@@ -491,6 +491,71 @@ describe("dashboard reads", () => {
   });
 });
 
+describe("POST /tickets/:id/assign", () => {
+  const withStuckTicket = async () => {
+    const { layer } = makeTestLayer();
+    const runtime = ManagedRuntime.make(layer);
+    disposers.push(() => runtime.dispose());
+    const app = httpRoutes({ run: (effect) => runtime.runPromise(effect), access: OPERATOR });
+    await runtime.runPromise(
+      Effect.gen(function* () {
+        yield* (yield* TicketRepository).insert({
+          id: "t1",
+          projectId: "p1",
+          status: "in_progress",
+          title: "x",
+          intent: null,
+          inputSummary: "x",
+          priority: null,
+          workerType: "local",
+          workerId: "old",
+          requester: null,
+          result: null,
+          error: null,
+          createdAt: T0,
+          assignedAt: T0,
+          startedAt: T0,
+          lastActivityAt: T0,
+          completedAt: null,
+          updatedAt: T0,
+        });
+        yield* (yield* WorkerRepository).register({
+          id: "new",
+          workerType: "local",
+          owner: null,
+          name: "box",
+          secretHash: "h",
+          at: T0,
+        });
+      }),
+    );
+    return app;
+  };
+
+  it("reassigns the ticket to the worker, noting the Operator in its events", async () => {
+    const app = await withStuckTicket();
+    const res = await call(app, "POST", "/tickets/t1/assign", { workerId: "new" });
+    expect(res).toMatchObject({ status: 200, body: { status: "assigned", workerId: "new" } });
+    const detail = await call(app, "GET", "/tickets/t1");
+    expect(detail.body.events.at(-1)).toMatchObject({
+      type: "assigned",
+      body: "Reassigned from old to box by Op",
+    });
+  });
+
+  it("400s without a worker, 404s an unknown worker or ticket, 409s the same worker", async () => {
+    const app = await withStuckTicket();
+    expect((await call(app, "POST", "/tickets/t1/assign", {})).status).toBe(400);
+    const worker = await call(app, "POST", "/tickets/t1/assign", { workerId: "nope" });
+    expect(worker).toMatchObject({ status: 404, body: { error: "WorkerNotFound" } });
+    const ticket = await call(app, "POST", "/tickets/nope/assign", { workerId: "new" });
+    expect(ticket).toMatchObject({ status: 404, body: { error: "TicketNotFound" } });
+    await call(app, "POST", "/tickets/t1/assign", { workerId: "new" });
+    const again = await call(app, "POST", "/tickets/t1/assign", { workerId: "new" });
+    expect(again).toMatchObject({ status: 409, body: { error: "InvalidTransition" } });
+  });
+});
+
 describe("GET /activity", () => {
   it("returns in-flight tickets with origin and reply channel, their events, and workers", async () => {
     const { app } = setup();
