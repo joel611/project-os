@@ -61,6 +61,16 @@ export class TicketRepository extends Context.Service<
       ticketId: string,
       at: string,
     ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
+    /**
+     * Atomic reassign (see `reassignTicket`): back to `assigned` for `worker`. Applied only if
+     * the status and worker it was read with still hold, so it loses cleanly to a concurrent
+     * claim, finish, or reassign.
+     */
+    readonly reassign: (
+      ticketId: string,
+      worker: { readonly workerType: WorkerType; readonly workerId: string },
+      at: string,
+    ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
     /** Atomic `assigned → in_progress`. Two concurrent claims: exactly one wins. */
     readonly claim: (
       ticketId: string,

@@ -19,6 +19,7 @@ import {
   type AuditRead,
   listTicketAttachments,
   readActivity,
+  reassignTicketTo,
   redeemWorkerRegistration,
   workerLabel,
   type AgentRuntime,
@@ -45,6 +46,7 @@ import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
 import type { Access, Caller } from "../access.ts";
 import {
+  AssignBody,
   changeStatusAndNotify,
   CreateProjectBody,
   createProject,
@@ -343,5 +345,23 @@ export const httpRoutes = ({
           ),
         ),
       ),
-    );
+    )
+    .post("/tickets/:id/assign", async ({ params, body, request, set }) => {
+      // The route's `user` policy lets in only an Operator.
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
+        set,
+        toResult(
+          decode(AssignBody, body).pipe(
+            Effect.flatMap(({ workerId }) =>
+              reassignTicketTo({
+                ticketId: params.id,
+                workerId,
+                by: { type: "person", id: caller.userId, name: caller.name },
+              }),
+            ),
+          ),
+        ),
+      );
+    });
 };

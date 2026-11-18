@@ -159,6 +159,8 @@ export const makeApi = (
     worker: (workerId: string) => get(`/workers/${id(workerId)}`, WorkerDetail),
     workerAudit: (workerId: string, query: Omit<AuditFilter, "projectId"> = {}) =>
       get(`/workers/${id(workerId)}/audit${auditSearch(query)}`, AuditPage),
+    assignTicket: (ticketId: string, workerId: string) =>
+      send(`/tickets/${id(ticketId)}/assign`, Ticket, { method: "POST", json: { workerId } }),
     activity: (since: string | null) =>
       get(since === null ? "/activity" : `/activity?since=${id(since)}`, ActivityFeed),
     updateProject: (projectId: string, patch: ProjectPatch) =>

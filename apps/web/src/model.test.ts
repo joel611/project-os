@@ -5,6 +5,7 @@ import {
   formatBytes,
   groupSources,
   groupWorkers,
+  assignTargets,
   hasAttachments,
   isShownInline,
   lastSeen,
@@ -234,6 +235,19 @@ describe("workers", () => {
     expect(groups.shared.map((x) => x.id)).toEqual(["shared-b", "shared-a", "shared-z"]);
     expect(groups.personal.map((x) => x.id)).toEqual(["local-1"]);
     expect(groups.sandbox.map((x) => x.id)).toEqual(["daytona-1"]);
+  });
+
+  it("offers registered devices other than the ticket's worker as assign targets", () => {
+    const targets = assignTargets(
+      [
+        w("local-1", { ownerId: "u1" }),
+        w("shared-a", { name: "a", online: false }),
+        w("shared-b", { name: "b" }),
+        w("daytona-1", { registered: false }),
+      ],
+      "shared-b",
+    );
+    expect(targets.map((x) => x.id)).toEqual(["shared-a", "local-1"]);
   });
 });
 

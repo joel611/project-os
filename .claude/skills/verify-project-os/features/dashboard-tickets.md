@@ -4,7 +4,8 @@
 
 - Project page `/projects/<id>`: Tickets tab (count in tab name), rows grouped by state ("Active · N"), columns Status / Ticket / Worker / Activity
 - Ticket sheet (dialog titled with the ticket title): Intent/Worker/timestamps, Result, Activity timeline
-- Auto refresh every few seconds; read-only
+- Auto refresh every few seconds
+- Assign / Reassign (Operator only, ticket not finished): button next to Worker in the Details rail opens a dialog to pick a registered device (`<name> · online|offline`); `POST /tickets/:id/assign`
 
 ## How to get to it (user POV)
 
@@ -20,6 +21,13 @@ Needs a ticket (`inbound-to-reply.md` step 1 at least).
 4. `click @<title link ref>` · `snapshot` → dialog "please add dark mode" contains `Completed`, heading `Activity`, `Result` / `added dark mode toggle`. Screenshot. `press Escape`.
 
 Proves it: row status and sheet content match the API (`/tickets/<id>`).
+
+### Reassign
+
+1. `say` a ticket; with verify-box offline it stays Queued. Open the ticket page `/projects/<id>/tickets/<ticketId>` · `snapshot -i` → button `Assign` next to Worker.
+2. `click @<Assign>` → dialog "Assign ticket", combobox `Worker`. Click it → options `verify-box · offline`, `bob-laptop · offline`. Pick `bob-laptop`, click `Assign`.
+3. Activity gains `Assigned to bob-laptop by Admin`; the button now reads `Reassign`. Reassign to verify-box: `Reassigned from bob-laptop to verify-box by Admin`.
+4. `drive.ts work "…"` completes it as verify-box. Proves the new worker picks it up; `GET /audit?kind=ticket` shows two `assigned` rows by person `Admin`.
 
 ## Gotchas
 

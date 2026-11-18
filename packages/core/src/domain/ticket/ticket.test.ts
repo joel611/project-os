@@ -6,6 +6,7 @@ import {
   canTransition,
   claimTicket,
   isTerminal,
+  reassignTicket,
   transitionTicket,
   type Ticket,
   type TicketStatus,
@@ -125,4 +126,39 @@ describe("claim", () => {
       expect(err).toMatchObject({ _tag: "ClaimConflict", status });
     },
   );
+});
+
+describe("reassign", () => {
+  const to = { workerId: "w2", workerType: "local" } as const;
+
+  it.each(["open", "assigned", "in_progress", "blocked"] as const)(
+    "moves %s → assigned for the new worker, clearing the run start",
+    async (status) => {
+      const t = await Effect.runPromise(
+        reassignTicket(ticket({ status, workerId: "w1", startedAt: T0 }), to, T1),
+      );
+      expect(t).toMatchObject({
+        status: "assigned",
+        workerId: "w2",
+        workerType: "local",
+        assignedAt: T1,
+        startedAt: null,
+        lastActivityAt: T1,
+      });
+    },
+  );
+
+  it.each(["completed", "failed", "cancelled"] as const)("rejects a %s ticket", async (status) => {
+    const err = await Effect.runPromise(
+      Effect.flip(reassignTicket(ticket({ status, workerId: "w1" }), to, T1)),
+    );
+    expect(err).toMatchObject({ _tag: "InvalidTransition", from: status, to: "assigned" });
+  });
+
+  it("rejects the worker it already has", async () => {
+    const err = await Effect.runPromise(
+      Effect.flip(reassignTicket(ticket({ status: "in_progress", workerId: "w2" }), to, T1)),
+    );
+    expect(err._tag).toBe("InvalidTransition");
+  });
 });

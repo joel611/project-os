@@ -107,6 +107,32 @@ export const releaseTicket = (
     : Effect.fail(new InvalidTransition({ ticketId: ticket.id, from: ticket.status, to: "open" }));
 
 /**
+ * Reassign: an Operator hands an active ticket (`open | assigned | in_progress | blocked`) to
+ * another worker. It goes back to `assigned` for that worker to claim, its run start cleared, so
+ * a stuck worker's ticket can be picked up by a new one. Fails on a finished ticket or the same
+ * worker.
+ */
+export const reassignTicket = (
+  ticket: Ticket,
+  worker: { readonly workerId: string; readonly workerType: NonNullable<Ticket["workerType"]> },
+  at: string,
+): Effect.Effect<Ticket, InvalidTransition> =>
+  ACTIVE_STATUSES.includes(ticket.status) && ticket.workerId !== worker.workerId
+    ? Effect.succeed({
+        ...ticket,
+        status: "assigned" as const,
+        workerId: worker.workerId,
+        workerType: worker.workerType,
+        assignedAt: at,
+        startedAt: null,
+        lastActivityAt: at,
+        updatedAt: at,
+      })
+    : Effect.fail(
+        new InvalidTransition({ ticketId: ticket.id, from: ticket.status, to: "assigned" }),
+      );
+
+/**
  * Statuses a follow-up in the ticket's thread can reopen: finished ones, and `blocked`, whose
  * Worker ended its session waiting for that follow-up. `cancelled` stays closed.
  */

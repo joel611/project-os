@@ -52,6 +52,8 @@ export const UpdateStatusBody = Schema.Struct({
   error: Schema.optionalKey(Schema.String),
 });
 
+export const AssignBody = Schema.Struct({ workerId: Schema.NonEmptyString });
+
 export const decode = <S extends Schema.Decoder<unknown>>(schema: S, body: unknown) =>
   Schema.decodeUnknownEffect(schema)(body);
 

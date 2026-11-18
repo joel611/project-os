@@ -1,6 +1,7 @@
 import {
   ClaimConflict,
   InvalidTransition,
+  reassignTicket,
   releaseTicket,
   reopenTicket,
   TicketNotFound,
@@ -9,7 +10,7 @@ import {
   type TicketStatus,
   type TicketRepository,
 } from "@project-os/core";
-import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { ticketEvents, tickets, ticketThreads } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
@@ -161,6 +162,49 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
                 : find(ticketId).pipe(
                     Effect.flatMap((t) =>
                       Effect.fail(new InvalidTransition({ ticketId, from: t.status, to: "open" })),
+                    ),
+                  ),
+            ),
+          ),
+        ),
+      ),
+    reassign: (ticketId, worker, at) =>
+      find(ticketId).pipe(
+        Effect.flatMap((current) =>
+          reassignTicket(current, worker, at).pipe(
+            Effect.flatMap((next) =>
+              q(() =>
+                db
+                  .update(tickets)
+                  .set({
+                    status: next.status,
+                    workerType: next.workerType,
+                    workerId: next.workerId,
+                    assignedAt: next.assignedAt,
+                    startedAt: null,
+                    lastActivityAt: next.lastActivityAt,
+                    updatedAt: next.updatedAt,
+                  })
+                  .where(
+                    and(
+                      eq(tickets.id, ticketId),
+                      eq(tickets.status, current.status),
+                      current.workerId === null
+                        ? isNull(tickets.workerId)
+                        : eq(tickets.workerId, current.workerId),
+                    ),
+                  )
+                  .returning(),
+              ),
+            ),
+            Effect.flatMap(([row]) =>
+              row
+                ? Effect.succeed(row)
+                : find(ticketId).pipe(
+                    Effect.flatMap((t) =>
+                      Effect.fail(
+                        new InvalidTransition({ ticketId, from: t.status, to: "assigned" }),
+                      ),
                     ),
                   ),
             ),
