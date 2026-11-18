@@ -25,6 +25,8 @@ export interface AppDeps {
    * `user_token` (`SANDBOX_CREDENTIAL_PROXY`).
    */
   readonly credentialProxy?: Omit<EgressDeps, "runtime">;
+  /** GitHub API root for the `user_token` access check. Omitted: api.github.com (tests only). */
+  readonly githubApi?: string;
   /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
   /**
@@ -76,6 +78,11 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
     : withConnect;
   if (!deps.mcp) return withAssets;
   const proxy = deps.credentialProxy;
-  const withMcp = withAssets.use(mcpRoutes(deps.mcp, { credentialProxy: proxy !== undefined }));
+  const withMcp = withAssets.use(
+    mcpRoutes(deps.mcp, {
+      credentialProxy: proxy !== undefined,
+      ...(deps.githubApi && { githubApi: deps.githubApi }),
+    }),
+  );
   return proxy ? withMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withMcp;
 };

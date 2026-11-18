@@ -71,6 +71,8 @@ export const mcpRoutes = (
   options: {
     /** The credential proxy is on: sandbox sessions get no `user_token`. */
     readonly credentialProxy?: boolean;
+    /** GitHub API root for the `user_token` access check (default: api.github.com). */
+    readonly githubApi?: string;
   } = {},
 ) =>
   new Elysia({ name: "mcp" }).all(
@@ -84,7 +86,13 @@ export const mcpRoutes = (
       // Omitting sessionIdGenerator selects stateless mode.
       const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
       const userToken = !(options.credentialProxy && caller.kind === "sandbox");
-      const server = makeMcpServer(runtime, makeTools(caller, { userToken }));
+      const server = makeMcpServer(
+        runtime,
+        makeTools(caller, {
+          userToken,
+          ...(options.githubApi && { githubApi: options.githubApi }),
+        }),
+      );
       await server.connect(transport);
       try {
         return await transport.handleRequest(request);

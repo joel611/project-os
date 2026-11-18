@@ -32,6 +32,7 @@ import {
   type AuditLogRepository,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
+import { GITHUB_API, traceGithubAccess } from "./github-probe.ts";
 
 export type McpServices =
   | AgentRuntime
@@ -106,6 +107,8 @@ export const makeTools = (
   options: {
     /** Offer `user_token`. Off for sandbox sessions while the credential proxy is on. */
     readonly userToken: boolean;
+    /** GitHub API root `user_token` checks a token against; tests point it at a fake. */
+    readonly githubApi?: string;
   },
 ): readonly McpTool<McpServices>[] => {
   const actingAs = (i: { readonly workerId: string }) => guardActingAs(i.workerId, caller);
@@ -236,7 +239,14 @@ export const makeTools = (
       input: C.UserTokenInput,
       output: C.UserTokenOutput,
       guard: onTicket,
-      run: userTokenForTicket,
+      run: (i) =>
+        userTokenForTicket(i).pipe(
+          Effect.tap((token) =>
+            i.provider === "github"
+              ? traceGithubAccess(i.ticketId, token.accessToken, options.githubApi ?? GITHUB_API)
+              : Effect.void,
+          ),
+        ),
     }),
     define({
       name: "worker_heartbeat",
