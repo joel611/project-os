@@ -4,6 +4,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import {
   ACTIVE_STATUSES,
   canReopen,
+  chosenSkillSet,
   isTerminal,
   type Ticket,
   type TicketStatus,
@@ -14,6 +15,7 @@ import {
   IdGenerator,
   IntentClassifier,
   type IntentResult,
+  type SkillSetChoice,
   KeyValueStore,
   type Person,
   ProjectRepository,
@@ -30,6 +32,7 @@ import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts
 import { recordChannelMessage } from "./channel-digest.ts";
 import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
+import { skillSetChoices } from "./skills.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { notifyTicket } from "./on-ticket-completed.ts";
 import {
@@ -341,12 +344,18 @@ export const handleInbound = (
       return { kind: "admin_forbidden" } as InboundOutcome;
     }
 
-    const classify = (projectContext: string, projectId: string | null, ticket?: string) =>
+    const classify = (
+      projectContext: string,
+      projectId: string | null,
+      ticket?: string,
+      skillSets: ReadonlyArray<SkillSetChoice> = [],
+    ) =>
       classifier
         .classify({
           content: message.content,
           projectContext,
           ...(ticket === undefined ? {} : { ticketContext: ticket }),
+          ...(skillSets.length === 0 ? {} : { skillSets }),
         })
         .pipe(
           Effect.tap((result) =>
@@ -538,7 +547,9 @@ export const handleInbound = (
       return yield* addFollowUp(threadTicket.id);
     }
 
-    const result = override?.result ?? (yield* classify(project.customInstructions, project.id));
+    const result =
+      override?.result ??
+      (yield* classify(project.customInstructions, project.id, undefined, yield* skillSetChoices));
     if (!isConfident(result.confidence)) return yield* clarify();
 
     const active = (yield* tickets.listByStatus(ACTIVE_STATUSES))
@@ -559,6 +570,7 @@ export const handleInbound = (
           priority: null,
           workerType: null,
           workerId: null,
+          skillSetId: chosenSkillSet(result),
           requester,
           result: null,
           error: null,

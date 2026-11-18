@@ -6,6 +6,7 @@ import {
   KeyValueStore,
   Scheduler,
   type Sidekick,
+  SkillSource,
   WorkerLauncher,
 } from "@project-os/core";
 import { DrizzleSqlite, schema, SqliteRepositories } from "@project-os/db-sqlite";
@@ -15,6 +16,7 @@ import {
   DEFAULT_ORG,
   makeAssetStore,
   IdGeneratorUuid,
+  makeGithubSkillSource,
   makeHttpChannelGateway,
   noopLauncher,
   SidekickPending,
@@ -26,7 +28,7 @@ import { Effect, Layer } from "effect";
 import { makeWorkersKeyValueStore } from "./kv.ts";
 import { makeR2Backend } from "./r2.ts";
 
-export { DEFAULT_ORG, makeR2Backend, makeWorkersKeyValueStore };
+export { DEFAULT_ORG, makeGithubSkillSource, makeR2Backend, makeWorkersKeyValueStore };
 
 /**
  * Creates the org if missing. Idempotent. Projects reference `orgs.id`, and nothing else
@@ -74,6 +76,8 @@ export interface CloudflareConfig {
     readonly publicUrl: string;
     readonly secret: string;
   };
+  /** Where skills are read from. Default: GitHub, anonymously. */
+  readonly skillSource?: typeof SkillSource.Service;
   /** Provides `AgentRuntime` and `Sidekick`. Default: placeholders that fail. */
   readonly agent?: Layer.Layer<AgentRuntime | Sidekick>;
 }
@@ -102,6 +106,11 @@ export const CloudflareLive = (config: CloudflareConfig) =>
     config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
+    Layer.succeed(
+      SkillSource,
+      // workerd throws "Illegal invocation" when the global `fetch` is called detached.
+      config.skillSource ?? makeGithubSkillSource({ fetch: (input, init) => fetch(input, init) }),
+    ),
     config.assets
       ? Layer.succeed(
           AssetStore,

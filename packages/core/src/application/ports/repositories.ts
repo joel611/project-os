@@ -25,6 +25,13 @@ import type {
   TicketStatus,
   TicketThread,
 } from "../../domain/ticket/index.ts";
+import type {
+  Skill,
+  SkillNotFound,
+  SkillSet,
+  SkillSetNameTaken,
+  SkillSetNotFound,
+} from "../../domain/skill/index.ts";
 import type { Worker, WorkerNotFound, WorkerType } from "../../domain/worker/index.ts";
 
 export class TicketRepository extends Context.Service<
@@ -278,3 +285,32 @@ export class WorkerRepository extends Context.Service<
     readonly remove: (id: string) => Effect.Effect<boolean>;
   }
 >()("@project-os/core/WorkerRepository") {}
+
+/** Skill sets and the skills pinned in them. Skill files are read separately: lists stay small. */
+export class SkillRepository extends Context.Service<
+  SkillRepository,
+  {
+    readonly listSets: Effect.Effect<ReadonlyArray<SkillSet>>;
+    readonly getSet: (id: string) => Effect.Effect<SkillSet, SkillSetNotFound>;
+    /** Fails `SkillSetNameTaken` when another set has the name. */
+    readonly insertSet: (set: SkillSet) => Effect.Effect<SkillSet, SkillSetNameTaken>;
+    readonly updateSet: (
+      id: string,
+      patch: {
+        readonly name?: string;
+        readonly description?: string;
+        readonly updatedAt: string;
+      },
+    ) => Effect.Effect<SkillSet, SkillSetNotFound | SkillSetNameTaken>;
+    /** Removes the set and its skills; tickets that used it keep only the dangling id. */
+    readonly deleteSet: (id: string) => Effect.Effect<void, SkillSetNotFound>;
+    readonly listSkills: (setId: string) => Effect.Effect<ReadonlyArray<Skill>>;
+    readonly getSkill: (id: string) => Effect.Effect<Skill, SkillNotFound>;
+    /**
+     * Adds a skill, or replaces the one with the same `(set, source, slug)`, keeping its id.
+     * Returns the stored skill. The files live in the asset store, at `skill.archiveKey`.
+     */
+    readonly upsertSkill: (skill: Skill) => Effect.Effect<Skill>;
+    readonly removeSkill: (id: string) => Effect.Effect<void, SkillNotFound>;
+  }
+>()("@project-os/core/SkillRepository") {}

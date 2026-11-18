@@ -15,6 +15,8 @@ export interface WatcherConfig {
   readonly cwd: string;
   /** Bearer secret this device got at registration; every MCP call sends it. */
   readonly secret: string;
+  /** Install the ticket's skill set before a session starts (`WATCHER_SKILLS=0` turns it off). */
+  readonly skills: boolean;
 }
 
 const loadAgent = (
@@ -56,5 +58,6 @@ export const loadConfig = (
     maxSessions: envNumber("MAX_SESSIONS", 1),
     cwd: env("WORKER_CWD", process.cwd()),
     secret: credentials.secret,
+    skills: !["0", "false", "off"].includes((process.env.WATCHER_SKILLS ?? "").toLowerCase()),
   };
 };

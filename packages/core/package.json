@@ -9,6 +9,7 @@
   "dependencies": {
     "@project-os/contracts": "workspace:*",
     "@project-os/system-prompts": "workspace:*",
-    "effect": "4.1.2"
+    "effect": "4.1.2",
+    "fflate": "^0.8.3"
   }
 }

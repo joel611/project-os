@@ -566,6 +566,15 @@ Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentia
 | `SANDBOX_CREDENTIAL_PROXY`        | No       | `false`                          | `true`: sandboxes reach Google, GitHub and ClickUp through `/egress` and never hold the person's token ([proxy](#credential-proxy)) |
 | `SANDBOX_EGRESS_URL`              | No       | `SANDBOX_MCP_URL` with `/egress` | The credential proxy as the sandbox's cloud sees it. Needed when `SANDBOX_MCP_URL` doesn't end in `/mcp`                            |
 
+### Skills
+
+Skill sets are built in the dashboard's **Skill sets** page and need no setup. The Coordinator reads skills from GitHub without a token, which GitHub limits to 60 requests an hour; set a token to raise that.
+
+| Variable             | Required | Default | Description                                                                                       |
+| -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `SKILLS_GITHUB_TOKEN` | No       |         | A GitHub token with no scopes (public repos only) that the Coordinator uses to read skills. Not sent to Workers |
+| `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's skill set before a session starts       |
+
 #### Daytona (paused)
 
 | Variable                 | Required | Default                      | Description                                                  |

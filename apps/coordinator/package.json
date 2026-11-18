@@ -39,6 +39,7 @@
     "@earendil-works/pi-ai": "1.5.0",
     "@earendil-works/pi-durable": "1.5.0",
     "@project-os/db-sqlite": "workspace:*",
-    "@project-os/testing": "workspace:*"
+    "@project-os/testing": "workspace:*",
+    "fflate": "^0.8.3"
   }
 }
