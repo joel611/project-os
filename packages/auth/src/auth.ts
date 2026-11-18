@@ -516,103 +516,84 @@ export const makeAuth = (config: AuthConfig) => {
       config.db.select().from(schema.account),
       config.db.select().from(schema.session),
     ]);
-    const byUser = new Map<string, typeof accounts>();
-    for (const account of accounts) {
-      byUser.set(account.userId, [...(byUser.get(account.userId) ?? []), account]);
-    }
-    const lastSignIn = new Map<string, number>();
-    for (const session of sessions) {
-      const at = session.createdAt.getTime();
-      if (at > (lastSignIn.get(session.userId) ?? 0)) lastSignIn.set(session.userId, at);
-    }
+    const accountsOf = (userId: string) => accounts.filter((a) => a.userId === userId);
+    const lastSignIn = (userId: string) => {
+      const times = sessions.filter((s) => s.userId === userId).map((s) => s.createdAt.getTime());
+      return times.length > 0 ? new Date(Math.max(...times)).toISOString() : null;
+    };
+    const channelOf = (person: Person): NonNullable<Member["channel"]> => ({
+      type: person.channelType,
+      id: person.id,
+      name: person.name ?? null,
+    });
 
-    // Channel identities, keyed by the Google `sub` they linked (or alone when none).
+    // Channel identities by the Google `sub` they linked.
     const identities = users.flatMap((user) => {
       const person = personFromIdentityEmail(user.email, user.name);
       if (!person) return [];
-      const owned = byUser.get(user.id) ?? [];
+      const owned = accountsOf(user.id);
       return [
         {
-          user,
+          id: user.id,
           person,
           sub: owned.find((a) => a.providerId === "google")?.accountId,
-          github: owned.find((a) => a.providerId === "github"),
+          github: owned.some((a) => a.providerId === "github"),
         },
       ];
     });
-    const bySub = new Map(identities.flatMap((i) => (i.sub ? [[i.sub, i] as const] : [])));
-
-    const rows: Array<{ member: Member; person?: Person }> = [];
     const paired = new Set<string>();
+    const rows: Array<{ member: Member; person?: Person }> = [];
+
     for (const user of users) {
       if (isChannelIdentityEmail(user.email)) continue;
-      const owned = byUser.get(user.id) ?? [];
-      const signIn = owned.find(
+      const signIn = accountsOf(user.id).find(
         (a) => a.providerId === GOOGLE_SIGN_IN && !a.accountId.startsWith(MEMBER_ACCOUNT_PREFIX),
       );
-      const admin = isOperator(user.email);
-      // Stray users (a failed sign-in attempt) are neither an operator nor a Google sign-in.
-      if (!signIn && !admin) continue;
-      const identity = signIn ? bySub.get(signIn.accountId) : undefined;
-      if (identity) paired.add(identity.user.id);
-      const at = lastSignIn.get(user.id);
+      const identity = signIn && identities.find((i) => i.sub === signIn.accountId);
+      if (identity) paired.add(identity.id);
       rows.push({
         ...(identity && { person: identity.person }),
         member: {
           key: user.id,
           name: user.name,
           email: user.email,
-          admin,
-          dashboard: { lastSignInAt: at ? new Date(at).toISOString() : null },
-          channel: identity
-            ? {
-                type: identity.person.channelType,
-                id: identity.person.id,
-                name: identity.person.name ?? null,
-              }
-            : null,
-          googleLinked: signIn !== undefined || identity !== undefined,
+          admin: isOperator(user.email),
+          dashboard: { lastSignInAt: lastSignIn(user.id) },
+          channel: identity ? channelOf(identity.person) : null,
+          googleLinked: signIn !== undefined,
           github: identity?.github ? { login: null } : null,
         },
       });
     }
-    for (const identity of identities) {
-      if (paired.has(identity.user.id)) continue;
-      const at = lastSignIn.get(identity.user.id);
+    for (const identity of identities.filter((i) => !paired.has(i.id))) {
+      const lastSignInAt = lastSignIn(identity.id);
       rows.push({
         person: identity.person,
         member: {
-          key: identity.user.id,
+          key: identity.id,
           name: identity.person.name ?? identity.person.id,
           email: null,
           admin: false,
           // A member signs in with the Google account they linked, so a session means they did.
-          dashboard: at ? { lastSignInAt: new Date(at).toISOString() } : null,
-          channel: {
-            type: identity.person.channelType,
-            id: identity.person.id,
-            name: identity.person.name ?? null,
-          },
+          dashboard: lastSignInAt ? { lastSignInAt } : null,
+          channel: channelOf(identity.person),
           googleLinked: identity.sub !== undefined,
           github: identity.github ? { login: null } : null,
         },
       });
     }
 
-    // GitHub logins and the Google email come from the providers; a failure leaves them null.
+    // GitHub logins and the Google email come from the providers; failures leave them null.
     const resolved = await Promise.all(
       rows.map(async ({ member, person }): Promise<Member> => {
         if (!person || !connections) return member;
-        const linked = await Effect.runPromise(connections.service.list(person)).catch(
-          () => undefined,
-        );
-        if (!linked) return member;
-        const login = linked.find((a) => a.provider === "github")?.displayIdentity ?? null;
-        const email = linked.find((a) => a.provider === "google")?.displayIdentity;
+        const linked = await Effect.runPromise(connections.service.list(person));
+        const identityOf = (provider: ConnectionProvider) =>
+          linked.find((a) => a.provider === provider)?.displayIdentity ?? null;
         return {
           ...member,
-          email: member.email ?? email ?? null,
-          github: member.github ? { login } : null,
+          email: member.email ?? identityOf("google"),
+          github: member.github ? { login: identityOf("github") } : null,
         };
       }),
     );

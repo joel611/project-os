@@ -101,6 +101,18 @@ describe("members", () => {
     expect(body).toHaveLength(3);
   });
 
+  it("lists a member whose provider cannot be asked, with the login and email unknown", async () => {
+    await start();
+    await connect(bob, "google");
+    await connect(bob, "github");
+    stack.oauth!.failUserInfo = true;
+    const { body } = await members(stack.operatorToken);
+    expect(body.find((m: { name: string }) => m.name === "Bob")).toMatchObject({
+      email: null,
+      github: { login: null },
+    });
+  });
+
   it("is Operators' only", async () => {
     await start();
     await connect(ada, "google");
