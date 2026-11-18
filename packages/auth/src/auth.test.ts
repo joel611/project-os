@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite";
+import { schema } from "@project-os/db-sqlite";
 import { migrationsFolder } from "@project-os/db-sqlite/migrations-folder";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { describe, expect, it } from "vite-plus/test";
-import type { AuthConfig } from "./auth.ts";
+import { type AuthConfig, GOOGLE_SIGN_IN } from "./auth.ts";
 import { authOf } from "./test-auth.ts";
 
 const BASE = "http://localhost:8080";
@@ -12,7 +13,7 @@ const admin = { email: "Ops@Example.com", password: "correct horse battery" };
 const authWith = (config: Partial<AuthConfig> = {}) => {
   const db = drizzle({ client: new Database(":memory:") });
   migrate(db, { migrationsFolder });
-  return authOf({ db, baseURL: BASE, secret: "unit-test-secret-unit-test-secret", ...config });
+  return authOf({ baseURL: BASE, secret: "unit-test-secret-unit-test-secret", db, ...config });
 };
 
 const post = (auth: ReturnType<typeof authWith>, path: string, body: unknown) =>
@@ -191,5 +192,90 @@ describe("Auth", () => {
     const db = drizzle({ client: new Database(":memory:") });
     const noUrl = authOf({ db, secret: "unit-test-secret-unit-test-secret", google });
     expect(noUrl.connections).toBeUndefined();
+  });
+});
+
+describe("Auth member list", () => {
+  const CHANNEL = "@people.project-os.invalid";
+
+  it("lists the password operator alone, with no sign-in yet and nothing linked", async () => {
+    const auth = authWith({ admin });
+    await auth.ready();
+    expect(await auth.members()).toEqual([
+      {
+        key: expect.any(String),
+        name: "Admin",
+        email: "ops@example.com",
+        admin: true,
+        dashboard: { lastSignInAt: null },
+        channel: null,
+        googleLinked: false,
+        github: null,
+      },
+    ]);
+  });
+
+  it("pairs a Google sign-in with the channel identity that linked the same account", async () => {
+    const db = drizzle({ client: new Database(":memory:") });
+    migrate(db, { migrationsFolder });
+    const auth = authWith({ admin, allowedEmails: ["ada@example.com"], db });
+    await auth.ready();
+    const ctx = await auth.auth.$context;
+    // Straight into the table: linking a Google or GitHub account normally goes through /connect.
+    const link = async (userId: string, providerId: string, accountId: string) => {
+      const now = new Date();
+      await db.insert(schema.account).values({
+        id: `${userId}-${providerId}`,
+        userId,
+        providerId,
+        accountId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    };
+    const user = (email: string, name: string) =>
+      ctx.internalAdapter.createUser({ email, name, emailVerified: true }, { method: "test" });
+
+    // Ada: dashboard sign-in and a Discord identity, same Google sub; GitHub on the Discord side.
+    const dash = await user("ada@example.com", "Ada Lovelace");
+    await link(dash.id, GOOGLE_SIGN_IN, "sub-ada");
+    await ctx.internalAdapter.createSession(dash.id);
+    await ctx.internalAdapter.createSession(dash.id);
+    const discordAda = await user(`discord-u-ada${CHANNEL}`, "Ada");
+    await link(discordAda.id, "google", "sub-ada");
+    await link(discordAda.id, "github", "gh-1");
+    // Bob: a Discord member who signed in as themselves; no GitHub.
+    const bob = await user(`discord-u-bob${CHANNEL}`, "Bob");
+    await link(bob.id, "google", "sub-bob");
+    await link(bob.id, GOOGLE_SIGN_IN, "member:sub-bob");
+    await ctx.internalAdapter.createSession(bob.id);
+    // Nameless: a Discord user known only by id, who linked nothing.
+    await user(`discord-u-zed${CHANNEL}`, "u-zed");
+
+    const list = await auth.members();
+    expect(list.map((m) => m.name)).toEqual(["Ada Lovelace", "Admin", "Bob", "u-zed"]);
+    const [ada, , bobRow, zed] = list;
+    expect(ada).toMatchObject({
+      admin: true,
+      googleLinked: true,
+      dashboard: { lastSignInAt: expect.any(String) },
+      channel: { type: "discord", id: "u-ada", name: "Ada" },
+      github: { login: null },
+    });
+    expect(bobRow).toMatchObject({
+      admin: false,
+      email: null,
+      googleLinked: true,
+      dashboard: { lastSignInAt: expect.any(String) },
+      channel: { id: "u-bob" },
+      github: null,
+    });
+    expect(zed).toMatchObject({
+      channel: { id: "u-zed", name: null },
+      dashboard: null,
+      googleLinked: false,
+    });
+    // Ada is one row: her Discord identity is not listed again.
+    expect(list).toHaveLength(4);
   });
 });

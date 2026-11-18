@@ -10,6 +10,7 @@ import {
   Moon,
   Network,
   ScrollText,
+  Users,
   Sun,
 } from "lucide-react";
 import { api, type WorkerView } from "@/api";
@@ -250,6 +251,10 @@ const SidebarBody = () => {
             <Link to="/audit" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
               <ScrollText className="size-4 shrink-0" />
               Audit log
+            </Link>
+            <Link to="/members" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
+              <Users className="size-4 shrink-0" />
+              Members
             </Link>
             <MyTicketsLink />
           </nav>
