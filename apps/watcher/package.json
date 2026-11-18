@@ -12,6 +12,7 @@
   "dependencies": {
     "@project-os/config": "workspace:*",
     "@project-os/contracts": "workspace:*",
-    "@project-os/system-prompts": "workspace:*"
+    "@project-os/system-prompts": "workspace:*",
+    "fflate": "^0.8.3"
   }
 }

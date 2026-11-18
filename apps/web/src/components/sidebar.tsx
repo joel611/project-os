@@ -10,6 +10,7 @@ import {
   Moon,
   Network,
   ScrollText,
+  Sparkles,
   Users,
   Sun,
 } from "lucide-react";
@@ -251,6 +252,10 @@ const SidebarBody = () => {
             <Link to="/audit" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
               <ScrollText className="size-4 shrink-0" />
               Audit log
+            </Link>
+            <Link to="/skills" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
+              <Sparkles className="size-4 shrink-0" />
+              Skill sets
             </Link>
             <Link to="/members" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
               <Users className="size-4 shrink-0" />

@@ -15,7 +15,13 @@ import {
 } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { Auth } from "@project-os/auth";
-import { DEFAULT_ORG, DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
+import {
+  DEFAULT_ORG,
+  DrizzleBun,
+  ensureOrg,
+  LocalLive,
+  makeGithubSkillSource,
+} from "@project-os/infra-local";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { createDiscord } from "@project-os/channel-discord";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
@@ -116,6 +122,9 @@ const runtime = ManagedRuntime.make(
       dbPath,
       adapterUrls: { discord: discord?.replyUrl ?? remoteGatewayUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
+      ...(process.env.SKILLS_GITHUB_TOKEN && {
+        skillSource: makeGithubSkillSource({ token: process.env.SKILLS_GITHUB_TOKEN }),
+      }),
       assets: {
         dir: dataPath("assets", process.env.ASSET_DIR),
         publicUrl: assetBaseUrl(process.env, publicUrl),

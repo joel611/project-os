@@ -27,6 +27,8 @@ export const Ticket = Schema.Struct({
   priority: Schema.NullOr(Schema.String),
   workerType: Schema.NullOr(WorkerType),
   workerId: Schema.NullOr(Schema.String),
+  /** The skill set Jev picked for the request; its skills are synced to the Worker first. */
+  skillSetId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** Null for Tickets made before it was recorded, and for ones no person asked for. */
   requester: Schema.NullOr(Requester),
   result: Json,

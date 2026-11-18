@@ -11,6 +11,11 @@ import {
   ProjectSource,
   SharedAccountConnect,
   SharedAccountsView,
+  Skill,
+  SkillCandidates,
+  SkillSet,
+  SkillSetList,
+  SkillUpdateReport,
   Ticket,
   TicketAttachmentsOutput,
   TicketEvent,
@@ -54,6 +59,9 @@ const auditSearch = (query: AuditFilter) => {
   const search = params.toString();
   return search ? `?${search}` : "";
 };
+
+const Deleted = Schema.Struct({ deleted: Schema.Boolean });
+const AddedSkills = Schema.Struct({ skills: Schema.Array(Skill) });
 
 export interface ProjectPatch {
   readonly name?: string;
@@ -99,6 +107,13 @@ export const describeError = (error: Error): string => {
   if (error.status === 404) return "Not found.";
   if (error.status === 501) return "The Coordinator isn't set up for that yet.";
   if (error.code === "SourceAlreadyLinked") return "That source is already linked to a project.";
+  if (error.code === "SkillSetNameTaken") return "A skill set with that name already exists.";
+  if (error.code === "InvalidSkillSet")
+    return 'Use a name of 1 to 60 characters, other than "none".';
+  if (error.code === "InvalidSkillSource")
+    return "Use owner/repo, or a skills.sh or github.com link to a repo.";
+  if (error.code === "SkillFetchFailed")
+    return "Couldn't read that from GitHub (not found, too large, or rate limited).";
   if (error.status === 400) return "The Coordinator rejected that input.";
   return `Coordinator returned ${error.status} (${error.code}).`;
 };
@@ -182,6 +197,25 @@ export const makeApi = (
       get(`/workers/${id(workerId)}/audit${auditSearch(query)}`, AuditPage),
     assignTicket: (ticketId: string, workerId: string) =>
       send(`/tickets/${id(ticketId)}/assign`, Ticket, { method: "POST", json: { workerId } }),
+    skillSets: () => get("/skill-sets", SkillSetList),
+    createSkillSet: (input: { name: string; description: string }) =>
+      send("/skill-sets", SkillSet, { method: "POST", json: input }),
+    updateSkillSet: (setId: string, patch: { name?: string; description?: string }) =>
+      send(`/skill-sets/${id(setId)}`, SkillSet, { method: "PATCH", json: patch }),
+    deleteSkillSet: (setId: string) =>
+      send(`/skill-sets/${id(setId)}`, Deleted, { method: "DELETE" }),
+    browseSkills: (source: string) =>
+      send("/skill-sets/browse", SkillCandidates, { method: "POST", json: { source } }),
+    addSkills: (setId: string, input: { source: string; slugs: readonly string[] }) =>
+      send(`/skill-sets/${id(setId)}/skills`, AddedSkills, { method: "POST", json: input }),
+    removeSkill: (setId: string, skillId: string) =>
+      send(`/skill-sets/${id(setId)}/skills/${id(skillId)}`, Deleted, { method: "DELETE" }),
+    skillUpdates: (setId: string) => get(`/skill-sets/${id(setId)}/updates`, SkillUpdateReport),
+    updateSkills: (setId: string, skillIds?: readonly string[]) =>
+      send(`/skill-sets/${id(setId)}/update`, AddedSkills, {
+        method: "POST",
+        json: skillIds ? { skillIds } : {},
+      }),
     activity: (since: string | null) =>
       get(since === null ? "/activity" : `/activity?since=${id(since)}`, ActivityFeed),
     updateProject: (projectId: string, patch: ProjectPatch) =>

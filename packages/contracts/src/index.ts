@@ -11,3 +11,4 @@ export * from "./viewer.ts";
 export * from "./audit.ts";
 export * from "./members.ts";
 export * from "./shared-accounts.ts";
+export * from "./skills.ts";

@@ -18,12 +18,14 @@ import {
   makeChannelDigesterRecording,
   makeChannelGatewayRecording,
   makeSidekickRecording,
+  makeSkillSourceFake,
   makeUserConnectionsInMemory,
   AuditLogRepositoryInMemory,
   MemoryRepositoryInMemory,
   ProjectRepositoryInMemory,
   ProjectSourceRepositoryInMemory,
   SchedulerNoop,
+  SkillRepositoryInMemory,
   TicketRepositoryInMemory,
   WorkerRepositoryInMemory,
 } from "./in-memory.ts";
@@ -62,6 +64,8 @@ export const makeTestLayer = (options?: {
   readonly sidekickProbe?: ConnectionProvider;
   /** Make `WorkerLauncher.launch` fail with this message, until `setLaunchFailure` says otherwise. */
   readonly failLaunch?: string;
+  /** Skill folders upstream, by `owner/repo` (see `makeSkillSourceFake`). Default: none. */
+  readonly skillSource?: ReturnType<typeof makeSkillSourceFake>;
   /** The launcher's sandbox pool. Default: empty (no sandbox provider configured). */
   readonly sandboxPool?: ReadonlyArray<SandboxPoolEntry>;
 }) => {
@@ -94,6 +98,8 @@ export const makeTestLayer = (options?: {
     AuditLogRepositoryInMemory,
     ChannelMessageRepositoryInMemory,
     WorkerRepositoryInMemory,
+    SkillRepositoryInMemory,
+    (options?.skillSource ?? makeSkillSourceFake()).layer,
     KeyValueStoreInMemory,
     gateway.layer,
     SchedulerNoop,

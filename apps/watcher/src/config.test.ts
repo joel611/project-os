@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { loadConfig } from "./config.ts";
 
-const KEYS = ["POLL_INTERVAL_MS", "MAX_SESSIONS", "WORKER_CWD", "WATCHER_AGENT", "WATCHER_MODEL"];
+const KEYS = [
+  "POLL_INTERVAL_MS",
+  "MAX_SESSIONS",
+  "WORKER_CWD",
+  "WATCHER_AGENT",
+  "WATCHER_MODEL",
+  "WATCHER_SKILLS",
+];
 const credentials = { server: "https://c", workerId: "local-9", name: "mbp", secret: "s" };
 const installed =
   (...names: string[]) =>
@@ -26,7 +33,13 @@ describe("loadConfig", () => {
       maxSessions: 1,
       cwd: process.cwd(),
       secret: "s",
+      skills: true,
     });
+  });
+
+  it("turns skills off with WATCHER_SKILLS=0", () => {
+    process.env.WATCHER_SKILLS = "0";
+    expect(loadConfig(credentials, installed("claude")).skills).toBe(false);
   });
 
   it("reads overrides from env", () => {

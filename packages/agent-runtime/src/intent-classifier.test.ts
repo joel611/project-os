@@ -224,3 +224,71 @@ describe.skipIf(!process.env.OPENROUTER_API_KEY)("live Jev (opt-in)", () => {
     expect(result.confidence).toBeGreaterThan(0);
   });
 });
+
+describe("skill sets", () => {
+  const sets = [
+    { id: "s-dev", name: "development", description: "Writing and fixing code" },
+    { id: "s-doc", name: "writing", description: "" },
+  ];
+  const withSets = (s: ReturnType<typeof scripted>, ticketContext?: string) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const c = yield* IntentClassifier;
+        return yield* c.classify({
+          content: "fix the login bug",
+          projectContext: "",
+          skillSets: sets,
+          ...(ticketContext && { ticketContext }),
+        });
+      }).pipe(Effect.provide(makeIntentClassifier(s))),
+    );
+
+  it("asks which set suits the request, each option judged by the set's description", async () => {
+    const s = scripted({
+      answers: {
+        intent: choice("new_request", 0.9),
+        skill_set: choice("development", 0.8),
+      },
+    });
+    const result = await withSets(s);
+    const question = s.requests[0]!.questions.skill_set as { criteria: Record<string, string> };
+    expect(question.criteria).toEqual({
+      development: "Writing and fixing code",
+      // A set with no description is judged by its name.
+      writing: "writing",
+      none: expect.any(String),
+    });
+    // The answer is a set's name; the result carries its id.
+    expect(result.skillSet).toEqual({ choice: "s-dev", confidence: 0.8 });
+  });
+
+  it("maps `none`, or a name it can't place, to none", async () => {
+    const none = await withSets(
+      scripted({ answers: { intent: choice("new_request", 0.9), skill_set: choice("none", 0.9) } }),
+    );
+    expect(none.skillSet).toEqual({ choice: "none", confidence: 0.9 });
+    const unknown = await withSets(
+      scripted({
+        answers: { intent: choice("new_request", 0.9), skill_set: choice("ghost", 0.9) },
+      }),
+    );
+    expect(unknown.skillSet?.choice).toBe("none");
+  });
+
+  it("leaves the answer out when the model gave none", async () => {
+    const result = await withSets(scripted({ answers: { intent: choice("new_request", 0.9) } }));
+    expect(result.skillSet).toBeUndefined();
+  });
+
+  it("doesn't ask for a message in a ticket's thread", async () => {
+    const s = scripted({ answers: { intent: choice("follow_up", 0.9) } });
+    await withSets(s, "Ticket: t");
+    expect(Object.keys(s.requests[0]!.questions)).not.toContain("skill_set");
+  });
+
+  it("asks no skill question when there are no sets", async () => {
+    const s = scripted({ answers: { intent: choice("new_request", 0.9) } });
+    await call(makeIntentClassifier(s));
+    expect(Object.keys(s.requests[0]!.questions)).not.toContain("skill_set");
+  });
+});

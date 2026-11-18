@@ -15,6 +15,8 @@ import type {
   WorkerType,
 } from "@project-os/contracts";
 import { Context, Data, type Effect } from "effect";
+import type { SkillCandidate, SkillFile } from "@project-os/contracts";
+import type { SkillFetchFailed } from "../../domain/skill/index.ts";
 
 export class KeyValueStore extends Context.Service<
   KeyValueStore,
@@ -171,6 +173,13 @@ export class AgentRuntimeError extends Data.TaggedError("AgentRuntimeError")<{
   readonly message: string;
 }> {}
 
+/** A skill set the classifier may route a request to. */
+export interface SkillSetChoice {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
 export interface IntentResult {
   readonly intent: string;
   readonly confidence: number;
@@ -187,6 +196,8 @@ export interface IntentResult {
     readonly confidence: number;
     readonly probabilities: Readonly<Record<string, number>>;
   };
+  /** Only when skill sets were offered: the id of the one chosen (`none`: no set fits). */
+  readonly skillSet?: { readonly choice: string; readonly confidence: number };
   /** The model that answered, as `provider/model`. */
   readonly model?: string;
   /** Only when `ticketContext` was given: is the message about that ticket? */
@@ -205,6 +216,8 @@ export class IntentClassifier extends Context.Service<
       readonly projectContext: string;
       /** The ticket whose thread the message was said in (see `ticketContext`). */
       readonly ticketContext?: string;
+      /** The skill sets a new request may be routed to; none when no set has skills. */
+      readonly skillSets?: ReadonlyArray<SkillSetChoice>;
     }) => Effect.Effect<IntentResult, ClassifierError>;
   }
 >()("@project-os/core/IntentClassifier") {}
@@ -411,3 +424,30 @@ export class NotConnected extends Data.TaggedError("NotConnected")<{
 export class ConnectionsUnavailable extends Data.TaggedError("ConnectionsUnavailable")<{
   readonly message: string;
 }> {}
+
+/**
+ * Reads skills from where they are published (GitHub). Only the Coordinator calls it, when an
+ * Operator browses, adds or updates skills; Workers get the pinned copy, never upstream.
+ */
+export class SkillSource extends Context.Service<
+  SkillSource,
+  {
+    /** Every skill folder (one with a SKILL.md) in the `owner/repo` repo's default branch. */
+    readonly list: (
+      source: string,
+    ) => Effect.Effect<ReadonlyArray<SkillCandidate>, SkillFetchFailed>;
+    /** The folder's tree SHA now; null when it no longer exists. */
+    readonly latestSha: (
+      source: string,
+      path: string,
+    ) => Effect.Effect<string | null, SkillFetchFailed>;
+    /** The folder's text files, as of its tree SHA. Fails when it is not a safe skill. */
+    readonly fetch: (
+      source: string,
+      path: string,
+    ) => Effect.Effect<
+      { readonly sha: string; readonly files: ReadonlyArray<SkillFile> },
+      SkillFetchFailed
+    >;
+  }
+>()("@project-os/core/SkillSource") {}

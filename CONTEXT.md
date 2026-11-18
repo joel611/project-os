@@ -68,6 +68,12 @@ _Avoid_: user (alone), viewer.
 **Credential Proxy**: the Coordinator's `/egress` route, opt-in with `SANDBOX_CREDENTIAL_PROXY`. A sandbox session calls GitHub, Google or ClickUp through it with its own MCP token, and the Coordinator adds the Connection's token on the way out, so the token never reaches the sandbox or its model. Sandbox sessions then get no `user_token`.
 _Avoid_: integration, OAuth app.
 
+**Skill set**: a named group of Skills an Operator builds in the dashboard (e.g. "development"), with a description saying what requests it is for. Jev reads the descriptions of the sets that have skills and picks one for a new request (or none); the Ticket records it as `skill_set_id`. Sets are org-wide.
+_Avoid_: skill pack, plugin, toolkit.
+
+**Skill**: an agent skill (a folder with a `SKILL.md` and optional files) downloaded from skills.sh into a Skill set. skills.sh only lists them; the Coordinator reads the folder from its GitHub repo, and the pinned copy is stored as one zip per skill in file storage (R2 on Cloudflare), with its key and the folder's git tree SHA kept on the skill. Nothing changes until an Operator clicks Update, which fetches the folders whose SHA changed upstream. Before a Ticket starts, its set's skills go to the Worker: the Coordinator merges the zips and a sandbox session pulls the result from `GET /tickets/:id/skills` with its own token, unzips and installs it for Pi; a Watcher unzips it into a private folder for that one session, and removes it afterwards. Third-party content runs with the Worker's access, so only Operators add skills.
+_Avoid_: plugin, extension.
+
 **Port**: an interface in `packages/core/src/application/ports`, declared as an Effect `Context.Service` (e.g. `TicketRepository`, `KeyValueStore`, `Scheduler`). Core code depends only on ports.
 
 **Provider**: a package (`infra-cloudflare`, `infra-local`, …) that implements every port for one hosting target and exports an Effect `Layer`. Switching provider means switching the Layer in an app's entry file.

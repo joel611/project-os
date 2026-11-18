@@ -339,6 +339,16 @@ describe("describeError", () => {
     [new ApiError(404, "TicketNotFound"), "Not found."],
     [new ApiError(501, "x"), "The Coordinator isn't set up for that yet."],
     [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
+    [new ApiError(409, "SkillSetNameTaken"), "A skill set with that name already exists."],
+    [new ApiError(400, "InvalidSkillSet"), 'Use a name of 1 to 60 characters, other than "none".'],
+    [
+      new ApiError(400, "InvalidSkillSource"),
+      "Use owner/repo, or a skills.sh or github.com link to a repo.",
+    ],
+    [
+      new ApiError(502, "SkillFetchFailed"),
+      "Couldn't read that from GitHub (not found, too large, or rate limited).",
+    ],
     [new ApiError(400, "SchemaError"), "The Coordinator rejected that input."],
     [new ApiError(502, "AgentRuntimeError"), "Coordinator returned 502 (AgentRuntimeError)."],
   ])("%s → %s", (error, message) => {
@@ -349,5 +359,70 @@ describe("describeError", () => {
     const { api } = respond(200, [{ ...project, status: "bogus" }]);
     const error = await api.projects().catch((e: Error) => e);
     expect(describeError(error as Error)).toMatch(/^Unexpected response from the Coordinator: /);
+  });
+});
+
+describe("skill set calls", () => {
+  const T = "2026-11-04T00:00:00.000Z";
+  const set = { id: "s1", name: "dev", description: "", createdAt: T, updatedAt: T };
+  const skill = {
+    id: "k1",
+    skillSetId: "s1",
+    source: "acme/skills",
+    slug: "tdd",
+    name: "tdd",
+    description: "",
+    path: "skills/tdd",
+    sha: "t1",
+    archiveKey: "skills/s1/k1/t1.zip",
+    fileCount: 1,
+    bytes: 3,
+    fetchedAt: T,
+    fetchedBy: null,
+  };
+
+  it("calls each route with its method and body", async () => {
+    const seen: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const answers: Record<string, unknown> = {
+      "GET /api/skill-sets": { sets: [{ set, skills: [skill] }] },
+      "POST /api/skill-sets": set,
+      "PATCH /api/skill-sets/s1": set,
+      "DELETE /api/skill-sets/s1": { deleted: true },
+      "POST /api/skill-sets/browse": { source: "acme/skills", skills: [] },
+      "POST /api/skill-sets/s1/skills": { skills: [skill] },
+      "DELETE /api/skill-sets/s1/skills/k1": { deleted: true },
+      "GET /api/skill-sets/s1/updates": {
+        statuses: [{ skillId: "k1", state: "current", latestSha: "t1" }],
+      },
+      "POST /api/skill-sets/s1/update": { skills: [] },
+    };
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      seen.push({ url, method, body: init?.body && JSON.parse(String(init.body)) });
+      return Response.json(answers[`${method} ${url}`]);
+    }) as typeof fetch;
+    const api = makeApi(fetchFn);
+    expect((await api.skillSets()).sets).toHaveLength(1);
+    await api.createSkillSet({ name: "dev", description: "" });
+    await api.updateSkillSet("s1", { name: "dev" });
+    expect(await api.deleteSkillSet("s1")).toEqual({ deleted: true });
+    await api.browseSkills("acme/skills");
+    await api.addSkills("s1", { source: "acme/skills", slugs: ["tdd"] });
+    await api.removeSkill("s1", "k1");
+    expect((await api.skillUpdates("s1")).statuses[0]!.state).toBe("current");
+    await api.updateSkills("s1");
+    await api.updateSkills("s1", ["k1"]);
+    expect(seen.map((s) => s.body)).toEqual([
+      undefined,
+      { name: "dev", description: "" },
+      { name: "dev" },
+      undefined,
+      { source: "acme/skills" },
+      { source: "acme/skills", slugs: ["tdd"] },
+      undefined,
+      undefined,
+      {},
+      { skillIds: ["k1"] },
+    ]);
   });
 });

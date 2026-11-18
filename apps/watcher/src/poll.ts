@@ -14,15 +14,19 @@ export interface WatcherDeps {
 
 export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => {
   let running = 0;
+  /** Tickets with a session under way, so a slow start isn't launched twice. */
+  const inFlight = new Set<string>();
 
-  const start = () => {
+  const start = (ticketId: string) => {
     running++;
-    log(`session start (${running}/${config.maxSessions})`);
+    inFlight.add(ticketId);
+    log(`session start (${running}/${config.maxSessions}) for ${ticketId}`);
     const done = (outcome: string) => {
       running--;
+      inFlight.delete(ticketId);
       log(`session exit ${outcome} (${running}/${config.maxSessions})`);
     };
-    spawner.spawn().then(
+    spawner.spawn(ticketId).then(
       (code) => done(`code=${code}`),
       (e) => done(`error=${e instanceof Error ? e.message : String(e)}`),
     );
@@ -37,9 +41,11 @@ export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => 
       const out = (await client.callTool("ticket_list_assigned", {
         workerId: config.workerId,
         workerType: config.workerType,
-      })) as { tickets: readonly unknown[] };
-      const spawnable = Math.min(config.maxSessions - running, out.tickets.length);
-      for (let i = 0; i < spawnable; i++) start();
+      })) as { tickets: ReadonlyArray<{ readonly id: string }> };
+      const waiting = out.tickets.filter((t) => !inFlight.has(t.id));
+      for (const ticket of waiting.slice(0, Math.max(0, config.maxSessions - running))) {
+        start(ticket.id);
+      }
     } catch (e) {
       log(`poll failed: ${e instanceof Error ? e.message : String(e)}`);
     }

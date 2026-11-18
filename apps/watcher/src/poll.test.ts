@@ -12,6 +12,7 @@ const config: WatcherConfig = {
   maxSessions: 1,
   cwd: "/tmp",
   secret: "s3cret",
+  skills: true,
 };
 
 const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {
@@ -25,8 +26,8 @@ const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {
   const exits: Array<(code: number) => void> = [];
   const spawned: string[] = [];
   const spawner: Spawner = {
-    spawn: () => {
-      spawned.push("claude");
+    spawn: (ticketId) => {
+      spawned.push(ticketId ?? "?");
       return new Promise<number>((r) => exits.push(r));
     },
   };
@@ -39,6 +40,26 @@ const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {
   });
   return { w, calls, spawned, exits, logs };
 };
+
+describe("watcher poll sessions per ticket", () => {
+  it("starts each session for its own ticket, oldest first", async () => {
+    const s = setup([{ id: "t1" }, { id: "t2" }, { id: "t3" }], { maxSessions: 2 });
+    await s.w.pollOnce();
+    expect(s.spawned).toEqual(["t1", "t2"]);
+  });
+
+  it("doesn't start a second session for a ticket whose session hasn't claimed it yet", async () => {
+    const s = setup([{ id: "t1" }, { id: "t2" }], { maxSessions: 2 });
+    await s.w.pollOnce();
+    await s.w.pollOnce();
+    expect(s.spawned).toEqual(["t1", "t2"]);
+    // Once its session ends, a ticket still waiting gets a new one.
+    s.exits[0]!(0);
+    await Promise.resolve();
+    await s.w.pollOnce();
+    expect(s.spawned).toEqual(["t1", "t2", "t1"]);
+  });
+});
 
 describe("watcher poll", () => {
   it("heartbeats then lists, in order", async () => {

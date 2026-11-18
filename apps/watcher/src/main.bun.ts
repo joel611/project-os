@@ -1,5 +1,16 @@
 #!/usr/bin/env bun
-import { existsSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
 import { parseArgs, USAGE } from "./cli.ts";
 import { loadConfig } from "./config.ts";
@@ -121,6 +132,26 @@ const watcher = createWatcher({
     env: process.env,
     configDir: configDir(),
     home: homedir(),
+    log: console.log,
+    skills: {
+      fetchArchive: async (url, secret) => {
+        const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+        // 204: the ticket has no skills.
+        return res.status === 200
+          ? {
+              set: decodeURIComponent(res.headers.get("x-skill-set") ?? ""),
+              zip: new Uint8Array(await res.arrayBuffer()),
+            }
+          : undefined;
+      },
+      // One private directory per session, removed when it ends.
+      makeDir: () => mkdtempSync(join(tmpdir(), "project-os-skills-")),
+      writeFile: (file, contents) => {
+        mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+        writeFileSync(file, contents, { mode: 0o600 });
+      },
+      removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
+    },
   }),
   log: console.log,
 });

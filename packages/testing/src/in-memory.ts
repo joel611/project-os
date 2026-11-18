@@ -27,8 +27,18 @@ import {
   Scheduler,
   SourceAliasTaken,
   SourceAlreadyLinked,
+  parseSkillFrontmatter,
   Sidekick,
   SidekickError,
+  SkillFetchFailed,
+  SkillNotFound,
+  SkillRepository,
+  SkillSetNameTaken,
+  SkillSetNotFound,
+  SkillSource,
+  type Skill,
+  type SkillFile,
+  type SkillSet,
   type SidekickToken,
   SourceNotFound,
   PromptSendFailed,
@@ -706,5 +716,141 @@ export const makeUserConnectionsInMemory = () => {
       ref: { id: string; label: string; identity?: string },
       token: string | null,
     ) => void shared.set(key(p, provider), { ref, token }),
+  };
+};
+
+export const SkillRepositoryInMemory = Layer.sync(SkillRepository, () => {
+  const sets = new Map<string, SkillSet>();
+  const stored = new Map<string, { skill: Skill }>();
+  const inSet = (setId: string) => [...stored.values()].filter((e) => e.skill.skillSetId === setId);
+  const takenBy = (name: string) => [...sets.values()].find((s) => s.name === name);
+  const getSet = (id: string): Effect.Effect<SkillSet, SkillSetNotFound> => {
+    const set = sets.get(id);
+    return set ? Effect.succeed(set) : Effect.fail(new SkillSetNotFound({ skillSetId: id }));
+  };
+  return {
+    listSets: Effect.sync(() => [...sets.values()]),
+    getSet,
+    insertSet: (set) =>
+      Effect.suspend(() => {
+        if (takenBy(set.name)) return Effect.fail(new SkillSetNameTaken({ setName: set.name }));
+        sets.set(set.id, set);
+        return Effect.succeed(set);
+      }),
+    updateSet: (id, patch) =>
+      Effect.gen(function* () {
+        const current = yield* getSet(id);
+        if (patch.name !== undefined && takenBy(patch.name)?.id !== undefined) {
+          if (takenBy(patch.name)!.id !== id) {
+            return yield* new SkillSetNameTaken({ setName: patch.name });
+          }
+        }
+        const next = { ...current, ...patch };
+        sets.set(id, next);
+        return next;
+      }),
+    deleteSet: (id) =>
+      getSet(id).pipe(
+        Effect.map(() => {
+          sets.delete(id);
+          for (const e of inSet(id)) stored.delete(e.skill.id);
+        }),
+      ),
+    listSkills: (setId) =>
+      Effect.sync(() =>
+        inSet(setId)
+          .map((e) => e.skill)
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      ),
+    getSkill: (id) => {
+      const entry = stored.get(id);
+      return entry ? Effect.succeed(entry.skill) : Effect.fail(new SkillNotFound({ skillId: id }));
+    },
+    upsertSkill: (skill) =>
+      Effect.sync(() => {
+        const same = inSet(skill.skillSetId).find(
+          (e) => e.skill.source === skill.source && e.skill.slug === skill.slug,
+        );
+        const next = { ...skill, id: same?.skill.id ?? skill.id };
+        stored.set(next.id, { skill: next });
+        return next;
+      }),
+    removeSkill: (id) =>
+      Effect.suspend(() =>
+        stored.delete(id) ? Effect.void : Effect.fail(new SkillNotFound({ skillId: id })),
+      ),
+  };
+});
+
+/**
+ * A `SkillSource` over a map of `owner/repo` to its skill folders. Each folder's tree SHA is
+ * its `sha`; change it with `publish` to look like an upstream update.
+ */
+export const makeSkillSourceFake = (
+  initial: Readonly<
+    Record<
+      string,
+      ReadonlyArray<{
+        readonly path: string;
+        readonly sha: string;
+        readonly files: ReadonlyArray<SkillFile>;
+      }>
+    >
+  > = {},
+) => {
+  const repos = new Map(Object.entries(initial).map(([k, v]) => [k, [...v]] as const));
+  const folder = (source: string, path: string) => repos.get(source)?.find((f) => f.path === path);
+  const service: typeof SkillSource.Service = {
+    list: (source) => {
+      const found = repos.get(source);
+      return found
+        ? Effect.succeed(
+            found.map((f) => {
+              const slug = f.path.split("/").pop()!;
+              const meta = parseSkillFrontmatter(
+                f.files.find((x) => x.path === "SKILL.md")?.contents ?? "",
+              );
+              return {
+                source,
+                slug,
+                name: meta.name || slug,
+                description: meta.description,
+                path: f.path,
+              };
+            }),
+          )
+        : Effect.fail(new SkillFetchFailed({ message: `${source} was not found` }));
+    },
+    latestSha: (source, path) => Effect.succeed(folder(source, path)?.sha ?? null),
+    fetch: (source, path) => {
+      const f = folder(source, path);
+      return f
+        ? Effect.succeed({ sha: f.sha, files: f.files })
+        : Effect.fail(new SkillFetchFailed({ message: `${source}/${path} was not found` }));
+    },
+  };
+  return {
+    layer: Layer.succeed(SkillSource, service),
+    /** The port itself, for a harness that takes the service rather than a layer. */
+    service,
+    /** Replaces (or adds) a folder upstream, as a new commit would. */
+    publish: (
+      source: string,
+      next: {
+        readonly path: string;
+        readonly sha: string;
+        readonly files: ReadonlyArray<SkillFile>;
+      },
+    ) => {
+      const list = (repos.get(source) ?? []).filter((f) => f.path !== next.path);
+      repos.set(source, [...list, next]);
+    },
+    /** Deletes a folder upstream. */
+    remove: (source: string, path: string) => {
+      repos.set(
+        source,
+        (repos.get(source) ?? []).filter((f) => f.path !== path),
+      );
+    },
   };
 };

@@ -11,6 +11,7 @@ import {
   digestChannels,
   type IntentClassifier,
   issueSandboxToken,
+  type SkillSource,
   UserConnections,
   type WorkerLauncher,
 } from "@project-os/core";
@@ -172,6 +173,8 @@ export const startStack = async (options: {
   /** GOOGLE_ALLOWED_DOMAINS: the only Workspace domains Google sign-in takes. */
   readonly allowedDomains?: ReadonlyArray<string>;
   readonly workerLauncher?: typeof WorkerLauncher.Service;
+  /** Where skills come from. Default: GitHub, which this stack's fetch guard refuses. */
+  readonly skillSource?: typeof SkillSource.Service;
   /**
    * Tickets one shared device may hold. Default here 100, so suites that open several
    * tickets on one shared worker don't queue them; production defaults to 1.
@@ -265,6 +268,7 @@ export const startStack = async (options: {
         dbPath,
         adapterUrls: { discord: `http://localhost:${adapter.server!.port}` },
         ...(options.workerLauncher && { workerLauncher: options.workerLauncher }),
+        ...(options.skillSource && { skillSource: options.skillSource }),
         assets: {
           dir: join(dir, "assets"),
           // Known once the Coordinator listens; read only when a link is made.
