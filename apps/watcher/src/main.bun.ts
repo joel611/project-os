@@ -115,9 +115,10 @@ console.log(
 const watcher = createWatcher({
   config,
   client: httpMcpClient(config.mcpUrl, fetch, config.secret),
-  spawner: bunSpawner(config, Bun.spawn, {
+  spawner: bunSpawner(config, (cmd, options) => Bun.spawn(cmd, options), {
     readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
     writePrivate,
+    write: (stream, chunk) => void process[stream].write(chunk),
     env: process.env,
     configDir: configDir(),
     home: homedir(),
