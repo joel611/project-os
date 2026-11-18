@@ -52,9 +52,8 @@ const payloadOf = (event: TicketEvent): { kind?: unknown; idleSince?: string } =
  * sandbox from the pool.
  *
  * Worker online/offline is derived from `lastSeenAt` (see `workerStatus`), never stored.
- * Reassignment and retry are not implemented: the ticket state machine has no
- * `assigned → assigned` or `in_progress → assigned` edge, so stalled assignments are
- * flagged for the admin and dead in-progress tickets are failed.
+ * The sweep never reassigns on its own: stalled assignments are flagged for the admin, who can
+ * reassign from the dashboard (`reassignTicketTo`), and dead in-progress tickets are failed.
  */
 export const healthSweep = (thresholds: HealthThresholds) =>
   Effect.gen(function* () {

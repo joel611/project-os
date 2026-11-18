@@ -603,6 +603,82 @@ describe("TicketRepository", () => {
     expect(results.filter(Exit.isFailure)).toHaveLength(3);
   });
 
+  it("reassigns an in-progress or open ticket to another worker, back to assigned", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ status: "in_progress", startedAt: T0 }));
+        yield* repo.insert(
+          ticket({ id: "t2", status: "open", workerType: null, workerId: null, assignedAt: null }),
+        );
+        const to = { workerType: "local", workerId: "w2" } as const;
+        yield* repo.reassign("t1", to, T1);
+        yield* repo.reassign("t2", to, T1);
+        return [yield* repo.get("t1"), yield* repo.get("t2")];
+      }),
+    );
+    for (const t of out) {
+      expect(t).toMatchObject({
+        status: "assigned",
+        workerId: "w2",
+        assignedAt: T1,
+        startedAt: null,
+        createdAt: T0,
+        lastActivityAt: T1,
+      });
+    }
+  });
+
+  it("refuses to reassign a finished ticket, to the same worker, or an unknown one", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket({ status: "completed", completedAt: T0 }));
+        yield* repo.insert(ticket({ id: "t2", status: "in_progress" }));
+        return {
+          done: yield* Effect.flip(
+            repo.reassign("t1", { workerType: "local", workerId: "w2" }, T1),
+          ),
+          same: yield* Effect.flip(
+            repo.reassign("t2", { workerType: "local", workerId: "w1" }, T1),
+          ),
+          miss: yield* Effect.flip(
+            repo.reassign("nope", { workerType: "local", workerId: "w2" }, T1),
+          ),
+        };
+      }),
+    );
+    expect(out.done).toMatchObject({ _tag: "InvalidTransition", from: "completed" });
+    expect(out.same).toMatchObject({ _tag: "InvalidTransition", from: "in_progress" });
+    expect(out.miss._tag).toBe("TicketNotFound");
+  });
+
+  it("reassign racing reassigns: exactly one wins", async () => {
+    const db = makeDb();
+    await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        yield* (yield* TicketRepository).insert(ticket({ status: "in_progress" }));
+      }),
+      db,
+    );
+    const results = await run(
+      Effect.gen(function* () {
+        const repo = yield* TicketRepository;
+        return yield* Effect.forEach(
+          ["w2", "w3", "w4"],
+          (workerId) => Effect.exit(repo.reassign("t1", { workerType: "local", workerId }, T1)),
+          { concurrency: "unbounded" },
+        );
+      }),
+      db,
+    );
+    expect(results.filter(Exit.isSuccess)).toHaveLength(1);
+    expect(results.filter(Exit.isFailure)).toHaveLength(2);
+  });
+
   it("updates status through the state machine and stamps timestamps", async () => {
     const out = await run(
       Effect.gen(function* () {
