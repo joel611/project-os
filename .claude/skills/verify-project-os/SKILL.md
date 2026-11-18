@@ -1,11 +1,11 @@
 ---
 name: verify-project-os
-description: Launch and drive project-os (Coordinator HTTP+MCP, Discord→Ticket→Worker→reply loop, read-only web dashboard) locally and capture proof. Use to verify any change to apps/coordinator, channel-discord, watcher, web, or packages/*, beyond `bun run test:integration`.
+description: Launch and drive project-os (Coordinator HTTP+MCP, Discord→Ticket→Worker→reply loop, web dashboard) locally and capture proof. Use to verify any change to apps/coordinator, channel-discord, watcher, web, or packages/*, beyond `bun run test:integration`.
 ---
 
 # verify-project-os
 
-Surfaces: **Coordinator** (Elysia, HTTP `/inbound` `/projects` `/tickets` `/workers`, MCP `/mcp`, SQLite) and **web dashboard** (`apps/web`, read-only, proxies `/api/*` → Coordinator). Discord and Claude Code are not drivable here; their production boundaries are stood in for (below). Read `features/README.md` for the per-feature recipes.
+Surfaces: **Coordinator** (Elysia, HTTP `/inbound` `/projects` `/tickets` `/workers`, MCP `/mcp`, SQLite) and **web dashboard** (`apps/web`, proxies `/api/*` → Coordinator). Discord and Claude Code are not drivable here; their production boundaries are stood in for (below). Read `features/README.md` for the per-feature recipes.
 
 ## What is real vs faked
 

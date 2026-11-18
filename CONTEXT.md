@@ -46,6 +46,9 @@ _Avoid_: assignment (that is the `assigned` status), scheduling, routing.
 
 **Queued Ticket**: a new Ticket that no Personal Worker, Shared Worker or Sandbox Pool provider had room for. It stays `open` with no worker, its thread is told so, and the health sweep assigns it, oldest first, once one has room.
 
+**Reassign**: an Operator handing a Ticket that is not finished to a registered device (Personal or Shared Worker) from the dashboard, e.g. off a stuck Worker. It goes back to `assigned` for that device's Watcher to claim, and the old Worker loses access to it. Placement never does this by itself; Sandbox sessions are not targets.
+_Avoid_: retry, move.
+
 **Sandbox Pool**: the cloud sandbox providers the Coordinator may start Workers on (Daytona, Cloudflare Sandbox, boat.dev), in the order set by `WORKER_PROVIDERS`. Providers are named `daytona`, `cloudflare` and `boat`, and their Workers are `<provider>-<ticketId>` (`daytona-<ticketId>`). When no Personal or Shared Worker takes a Ticket, the Coordinator reads the pool and starts the first provider with room under its cap.
 _Avoid_: worker pool (the Watchers are not in it), provider list.
 
