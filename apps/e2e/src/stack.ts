@@ -183,6 +183,8 @@ export const startStack = async (options: {
   readonly failDigest?: string;
   /** Mounts the credential proxy (`SANDBOX_CREDENTIAL_PROXY`), forwarding to these origins. */
   readonly credentialProxy?: NonNullable<AppDeps["credentialProxy"]>;
+  /** API root the `user_token` GitHub access check calls (a fake on localhost). */
+  readonly githubApi?: string;
 }): Promise<Stack> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
@@ -319,6 +321,7 @@ export const startStack = async (options: {
         },
       }),
       mcp: runtime,
+      ...(options.githubApi && { githubApi: options.githubApi }),
       ...(options.credentialProxy && { credentialProxy: options.credentialProxy }),
       auth: {
         handler: (request: Request) => auth!.handler(request),

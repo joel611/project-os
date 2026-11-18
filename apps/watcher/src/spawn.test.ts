@@ -21,6 +21,7 @@ const fakeIo = (existing: Record<string, string> = {}) => {
     writePrivate: (path, contents) => {
       written[path] = contents;
     },
+    write: () => {},
     env: { PATH: "/bin" },
     configDir: "/cfg",
     home: "/home/me",
