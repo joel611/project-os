@@ -76,24 +76,22 @@ const EGRESS_GIT_SETUP = [
     "fi",
 ];
 
-// The ticket's skill set, installed where Pi looks for skills before it starts. It is best
-// effort: a Coordinator without skills, or one that can't be reached, must not stop the ticket.
-// The script uses only Node (already there for npm) and refuses names that climb out of the folder.
-const SKILLS_INSTALL_JS = [
-  'const fs=require("fs"),path=require("path");',
-  'const root=path.join(process.env.HOME,".pi","agent","skills");',
+// The ticket's skill set: a zip the Coordinator serves, unpacked where Pi looks for skills
+// before it starts. Best effort: a Coordinator without skills (204), or one that can't be
+// reached, must not stop the ticket. Node (already there for npm) downloads it, then `unzip` or
+// Python's zipfile unpacks it; both refuse entries that climb out of the folder.
+const SKILLS_DOWNLOAD_JS = [
   'fetch(process.env.PROJECT_OS_SKILLS_URL,{headers:{authorization:"Bearer "+process.env.PROJECT_OS_SKILLS_TOKEN}})',
-  ".then(r=>{if(!r.ok)throw new Error(String(r.status));return r.json()})",
-  ".then(b=>{let n=0;for(const s of b.skills||[]){",
-  "if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(s.slug))continue;",
-  "const dir=path.join(root,s.slug);",
-  "for(const f of s.files){const t=path.resolve(dir,f.path);",
-  "if(!t.startsWith(dir+path.sep))continue;",
-  "fs.mkdirSync(path.dirname(t),{recursive:true});fs.writeFileSync(t,f.contents)}n++}",
-  'console.log("skills: installed "+n)})',
-  '.catch(e=>{console.error("skills: not installed ("+e.message+")")})',
+  ".then(async r=>{",
+  'if(r.status===204){console.log("skills: none for this ticket");process.exit(3)}',
+  "if(!r.ok)throw new Error(String(r.status));",
+  'require("fs").writeFileSync(process.env.PROJECT_OS_SKILLS_ZIP,Buffer.from(await r.arrayBuffer()))})',
+  '.catch(e=>{console.error("skills: not installed ("+e.message+")");process.exit(4)})',
 ].join("");
-const SKILLS_SETUP = [`node -e '${SKILLS_INSTALL_JS}' || true`];
+const SKILLS_DIR = '"$HOME/.pi/agent/skills"';
+/** The shell step that installs the ticket's skills; never fails the session. */
+export const SKILLS_STEP = `{ export PROJECT_OS_SKILLS_ZIP="$(mktemp)" && node -e '${SKILLS_DOWNLOAD_JS}' && mkdir -p ${SKILLS_DIR} && { unzip -oq "$PROJECT_OS_SKILLS_ZIP" -d ${SKILLS_DIR} || python3 -m zipfile -e "$PROJECT_OS_SKILLS_ZIP" ${SKILLS_DIR}; } && echo "skills: installed"; } || true`;
+const SKILLS_SETUP = [SKILLS_STEP];
 
 export const SESSION_COMMAND = [...PI_SETUP, ...SKILLS_SETUP, PI_RUN].join(" && ");
 

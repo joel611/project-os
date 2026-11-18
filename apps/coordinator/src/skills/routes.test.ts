@@ -1,5 +1,7 @@
+import { strFromU8, unzipSync } from "fflate";
 import {
   addSkillsToSet,
+  SkillRepository,
   createSkillSet,
   issueSandboxToken,
   ProjectRepository,
@@ -92,24 +94,36 @@ describe("GET /tickets/:id/skills", () => {
     const { set, token } = await seed();
     const res = await get("/tickets/t1/skills", token);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      set: { id: set.id, name: "dev" },
-      skills: [
-        {
-          slug: "tdd",
-          name: "tdd",
-          files: [{ path: "SKILL.md", contents: "---\nname: tdd\n---\n# tdd" }],
-        },
-      ],
-    });
+    expect(res.headers.get("content-type")).toBe("application/zip");
+    expect(decodeURIComponent(res.headers.get("x-skill-set")!)).toBe("dev");
+    void set;
+    const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
+    expect(Object.keys(files)).toEqual(["tdd/SKILL.md"]);
+    expect(strFromU8(files["tdd/SKILL.md"]!)).toBe("---\nname: tdd\n---\n# tdd");
   });
 
-  it("gives an empty bundle for a ticket with no set", async () => {
+  it("says there is nothing to install for a ticket with no set", async () => {
     const { token } = await seed();
     const own = await runtime.runPromise(issueSandboxToken("daytona-t2", 600));
     void token;
     const res = await get("/tickets/t2/skills", own);
-    expect(await res.json()).toEqual({ set: null, skills: [] });
+    expect(res.status).toBe(204);
+  });
+
+  it("says 502 when the stored skills can't be read", async () => {
+    const { token } = await seed();
+    // Every stored zip is gone.
+    await runtime.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* SkillRepository;
+        for (const skill of yield* repo.listSkills((yield* repo.listSets)[0]!.id)) {
+          yield* repo.upsertSkill({ ...skill, archiveKey: "skills/gone.zip" });
+        }
+      }),
+    );
+    const res = await get("/tickets/t1/skills", token);
+    expect(res.status).toBe(502);
+    expect(((await res.json()) as { error: string }).error).toBe("SkillFetchFailed");
   });
 
   it("refuses a caller with no valid token", async () => {

@@ -1,5 +1,4 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { SkillFile } from "@project-os/contracts";
 
 export const skillSets = sqliteTable(
   "skill_sets",
@@ -26,8 +25,8 @@ export const skills = sqliteTable(
     description: text("description").notNull(),
     path: text("path").notNull(),
     sha: text("sha").notNull(),
-    /** The downloaded folder: every file with its contents. */
-    files: text("files", { mode: "json" }).$type<ReadonlyArray<SkillFile>>().notNull(),
+    /** Where the downloaded folder is kept: a zip in the asset store (R2 on Cloudflare). */
+    archiveKey: text("archive_key").notNull(),
     fileCount: integer("file_count").notNull(),
     bytes: integer("bytes").notNull(),
     fetchedAt: text("fetched_at").notNull(),

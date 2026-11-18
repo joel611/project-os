@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "ec5780de-9ef3-4f80-a115-fa1e319a8883",
+  "id": "360f1af5-3b6d-419d-82d2-fbaa8ba91c85",
   "prevIds": [
     "2214f62b-a65f-4e14-b934-8afd48bd13b7"
   ],
@@ -1572,7 +1572,7 @@
     },
     {
       "table": "skills",
-      "name": "files",
+      "name": "archive_key",
       "type": "text",
       "notNull": true,
       "autoincrement": false,

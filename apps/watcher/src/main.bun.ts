@@ -12,7 +12,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
-import type { SkillBundle } from "@project-os/contracts";
 import { parseArgs, USAGE } from "./cli.ts";
 import { loadConfig } from "./config.ts";
 import {
@@ -135,9 +134,15 @@ const watcher = createWatcher({
     home: homedir(),
     log: console.log,
     skills: {
-      fetchBundle: async (url, secret) => {
+      fetchArchive: async (url, secret) => {
         const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
-        return res.ok ? ((await res.json()) as SkillBundle) : undefined;
+        // 204: the ticket has no skills.
+        return res.status === 200
+          ? {
+              set: decodeURIComponent(res.headers.get("x-skill-set") ?? ""),
+              zip: new Uint8Array(await res.arrayBuffer()),
+            }
+          : undefined;
       },
       // One private directory per session, removed when it ends.
       makeDir: () => mkdtempSync(join(tmpdir(), "project-os-skills-")),

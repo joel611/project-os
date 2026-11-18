@@ -10,12 +10,16 @@ import {
   ProjectRepository,
   ProjectSourceRepository,
   removeSkillFromSet,
-  skillBundleForTicket,
+  SkillRepository,
+  skillArchiveForTicket,
   skillSetChoices,
   TicketRepository,
   updateSkillSet,
   updateSkillsInSet,
+  AssetStore,
+  AssetStoreFailed,
 } from "@project-os/core";
+import { strFromU8, unzipSync } from "fflate";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { IntentClassifier } from "@project-os/core";
@@ -381,7 +385,7 @@ const T = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-describe("skillBundleForTicket", () => {
+describe("skillArchiveForTicket", () => {
   const world = (skillSetId: string | null | "missing") =>
     Effect.gen(function* () {
       const set = yield* createSkillSet({ name: "dev", description: "" });
@@ -399,48 +403,119 @@ describe("skillBundleForTicket", () => {
       return set;
     });
   const caller = { id: "w1", kind: "device" } as const;
+  const entries = (zip: Uint8Array | null) =>
+    Object.fromEntries(Object.entries(unzipSync(zip!)).map(([k, v]) => [k, strFromU8(v)]));
 
-  it("hands the ticket's worker the pinned files of its set", async () => {
-    const bundle = await run(
+  it("hands the ticket's worker one zip of its set's pinned skills, entries <slug>/<path>", async () => {
+    const out = await run(
       Effect.gen(function* () {
         const set = yield* world(null);
-        return { set, bundle: yield* skillBundleForTicket("t1", caller) };
+        return { set, archive: yield* skillArchiveForTicket("t1", caller) };
       }),
     );
-    expect(bundle.bundle.set).toEqual({ id: bundle.set.id, name: "dev" });
-    expect(bundle.bundle.skills.map((s) => s.slug)).toEqual(["review", "tdd"]);
-    expect(bundle.bundle.skills[1]!.files.map((f) => f.path)).toEqual([
-      "SKILL.md",
-      "examples/a.ts",
-    ]);
+    expect(out.archive.set).toEqual({ id: out.set.id, name: "dev" });
+    expect(entries(out.archive.archive)).toEqual({
+      "review/SKILL.md": skillMd("Review", "Review a PR"),
+      "tdd/SKILL.md": skillMd("Test-driven", "Red green refactor"),
+      "tdd/examples/a.ts": "export {}",
+    });
   });
 
-  it("is empty for a ticket with no set, or whose set was deleted", async () => {
+  it("is empty for a ticket with no set, a deleted set or a set with no skills", async () => {
     const none = await run(
       Effect.gen(function* () {
         yield* (yield* TicketRepository).insert(T("t2") as never);
-        return yield* skillBundleForTicket("t2", caller);
+        return yield* skillArchiveForTicket("t2", { id: "w1", kind: "device" });
       }),
     );
-    expect(none).toEqual({ set: null, skills: [] });
+    expect(none).toEqual({ set: null, archive: null });
     const gone = await run(
       Effect.gen(function* () {
         yield* world("missing");
-        return yield* skillBundleForTicket("t1", caller);
+        return yield* skillArchiveForTicket("t1", caller);
       }),
     );
-    expect(gone).toEqual({ set: null, skills: [] });
+    expect(gone).toEqual({ set: null, archive: null });
+    const empty = await run(
+      Effect.gen(function* () {
+        const set = yield* createSkillSet({ name: "empty", description: "" });
+        yield* (yield* TicketRepository).insert(T("t3", { skillSetId: set.id }) as never);
+        return yield* skillArchiveForTicket("t3", caller);
+      }),
+    );
+    expect(empty).toEqual({ set: null, archive: null });
   });
 
   it("refuses any worker but the ticket's own", async () => {
     await fails(
       Effect.gen(function* () {
         yield* world(null);
-        yield* skillBundleForTicket("t1", { id: "w2", kind: "device" });
+        yield* skillArchiveForTicket("t1", { id: "w2", kind: "device" });
       }),
       "WorkerUnauthorized",
     );
-    await fails(skillBundleForTicket("nope", caller), "TicketNotFound");
+    await fails(skillArchiveForTicket("nope", caller), "TicketNotFound");
+  });
+
+  it("says so when a stored zip is gone, or storage can't be read", async () => {
+    await fails(
+      Effect.gen(function* () {
+        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const [skill] = yield* addSkillsToSet({
+          setId: set.id,
+          source: "acme/skills",
+          slugs: ["tdd"],
+          by: null,
+        });
+        // A copy whose zip was never stored (or was lost).
+        yield* (yield* SkillRepository).upsertSkill({
+          ...skill!,
+          archiveKey: "skills/missing.zip",
+        });
+        yield* (yield* TicketRepository).insert(T("t1", { skillSetId: set.id }) as never);
+        yield* skillArchiveForTicket("t1", caller);
+      }),
+      "SkillFetchFailed",
+    );
+  });
+
+  it("says so when file storage can't be read", async () => {
+    await fails(
+      Effect.gen(function* () {
+        const set = yield* createSkillSet({ name: "dev", description: "" });
+        yield* addSkillsToSet({ setId: set.id, source: "acme/skills", slugs: ["tdd"], by: null });
+        yield* (yield* TicketRepository).insert(T("t1", { skillSetId: set.id }) as never);
+        const real = yield* AssetStore;
+        yield* skillArchiveForTicket("t1", caller).pipe(
+          Effect.provideService(AssetStore, {
+            ...real,
+            get: () => Effect.fail(new AssetStoreFailed({ message: "r2 down" })),
+          }),
+        );
+      }),
+      "SkillFetchFailed",
+    );
+  });
+
+  it("can't add a skill while file storage is down", async () => {
+    const source = upstream();
+    const layer = makeTestLayer({ skillSource: source, failAssetStore: "disk full" }).layer;
+    const message = await Effect.runPromise(
+      Effect.gen(function* () {
+        const set = yield* createSkillSet({ name: "dev", description: "" });
+        return yield* addSkillsToSet({
+          setId: set.id,
+          source: "acme/skills",
+          slugs: ["tdd"],
+          by: null,
+        });
+      }).pipe(
+        Effect.flip,
+        Effect.map((e) => (e as { message: string }).message),
+        Effect.provide(layer),
+      ),
+    );
+    expect(message).toContain("disk full");
   });
 });
 

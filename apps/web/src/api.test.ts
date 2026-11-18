@@ -327,6 +327,7 @@ describe("skill set calls", () => {
     description: "",
     path: "skills/tdd",
     sha: "t1",
+    archiveKey: "skills/s1/k1/t1.zip",
     fileCount: 1,
     bytes: 3,
     fetchedAt: T,

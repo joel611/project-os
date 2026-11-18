@@ -32,6 +32,8 @@ export const Skill = Schema.Struct({
   path: Schema.String,
   /** Git tree SHA of that folder: it changes exactly when a file in it changes. */
   sha: Schema.String,
+  /** Key of the skill's zip in the asset store; entries are `<slug>/<path>`. */
+  archiveKey: Schema.String,
   fileCount: Schema.Finite,
   bytes: Schema.Finite,
   fetchedAt: Schema.String,
@@ -80,15 +82,6 @@ export type SkillUpdateStatus = typeof SkillUpdateStatus.Type;
 
 export const SkillUpdateReport = Schema.Struct({ statuses: Schema.Array(SkillUpdateStatus) });
 export type SkillUpdateReport = typeof SkillUpdateReport.Type;
-
-/** What a Worker is given before it starts: the skill folders of its ticket's set. */
-export const SkillBundle = Schema.Struct({
-  set: Schema.NullOr(Schema.Struct({ id: Id, name: Schema.String })),
-  skills: Schema.Array(
-    Schema.Struct({ slug: Schema.String, name: Schema.String, files: Schema.Array(SkillFile) }),
-  ),
-});
-export type SkillBundle = typeof SkillBundle.Type;
 
 /** Where a skill folder's files go: `<root>/<slug>/<path>`. Slugs and paths never escape it. */
 export const SAFE_SKILL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;

@@ -11,5 +11,8 @@
     "@project-os/core": "workspace:*",
     "@project-os/system-prompts": "workspace:*",
     "effect": "4.1.2"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
   }
 }

@@ -23,6 +23,7 @@ const summary = (row: typeof skills.$inferSelect): Skill => ({
   description: row.description,
   path: row.path,
   sha: row.sha,
+  archiveKey: row.archiveKey,
   fileCount: row.fileCount,
   bytes: row.bytes,
   fetchedAt: row.fetchedAt,
@@ -82,7 +83,7 @@ export const makeSkillRepository = (db: SqliteDb): Impl => {
           row ? Effect.succeed(summary(row)) : Effect.fail(new SkillNotFound({ skillId: id })),
         ),
       ),
-    upsertSkill: (skill, files) =>
+    upsertSkill: (skill) =>
       q(() =>
         db
           .select({ id: skills.id })
@@ -98,7 +99,7 @@ export const makeSkillRepository = (db: SqliteDb): Impl => {
       ).pipe(
         Effect.flatMap(([existing]) => {
           const id = existing?.id ?? skill.id;
-          const values = { ...skill, id, files };
+          const values = { ...skill, id };
           return q(() =>
             db
               .insert(skills)
@@ -113,14 +114,6 @@ export const makeSkillRepository = (db: SqliteDb): Impl => {
       q(() => db.delete(skills).where(eq(skills.id, id)).returning({ id: skills.id })).pipe(
         Effect.flatMap((rows) =>
           rows.length > 0 ? Effect.void : Effect.fail(new SkillNotFound({ skillId: id })),
-        ),
-      ),
-    filesOfSet: (setId) =>
-      q(() => db.select().from(skills).where(eq(skills.skillSetId, setId))).pipe(
-        Effect.map((rows) =>
-          rows
-            .map((r) => ({ slug: r.slug, name: r.name, files: r.files }))
-            .sort((a, b) => a.slug.localeCompare(b.slug)),
         ),
       ),
   };

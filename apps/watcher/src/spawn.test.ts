@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
 import { bunSpawner, skillsUrl, type SkillsIo, type SpawnerIo } from "./spawn.ts";
-import type { SkillBundle } from "@project-os/contracts";
+import { strToU8, zipSync } from "fflate";
 
 const config: WatcherConfig = {
   mcpUrl: "http://coord:8080/mcp",
@@ -98,31 +98,28 @@ describe("bunSpawner", () => {
 });
 
 describe("skills for a ticket", () => {
-  const bundle: SkillBundle = {
-    set: { id: "s1", name: "development" },
-    skills: [
-      {
-        slug: "tdd",
-        name: "tdd",
-        files: [
-          { path: "SKILL.md", contents: "# tdd" },
-          { path: "examples/a.ts", contents: "export {}" },
-          // Anything that climbs out of the skill's folder is dropped.
-          { path: "../escape.md", contents: "no" },
-          { path: "/abs.md", contents: "no" },
-          { path: "a\\b.md", contents: "no" },
-        ],
-      },
-      { slug: "../bad", name: "bad", files: [{ path: "SKILL.md", contents: "no" }] },
-    ],
+  const zipOf = (files: Record<string, string>) =>
+    zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])));
+  type Archive = { set: string; zip: Uint8Array };
+  const bundle: Archive = {
+    set: "development",
+    zip: zipOf({
+      "tdd/SKILL.md": "# tdd",
+      "tdd/examples/a.ts": "export {}",
+      // Anything that climbs out of the skill's folder, or has an unsafe name, is dropped.
+      "tdd/../escape.md": "no",
+      "tdd/a\\b.md": "no",
+      "../bad/SKILL.md": "no",
+      "tdd/": "",
+    }),
   };
 
-  const skillsIo = (answer: () => Promise<SkillBundle | undefined>) => {
+  const skillsIo = (answer: () => Promise<Archive | undefined>) => {
     const written: Record<string, string> = {};
     const removed: string[] = [];
     const urls: Array<[string, string]> = [];
     const skills: SkillsIo = {
-      fetchBundle: (url, secret) => {
+      fetchArchive: (url, secret) => {
         urls.push([url, secret]);
         return answer();
       },
@@ -159,7 +156,7 @@ describe("skills for a ticket", () => {
     return cmd;
   };
 
-  it("finds the bundle next to the MCP endpoint", () => {
+  it("finds the skills next to the MCP endpoint", () => {
     expect(skillsUrl("http://coord:8080/mcp", "t 1")).toBe(
       "http://coord:8080/tickets/t%201/skills",
     );
@@ -201,12 +198,10 @@ describe("skills for a ticket", () => {
   });
 
   it.each([
-    ["has no set", async () => ({ set: null, skills: [] }) as SkillBundle],
-    ["set has no skills", async () => ({ set: { id: "s", name: "n" }, skills: [] }) as SkillBundle],
     ["can't be fetched", async () => undefined],
     [
       "fetch throws",
-      async (): Promise<SkillBundle | undefined> => {
+      async (): Promise<Archive | undefined> => {
         throw new Error("offline");
       },
     ],
@@ -218,11 +213,12 @@ describe("skills for a ticket", () => {
     expect(s.removed).toEqual([]);
   });
 
-  it("starts without skills when every skill name is unsafe", async () => {
-    const s = skillsIo(async () => ({
-      set: { id: "s", name: "n" },
-      skills: [{ slug: "../bad", name: "bad", files: [{ path: "SKILL.md", contents: "x" }] }],
-    }));
+  it.each([
+    ["every skill name is unsafe", zipOf({ "../bad/SKILL.md": "x" })],
+    ["the zip is empty", zipOf({})],
+    ["the zip is malformed", strToU8("not a zip")],
+  ])("starts without skills when %s", async (_why, zip) => {
+    const s = skillsIo(async () => ({ set: "n", zip }));
     const cmd = await runTicket(config, s.io, "t1");
     expect(cmd).not.toContain("--add-dir");
     // The folder made for it is cleaned up.

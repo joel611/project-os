@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { IntentClassifier, type SkillBundle } from "@project-os/core";
+import { IntentClassifier } from "@project-os/core";
+import { strFromU8, unzipSync } from "fflate";
 import { makeSkillSourceFake } from "@project-os/testing";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -123,6 +124,14 @@ const bundleFor = (ticketId: string, token: string) =>
     headers: { authorization: `Bearer ${token}` },
   });
 
+const zipFiles = async (res: Response) =>
+  Object.fromEntries(
+    Object.entries(unzipSync(new Uint8Array(await res.arrayBuffer()))).map(([k, v]) => [
+      k,
+      strFromU8(v),
+    ]),
+  );
+
 describe("skill sets", () => {
   it("routes a code request to its set, and a sandbox session fetches the pinned skills", async () => {
     const { set } = await buildDevelopmentSet();
@@ -137,25 +146,16 @@ describe("skill sets", () => {
     const session = launched.find((l) => l.ticketId === code.id)!;
     const res = await bundleFor(code.id, session.mcpToken);
     expect(res.status).toBe(200);
-    const bundle = (await res.json()) as SkillBundle;
-    expect(bundle.set).toEqual({ id: set.id, name: "development" });
-    expect(bundle.skills).toEqual([
-      {
-        slug: "tdd",
-        name: "tdd",
-        files: [
-          { path: "SKILL.md", contents: md("tdd", "Test first") },
-          { path: "examples/a.ts", contents: "export {}" },
-        ],
-      },
-    ]);
+    expect(res.headers.get("content-type")).toBe("application/zip");
+    expect(await zipFiles(res)).toEqual({
+      "tdd/SKILL.md": md("tdd", "Test first"),
+      "tdd/examples/a.ts": "export {}",
+    });
+    void set;
 
     // The other ticket's session gets nothing, and can't read this one's.
     const otherSession = launched.find((l) => l.ticketId === other.id)!;
-    expect(await (await bundleFor(other.id, otherSession.mcpToken)).json()).toEqual({
-      set: null,
-      skills: [],
-    });
+    expect((await bundleFor(other.id, otherSession.mcpToken)).status).toBe(204);
     expect((await bundleFor(code.id, otherSession.mcpToken)).status).toBe(403);
     expect((await bundleFor(code.id, "nope")).status).toBe(401);
   });
@@ -171,16 +171,14 @@ describe("skill sets", () => {
       sha: "tree-9",
       files: [{ path: "SKILL.md", contents: md("tdd", "Test first, v2") }],
     });
-    const before = (await (await bundleFor(ticket.id, token)).json()) as SkillBundle;
-    expect(before.skills[0]!.files).toHaveLength(2);
+    expect(Object.keys(await zipFiles(await bundleFor(ticket.id, token)))).toHaveLength(2);
 
     const report = await stack.json("GET", `/skill-sets/${set.id}/updates`);
     expect(report.statuses[0]).toMatchObject({ skillId: skill.id, state: "update_available" });
     await stack.json("POST", `/skill-sets/${set.id}/update`, {});
-    const after = (await (await bundleFor(ticket.id, token)).json()) as SkillBundle;
-    expect(after.skills[0]!.files).toEqual([
-      { path: "SKILL.md", contents: md("tdd", "Test first, v2") },
-    ]);
+    expect(await zipFiles(await bundleFor(ticket.id, token))).toEqual({
+      "tdd/SKILL.md": md("tdd", "Test first, v2"),
+    });
   });
 
   it("writes the set into a private folder for a Watcher's session, then removes it", async () => {
@@ -214,9 +212,14 @@ describe("skill sets", () => {
         configDir: tmpdir(),
         home: tmpdir(),
         skills: {
-          fetchBundle: async (url, token) => {
+          fetchArchive: async (url, token) => {
             const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-            return res.ok ? ((await res.json()) as SkillBundle) : undefined;
+            return res.status === 200
+              ? {
+                  set: decodeURIComponent(res.headers.get("x-skill-set") ?? ""),
+                  zip: new Uint8Array(await res.arrayBuffer()),
+                }
+              : undefined;
           },
           makeDir: () => {
             const d = mkdtempSync(join(tmpdir(), "e2e-skills-"));

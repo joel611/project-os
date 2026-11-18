@@ -1,4 +1,8 @@
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { workerSessionStart } from "@project-os/system-prompts";
+import { strToU8, zipSync } from "fflate";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -6,6 +10,7 @@ import {
   piMcpJson,
   PROXIED_SESSION_COMMAND,
   SESSION_COMMAND,
+  SKILLS_STEP,
   type SandboxProvider,
   type SandboxRunner,
 } from "./launcher.ts";
@@ -48,58 +53,80 @@ const sh = async (script: string, env: Record<string, string>) => {
   });
 };
 
+const zipOf = (files: Record<string, string>) =>
+  zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)])));
+
 describe("skills step", () => {
-  it("installs the ticket's skills before Pi runs, and never stops the session when it can't", () => {
-    const steps = SESSION_COMMAND.split(" && ");
-    const skills = steps.findIndex((s) => s.includes("PROJECT_OS_SKILLS_URL"));
-    expect(skills).toBeGreaterThan(steps.findIndex((s) => s.includes("npm install")));
-    expect(skills).toBeLessThan(steps.findIndex((s) => s.startsWith("pi ")));
-    expect(steps[skills]).toMatch(/\|\| true$/);
+  it("runs after npm and before Pi, and never stops the session", () => {
+    expect(SESSION_COMMAND.indexOf("npm install")).toBeLessThan(
+      SESSION_COMMAND.indexOf(SKILLS_STEP),
+    );
+    expect(SESSION_COMMAND.indexOf(SKILLS_STEP)).toBeLessThan(
+      SESSION_COMMAND.indexOf("pi --print"),
+    );
+    expect(SKILLS_STEP).toMatch(/\|\| true$/);
     // The token is read from the environment, never written into the command line.
     expect(SESSION_COMMAND).not.toContain("mcp-token");
   });
 
-  it("runs the installer against a bundle, writing only inside each skill's folder", async () => {
-    const { mkdtempSync, readFileSync, existsSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
+  it("downloads the zip and unpacks it into Pi's skills folder", async () => {
     const home = mkdtempSync(join(tmpdir(), "skills-home-"));
     const server = Bun.serve({
       port: 0,
       fetch: (req) => {
         expect(req.headers.get("authorization")).toBe("Bearer tok");
-        return Response.json({
-          set: { id: "s", name: "development" },
-          skills: [
-            {
-              slug: "tdd",
-              name: "tdd",
-              files: [
-                { path: "SKILL.md", contents: "# tdd" },
-                { path: "examples/a.ts", contents: "export {}" },
-                { path: "../escape.txt", contents: "no" },
-              ],
-            },
-            { slug: "../bad", name: "bad", files: [{ path: "SKILL.md", contents: "no" }] },
-          ],
+        return new Response(zipOf({ "tdd/SKILL.md": "# tdd", "tdd/examples/a.ts": "export {}" }), {
+          headers: { "content-type": "application/zip" },
         });
       },
     });
     try {
-      const script = SESSION_COMMAND.split(" && ").find((s) =>
-        s.includes("PROJECT_OS_SKILLS_URL"),
-      )!;
-      const out = await sh(script, {
+      const out = await sh(SKILLS_STEP, {
         HOME: home,
         PROJECT_OS_SKILLS_URL: `http://localhost:${server.port}/tickets/t1/skills`,
         PROJECT_OS_SKILLS_TOKEN: "tok",
       });
-      expect(out.stdout).toContain("skills: installed 1");
+      expect(out.stdout).toContain("skills: installed");
       const root = join(home, ".pi", "agent", "skills");
       expect(readFileSync(join(root, "tdd", "SKILL.md"), "utf8")).toBe("# tdd");
       expect(readFileSync(join(root, "tdd", "examples", "a.ts"), "utf8")).toBe("export {}");
-      expect(existsSync(join(root, "escape.txt"))).toBe(false);
-      expect(existsSync(join(root, "tdd", "..", "bad"))).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("leaves a zip's `..` entries inside the skills folder", async () => {
+    const home = mkdtempSync(join(tmpdir(), "skills-home-"));
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => new Response(zipOf({ "tdd/SKILL.md": "# tdd", "../../escape.txt": "no" })),
+    });
+    try {
+      await sh(SKILLS_STEP, {
+        HOME: home,
+        PROJECT_OS_SKILLS_URL: `http://localhost:${server.port}/x`,
+        PROJECT_OS_SKILLS_TOKEN: "tok",
+      });
+      expect(existsSync(join(home, ".pi", "agent", "skills", "tdd", "SKILL.md"))).toBe(true);
+      expect(existsSync(join(home, ".pi", "escape.txt"))).toBe(false);
+      expect(existsSync(join(home, "escape.txt"))).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("installs nothing, and carries on, when the ticket has no skills", async () => {
+    const home = mkdtempSync(join(tmpdir(), "skills-home-"));
+    const server = Bun.serve({ port: 0, fetch: () => new Response(null, { status: 204 }) });
+    try {
+      const out = await sh(SKILLS_STEP, {
+        HOME: home,
+        PROJECT_OS_SKILLS_URL: `http://localhost:${server.port}/x`,
+        PROJECT_OS_SKILLS_TOKEN: "tok",
+      });
+      expect(out.status).toBe(0);
+      expect(out.stdout).toContain("skills: none for this ticket");
+      expect(existsSync(join(home, ".pi"))).toBe(false);
     } finally {
       server.stop(true);
     }
@@ -108,10 +135,7 @@ describe("skills step", () => {
   it("reports and carries on when the Coordinator refuses", async () => {
     const server = Bun.serve({ port: 0, fetch: () => new Response("no", { status: 403 }) });
     try {
-      const script = SESSION_COMMAND.split(" && ").find((s) =>
-        s.includes("PROJECT_OS_SKILLS_URL"),
-      )!;
-      const out = await sh(script, {
+      const out = await sh(SKILLS_STEP, {
         PROJECT_OS_SKILLS_URL: `http://localhost:${server.port}/x`,
         PROJECT_OS_SKILLS_TOKEN: "tok",
       });

@@ -1,9 +1,13 @@
-import type { SkillBundle, SkillCandidates, SkillUpdateReport } from "@project-os/contracts";
+import type { SkillCandidates, SkillUpdateReport } from "@project-os/contracts";
 import { Effect } from "effect";
 import {
   InvalidSkillSet,
   InvalidSkillSource,
+  mergeSkillArchives,
   NO_SKILL_SET,
+  packSkill,
+  SkillFetchFailed,
+  skillArchiveKey,
   parseSkillFrontmatter,
   parseSkillSource,
   SkillNotFound,
@@ -11,7 +15,13 @@ import {
   type Skill,
   type SkillSet,
 } from "../../domain/index.ts";
-import { IdGenerator, SkillRepository, SkillSource, TicketRepository } from "../ports/index.ts";
+import {
+  AssetStore,
+  IdGenerator,
+  SkillRepository,
+  SkillSource,
+  TicketRepository,
+} from "../ports/index.ts";
 import { guardTicketAccess, type McpCaller } from "./personal-workers.ts";
 import { nowIso } from "./tickets.ts";
 
@@ -126,6 +136,9 @@ export const addSkillsToSet = (input: {
     return added;
   });
 
+/** Most a skill's zip may weigh: its files are capped at 1 MB, zipping only shrinks them. */
+const ARCHIVE_MAX_BYTES = 4 * 1024 * 1024;
+
 const download = (
   repo: typeof SkillRepository.Service,
   upstream: typeof SkillSource.Service,
@@ -138,23 +151,36 @@ const download = (
     const { sha, files } = yield* upstream.fetch(candidate.source, candidate.path);
     const meta = parseSkillFrontmatter(files.find((f) => f.path === "SKILL.md")?.contents ?? "");
     const id = existing?.id ?? (yield* (yield* IdGenerator).next);
-    return yield* repo.upsertSkill(
-      {
-        id,
-        skillSetId: setId,
-        source: candidate.source,
-        slug: candidate.slug,
-        name: meta.name || candidate.slug,
-        description: meta.description,
-        path: candidate.path,
-        sha,
-        fileCount: files.length,
-        bytes: files.reduce((total, f) => total + new TextEncoder().encode(f.contents).length, 0),
-        fetchedAt: yield* nowIso,
-        fetchedBy: by,
-      },
-      files,
-    );
+    const archiveKey = skillArchiveKey({ skillSetId: setId, id, sha });
+    const zip = packSkill(candidate.slug, files);
+    yield* (yield* AssetStore)
+      .put({
+        key: archiveKey,
+        body: new Blob([zip]).stream(),
+        contentType: "application/zip",
+        size: zip.byteLength,
+        maxBytes: ARCHIVE_MAX_BYTES,
+      })
+      .pipe(
+        Effect.mapError(
+          (e) => new SkillFetchFailed({ message: `Could not store the skill: ${e.message}` }),
+        ),
+      );
+    return yield* repo.upsertSkill({
+      id,
+      archiveKey,
+      skillSetId: setId,
+      source: candidate.source,
+      slug: candidate.slug,
+      name: meta.name || candidate.slug,
+      description: meta.description,
+      path: candidate.path,
+      sha,
+      fileCount: files.length,
+      bytes: files.reduce((total, f) => total + new TextEncoder().encode(f.contents).length, 0),
+      fetchedAt: yield* nowIso,
+      fetchedBy: by,
+    });
   });
 
 /** Asks upstream whether each skill of the set has changed since it was pinned. */
@@ -200,11 +226,11 @@ export const updateSkillsInSet = (input: {
   });
 
 /**
- * The skills a Worker is given before it starts its ticket: the pinned files of the ticket's
- * skill set. Only the ticket's own worker may read them. A ticket with no set (or whose set was
- * deleted) gets an empty bundle.
+ * The skills a Worker is given before it starts its ticket: one zip of the pinned skills of the
+ * ticket's skill set, entries `<slug>/<path>`. Only the ticket's own worker may read it. A ticket
+ * with no set (or whose set was deleted or has no skills) gets `archive: null`.
  */
-export const skillBundleForTicket = (ticketId: string, caller: McpCaller) =>
+export const skillArchiveForTicket = (ticketId: string, caller: McpCaller) =>
   Effect.gen(function* () {
     yield* guardTicketAccess(ticketId, caller);
     const ticket = yield* (yield* TicketRepository).get(ticketId);
@@ -212,11 +238,23 @@ export const skillBundleForTicket = (ticketId: string, caller: McpCaller) =>
     const set = ticket.skillSetId
       ? yield* repo.getSet(ticket.skillSetId).pipe(Effect.orElseSucceed(() => undefined))
       : undefined;
-    if (!set) return { set: null, skills: [] } satisfies SkillBundle;
-    return {
-      set: { id: set.id, name: set.name },
-      skills: yield* repo.filesOfSet(set.id),
-    } satisfies SkillBundle;
+    const skills = set ? yield* repo.listSkills(set.id) : [];
+    if (!set || skills.length === 0) return { set: null, archive: null };
+    const assets = yield* AssetStore;
+    const archives = yield* Effect.forEach(skills, (skill) =>
+      Effect.gen(function* () {
+        const object = yield* assets
+          .get(skill.archiveKey)
+          .pipe(Effect.mapError((e) => new SkillFetchFailed({ message: e.message })));
+        if (!object) {
+          return yield* new SkillFetchFailed({
+            message: `The stored copy of ${skill.name} is missing; update the skill.`,
+          });
+        }
+        return new Uint8Array(yield* Effect.promise(() => new Response(object.body).arrayBuffer()));
+      }),
+    );
+    return { set: { id: set.id, name: set.name }, archive: mergeSkillArchives(archives) };
   });
 
 /** The sets Jev may route a new request to: those with at least one skill. */

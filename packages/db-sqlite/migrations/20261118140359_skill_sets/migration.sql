@@ -15,7 +15,7 @@ CREATE TABLE `skills` (
 	`description` text NOT NULL,
 	`path` text NOT NULL,
 	`sha` text NOT NULL,
-	`files` text NOT NULL,
+	`archive_key` text NOT NULL,
 	`file_count` integer NOT NULL,
 	`bytes` integer NOT NULL,
 	`fetched_at` text NOT NULL,

@@ -1138,13 +1138,13 @@ describe("SkillRepository", () => {
     description: "d",
     path: "skills/tdd",
     sha: "tree-1",
+    archiveKey: "skills/set1/k1/tree-1.zip",
     fileCount: 1,
     bytes: 5,
     fetchedAt: T0,
     fetchedBy: null,
     ...over,
   });
-  const files = [{ path: "SKILL.md", contents: "# tdd" }];
 
   it("stores sets with unique names, and lists, renames and deletes them", async () => {
     const out = await run(
@@ -1191,24 +1191,27 @@ describe("SkillRepository", () => {
     expect(out.missingDelete._tag).toBe("SkillSetNotFound");
   });
 
-  it("pins skills with their files; an upsert on the same source and slug keeps the id", async () => {
+  it("pins skills with where their zip is kept; an upsert on the same source and slug keeps the id", async () => {
     const out = await run(
       Effect.gen(function* () {
         const repo = yield* SkillRepository;
         yield* repo.insertSet(set());
-        const first = yield* repo.upsertSkill(skill(), files);
+        const first = yield* repo.upsertSkill(skill());
         const again = yield* repo.upsertSkill(
-          skill({ id: "k-new", sha: "tree-2", fetchedBy: "Olga" }),
-          [{ path: "SKILL.md", contents: "# v2" }],
+          skill({
+            id: "k-new",
+            sha: "tree-2",
+            fetchedBy: "Olga",
+            archiveKey: "skills/set1/k1/tree-2.zip",
+          }),
         );
-        yield* repo.upsertSkill(skill({ id: "k2", slug: "review", name: "review" }), files);
+        yield* repo.upsertSkill(skill({ id: "k2", slug: "review", name: "review" }));
         const listed = yield* repo.listSkills("set1");
         const got = yield* repo.getSkill("k1");
         const missing = yield* repo.getSkill("nope").pipe(Effect.flip);
-        const bundle = yield* repo.filesOfSet("set1");
         yield* repo.removeSkill("k2");
         const missingRemove = yield* repo.removeSkill("k2").pipe(Effect.flip);
-        return { first, again, listed, got, missing, bundle, missingRemove };
+        return { first, again, listed, got, missing, missingRemove };
       }),
     );
     // Lists carry no file contents.
@@ -1218,10 +1221,9 @@ describe("SkillRepository", () => {
     expect(out.listed.map((s) => s.slug)).toEqual(["review", "tdd"]);
     expect(out.got.sha).toBe("tree-2");
     expect(out.missing._tag).toBe("SkillNotFound");
-    expect(out.bundle).toEqual([
-      { slug: "review", name: "review", files },
-      { slug: "tdd", name: "tdd", files: [{ path: "SKILL.md", contents: "# v2" }] },
-    ]);
+    // Only where the zip is kept is stored; the files are in the asset store.
+    expect(out.got.archiveKey).toBe("skills/set1/k1/tree-2.zip");
+    expect(out).not.toHaveProperty("bundle");
     expect(out.missingRemove._tag).toBe("SkillNotFound");
   });
 
@@ -1230,7 +1232,7 @@ describe("SkillRepository", () => {
       Effect.gen(function* () {
         const repo = yield* SkillRepository;
         yield* repo.insertSet(set());
-        yield* repo.upsertSkill(skill(), files);
+        yield* repo.upsertSkill(skill());
         yield* repo.deleteSet("set1");
         const left = yield* repo.listSkills("set1");
         yield* (yield* ProjectRepository).insert(project());

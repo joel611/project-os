@@ -27,7 +27,6 @@ import type {
 } from "../../domain/ticket/index.ts";
 import type {
   Skill,
-  SkillFile,
   SkillNotFound,
   SkillSet,
   SkillSetNameTaken,
@@ -309,17 +308,9 @@ export class SkillRepository extends Context.Service<
     readonly getSkill: (id: string) => Effect.Effect<Skill, SkillNotFound>;
     /**
      * Adds a skill, or replaces the one with the same `(set, source, slug)`, keeping its id.
-     * Returns the stored skill.
+     * Returns the stored skill. The files live in the asset store, at `skill.archiveKey`.
      */
-    readonly upsertSkill: (skill: Skill, files: ReadonlyArray<SkillFile>) => Effect.Effect<Skill>;
+    readonly upsertSkill: (skill: Skill) => Effect.Effect<Skill>;
     readonly removeSkill: (id: string) => Effect.Effect<void, SkillNotFound>;
-    /** The pinned files of every skill in a set, for a Worker's bundle. */
-    readonly filesOfSet: (setId: string) => Effect.Effect<
-      ReadonlyArray<{
-        readonly slug: string;
-        readonly name: string;
-        readonly files: ReadonlyArray<SkillFile>;
-      }>
-    >;
   }
 >()("@project-os/core/SkillRepository") {}

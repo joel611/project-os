@@ -1,5 +1,6 @@
 import { join, normalize, sep } from "node:path";
-import { SAFE_SKILL_SLUG, type SkillBundle } from "@project-os/contracts";
+import { SAFE_SKILL_SLUG } from "@project-os/contracts";
+import { strFromU8, unzipSync } from "fflate";
 import { workerSessionStart } from "@project-os/system-prompts";
 import { AGENTS, type Agent, type InstalledSkills } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
@@ -21,8 +22,14 @@ export type SpawnProcess = (
 
 /** What the Watcher needs to put a ticket's skill set on disk for one session. */
 export interface SkillsIo {
-  /** The ticket's bundle, fetched with this device's secret; undefined when it can't be had. */
-  readonly fetchBundle: (url: string, secret: string) => Promise<SkillBundle | undefined>;
+  /**
+   * The ticket's skills as a zip (entries `<slug>/<path>`) and the set's name, fetched with
+   * this device's secret; undefined when the ticket has none or they can't be had.
+   */
+  readonly fetchArchive: (
+    url: string,
+    secret: string,
+  ) => Promise<{ readonly set: string; readonly zip: Uint8Array } | undefined>;
   /** A new empty private directory. */
   readonly makeDir: () => string;
   readonly writeFile: (path: string, contents: string) => void;
@@ -61,27 +68,33 @@ const installSkills = async (
   ticketId: string,
 ): Promise<(InstalledSkills & { readonly set: string }) | undefined> => {
   if (!config.skills || !io.skills || agent.skillsLayout === undefined) return undefined;
-  const bundle = await io.skills
-    .fetchBundle(skillsUrl(config.mcpUrl, ticketId), config.secret)
+  const archive = await io.skills
+    .fetchArchive(skillsUrl(config.mcpUrl, ticketId), config.secret)
     .catch(() => undefined);
-  if (!bundle || !bundle.set || bundle.skills.length === 0) return undefined;
-  const root = io.skills.makeDir();
-  const slugs: string[] = [];
-  for (const skill of bundle.skills) {
-    if (!SAFE_SKILL_SLUG.test(skill.slug)) continue;
-    const folder = join(root, agent.skillsLayout, skill.slug);
-    for (const file of skill.files) {
-      const target = inside(folder, file.path);
-      if (target) io.skills.writeFile(target, file.contents);
+  if (!archive) return undefined;
+  const files = (() => {
+    try {
+      return unzipSync(archive.zip);
+    } catch {
+      return {};
     }
-    slugs.push(skill.slug);
+  })();
+  const root = io.skills.makeDir();
+  const slugs = new Set<string>();
+  for (const [name, bytes] of Object.entries(files)) {
+    const [slug, ...rest] = name.split("/");
+    if (!slug || !SAFE_SKILL_SLUG.test(slug) || rest.length === 0 || name.endsWith("/")) continue;
+    const target = inside(join(root, agent.skillsLayout, slug), rest.join("/"));
+    if (!target) continue;
+    io.skills.writeFile(target, strFromU8(bytes));
+    slugs.add(slug);
   }
-  if (slugs.length === 0) {
+  if (slugs.size === 0) {
     io.skills.removeDir(root);
     return undefined;
   }
-  io.log?.(`installed ${slugs.length} skill(s) from "${bundle.set.name}" for ${ticketId}`);
-  return { root, slugs, set: bundle.set.name };
+  io.log?.(`installed ${slugs.size} skill(s) from "${archive.set}" for ${ticketId}`);
+  return { root, slugs: [...slugs], set: archive.set };
 };
 
 export const bunSpawner = (

@@ -1,15 +1,15 @@
 import type {
   Skill,
-  SkillBundle,
   SkillCandidate,
   SkillFile,
   SkillSet,
   SkillUpdateStatus,
 } from "@project-os/contracts";
 import { SAFE_SKILL_SLUG } from "@project-os/contracts";
+import { strToU8, unzipSync, zipSync } from "fflate";
 import { Data } from "effect";
 
-export type { Skill, SkillBundle, SkillCandidate, SkillFile, SkillSet, SkillUpdateStatus };
+export type { Skill, SkillCandidate, SkillFile, SkillSet, SkillUpdateStatus };
 
 export class SkillSetNotFound extends Data.TaggedError("SkillSetNotFound")<{
   readonly skillSetId: string;
@@ -135,3 +135,20 @@ export const chosenSkillSet = (result: {
   result.skillSet.confidence >= SKILL_SET_MIN_CONFIDENCE
     ? result.skillSet.choice
     : null;
+
+/** A skill folder as a zip, entries `<slug>/<path>`: what is stored, and what a Worker unpacks. */
+export const packSkill = (slug: string, files: ReadonlyArray<SkillFile>): Uint8Array =>
+  zipSync(
+    Object.fromEntries(files.map((f) => [`${slug}/${f.path}`, strToU8(f.contents)] as const)),
+  );
+
+/** The skills' zips as one zip: what a Worker pulls for its ticket's set. */
+export const mergeSkillArchives = (archives: ReadonlyArray<Uint8Array>): Uint8Array =>
+  zipSync(Object.assign({}, ...archives.map((zip) => unzipSync(zip))));
+
+/** Where a skill's zip is kept. The SHA is in the key, so an update never overwrites a version. */
+export const skillArchiveKey = (skill: {
+  readonly skillSetId: string;
+  readonly id: string;
+  readonly sha: string;
+}): string => `skills/${skill.skillSetId}/${skill.id}/${skill.sha}.zip`;

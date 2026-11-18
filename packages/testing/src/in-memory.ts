@@ -692,7 +692,7 @@ export const makeUserConnectionsInMemory = () => {
 
 export const SkillRepositoryInMemory = Layer.sync(SkillRepository, () => {
   const sets = new Map<string, SkillSet>();
-  const stored = new Map<string, { skill: Skill; files: ReadonlyArray<SkillFile> }>();
+  const stored = new Map<string, { skill: Skill }>();
   const inSet = (setId: string) => [...stored.values()].filter((e) => e.skill.skillSetId === setId);
   const takenBy = (name: string) => [...sets.values()].find((s) => s.name === name);
   const getSet = (id: string): Effect.Effect<SkillSet, SkillSetNotFound> => {
@@ -737,24 +737,18 @@ export const SkillRepositoryInMemory = Layer.sync(SkillRepository, () => {
       const entry = stored.get(id);
       return entry ? Effect.succeed(entry.skill) : Effect.fail(new SkillNotFound({ skillId: id }));
     },
-    upsertSkill: (skill, files) =>
+    upsertSkill: (skill) =>
       Effect.sync(() => {
         const same = inSet(skill.skillSetId).find(
           (e) => e.skill.source === skill.source && e.skill.slug === skill.slug,
         );
         const next = { ...skill, id: same?.skill.id ?? skill.id };
-        stored.set(next.id, { skill: next, files });
+        stored.set(next.id, { skill: next });
         return next;
       }),
     removeSkill: (id) =>
       Effect.suspend(() =>
         stored.delete(id) ? Effect.void : Effect.fail(new SkillNotFound({ skillId: id })),
-      ),
-    filesOfSet: (setId) =>
-      Effect.sync(() =>
-        inSet(setId)
-          .map((e) => ({ slug: e.skill.slug, name: e.skill.name, files: e.files }))
-          .sort((a, b) => a.slug.localeCompare(b.slug)),
       ),
   };
 });
