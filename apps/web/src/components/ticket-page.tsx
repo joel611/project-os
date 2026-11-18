@@ -133,7 +133,7 @@ const AssignDialog = ({ ticket, onClose }: { ticket: Ticket; onClose: () => void
             <DialogTitle>{verb} ticket</DialogTitle>
             <DialogDescription>
               The device's Watcher starts it on its next poll.
-              {ticket.workerId !== null && ` ${ticket.workerId} can no longer update it.`}
+              {ticket.workerId !== null && " Its current worker can no longer update it."}
             </DialogDescription>
           </DialogHeader>
           <Select
