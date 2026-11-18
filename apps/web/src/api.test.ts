@@ -155,6 +155,39 @@ describe("makeApi", () => {
     expect(JSON.parse(String(seen[0]?.init?.body))).toEqual({ name: "Acme" });
   });
 
+  it("POSTs the worker to assign a ticket to and decodes the ticket back", async () => {
+    const ticket = {
+      id: "t/1",
+      projectId: "p1",
+      status: "assigned",
+      title: "x",
+      intent: null,
+      inputSummary: "x",
+      priority: null,
+      workerType: "local",
+      workerId: "w2",
+      requester: null,
+      result: null,
+      error: null,
+      createdAt: T,
+      assignedAt: T,
+      startedAt: null,
+      lastActivityAt: T,
+      completedAt: null,
+      updatedAt: T,
+    };
+    const seen: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      seen.push({ url, init });
+      return Response.json(ticket);
+    }) as unknown as typeof fetch;
+    expect(await makeApi(fetchFn).assignTicket("t/1", "w2")).toEqual(ticket);
+    expect(seen.map((s) => [s.url, s.init?.method])).toEqual([
+      ["/api/tickets/t%2F1/assign", "POST"],
+    ]);
+    expect(JSON.parse(String(seen[0]?.init?.body))).toEqual({ workerId: "w2" });
+  });
+
   it("decodes worker status alongside the worker", async () => {
     const worker = {
       id: "w1",

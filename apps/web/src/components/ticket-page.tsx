@@ -1,14 +1,41 @@
-import { useQuery } from "@tanstack/react-query";
+import type { Ticket } from "@project-os/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { api, ApiError, type TicketDetail } from "@/api";
+import { type SyntheticEvent, useState } from "react";
+import { api, ApiError, describeError, type TicketDetail } from "@/api";
 import { Empty, QueryError } from "@/components/states";
 import { TicketFiles } from "@/components/ticket-files";
 import { StatusBadge, ToneDot } from "@/components/tone";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EVENT, hasAttachments, relativeTime, STATUS } from "@/model";
+import {
+  ASSIGNABLE_STATUSES,
+  assignTargets,
+  EVENT,
+  hasAttachments,
+  relativeTime,
+  STATUS,
+  workerName,
+} from "@/model";
 import { ticketDetailInterval } from "@/polling";
 import { useNow } from "@/use-now";
+import { useViewer } from "@/viewer";
 
 export type TicketBack =
   | { readonly kind: "project"; readonly projectId: string }
@@ -81,15 +108,95 @@ const Main = ({ ticket, events }: TicketDetail) => {
   );
 };
 
+const AssignDialog = ({ ticket, onClose }: { ticket: Ticket; onClose: () => void }) => {
+  const qc = useQueryClient();
+  const workers = useQuery({ queryKey: ["workers"], queryFn: api.workers });
+  const targets = assignTargets(workers.data ?? [], ticket.workerId);
+  const [workerId, setWorkerId] = useState<string | null>(null);
+  const assign = useMutation({
+    mutationFn: (id: string) => api.assignTicket(ticket.id, id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["ticket", ticket.id] });
+      onClose();
+    },
+  });
+  const verb = ticket.workerId === null ? "Assign" : "Reassign";
+  const submit = (e: SyntheticEvent) => {
+    e.preventDefault();
+    if (workerId) assign.mutate(workerId);
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>{verb} ticket</DialogTitle>
+            <DialogDescription>
+              The device's Watcher starts it on its next poll.
+              {ticket.workerId !== null && ` ${ticket.workerId} can no longer update it.`}
+            </DialogDescription>
+          </DialogHeader>
+          <Select
+            items={targets.map((w) => ({ value: w.id, label: `${workerName(w)} · ${w.status}` }))}
+            value={workerId}
+            onValueChange={setWorkerId}
+          >
+            <SelectTrigger aria-label="Worker" className="w-full">
+              <SelectValue placeholder={workers.isPending ? "Loading workers…" : "Pick a device"} />
+            </SelectTrigger>
+            <SelectContent>
+              {targets.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {workerName(w)} · {w.status}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!workers.isPending && targets.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No other registered device to hand it to.
+            </p>
+          )}
+          {assign.error && (
+            <p role="alert" className="text-sm text-destructive">
+              {describeError(assign.error)}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!workerId || assign.isPending}>
+              {assign.isPending ? `${verb}ing…` : verb}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const Details = ({ ticket }: Pick<TicketDetail, "ticket">) => {
   const now = useNow();
+  const operator = useViewer().data?.role === "operator";
+  const [assigning, setAssigning] = useState(false);
   return (
     <aside className="h-fit rounded-xl border bg-card p-5 shadow-card lg:sticky lg:top-0">
       <h2 className="pb-4 text-sm font-semibold">Details</h2>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-1">
         <Field label="Status">{STATUS[ticket.status].label}</Field>
         <Field label="Intent">{ticket.intent}</Field>
-        <Field label="Worker">{ticket.workerId}</Field>
+        <Field label="Worker">
+          <span className="flex flex-wrap items-center gap-2">
+            {ticket.workerId ?? "—"}
+            {operator && ASSIGNABLE_STATUSES.includes(ticket.status) && (
+              <Button size="xs" variant="outline" onClick={() => setAssigning(true)}>
+                {ticket.workerId === null ? "Assign" : "Reassign"}
+              </Button>
+            )}
+          </span>
+        </Field>
+        {assigning && <AssignDialog ticket={ticket} onClose={() => setAssigning(false)} />}
         <Field label="Created">{when(ticket.createdAt, now)}</Field>
         <Field label="Started">{when(ticket.startedAt, now)}</Field>
         <Field label="Last activity">{when(ticket.lastActivityAt, now)}</Field>
