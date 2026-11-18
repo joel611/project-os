@@ -27,6 +27,8 @@ export interface AppDeps {
   readonly credentialProxy?: Omit<EgressDeps, "runtime">;
   /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
+  /** The Members page's data (`GET /members`), from the auth instance. Omitted: 501. */
+  readonly members?: HttpDeps["members"];
   /**
    * Origins a browser may call this API from (the web dashboard when it is served from
    * another origin). Omitted or empty: no CORS headers, so browsers block cross-origin calls.
@@ -66,7 +68,15 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
       )
     : base;
   const app = withCors.get("/health", () => ({ status: "ok", service: "coordinator" }));
-  const withHttp = deps.http ? app.use(httpRoutes({ ...deps.http, access: deps.access })) : app;
+  const withHttp = deps.http
+    ? app.use(
+        httpRoutes({
+          ...deps.http,
+          ...(deps.members && { members: deps.members }),
+          access: deps.access,
+        }),
+      )
+    : app;
   const withAuth = deps.auth ? withHttp.use(authRoutes(deps.auth)) : withHttp;
   const withConnect = deps.connect ? withAuth.use(connectRoutes(deps.connect)) : withAuth;
   // One storage config: the limits intake applies to a message's files also bound Worker uploads.

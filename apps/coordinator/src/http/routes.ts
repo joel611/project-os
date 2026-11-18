@@ -5,7 +5,7 @@ import {
   SlashCommand,
   WorkerRegisterRequest,
 } from "@project-os/contracts";
-import { AUDIT_KINDS, type AuditKind, type Viewer } from "@project-os/contracts";
+import { AUDIT_KINDS, type AuditKind, type Member, type Viewer } from "@project-os/contracts";
 import {
   answerScopePrompt,
   getMyTicket,
@@ -122,6 +122,8 @@ export interface HttpDeps {
   readonly commands?: CommandsConfig;
   /** Who may answer prompts (`POST /prompts/answer`). Default: the admin list in `inbound`. */
   readonly prompts?: PromptAnswerConfig;
+  /** People with a dashboard sign-in or channel identity (`GET /members`). Omitted: 501. */
+  readonly members?: () => Promise<ReadonlyArray<Member>>;
 }
 
 export const httpRoutes = ({
@@ -130,6 +132,7 @@ export const httpRoutes = ({
   workerStaleMs = healthConfig().workerStaleMs,
   commands,
   prompts = inbound,
+  members,
   access,
 }: HttpDeps & {
   /** Who is calling: members get only their own Tickets on the routes they may use. */
@@ -170,6 +173,13 @@ export const httpRoutes = ({
       const person = await access.personOf(await access.caller(request));
       if (!person) return { tickets: [], projects: [] };
       return reply(set, toResult(listMyTickets(person)));
+    })
+    .get("/members", async ({ set }) => {
+      if (!members) {
+        set.status = 501;
+        return { error: "the member list is not configured" };
+      }
+      return members();
     })
     .post("/inbound", ({ body, set }) =>
       reply(

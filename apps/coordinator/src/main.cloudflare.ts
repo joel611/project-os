@@ -126,6 +126,7 @@ const buildApp = (bindings: Bindings) => {
       access: makeAccess({ serviceToken, auth }),
       mcp: runtime,
       auth,
+      members: () => auth.members(),
       ...(connections && { connect: connections }),
     },
   ).compile();

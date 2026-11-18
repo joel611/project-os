@@ -491,6 +491,27 @@ describe("dashboard reads", () => {
   });
 });
 
+describe("GET /members", () => {
+  it("answers 501 until a member list is wired in", async () => {
+    const { layer } = makeTestLayer();
+    const res = await call(appFor(layer), "GET", "/members");
+    expect(res).toMatchObject({ status: 501, body: { error: expect.stringContaining("member") } });
+  });
+
+  it("returns what the member list gives", async () => {
+    const { layer } = makeTestLayer();
+    const runtime = ManagedRuntime.make(layer);
+    disposers.push(() => runtime.dispose());
+    const list = [{ key: "u1", name: "Ada" }];
+    const app = httpRoutes({
+      run: (effect) => runtime.runPromise(effect),
+      access: OPERATOR,
+      members: async () => list as never,
+    });
+    expect(await call(app, "GET", "/members")).toEqual({ status: 200, body: list });
+  });
+});
+
 describe("POST /tickets/:id/assign", () => {
   const withStuckTicket = async () => {
     const { layer } = makeTestLayer();

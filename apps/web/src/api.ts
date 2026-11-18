@@ -2,6 +2,7 @@ import {
   ActivityFeed,
   AuditPage,
   type AuditKind,
+  MemberList,
   MemoryEntry,
   MyTickets,
   Project,
@@ -144,6 +145,7 @@ export const makeApi = (
   return {
     me: () => get("/me", Viewer),
     myTickets: () => get("/me/tickets", MyTickets),
+    members: () => get("/members", MemberList),
     projects: () => get("/projects", Schema.Array(Project)),
     project: (projectId: string) => get(`/projects/${id(projectId)}`, ProjectDetail),
     tickets: (projectId: string) => get(`/projects/${id(projectId)}/tickets`, Schema.Array(Ticket)),
