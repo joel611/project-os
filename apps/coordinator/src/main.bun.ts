@@ -26,6 +26,7 @@ import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
 import { channelDigester, startChannelDigest } from "./digest/index.ts";
 import { startHealthSweep } from "./health/start.ts";
+import { makeLifecycleNotifications } from "./lifecycle.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
 
@@ -148,12 +149,37 @@ createApp(
     ...(connections && { connect: connections }),
   },
 ).listen(port);
-discord?.login().catch((err) => {
+const discordReady = discord?.login().catch((err) => {
   console.error("Discord login failed; the Coordinator keeps running without Discord", err);
+  throw err;
 });
+void discordReady?.catch(() => {});
+const lifecycle = makeLifecycleNotifications({
+  channelId: process.env.ADMIN_CHANNEL_ID,
+  run: (effect) => runtime.runPromise(effect),
+  ready: discordReady,
+  retryStartup: Boolean(remoteGatewayUrl),
+});
+let shutdown: Promise<void> | undefined;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.once(signal, () => {
-    void (otel?.shutdown() ?? Promise.resolve()).finally(() => process.exit(0));
+  process.on(signal, () => {
+    shutdown ??= (async () => {
+      await lifecycle.stop();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          otel?.shutdown() ?? Promise.resolve(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error("telemetry shutdown timed out")), 3000);
+          }),
+        ]);
+      } catch (error) {
+        console.error("Telemetry shutdown failed", error);
+      } finally {
+        clearTimeout(timer);
+        process.exit(0);
+      }
+    })();
   });
 }
 console.log(`coordinator listening on :${port} (MCP at /mcp)`);
