@@ -80,6 +80,8 @@ describe("coordinator app", () => {
       expect((await call(app, "/projects", { token: "ada" })).status).toBe(403);
       expect((await call(app, "/workers", { token: "ada" })).status).toBe(403);
       expect((await call(app, "/activity", { token: "ada" })).status).toBe(403);
+      const assign = { method: "POST", token: "ada", body: { workerId: "w1" } };
+      expect((await call(app, "/tickets/t1/assign", assign)).status).toBe(403);
       const me = await call(app, "/me", { token: "ada" });
       expect(await me.json()).toEqual({
         role: "member",

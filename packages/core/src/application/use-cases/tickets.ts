@@ -1,7 +1,12 @@
 import type { Actor, TicketEventType } from "@project-os/contracts";
 import { Effect } from "effect";
-import type { TicketStatus, WorkerType } from "../../domain/index.ts";
-import { Clock, IdGenerator, TicketRepository } from "../ports/index.ts";
+import {
+  type TicketStatus,
+  type WorkerType,
+  WorkerNotFound,
+  workerLabel,
+} from "../../domain/index.ts";
+import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
 import { type AuditActor, auditTicket } from "./audit.ts";
 
 export const nowIso = Effect.gen(function* () {
@@ -86,4 +91,49 @@ export const updateStatus = (input: {
       { from },
     );
     return updated;
+  });
+
+/**
+ * An Operator hands a ticket to a registered device (personal or shared), e.g. when its worker
+ * is stuck. The device's Watcher picks it up on its next poll. Sandbox sessions are not targets:
+ * the Coordinator starts those itself, one per ticket. The old worker loses access to the ticket
+ * at once, since MCP tools only reach a ticket's current assignee.
+ */
+export const reassignTicketTo = (input: {
+  readonly ticketId: string;
+  readonly workerId: string;
+  readonly by: AuditActor;
+}) =>
+  Effect.gen(function* () {
+    const repo = yield* TicketRepository;
+    const workers = yield* WorkerRepository;
+    const target = yield* workers.get(input.workerId);
+    if (!target.registered) return yield* new WorkerNotFound({ workerId: input.workerId });
+    const before = yield* repo.get(input.ticketId);
+    const at = yield* nowIso;
+    const reassigned = yield* repo.reassign(
+      input.ticketId,
+      { workerType: target.workerType, workerId: target.id },
+      at,
+    );
+    const previous = before.workerId;
+    const from =
+      previous === null
+        ? "Assigned"
+        : `Reassigned from ${yield* workers.get(previous).pipe(
+            Effect.map(workerLabel),
+            Effect.orElseSucceed(() => previous),
+          )}`;
+    yield* repo.appendEvent({
+      id: yield* Effect.flatMap(IdGenerator, (g) => g.next),
+      ticketId: input.ticketId,
+      type: "assigned",
+      actor: "coordinator",
+      actorId: null,
+      body: `${from} to ${workerLabel(target)} by ${input.by.name ?? "an operator"}`,
+      payload: { workerType: target.workerType, workerId: target.id, from: before.workerId },
+      createdAt: at,
+    });
+    yield* auditTicket(reassigned, "assigned", input.by, { from: before.status, at });
+    return reassigned;
   });

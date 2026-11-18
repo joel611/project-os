@@ -7,6 +7,7 @@ import {
   type DigestPoint,
   ChannelGateway,
   claimTicket,
+  reassignTicket,
   releaseTicket,
   reopenTicket,
   IdGenerator,
@@ -96,6 +97,8 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
       Effect.flatMap(find(ticketId), (t) => Effect.map(releaseTicket(t, workerId, at), put)),
     reopen: (ticketId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(reopenTicket(t, at), put)),
+    reassign: (ticketId, worker, at) =>
+      Effect.flatMap(find(ticketId), (t) => Effect.map(reassignTicket(t, worker, at), put)),
     claim: (ticketId, workerId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(claimTicket(t, workerId, at), put)),
     updateStatus: (ticketId, to, at, extra) =>

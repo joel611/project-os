@@ -227,6 +227,26 @@ export const groupWorkers = <W extends Worker & { readonly status: WorkerStatus 
   };
 };
 
+/** Ticket statuses an Operator can (re)assign from: any not finished. */
+export const ASSIGNABLE_STATUSES: ReadonlyArray<TicketStatus> = [
+  "open",
+  "assigned",
+  "in_progress",
+  "blocked",
+];
+
+/**
+ * Who an Operator can hand a ticket to: registered devices (shared, then personal, online
+ * first) other than its current worker. Sandbox sessions are started by the Coordinator only.
+ */
+export const assignTargets = <W extends Worker & { readonly status: WorkerStatus }>(
+  workers: ReadonlyArray<W>,
+  currentWorkerId: string | null,
+): ReadonlyArray<W> => {
+  const { shared, personal } = groupWorkers(workers);
+  return [...shared, ...personal].filter((w) => w.id !== currentWorkerId);
+};
+
 /**
  * Whether anyone sent files on this ticket (its `created` or `follow_up` events carry a list),
  * so the dashboard only asks for download links when there is something to show.
