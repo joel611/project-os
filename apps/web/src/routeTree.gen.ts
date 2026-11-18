@@ -14,6 +14,7 @@ import { Route as AuditRouteImport } from './routes/audit'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MembersRouteImport } from './routes/members'
 import { Route as MineRouteImport } from './routes/mine'
+import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 import { Route as WorkersWorkerIdRouteImport } from './routes/workers.$workerId'
 import { Route as MineTicketsTicketIdRouteImport } from './routes/mine_.tickets.$ticketId'
@@ -43,6 +44,11 @@ const MembersRoute = MembersRouteImport.update({
 const MineRoute = MineRouteImport.update({
   id: '/mine',
   path: '/mine',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SkillsRoute = SkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/members': typeof MembersRoute
   '/mine': typeof MineRoute
+  '/skills': typeof SkillsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/workers/$workerId': typeof WorkersWorkerIdRoute
   '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/members': typeof MembersRoute
   '/mine': typeof MineRoute
+  '/skills': typeof SkillsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/workers/$workerId': typeof WorkersWorkerIdRoute
   '/mine/tickets/$ticketId': typeof MineTicketsTicketIdRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/members': typeof MembersRoute
   '/mine': typeof MineRoute
+  '/skills': typeof SkillsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/workers/$workerId': typeof WorkersWorkerIdRoute
   '/mine_/tickets/$ticketId': typeof MineTicketsTicketIdRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/members'
     | '/mine'
+    | '/skills'
     | '/projects/$projectId'
     | '/workers/$workerId'
     | '/mine/tickets/$ticketId'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/members'
     | '/mine'
+    | '/skills'
     | '/projects/$projectId'
     | '/workers/$workerId'
     | '/mine/tickets/$ticketId'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/members'
     | '/mine'
+    | '/skills'
     | '/projects/$projectId'
     | '/workers/$workerId'
     | '/mine_/tickets/$ticketId'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   MembersRoute: typeof MembersRoute
   MineRoute: typeof MineRoute
+  SkillsRoute: typeof SkillsRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   WorkersWorkerIdRoute: typeof WorkersWorkerIdRoute
   MineTicketsTicketIdRoute: typeof MineTicketsTicketIdRoute
@@ -197,6 +210,13 @@ declare module '@tanstack/react-router' {
       path: '/mine'
       fullPath: '/mine'
       preLoaderRoute: typeof MineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/skills': {
+      id: '/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof SkillsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/$projectId': {
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   MembersRoute: MembersRoute,
   MineRoute: MineRoute,
+  SkillsRoute: SkillsRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   WorkersWorkerIdRoute: WorkersWorkerIdRoute,
   MineTicketsTicketIdRoute: MineTicketsTicketIdRoute,

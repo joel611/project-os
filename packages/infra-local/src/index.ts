@@ -1,10 +1,17 @@
 import { type ChannelType } from "@project-os/contracts";
-import { AssetStore, KeyValueStore, Scheduler, WorkerLauncher } from "@project-os/core";
+import {
+  AssetStore,
+  KeyValueStore,
+  Scheduler,
+  SkillSource,
+  WorkerLauncher,
+} from "@project-os/core";
 import { ChannelGateway } from "@project-os/core";
 import { Layer } from "effect";
 import { DrizzleBun, openLocalDb, SqliteLive } from "./database.ts";
 import { makeMemoryKeyValueStore } from "./kv.ts";
 import { makeTimerScheduler } from "./scheduler.ts";
+import { makeGithubSkillSource } from "./skills-github.ts";
 import { makeDiskBackend } from "./assets-disk.ts";
 import {
   AgentRuntimePending,
@@ -20,6 +27,7 @@ import {
 
 export { DrizzleBun, SystemClockLive, UserConnectionsUnavailable, openLocalDb };
 export { DEFAULT_ORG, ensureOrg } from "./org.ts";
+export { makeGithubSkillSource };
 
 export interface LocalConfig {
   /** SQLite file path; created and migrated on start. */
@@ -28,6 +36,8 @@ export interface LocalConfig {
   readonly adapterUrls: Partial<Record<ChannelType, string>>;
   /** Starts workers for assigned tickets. Default: none (the host Watcher pulls local work). */
   readonly workerLauncher?: typeof WorkerLauncher.Service;
+  /** Where skills are read from. Default: GitHub, anonymously. */
+  readonly skillSource?: typeof SkillSource.Service;
   /**
    * Where files people attach are kept, and how Workers are told to download them: signed links
    * to `<publicUrl>/assets/...`. Omitted: attachments stay on their Discord links.
@@ -61,6 +71,7 @@ export const LocalLive = (config: LocalConfig) =>
     SidekickPending,
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
+    Layer.succeed(SkillSource, config.skillSource ?? makeGithubSkillSource()),
     config.assets
       ? Layer.succeed(
           AssetStore,

@@ -59,3 +59,13 @@ export const ticketContext = (ticket: {
         }`;
   return `Ticket: ${ticket.title}\nStatus: ${ticket.status}\nAsked: ${ticket.inputSummary}${result}`;
 };
+
+/**
+ * Asked for a new request when the org has skill sets: which set of skills should the Worker be
+ * given? Each option's criteria is the set's own description. Only meaningful for new requests.
+ */
+export const SKILL_SET_QUESTION =
+  "Which skill set suits this request? Each option is a group of skills a Worker is given before it starts. Only meaningful for new requests.";
+
+/** The answer when no skill set fits. */
+export const SKILL_SET_NONE_CRITERIA = "No skill set fits, or the request needs no special skills";

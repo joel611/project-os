@@ -7,7 +7,17 @@ import {
 } from "@project-os/contracts";
 import { AUDIT_KINDS, type AuditKind, type Member, type Viewer } from "@project-os/contracts";
 import {
+  addSkillsToSet,
   answerScopePrompt,
+  browseSkillSource,
+  checkSkillUpdates,
+  createSkillSet,
+  deleteSkillSet,
+  getSkillSet,
+  listSkillSets,
+  removeSkillFromSet,
+  updateSkillSet,
+  updateSkillsInSet,
   getMyTicket,
   getTicket,
   listMyTicketAttachments,
@@ -37,6 +47,8 @@ import {
   type ProjectRepository,
   type ProjectSourceRepository,
   type Sidekick,
+  type SkillRepository,
+  type SkillSource,
   type TicketRepository,
   type UserConnections,
   type WorkerLauncher,
@@ -46,7 +58,12 @@ import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
 import type { Access, Caller } from "../access.ts";
 import {
+  AddSkillsBody,
   AssignBody,
+  BrowseSkillsBody,
+  CreateSkillSetBody,
+  UpdateSkillSetBody,
+  UpdateSkillsBody,
   changeStatusAndNotify,
   CreateProjectBody,
   createProject,
@@ -108,6 +125,8 @@ export type HttpEnv =
   | ProjectRepository
   | ProjectSourceRepository
   | Sidekick
+  | SkillRepository
+  | SkillSource
   | TicketRepository
   | UserConnections
   | WorkerLauncher
@@ -276,6 +295,84 @@ export const httpRoutes = ({
     .delete("/projects/:id/sources/:sourceId", ({ params, set }) =>
       reply(set, toResult(unlinkSource(params.id, params.sourceId))),
     )
+    .get("/skill-sets", ({ set }) => reply(set, toResult(listSkillSets)))
+    .post("/skill-sets", ({ body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(CreateSkillSetBody, body).pipe(
+            Effect.flatMap(({ name, description }) =>
+              createSkillSet({ name, description: description ?? "" }),
+            ),
+          ),
+          201,
+        ),
+      ),
+    )
+    .get("/skill-sets/:id", ({ params, set }) => reply(set, toResult(getSkillSet(params.id))))
+    .patch("/skill-sets/:id", ({ params, body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(UpdateSkillSetBody, body).pipe(
+            Effect.flatMap((patch) => updateSkillSet(params.id, patch)),
+          ),
+        ),
+      ),
+    )
+    .delete("/skill-sets/:id", ({ params, set }) =>
+      reply(set, toResult(deleteSkillSet(params.id).pipe(Effect.as({ deleted: true })))),
+    )
+    .post("/skill-sets/browse", ({ body, set }) =>
+      reply(
+        set,
+        toResult(
+          decode(BrowseSkillsBody, body).pipe(
+            Effect.flatMap(({ source }) => browseSkillSource(source)),
+          ),
+        ),
+      ),
+    )
+    .post("/skill-sets/:id/skills", async ({ params, body, request, set }) => {
+      // The route's `user` policy lets in only an Operator.
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
+        set,
+        toResult(
+          decode(AddSkillsBody, body).pipe(
+            Effect.flatMap(({ source, slugs }) =>
+              addSkillsToSet({ setId: params.id, source, slugs, by: caller.name }),
+            ),
+            Effect.map((skills) => ({ skills })),
+          ),
+          201,
+        ),
+      );
+    })
+    .delete("/skill-sets/:id/skills/:skillId", ({ params, set }) =>
+      reply(set, toResult(removeSkillFromSet(params.skillId).pipe(Effect.as({ deleted: true })))),
+    )
+    .get("/skill-sets/:id/updates", ({ params, set }) =>
+      reply(set, toResult(checkSkillUpdates(params.id))),
+    )
+    .post("/skill-sets/:id/update", async ({ params, body, request, set }) => {
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
+        set,
+        toResult(
+          decode(UpdateSkillsBody, body ?? {}).pipe(
+            Effect.flatMap(({ skillIds }) =>
+              updateSkillsInSet({
+                setId: params.id,
+                ...(skillIds && { skillIds }),
+                by: caller.name,
+              }),
+            ),
+            Effect.map((skills) => ({ skills })),
+          ),
+        ),
+      );
+    })
     .get("/projects/:id/tickets", ({ params, set }) =>
       reply(set, toResult(listProjectTickets(params.id))),
     )

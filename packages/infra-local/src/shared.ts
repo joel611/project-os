@@ -13,6 +13,7 @@ import { Effect, Layer } from "effect";
 
 export { SystemClockLive } from "./clock.ts";
 export { makeHttpChannelGateway } from "./gateway.ts";
+export { makeGithubSkillSource, type GithubSkillSourceConfig } from "./skills-github.ts";
 export {
   AssetStoreUnavailable,
   type AssetLinksConfig,

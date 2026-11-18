@@ -68,6 +68,7 @@
         "@earendil-works/pi-durable": "1.5.0",
         "@project-os/db-sqlite": "workspace:*",
         "@project-os/testing": "workspace:*",
+        "fflate": "^0.8.3",
       },
     },
     "apps/discord-gateway": {
@@ -98,6 +99,7 @@
       },
       "devDependencies": {
         "@earendil-works/pi-ai": "1.5.0",
+        "fflate": "^0.8.3",
         "miniflare": "^4",
       },
     },
@@ -119,6 +121,7 @@
         "@project-os/config": "workspace:*",
         "@project-os/contracts": "workspace:*",
         "@project-os/system-prompts": "workspace:*",
+        "fflate": "^0.8.3",
       },
     },
     "apps/web": {
@@ -228,6 +231,7 @@
         "@project-os/contracts": "workspace:*",
         "@project-os/system-prompts": "workspace:*",
         "effect": "4.1.2",
+        "fflate": "^0.8.3",
       },
     },
     "packages/db-sqlite": {
@@ -293,6 +297,9 @@
         "@project-os/system-prompts": "workspace:*",
         "effect": "4.1.2",
       },
+      "devDependencies": {
+        "fflate": "^0.8.3",
+      },
     },
     "packages/sandbox-daytona": {
       "name": "@project-os/sandbox-daytona",
@@ -313,6 +320,9 @@
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "fflate": "^0.8.3",
       },
     },
   },

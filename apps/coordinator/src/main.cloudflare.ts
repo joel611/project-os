@@ -12,6 +12,7 @@ import {
   DEFAULT_ORG,
   DrizzleD1,
   ensureOrg,
+  makeGithubSkillSource,
   serviceFetch,
 } from "@project-os/infra-cloudflare";
 import { type Effect, Layer, ManagedRuntime } from "effect";
@@ -88,6 +89,12 @@ const buildApp = (bindings: Bindings) => {
         ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
         agent: durableAgentRuntime(bindings.PI_AGENT),
         ...(workerLauncher && { workerLauncher }),
+        ...(process.env.SKILLS_GITHUB_TOKEN && {
+          skillSource: makeGithubSkillSource({
+            token: process.env.SKILLS_GITHUB_TOKEN,
+            fetch: (input, init) => fetch(input, init),
+          }),
+        }),
         ...(bindings.ASSETS &&
           publicUrl && {
             assets: {

@@ -18,6 +18,7 @@ const config: WatcherConfig = {
   maxSessions: 1,
   cwd: "/work",
   secret: "s3cret",
+  skills: true,
 };
 const ctx = { config, prompt: "do it", configDir: "/cfg", home: "/home/me" };
 
@@ -119,5 +120,36 @@ describe("codex", () => {
     );
     expect(launch.env).toEqual({ [CODEX_TOKEN_ENV]: "s3cret" });
     expect(launch.files).toEqual([]);
+  });
+});
+
+describe("skills", () => {
+  const base = { ...ctx, prompt: "go" };
+  const skills = { root: "/tmp/sk", slugs: ["tdd", "review"] };
+
+  it("declares where each agent expects its skill folders", () => {
+    expect(AGENTS.claude.skillsLayout).toBe(".claude/skills");
+    expect(AGENTS.pi.skillsLayout).toBe("skills");
+    // Codex can't load skills from outside its own config, so none are installed for it.
+    expect(AGENTS.codex.skillsLayout).toBeUndefined();
+  });
+
+  it("gives Claude the session's skills folder as an added directory", () => {
+    const cmd = AGENTS.claude.launch({ ...base, skills }).cmd;
+    expect(cmd[cmd.indexOf("--add-dir") + 1]).toBe("/tmp/sk");
+    expect(AGENTS.claude.launch({ ...base }).cmd).not.toContain("--add-dir");
+  });
+
+  it("gives Pi each skill folder, with the prompt still last", () => {
+    const cmd = AGENTS.pi.launch({ ...base, config: { ...config, agent: "pi" }, skills }).cmd;
+    expect(cmd).toEqual([
+      "pi",
+      "--print",
+      "--skill",
+      "/tmp/sk/skills/tdd",
+      "--skill",
+      "/tmp/sk/skills/review",
+      "go",
+    ]);
   });
 });
