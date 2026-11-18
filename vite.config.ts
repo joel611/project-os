@@ -1,6 +1,6 @@
 import { defineConfig } from "vite-plus";
 
-// Dependency rules from docs/technical-architecture.md §8.4.
+// Dependency rules from apps/site/reference/architecture.md §8.4.
 const providerImports = [
   {
     name: "drizzle-orm",
@@ -103,6 +103,7 @@ export default defineConfig({
       "**/routeTree.gen.ts",
       "bun.lock",
       "docs/**",
+      "apps/site/**/*.md",
       "CONTEXT.md",
       "CLAUDE.md",
     ],

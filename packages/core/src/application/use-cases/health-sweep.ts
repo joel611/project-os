@@ -12,7 +12,7 @@ import {
   pruneAudit,
 } from "./audit.ts";
 
-/** Thresholds in milliseconds (docs/technical-architecture.md §5.5). */
+/** Thresholds in milliseconds (apps/site/reference/architecture.md §5.5). */
 export interface HealthThresholds {
   /** Worker `lastSeenAt` older than this → offline. */
   readonly workerStaleMs: number;

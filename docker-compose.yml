@@ -18,7 +18,7 @@ services:
       DISCORD_PROJECT_CATEGORY_ID: ${DISCORD_PROJECT_CATEGORY_ID:-}
       DISCORD_MEMBER_ROLE_IDS: ${DISCORD_MEMBER_ROLE_IDS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      # Models are provider/model strings. See SETUP.md, "Models".
+      # Models are provider/model strings. See apps/site/guide/setup.md, "Models".
       DEFAULT_MODEL: ${DEFAULT_MODEL:-openrouter/anthropic/claude-sonnet-4.5}
       CHANNEL_DIGEST_MODEL: ${CHANNEL_DIGEST_MODEL:-}
       DECISION_MODEL: ${DECISION_MODEL:-openrouter/typesafe/jev-1.14}
@@ -33,7 +33,7 @@ services:
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       DISCORD_REQUIRE_MENTION: ${DISCORD_REQUIRE_MENTION:-true}
       DISCORD_PROJECT_CHANNEL_AUTO_CREATE: ${DISCORD_PROJECT_CHANNEL_AUTO_CREATE:-true}
-      # Sign-in (required) and account linking (/connect, off unless a client is set). See SETUP.md.
+      # Sign-in (required) and account linking (/connect, off unless a client is set). See apps/site/guide/setup.md.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -47,7 +47,7 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       CLICKUP_CLIENT_ID: ${CLICKUP_CLIENT_ID:-}
       CLICKUP_CLIENT_SECRET: ${CLICKUP_CLIENT_SECRET:-}
-      # Cloud sandbox workers (Daytona, Cloudflare Sandbox); off unless a provider is set. See SETUP.md §6.
+      # Cloud sandbox workers (Daytona, Cloudflare Sandbox); off unless a provider is set. See apps/site/guide/setup.md §6.
       WORKER_PROVIDERS: ${WORKER_PROVIDERS:-}
       SHARED_WORKER_MAX_TICKETS: ${SHARED_WORKER_MAX_TICKETS:-1}
       SANDBOX_MCP_URL: ${SANDBOX_MCP_URL:-}

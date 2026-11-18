@@ -38,4 +38,4 @@ The shape of the system comes from a few choices. Each one removes a way this ki
 
 **Workers speak MCP.** Everything a Worker can do is a tool call: read or append to a ticket, read or write Project Memory. Nothing else.
 
-See [technical-architecture.md](technical-architecture.md) for the design and [../CONTEXT.md](../CONTEXT.md) for the vocabulary.
+See [technical-architecture.md](reference/architecture.md) for the design and [../CONTEXT.md](../../CONTEXT.md) for the vocabulary.

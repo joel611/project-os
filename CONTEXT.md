@@ -1,6 +1,6 @@
 # project-os
 
-Project-centric AI agent (see `docs/product-brief.md`). A Coordinator receives messages from channels (Discord, email), turns them into Tickets, and Workers (local Claude Code, Pi in a Daytona, Cloudflare or boat.dev sandbox) work those Tickets through MCP tools. Built with Bun, Vite+, Effect, Elysia, and Drizzle; targets Cloudflare Workers + D1 + KV, with a local Bun + SQLite target for the POC (see `docs/technical-architecture.md`).
+Project-centric AI agent (see `apps/site/product-brief.md`). A Coordinator receives messages from channels (Discord, email), turns them into Tickets, and Workers (local Claude Code, Pi in a Daytona, Cloudflare or boat.dev sandbox) work those Tickets through MCP tools. Built with Bun, Vite+, Effect, Elysia, and Drizzle; targets Cloudflare Workers + D1 + KV, with a local Bun + SQLite target for the POC (see `apps/site/reference/architecture.md`).
 
 ## Language
 

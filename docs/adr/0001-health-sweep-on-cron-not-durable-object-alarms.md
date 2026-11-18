@@ -31,4 +31,4 @@ Use the Cron Trigger (`crons: ["* * * * *"]` in `alchemy.run.ts`, `scheduled` in
 
 ## Where alarms still belong
 
-Pi Durable asks Durable Object hosts to pass `onWake` and arm `setAlarm()`, so an evicted `PiAgent` resumes an unfinished reply turn. That state is per object, which alarms suit. `PiAgent` does not do this yet; it is a separate change (docs/deployment.md, Known gaps).
+Pi Durable asks Durable Object hosts to pass `onWake` and arm `setAlarm()`, so an evicted `PiAgent` resumes an unfinished reply turn. That state is per object, which alarms suit. `PiAgent` does not do this yet; it is a separate change (apps/site/guide/deployment.md, Known gaps).

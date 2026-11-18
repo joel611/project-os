@@ -7,7 +7,7 @@ export interface ModelRef {
   readonly modelId: string;
 }
 
-/** The Coordinator's models, from env (SETUP.md, "Models"). */
+/** The Coordinator's models, from env (apps/site/guide/setup.md, "Models"). */
 export interface ModelConfig {
   /** `DEFAULT_MODEL` (required): chat, and every model below that isn't set. */
   readonly default: ModelRef;
@@ -19,7 +19,7 @@ export interface ModelConfig {
 
 export const DEFAULT_MODEL_EXAMPLE = "openrouter/anthropic/claude-sonnet-4.5";
 
-/** Pinned, not `~typesafe/jev-latest` (docs/technical-architecture.md §8.6). */
+/** Pinned, not `~typesafe/jev-latest` (apps/site/reference/architecture.md §8.6). */
 export const DEFAULT_DECISION_MODEL = "openrouter/typesafe/jev-1.14";
 
 /** Old model vars and the var that replaced each. Setting one stops the Coordinator. */

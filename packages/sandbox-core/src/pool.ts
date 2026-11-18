@@ -43,7 +43,9 @@ export const resolvePool = (input: {
     const workerType = WORKER_TYPE_OF[provider];
     const runner = input.configured[provider];
     if (runner === undefined) {
-      throw new Error(`WORKER_PROVIDERS names "${name}" but it isn't configured (see SETUP.md)`);
+      throw new Error(
+        `WORKER_PROVIDERS names "${name}" but it isn't configured (see apps/site/guide/setup.md)`,
+      );
     }
     const max = input.maxConcurrent?.[provider];
     pool.push({ workerType, runner, ...(max === undefined ? {} : { maxConcurrent: max }) });

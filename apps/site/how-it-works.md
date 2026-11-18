@@ -1,6 +1,6 @@
 # How it works
 
-project-os works like a control tower. Channels bring questions in, the Coordinator turns them into Tickets, Workers clear the Tickets, and only the Coordinator talks back. For the story behind it, see [Why project-os](why.md). For every component in depth, see the [technical architecture](technical-architecture.md).
+project-os works like a control tower. Channels bring questions in, the Coordinator turns them into Tickets, Workers clear the Tickets, and only the Coordinator talks back. For the story behind it, see [Why project-os](why.md). For every component in depth, see the [technical architecture](reference/architecture.md).
 
 ```
  Discord / Email                                         Dev's laptop
