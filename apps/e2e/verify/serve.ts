@@ -85,6 +85,7 @@ createApp(
   {
     access: makeAccess({ serviceToken: SERVICE_TOKEN, auth }),
     auth,
+    members: () => auth.members(),
     connect: auth.connections!,
     http: {
       run: (e) => runtime.runPromise(e as any),

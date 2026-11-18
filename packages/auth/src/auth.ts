@@ -1,5 +1,6 @@
-import { CONNECTION_PROVIDERS, type ConnectionProvider } from "@project-os/contracts";
+import { CONNECTION_PROVIDERS, type ConnectionProvider, type Member } from "@project-os/contracts";
 import { schema, type SqliteDb } from "@project-os/db-sqlite";
+import { Effect } from "effect";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { GenericOAuthConfig } from "better-auth/plugins";
@@ -503,6 +504,123 @@ export const makeAuth = (config: AuthConfig) => {
         })
       : undefined;
 
+  /**
+   * Everyone who has a dashboard sign-in or a channel identity, one row per person. A dashboard
+   * user and a channel identity are the same person when they hold the same Google account:
+   * the sign-in's `google-signin` account id and the channel identity's `google` account id are
+   * both Google's `sub`. GitHub is linked only from a channel, so it rides with that identity.
+   */
+  const members = async (): Promise<ReadonlyArray<Member>> => {
+    const [users, accounts, sessions] = await Promise.all([
+      config.db.select().from(schema.user),
+      config.db.select().from(schema.account),
+      config.db.select().from(schema.session),
+    ]);
+    const byUser = new Map<string, typeof accounts>();
+    for (const account of accounts) {
+      byUser.set(account.userId, [...(byUser.get(account.userId) ?? []), account]);
+    }
+    const lastSignIn = new Map<string, number>();
+    for (const session of sessions) {
+      const at = session.createdAt.getTime();
+      if (at > (lastSignIn.get(session.userId) ?? 0)) lastSignIn.set(session.userId, at);
+    }
+
+    // Channel identities, keyed by the Google `sub` they linked (or alone when none).
+    const identities = users.flatMap((user) => {
+      const person = personFromIdentityEmail(user.email, user.name);
+      if (!person) return [];
+      const owned = byUser.get(user.id) ?? [];
+      return [
+        {
+          user,
+          person,
+          sub: owned.find((a) => a.providerId === "google")?.accountId,
+          github: owned.find((a) => a.providerId === "github"),
+        },
+      ];
+    });
+    const bySub = new Map(identities.flatMap((i) => (i.sub ? [[i.sub, i] as const] : [])));
+
+    const rows: Array<{ member: Member; person?: Person }> = [];
+    const paired = new Set<string>();
+    for (const user of users) {
+      if (isChannelIdentityEmail(user.email)) continue;
+      const owned = byUser.get(user.id) ?? [];
+      const signIn = owned.find(
+        (a) => a.providerId === GOOGLE_SIGN_IN && !a.accountId.startsWith(MEMBER_ACCOUNT_PREFIX),
+      );
+      const admin = isOperator(user.email);
+      // Stray users (a failed sign-in attempt) are neither an operator nor a Google sign-in.
+      if (!signIn && !admin) continue;
+      const identity = signIn ? bySub.get(signIn.accountId) : undefined;
+      if (identity) paired.add(identity.user.id);
+      const at = lastSignIn.get(user.id);
+      rows.push({
+        ...(identity && { person: identity.person }),
+        member: {
+          key: user.id,
+          name: user.name,
+          email: user.email,
+          admin,
+          dashboard: { lastSignInAt: at ? new Date(at).toISOString() : null },
+          channel: identity
+            ? {
+                type: identity.person.channelType,
+                id: identity.person.id,
+                name: identity.person.name ?? null,
+              }
+            : null,
+          googleLinked: signIn !== undefined || identity !== undefined,
+          github: identity?.github ? { login: null } : null,
+        },
+      });
+    }
+    for (const identity of identities) {
+      if (paired.has(identity.user.id)) continue;
+      const at = lastSignIn.get(identity.user.id);
+      rows.push({
+        person: identity.person,
+        member: {
+          key: identity.user.id,
+          name: identity.person.name ?? identity.person.id,
+          email: null,
+          admin: false,
+          // A member signs in with the Google account they linked, so a session means they did.
+          dashboard: at ? { lastSignInAt: new Date(at).toISOString() } : null,
+          channel: {
+            type: identity.person.channelType,
+            id: identity.person.id,
+            name: identity.person.name ?? null,
+          },
+          googleLinked: identity.sub !== undefined,
+          github: identity.github ? { login: null } : null,
+        },
+      });
+    }
+
+    // GitHub logins and the Google email come from the providers; a failure leaves them null.
+    const resolved = await Promise.all(
+      rows.map(async ({ member, person }): Promise<Member> => {
+        if (!person || !connections) return member;
+        const linked = await Effect.runPromise(connections.service.list(person)).catch(
+          () => undefined,
+        );
+        if (!linked) return member;
+        const login = linked.find((a) => a.provider === "github")?.displayIdentity ?? null;
+        const email = linked.find((a) => a.provider === "google")?.displayIdentity;
+        return {
+          ...member,
+          email: member.email ?? email ?? null,
+          github: member.github ? { login } : null,
+        };
+      }),
+    );
+    return resolved.sort(
+      (a, b) => Number(b.admin) - Number(a.admin) || a.name.localeCompare(b.name),
+    );
+  };
+
   const google = googleSignInConfig(config);
   const googleSignIn: GoogleSignIn | undefined = google && {
     domains: [...allowedDomains(config)],
@@ -573,6 +691,8 @@ export const makeAuth = (config: AuthConfig) => {
       const member = await channelIdentityFor(signIn.accountId);
       return member && personFromIdentityEmail(member.email, member.name);
     },
+    /** Everyone with a dashboard sign-in or a channel identity, matched by Google account. */
+    members,
     /** Whether this email may use the dashboard and its API. */
     isAllowed: isOperator,
     /** Account linking; undefined without `baseURL` or an OAuth client. */

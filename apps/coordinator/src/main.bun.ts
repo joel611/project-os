@@ -146,6 +146,7 @@ createApp(
     access: makeAccess({ serviceToken, auth }),
     mcp: runtime,
     auth,
+    members: () => auth.members(),
     ...(connections && { connect: connections }),
   },
 ).listen(port);

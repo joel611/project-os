@@ -332,6 +332,7 @@ export const startStack = async (options: {
           },
         }),
       },
+      members: () => auth!.members(),
       ...(oauth && {
         connect: { startLink: (token: string) => lazy().startLink(token) },
       }),
