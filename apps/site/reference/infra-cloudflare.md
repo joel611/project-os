@@ -1,6 +1,6 @@
 # Cloudflare infrastructure
 
-What `alchemy.run.ts` deploys, what is reachable from the internet, and which links stay on Cloudflare's private network. Setup steps are in [deployment.md](deployment.md).
+What `alchemy.run.ts` deploys, what is reachable from the internet, and which links stay on Cloudflare's private network. Setup steps are in [deployment.md](../guide/deployment.md).
 
 ## Diagram
 

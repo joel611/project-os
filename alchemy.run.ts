@@ -8,7 +8,7 @@
 // `plain_text` vars, secrets as `secret_text`. Required secrets fail the deploy when unset;
 // anything else unset is simply not bound, so a stage without OAuth clients deploys with
 // account linking off (same rule as local).
-// See docs/deployment.md.
+// See apps/site/guide/deployment.md.
 import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import * as Alchemy from "alchemy";

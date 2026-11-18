@@ -838,7 +838,7 @@ project-os/
 │
 ├─ docker-compose.yml                  # local target
 ├─ package.json · bun.lock · vite.config.ts · tsconfig.base.json · alchemy.run.ts (Cloudflare IaC)
-├─ docs/ · CONTEXT.md
+├─ apps/site/ (product site + docs) · docs/ (ADRs, agent guides) · CONTEXT.md
 ```
 
 `infra-cloudflare` and `infra-local` both reuse `db-sqlite/repositories`. They differ only in how the Drizzle db is created (`drizzle-orm/d1` vs `drizzle-orm/bun-sqlite`). A Postgres provider would add `db-postgres` + `infra-<host>`.
@@ -864,7 +864,7 @@ Enforce these with lint import rules in the Vite+ config.
 - **Discord adapter: long-running gateway process (Hermes model).** Hermes Agent's messaging gateway is a single background process that opens an *outbound* Discord Gateway WebSocket. It needs no public URL or inbound port, which is why it looks "webhook-free". HTTP interactions alone can't be used, because they only deliver slash commands and buttons, not ordinary channel messages. So `channel-discord` holds the gateway connection and calls the coordinator over HTTP. On the Bun target the coordinator hosts it in the same process (its reply endpoint binds loopback on a free port, since it can post as the bot). Where the coordinator can't hold a socket, `channel-discord` runs alone as `apps/discord-gateway`. Locally it runs in Compose. On the Cloudflare target, it either runs anywhere that allows a long-running process (a small VM, Fly, a Cloudflare Container) or lives in a Durable Object that keeps the outbound WebSocket open (that DO can't hibernate, so it's always billed). The coordinator itself stays a normal Worker either way.
 - **Agent runtime:** see §8.6.
 - **Atomic claim:** `ticket_claim` is a single conditional `UPDATE … WHERE status = 'assigned'`, which works the same on D1 and bun:sqlite.
-- **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. Alchemy v2 (`alchemy.run.ts`, an Effect program) declares the Cloudflare resources and handles Cloudflare dev and deploy; see `docs/deployment.md`.
+- **Tooling:** Bun is the package manager (workspaces in the root `package.json`) and the local runtime (Docker images on `oven/bun`, watcher on the host). Vite+ (`vp`) handles task running and caching, build, test (Vitest), lint, and format, replacing Turborepo. Alchemy v2 (`alchemy.run.ts`, an Effect program) declares the Cloudflare resources and handles Cloudflare dev and deploy; see `apps/site/guide/deployment.md`.
 - The v1.1 throwaway `Task` entity in `CONTEXT.md` is no longer needed once `ticket/` exists.
 
 ### 8.6 Pi Durable + Jev

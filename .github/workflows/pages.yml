@@ -1,20 +1,23 @@
 name: Pages
 
-# Builds the product site (apps/site) from the repo's Markdown and publishes it to GitHub Pages.
+# Builds the product site from the Markdown in apps/site and publishes it to GitHub Pages.
+# Runs only when the site, this workflow, or the dependencies change.
 # One-time setup: Settings → Pages → Build and deployment → Source: GitHub Actions.
 
 on:
   push:
     branches: [main]
     paths:
-      - "**.md"
       - "apps/site/**"
       - ".github/workflows/pages.yml"
+      - "package.json"
+      - "bun.lock"
   pull_request:
     paths:
-      - "**.md"
       - "apps/site/**"
       - ".github/workflows/pages.yml"
+      - "package.json"
+      - "bun.lock"
   workflow_dispatch:
 
 concurrency:

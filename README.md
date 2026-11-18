@@ -10,7 +10,7 @@
 
 <!-- TODO: Add hero GIF of Discord question → ticket → grounded reply -->
 
-**[Website](https://joel611.github.io/project-os/)** · **[Quick start](docs/quick-start.md)** · **[Why](docs/why.md)** · **[Architecture](docs/technical-architecture.md)**
+**[Website](https://joel611.github.io/project-os/)** · **[Quick start](apps/site/guide/quick-start.md)** · **[Why](apps/site/why.md)** · **[Architecture](apps/site/reference/architecture.md)**
 
 ---
 
@@ -26,7 +26,7 @@ project-os sits in the middle like a control tower:
 - **Only the tower talks outside** — Adapters are thin. Workers speak only MCP. The surface that can say the wrong thing to a customer is tiny and centralized.
 - **Memory compounds** — Workers can write durable facts to Project Memory, so the next similar question starts with more context.
 
-The full story and design rationale: [docs/why.md](docs/why.md).
+The full story and design rationale: [Why project-os](apps/site/why.md).
 
 ---
 
@@ -38,18 +38,18 @@ cp .env.example .env      # Discord bot + OPENROUTER_API_KEY + ADMIN_*
 docker compose up --build
 ```
 
-The full walkthrough is in [Quick start](docs/quick-start.md).
+The full walkthrough is in [Quick start](apps/site/guide/quick-start.md).
 
 ## Documentation
 
 The same Markdown files are published as the product site at **[joel611.github.io/project-os](https://joel611.github.io/project-os/)**.
 
-- [Why project-os](docs/why.md): the problem and the design choices
-- [How it works](docs/how-it-works.md): the control tower, its roles, and a question's path
-- [Quick start](docs/quick-start.md) and [Setup](SETUP.md): run it and connect Discord, Google, and GitHub
-- [Deploy to Cloudflare](docs/deployment.md)
-- [Development](docs/development.md) and [Testing without Discord](TESTING.md)
-- [Technical architecture](docs/technical-architecture.md) and the [glossary](CONTEXT.md)
+- [Why project-os](apps/site/why.md): the problem and the design choices
+- [How it works](apps/site/how-it-works.md): the control tower, its roles, and a question's path
+- [Quick start](apps/site/guide/quick-start.md) and [Setup](apps/site/guide/setup.md): run it and connect Discord, Google, and GitHub
+- [Deploy to Cloudflare](apps/site/guide/deployment.md)
+- [Development](apps/site/guide/development.md) and [Testing without Discord](apps/site/guide/testing.md)
+- [Technical architecture](apps/site/reference/architecture.md) and the [glossary](CONTEXT.md)
 
 ---
 

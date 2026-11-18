@@ -1,7 +1,7 @@
 // Cloudflare Sandbox bridge: the Coordinator's way into Cloudflare Sandboxes (see src/main.cloudflare.ts).
 // Deploy: `bun run --cwd apps/cloudflare-sandbox deploy`, then `wrangler secret put BRIDGE_TOKEN`.
 // Kept on wrangler for now: Alchemy's Container resource has its own Durable Object pattern,
-// and @cloudflare/sandbox ships its own Sandbox class. See SETUP.md, "Cloudflare Sandbox".
+// and @cloudflare/sandbox ships its own Sandbox class. See apps/site/guide/setup.md, "Cloudflare Sandbox".
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "project-os-sandbox",
