@@ -97,6 +97,22 @@ describe("reassignTicketTo", () => {
     expect(out.map((e) => e.body)).toEqual(["Assigned to box-new by Olga"]);
   });
 
+  it("names an unnamed operator generically", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* (yield* TicketRepository).insert(stuck());
+        yield* device("new");
+        yield* reassignTicketTo({
+          ticketId: "t1",
+          workerId: "new",
+          by: { ...OPERATOR, name: null },
+        });
+        return yield* (yield* TicketRepository).listEvents("t1");
+      }),
+    );
+    expect(out.map((e) => e.body)).toEqual(["Reassigned from box-old to box-new by an operator"]);
+  });
+
   it("refuses an unknown worker, a sandbox session, and a finished ticket", async () => {
     const out = await run(
       Effect.gen(function* () {
