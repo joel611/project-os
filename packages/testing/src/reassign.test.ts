@@ -110,7 +110,7 @@ describe("reassignTicketTo", () => {
         return yield* (yield* TicketRepository).listEvents("t1");
       }),
     );
-    expect(out.map((e) => e.body)).toEqual(["Reassigned from box-old to box-new by an operator"]);
+    expect(out.map((e) => e.body)).toEqual(["Reassigned from old to box-new by an operator"]);
   });
 
   it("refuses an unknown worker, a sandbox session, and a finished ticket", async () => {
