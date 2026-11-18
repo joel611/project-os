@@ -255,6 +255,33 @@ describe("updateStatusAndNotify", () => {
     ]);
   });
 
+  it("names the person whose account the Worker acted with", async () => {
+    const r = run(
+      Effect.gen(function* () {
+        yield* setup;
+        yield* appendEvent({
+          ticketId: "t1",
+          type: "created",
+          actor: "coordinator",
+          body: "do it",
+          payload: { sender: { id: "u-ada", name: "Ada" }, channelType: "discord" },
+        });
+        yield* appendEvent({
+          ticketId: "t1",
+          type: "follow_up",
+          actor: "coordinator",
+          body: "also this",
+          payload: { sender: { id: "u-bob", name: "Bob" }, channelType: "discord" },
+        });
+        yield* updateStatusAndNotify({ ticketId: "t1", status: "blocked" });
+      }),
+    );
+    await r.result;
+    expect(r.sent.map((s) => s.content)).toEqual([
+      'Ticket "Do it" is blocked and needs input before it can continue.\nActing as <@u-bob> (Bob).',
+    ]);
+  });
+
   describe("blocked with the Worker's own words", () => {
     const summarizing = (respond: (prompt: string) => Effect.Effect<string, AgentRuntimeError>) =>
       Effect.provideService(AgentRuntime, { respond: ({ prompt }) => respond(prompt) });
@@ -343,6 +370,13 @@ describe("updateStatusAndNotify", () => {
           yield* (yield* TicketRepository).insert(ticket(project.id));
           yield* appendEvent({
             ticketId: "t1",
+            type: "created",
+            actor: "coordinator",
+            body: "do it",
+            payload: { sender: { id: "u-ada", name: "Ada" }, channelType: "discord" },
+          });
+          yield* appendEvent({
+            ticketId: "t1",
             type: "comment",
             actor: "worker",
             body: "Waiting on the design file",
@@ -363,7 +397,9 @@ describe("updateStatusAndNotify", () => {
         }).pipe(summarizing(() => failing)),
       );
       await r.result;
-      expect(r.sent[0]!.content).toContain("blocked: Waiting on the design file");
+      expect(r.sent[0]!.content).toBe(
+        'Ticket "Do it" is blocked: Waiting on the design file\nActing as <@u-ada> (Ada).\nReply here and I\'ll pick it back up.',
+      );
     });
 
     it("records the reason with no actor id when the ticket has no worker", async () => {

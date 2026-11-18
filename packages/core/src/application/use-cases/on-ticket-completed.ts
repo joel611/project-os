@@ -2,6 +2,7 @@ import { ticketBlockedSummary, ticketCompletedReply } from "@project-os/system-p
 import { Effect } from "effect";
 import { AgentRuntime, ChannelGateway, TicketRepository } from "../ports/index.ts";
 import type { TicketStatus } from "../../domain/index.ts";
+import { actingAs, requesterOf } from "./connections.ts";
 import { ticketChannel } from "./prompts.ts";
 import { appendEvent, updateStatus } from "./tickets.ts";
 
@@ -62,12 +63,16 @@ const blockedNotice = (ticketId: string) =>
     const repo = yield* TicketRepository;
     const runtime = yield* AgentRuntime;
     const ticket = yield* repo.get(ticketId);
-    const said = (yield* repo.listEvents(ticketId)).findLast(
+    const events = yield* repo.listEvents(ticketId);
+    // Whose account the Worker acted with, so the person can trace a blocked access.
+    const requester = requesterOf(events);
+    const actor = requester ? `\nActing as ${actingAs(requester)}.` : "";
+    const said = events.findLast(
       (e) => e.actor === "worker" && (e.type === "status_update" || e.type === "comment"),
     )?.body;
     const reason = said?.trim();
     if (!reason) {
-      return `Ticket "${ticket.title}" is blocked and needs input before it can continue.`;
+      return `Ticket "${ticket.title}" is blocked and needs input before it can continue.${actor}`;
     }
     const summary = yield* runtime
       .respond({
@@ -77,7 +82,7 @@ const blockedNotice = (ticketId: string) =>
         prompt: ticketBlockedSummary({ title: ticket.title, reason }),
       })
       .pipe(Effect.orElseSucceed(() => ""));
-    return `Ticket "${ticket.title}" is blocked: ${clip(summary.trim() || reason)}\nReply here and I'll pick it back up.`;
+    return `Ticket "${ticket.title}" is blocked: ${clip(summary.trim() || reason)}${actor}\nReply here and I'll pick it back up.`;
   });
 
 /**

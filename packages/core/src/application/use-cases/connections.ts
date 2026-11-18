@@ -35,20 +35,32 @@ export const senderOf = (event: TicketEvent): Person | undefined => {
   };
 };
 
+/** The person whose account a Worker acts with: the author of the ticket's latest message. */
+export const requesterOf = (events: ReadonlyArray<TicketEvent>): Person | undefined =>
+  events.map(senderOf).findLast((p) => p !== undefined);
+
 /** Discord pings by `<@id>`; elsewhere the id is the address (e.g. an email). */
 const mention = (person: Person) =>
   person.channelType === "discord" ? `<@${person.id}>` : person.id;
+
+/** Who a Worker acted as, written so anyone can trace it: `<@id> (Name)` on Discord. */
+export const actingAs = (person: Person) =>
+  person.name === undefined
+    ? mention(person)
+    : person.channelType === "discord"
+      ? `${mention(person)} (${person.name})`
+      : `${person.name} (${person.id})`;
 
 const EVENT_SCAN = 500;
 
 /** Asked in the ticket's thread when a Worker needs an account the person hasn't linked. */
 export const connectAskMessage = (
-  who: string,
+  person: Person,
   label: string,
   title: string,
   provider: ConnectionProvider,
 ) =>
-  `${who}, I need your ${label} access for "${title}". Run \`/connect provider:${provider}\`, then reply here and I'll carry on.`;
+  `${mention(person)}, I need your ${label} access for "${title}". Run \`/connect provider:${provider}\`, then reply here and I'll carry on. (The Worker acted as ${actingAs(person)}, the author of this ticket's latest message.)`;
 
 /**
  * The access token a Worker should use for `provider` on this ticket: the token of whoever
@@ -66,7 +78,7 @@ export const userTokenForTicket = (input: {
 
     const ticket = yield* tickets.get(input.ticketId);
     const events = yield* tickets.listEvents(ticket.id, EVENT_SCAN);
-    const person = events.map(senderOf).findLast((p) => p !== undefined);
+    const person = requesterOf(events);
     if (!person) {
       return yield* new NotConnected({
         provider: input.provider,
@@ -105,6 +117,6 @@ const askToConnect = (
     const label = PROVIDER_LABELS[provider];
     yield* gateway.send({
       ...target,
-      content: connectAskMessage(mention(person), label, title, provider),
+      content: connectAskMessage(person, label, title, provider),
     });
   });
