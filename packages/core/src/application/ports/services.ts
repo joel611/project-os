@@ -355,6 +355,7 @@ export interface LinkedAccount {
   readonly provider: ConnectionProvider;
   /** The provider's account id. */
   readonly accountId: string;
+  readonly displayIdentity?: string;
 }
 
 /**

@@ -14,6 +14,7 @@ export interface ConnectionsConfig {
   readonly baseURL: string;
   /** Providers with an OAuth client on the Better Auth instance. */
   readonly providers: ReadonlyArray<ConnectionProvider>;
+  readonly userInfoUrls: Record<ConnectionProvider, string>;
   /** How long a connect link works. Default 10 minutes. */
   readonly linkTtlSeconds?: number;
 }
@@ -133,9 +134,53 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
         const user = await findUser(person);
         if (!user) return [];
         const ctx = await context();
-        return (await ctx.internalAdapter.findAccounts(user.id))
-          .filter((a) => configured.has(a.providerId))
-          .map((a) => ({ provider: a.providerId as ConnectionProvider, accountId: a.accountId }));
+        const accounts = (await ctx.internalAdapter.findAccounts(user.id)).filter((a) =>
+          configured.has(a.providerId),
+        );
+        return Promise.all(
+          accounts.map(async (account): Promise<LinkedAccount> => {
+            const provider = account.providerId as ConnectionProvider;
+            const linked: LinkedAccount = { provider, accountId: account.accountId };
+            const url = config.userInfoUrls[provider];
+            try {
+              const tokens = await auth.api.getAccessToken({
+                body: { accountId: account.id, userId: user.id },
+              });
+              const response = await fetch(url, {
+                headers: {
+                  authorization: `Bearer ${tokens.accessToken}`,
+                  accept: "application/json",
+                  ...(provider === "github" && { "user-agent": "project-os" }),
+                },
+                signal: AbortSignal.timeout(5000),
+              });
+              if (!response.ok) return linked;
+              const body = (await response.json()) as Record<string, unknown>;
+              const profile = provider === "clickup" ? body.user : body;
+              if (!profile || typeof profile !== "object") return linked;
+              const info = profile as Record<string, unknown>;
+              const id = provider === "google" ? info.sub : info.id;
+              if (String(id) !== account.accountId) return linked;
+              const identity =
+                provider === "google"
+                  ? info.email
+                  : provider === "github"
+                    ? info.login
+                    : info.username;
+              const valid =
+                typeof identity === "string" &&
+                identity.length <= 254 &&
+                (provider === "google"
+                  ? /^[A-Za-z0-9.+_-]+@[A-Za-z0-9.-]+$/.test(identity)
+                  : provider === "github"
+                    ? /^[A-Za-z0-9-]{1,39}$/.test(identity)
+                    : /^[\p{L}\p{N}_.@ -]{1,100}$/u.test(identity));
+              return valid ? { ...linked, displayIdentity: identity } : linked;
+            } catch {
+              return linked;
+            }
+          }),
+        );
       }),
 
     disconnect: (person, provider) =>

@@ -18,6 +18,7 @@ export interface FakeOAuth {
   failRefresh: boolean;
   /** Fail the userinfo call, so linking can't learn who the account is. */
   failUserInfo: boolean;
+  malformedUserInfo: "missing" | "invalid-json" | undefined;
   /** The Google account's id (`sub`), the same for every client of one Google project. */
   sub: string;
   /** The Google account's email. */
@@ -76,6 +77,8 @@ export const startFakeOAuth = (): FakeOAuth => {
       }
       // userinfo
       if (fake.failUserInfo) return new Response("unauthorized", { status: 401 });
+      if (fake.malformedUserInfo === "invalid-json") return new Response("not json");
+      if (fake.malformedUserInfo === "missing") return Response.json({});
       if (provider === "clickup") {
         return Response.json({ user: { id: 7, username: "ada-cu", email: "ada@example.com" } });
       }
@@ -102,6 +105,7 @@ export const startFakeOAuth = (): FakeOAuth => {
     expiresIn: 3600,
     failRefresh: false,
     failUserInfo: false,
+    malformedUserInfo: undefined,
     sub: "google-ada",
     email: "ada@example.com",
     emailVerified: true,

@@ -492,7 +492,15 @@ export const makeAuth = (config: AuthConfig) => {
   const providers = linkingProviders(config).map((p) => p.providerId as ConnectionProvider);
   const connections: Connections | undefined =
     config.baseURL && providers.length > 0
-      ? makeConnections(auth, { baseURL: config.baseURL, providers })
+      ? makeConnections(auth, {
+          baseURL: config.baseURL,
+          providers,
+          userInfoUrls: {
+            google: config.google?.userInfoUrl ?? GOOGLE_ENDPOINTS.userInfoUrl,
+            github: config.github?.userInfoUrl ?? GITHUB_ENDPOINTS.userInfoUrl,
+            clickup: config.clickup?.userInfoUrl ?? CLICKUP_ENDPOINTS.userInfoUrl,
+          },
+        })
       : undefined;
 
   const google = googleSignInConfig(config);

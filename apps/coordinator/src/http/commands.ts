@@ -163,7 +163,7 @@ const accountCommand = async (
       );
     }
     return privately(
-      `Linked: ${linked.map((a) => PROVIDER_LABELS[a.provider]).join(", ")}. I use these when working on what you ask for.`,
+      `Linked: ${linked.map((a) => `${PROVIDER_LABELS[a.provider]}${a.displayIdentity ? ` (${a.displayIdentity})` : ""}`).join(", ")}. I use these when working on what you ask for.`,
     );
   }
 
