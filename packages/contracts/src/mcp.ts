@@ -84,6 +84,8 @@ export const TicketUpdateStatusInput = Schema.Struct({
   ticketId: Id,
   status: TicketStatus,
   error: Schema.optionalKey(Schema.String),
+  /** For `blocked`: what the Worker needs from the person. The Coordinator posts it in the thread. */
+  reason: Schema.optionalKey(Schema.String),
 });
 export const TicketUpdateStatusOutput = Schema.Struct({ ticket: Ticket });
 

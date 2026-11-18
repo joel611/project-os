@@ -1,5 +1,9 @@
 import {
   addSource,
+  AgentRuntime,
+  AgentRuntimeError,
+  appendEvent,
+  getTicket,
   createProject,
   createProjectWithChannel,
   handleInbound,
@@ -238,7 +242,7 @@ describe("updateStatusAndNotify", () => {
     expect(r.sent).toHaveLength(1);
   });
 
-  it("tells the thread when the ticket is blocked", async () => {
+  it("tells the thread when the ticket is blocked, with no reason to share", async () => {
     const r = run(
       Effect.gen(function* () {
         yield* setup;
@@ -246,8 +250,168 @@ describe("updateStatusAndNotify", () => {
       }),
     );
     expect((await r.result).status).toBe("blocked");
-    expect(r.sent).toHaveLength(1);
-    expect(r.sent[0]?.content).toContain("blocked");
+    expect(r.sent.map((s) => s.content)).toEqual([
+      'Ticket "Do it" is blocked and needs input before it can continue.',
+    ]);
+  });
+
+  it("names the person whose account the Worker acted with", async () => {
+    const r = run(
+      Effect.gen(function* () {
+        yield* setup;
+        yield* appendEvent({
+          ticketId: "t1",
+          type: "created",
+          actor: "coordinator",
+          body: "do it",
+          payload: { sender: { id: "u-ada", name: "Ada" }, channelType: "discord" },
+        });
+        yield* appendEvent({
+          ticketId: "t1",
+          type: "follow_up",
+          actor: "coordinator",
+          body: "also this",
+          payload: { sender: { id: "u-bob", name: "Bob" }, channelType: "discord" },
+        });
+        yield* updateStatusAndNotify({ ticketId: "t1", status: "blocked" });
+      }),
+    );
+    await r.result;
+    expect(r.sent.map((s) => s.content)).toEqual([
+      'Ticket "Do it" is blocked and needs input before it can continue.\nActing as <@u-bob> (Bob).',
+    ]);
+  });
+
+  describe("blocked with the Worker's own words", () => {
+    const summarizing = (respond: (prompt: string) => Effect.Effect<string, AgentRuntimeError>) =>
+      Effect.provideService(AgentRuntime, { respond: ({ prompt }) => respond(prompt) });
+    const block = (input: { reason?: string }, ticketOver: Partial<Ticket> = {}) =>
+      Effect.gen(function* () {
+        const project = yield* createProject({ orgId: "o1", name: "Acme" });
+        yield* addSource({
+          projectId: project.id,
+          type: "discord_channel",
+          externalId: "c1",
+          name: "#acme",
+          isDefaultResponse: true,
+        });
+        yield* (yield* TicketRepository).insert({ ...ticket(project.id), ...ticketOver });
+      }).pipe(
+        Effect.andThen(updateStatusAndNotify({ ticketId: "t1", status: "blocked", ...input })),
+      );
+    const failing = Effect.fail(new AgentRuntimeError({ message: "model down" }));
+
+    it("posts the Coordinator's short version of the reason, and keeps the reason on the ticket", async () => {
+      const prompts: string[] = [];
+      const r = run(
+        Effect.gen(function* () {
+          yield* block({
+            reason:
+              "  I tried the GitHub API with Ada's token and got 403 on acme/web: the GitHub App is not installed on that repo.  ",
+          });
+          return yield* getTicket({ ticketId: "t1" });
+        }).pipe(
+          summarizing((prompt) => {
+            prompts.push(prompt);
+            return Effect.succeed("  Install the GitHub App on acme/web.  ");
+          }),
+        ),
+      );
+      const { events } = await r.result;
+      expect(r.sent.map((s) => s.content)).toEqual([
+        'Ticket "Do it" is blocked: Install the GitHub App on acme/web.\nReply here and I\'ll pick it back up.',
+      ]);
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain("the GitHub App is not installed on that repo");
+      expect(events.at(-1)).toMatchObject({
+        type: "status_update",
+        actor: "worker",
+        actorId: "w1",
+        payload: { kind: "blocked_reason" },
+        body: expect.stringMatching(/^I tried the GitHub API.*that repo\.$/),
+      });
+    });
+
+    it("posts the Worker's exact words when the summary fails", async () => {
+      const r = run(block({ reason: "Need the staging URL." }).pipe(summarizing(() => failing)));
+      await r.result;
+      expect(r.sent.map((s) => s.content)).toEqual([
+        'Ticket "Do it" is blocked: Need the staging URL.\nReply here and I\'ll pick it back up.',
+      ]);
+    });
+
+    it("posts the Worker's exact words when the summary comes back empty", async () => {
+      const r = run(
+        block({ reason: "Need the staging URL." }).pipe(summarizing(() => Effect.succeed("  "))),
+      );
+      await r.result;
+      expect(r.sent[0]!.content).toContain("blocked: Need the staging URL.");
+    });
+
+    it("cuts an exact message that is too long for the channel", async () => {
+      const r = run(block({ reason: "x".repeat(5000) }).pipe(summarizing(() => failing)));
+      await r.result;
+      const content = r.sent[0]!.content;
+      expect(content).toContain(`${"x".repeat(1499)}…\n`);
+      expect(content.length).toBeLessThan(1600);
+    });
+
+    it("falls back to the Worker's latest comment or status update when it gave no reason", async () => {
+      const r = run(
+        Effect.gen(function* () {
+          const project = yield* createProject({ orgId: "o1", name: "Acme" });
+          yield* addSource({
+            projectId: project.id,
+            type: "discord_channel",
+            externalId: "c1",
+            name: "#acme",
+            isDefaultResponse: true,
+          });
+          yield* (yield* TicketRepository).insert(ticket(project.id));
+          yield* appendEvent({
+            ticketId: "t1",
+            type: "created",
+            actor: "coordinator",
+            body: "do it",
+            payload: { sender: { id: "u-ada", name: "Ada" }, channelType: "discord" },
+          });
+          yield* appendEvent({
+            ticketId: "t1",
+            type: "comment",
+            actor: "worker",
+            body: "Waiting on the design file",
+          });
+          yield* appendEvent({
+            ticketId: "t1",
+            type: "comment",
+            actor: "coordinator",
+            body: "Status?",
+          });
+          yield* appendEvent({
+            ticketId: "t1",
+            type: "result",
+            actor: "worker",
+            body: "not a status",
+          });
+          yield* updateStatusAndNotify({ ticketId: "t1", status: "blocked", reason: "   " });
+        }).pipe(summarizing(() => failing)),
+      );
+      await r.result;
+      expect(r.sent[0]!.content).toBe(
+        'Ticket "Do it" is blocked: Waiting on the design file\nActing as <@u-ada> (Ada).\nReply here and I\'ll pick it back up.',
+      );
+    });
+
+    it("records the reason with no actor id when the ticket has no worker", async () => {
+      const r = run(
+        Effect.gen(function* () {
+          yield* block({ reason: "Need help." }, { workerId: null });
+          return yield* getTicket({ ticketId: "t1" });
+        }).pipe(summarizing(() => failing)),
+      );
+      const { events } = await r.result;
+      expect(events.at(-1)).toMatchObject({ actor: "worker", actorId: null, body: "Need help." });
+    });
   });
 
   it("tells the thread when the ticket fails, with the reason", async () => {

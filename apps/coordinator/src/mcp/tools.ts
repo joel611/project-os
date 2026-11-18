@@ -173,7 +173,10 @@ export const makeTools = (
     }),
     define({
       name: "ticket_update_status",
-      description: "Move a ticket to a new status (blocked, completed, failed, ...).",
+      description:
+        "Move a ticket to a new status (blocked, completed, failed, ...). When you set blocked, pass " +
+        "reason: one or two sentences on what you need from the people on the ticket. The Coordinator " +
+        "shortens it and posts it in the ticket's thread. Never put a token or other secret in it.",
       input: C.TicketUpdateStatusInput,
       output: C.TicketUpdateStatusOutput,
       guard: onTicket,

@@ -1,4 +1,5 @@
 import {
+  actingAs,
   type Person,
   ProjectRepository,
   ProjectSourceRepository,
@@ -117,6 +118,15 @@ const run = async (
   return { result, sent: t.sent };
 };
 
+describe("actingAs", () => {
+  it("writes who a Worker acted as: Discord by mention, others by name and id", () => {
+    expect(actingAs({ channelType: "discord", id: "u1", name: "Ada" })).toBe("<@u1> (Ada)");
+    expect(actingAs({ channelType: "discord", id: "u1" })).toBe("<@u1>");
+    expect(actingAs({ channelType: "email", id: "a@b.co", name: "Ada" })).toBe("Ada (a@b.co)");
+    expect(actingAs({ channelType: "email", id: "a@b.co" })).toBe("a@b.co");
+  });
+});
+
 describe("userTokenForTicket", () => {
   it("uses the requester's token", async () => {
     const { result } = await run(
@@ -153,7 +163,7 @@ describe("userTokenForTicket", () => {
         channelType: "discord",
         channelId: "chan-1",
         content:
-          '<@u-ada>, I need your Google access for "Summarize the Q3 doc". Run `/connect provider:google`, then reply here and I\'ll carry on.',
+          "<@u-ada>, I need your Google access for \"Summarize the Q3 doc\". Run `/connect provider:google`, then reply here and I'll carry on. (The Worker acted as <@u-ada> (Ada), the author of this ticket's latest message.)",
       },
     ]);
   });
@@ -190,7 +200,7 @@ describe("userTokenForTicket", () => {
       { calls: 2 },
     );
     expect(sent.map((s) => s.content)).toEqual([
-      'ada@example.com, I need your Google access for "Summarize the Q3 doc". Run `/connect provider:google`, then reply here and I\'ll carry on.',
+      "ada@example.com, I need your Google access for \"Summarize the Q3 doc\". Run `/connect provider:google`, then reply here and I'll carry on. (The Worker acted as ada@example.com, the author of this ticket's latest message.)",
     ]);
   });
 
