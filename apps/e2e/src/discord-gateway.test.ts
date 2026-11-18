@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
 // The Cloudflare half of the Discord split, in workerd (Miniflare): the Coordinator's real
 // CloudflareLive sends through a service binding to the real gateway Worker, which forwards to a
 // Durable Object. Faked: the container behind that Durable Object (needs Docker and a Discord
-// login; `alchemy dev` covers it, see docs/deployment.md). Every outbound fetch is refused, so a
+// login; `alchemy dev` covers it, see apps/site/guide/deployment.md). Every outbound fetch is refused, so a
 // reply that left through the global `fetch` instead of the binding fails the test.
 
 const bundle = async (entry: string) => {

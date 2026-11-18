@@ -97,7 +97,7 @@ const define = <I extends Schema.Constraint, O extends Schema.Constraint, E, R>(
 });
 
 /**
- * Worker-facing tool surface (docs/technical-architecture.md section 3.2). No channel tools.
+ * Worker-facing tool surface (apps/site/reference/architecture.md section 3.2). No channel tools.
  * `caller` is the worker the Bearer token belongs to: it acts only as itself and reaches only
  * the tickets assigned to it. Project memory and sources are open to any authenticated worker.
  */

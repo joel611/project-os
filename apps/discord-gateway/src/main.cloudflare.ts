@@ -8,7 +8,7 @@ const ENV_KEY = "container-env";
 const IMAGE = "GatewayImage";
 const READY_TIMEOUT_MS = 30_000;
 
-// Cloudflare target for the Discord gateway (docs/deployment.md). The gateway is a long-lived
+// Cloudflare target for the Discord gateway (apps/site/guide/deployment.md). The gateway is a long-lived
 // Bun process holding Discord's outbound WebSocket, so it runs in a Cloudflare Container behind
 // this Worker. The Worker has no public URL: the Coordinator reaches it through a service
 // binding, because the reply endpoint can post as the bot and has no authentication.

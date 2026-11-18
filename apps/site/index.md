@@ -34,5 +34,5 @@ features:
     link: /how-it-works
   - title: Memory compounds
     details: Workers write durable facts to Project Memory, so the next similar question starts with more context.
-    link: /reference/glossary
+    link: /how-it-works
 ---

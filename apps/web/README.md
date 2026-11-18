@@ -1,6 +1,6 @@
 # web
 
-Read-only dashboard over the Coordinator HTTP API (docs/technical-architecture.md §6): projects and their sources, tickets with their activity log, project memory, and worker health. TanStack Start in SPA mode, with shadcn components on Base UI.
+Read-only dashboard over the Coordinator HTTP API (apps/site/reference/architecture.md §6): projects and their sources, tickets with their activity log, project memory, and worker health. TanStack Start in SPA mode, with shadcn components on Base UI.
 
 ```sh
 bun run --cwd apps/web dev     # http://localhost:5173

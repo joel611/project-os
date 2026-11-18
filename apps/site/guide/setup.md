@@ -1,6 +1,6 @@
 # Setup
 
-How to connect project-os to Discord, Google Drive, and GitHub, step by step, with the exact permissions each one needs. For what the system does, see [How it works](docs/how-it-works.md).
+How to connect project-os to Discord, Google Drive, and GitHub, step by step, with the exact permissions each one needs. For what the system does, see [How it works](../how-it-works.md).
 
 You need three things working, in this order:
 
@@ -426,11 +426,11 @@ The dashboard expects the Coordinator on `:8080` (override with `COORDINATOR_URL
 
 ## 8. Cloudflare
 
-Deploying to Cloudflare with Alchemy is covered in [docs/deployment.md](docs/deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `COORDINATOR_SERVICE_TOKEN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets). The deploy fails without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and the Discord gateway container gets the service token too. `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `docs/deployment.md`).
+Deploying to Cloudflare with Alchemy is covered in [Deploy to Cloudflare](deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `COORDINATOR_SERVICE_TOKEN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets). The deploy fails without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and the Discord gateway container gets the service token too. `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `apps/site/guide/deployment.md`).
 
 ## Environment
 
-Every variable the apps read, in one place. The steps above say when you need each one. Unset and empty mean the same thing. On Cloudflare the same names become Worker vars and secrets (see [docs/deployment.md](docs/deployment.md)).
+Every variable the apps read, in one place. The steps above say when you need each one. Unset and empty mean the same thing. On Cloudflare the same names become Worker vars and secrets (see [Deploy to Cloudflare](deployment.md)).
 
 ### Application
 
@@ -610,7 +610,7 @@ Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentia
 
 ### Cloudflare deploy (Alchemy)
 
-Read by `alchemy.run.ts` on top of the values above. See [docs/deployment.md](docs/deployment.md).
+Read by `alchemy.run.ts` on top of the values above. See [Deploy to Cloudflare](deployment.md).
 
 | Variable                   | Required | Default      | Description                                                                                 |
 | -------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------- |
