@@ -1,6 +1,9 @@
 import { Effect } from "effect";
 import {
+  type AuditLogRepository,
   type ChannelGateway,
+  type Clock,
+  type IdGenerator,
   type KeyValueStore,
   type ProjectSourceRepository,
   Sidekick,
@@ -18,7 +21,10 @@ type TokenEnv =
   | UserConnections
   | KeyValueStore
   | ProjectSourceRepository
-  | ChannelGateway;
+  | ChannelGateway
+  | AuditLogRepository
+  | Clock
+  | IdGenerator;
 
 /**
  * One Sidekick turn on a ticket. Its tools get the token of whoever wrote the ticket's latest

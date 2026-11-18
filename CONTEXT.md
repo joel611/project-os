@@ -63,6 +63,8 @@ _Avoid_: user (alone), viewer.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.
 
+**Shared Account**: a team-wide Google, GitHub or ClickUp login an admin links in the dashboard (Members page) with the same OAuth flow as `/connect`, then assigns to a person per provider. A Worker acts with it only when that person never linked the provider themselves: a personal Connection always wins, and an expired one is never swapped for it. Blocked notices say `via shared <provider> account "<label>"`, and the audit log (kind `connection`) records who added, assigned and used it. Its tokens live on an auth user of its own, never a person's.
+
 **Credential Proxy**: the Coordinator's `/egress` route, opt-in with `SANDBOX_CREDENTIAL_PROXY`. A sandbox session calls GitHub, Google or ClickUp through it with its own MCP token, and the Coordinator adds the Connection's token on the way out, so the token never reaches the sandbox or its model. Sandbox sessions then get no `user_token`.
 _Avoid_: integration, OAuth app.
 

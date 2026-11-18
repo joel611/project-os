@@ -1,12 +1,16 @@
 import {
   ActivityFeed,
+  type AssignSharedAccount,
   AuditPage,
   type AuditKind,
+  type CreateSharedAccount,
   MemberList,
   MemoryEntry,
   MyTickets,
   Project,
   ProjectSource,
+  SharedAccountConnect,
+  SharedAccountsView,
   Skill,
   SkillCandidates,
   SkillSet,
@@ -101,6 +105,7 @@ export const describeError = (error: Error): string => {
   if (error.status === 401) return "Your session ended. Sign in again.";
   if (error.status === 403) return "This account isn't allowed to use the dashboard.";
   if (error.status === 404) return "Not found.";
+  if (error.status === 501) return "The Coordinator isn't set up for that yet.";
   if (error.code === "SourceAlreadyLinked") return "That source is already linked to a project.";
   if (error.code === "SkillSetNameTaken") return "A skill set with that name already exists.";
   if (error.code === "InvalidSkillSet")
@@ -161,6 +166,20 @@ export const makeApi = (
     me: () => get("/me", Viewer),
     myTickets: () => get("/me/tickets", MyTickets),
     members: () => get("/members", MemberList),
+    sharedAccounts: () => get("/shared-accounts", SharedAccountsView),
+    addSharedAccount: (input: CreateSharedAccount) =>
+      send("/shared-accounts", SharedAccountConnect, { method: "POST", json: input }),
+    reconnectSharedAccount: (accountId: string) =>
+      send(`/shared-accounts/${id(accountId)}/connect`, SharedAccountConnect, { method: "POST" }),
+    removeSharedAccount: (accountId: string) =>
+      send(`/shared-accounts/${id(accountId)}`, Schema.Struct({ removed: Schema.Boolean }), {
+        method: "DELETE",
+      }),
+    assignSharedAccount: (input: AssignSharedAccount) =>
+      send("/shared-accounts/assignments", Schema.Struct({ ok: Schema.Boolean }), {
+        method: "POST",
+        json: input,
+      }),
     projects: () => get("/projects", Schema.Array(Project)),
     project: (projectId: string) => get(`/projects/${id(projectId)}`, ProjectDetail),
     tickets: (projectId: string) => get(`/projects/${id(projectId)}/tickets`, Schema.Array(Ticket)),

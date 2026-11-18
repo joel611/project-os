@@ -1,5 +1,7 @@
 import {
   actingAs,
+  AuditLogRepository,
+  sharedUseClause,
   type Person,
   ProjectRepository,
   ProjectSourceRepository,
@@ -72,12 +74,18 @@ const run = async (
     readonly calls?: number;
     readonly replyChannel?: boolean;
     readonly thread?: boolean;
+    /** Shared accounts assigned to people: a null token is one that stopped working. */
+    readonly shared?: Array<[string, string | null]>;
   } = {},
 ) => {
   const t = makeTestLayer();
   for (const [who, provider] of links) {
     const person = typeof who === "string" ? { channelType: "discord" as const, id: who } : who;
     t.link(person, provider, `tok-${person.id}`);
+  }
+  const OPS = { id: "sa1", label: "Ops bot", identity: "ops-bot" };
+  for (const [id, token] of options.shared ?? []) {
+    t.linkShared({ channelType: "discord", id }, "google", OPS, token);
   }
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -112,10 +120,13 @@ const run = async (
       for (const e of events) yield* repo.appendEvent(e);
       const call = Effect.result(userTokenForTicket({ ticketId: "t1", provider: "google" }));
       for (let i = 1; i < (options.calls ?? 1); i++) yield* call;
-      return yield* call;
+      const result = yield* call;
+      const clause = yield* sharedUseClause("t1");
+      const { entries } = yield* (yield* AuditLogRepository).list({ limit: 10 });
+      return { result, clause, entries };
     }).pipe(Effect.provide(t.layer)),
   );
-  return { result, sent: t.sent };
+  return { ...result, sent: t.sent };
 };
 
 describe("actingAs", () => {
@@ -124,6 +135,85 @@ describe("actingAs", () => {
     expect(actingAs({ channelType: "discord", id: "u1" })).toBe("<@u1>");
     expect(actingAs({ channelType: "email", id: "a@b.co", name: "Ada" })).toBe("Ada (a@b.co)");
     expect(actingAs({ channelType: "email", id: "a@b.co" })).toBe("a@b.co");
+  });
+});
+
+describe("userTokenForTicket with a shared account", () => {
+  const created = [event(1, "created", { sender: ada, channelType: "discord" })];
+
+  it("falls back to the assigned shared account and records its use once", async () => {
+    const { result, clause, entries } = await run(created, [], {
+      shared: [["u-ada", "tok-shared"]],
+      calls: 2,
+    });
+    expect(result).toMatchObject({
+      success: {
+        accessToken: "tok-shared",
+        person: { id: "u-ada" },
+        sharedAccount: { id: "sa1", label: "Ops bot", identity: "ops-bot" },
+      },
+    });
+    expect(clause).toBe(', via shared Google account "Ops bot" (ops-bot)');
+    expect(entries).toEqual([
+      expect.objectContaining({
+        kind: "connection",
+        action: "shared_account_used",
+        ticketId: "t1",
+        projectId: "p1",
+        summary: 'Ticket acted for <@u-ada> (Ada) with shared Google account "Ops bot" (ops-bot)',
+      }),
+    ]);
+  });
+
+  it("names a shared account without an identity by its label alone", async () => {
+    const t = makeTestLayer();
+    t.linkShared(
+      { channelType: "discord", id: "u-ada" },
+      "google",
+      { id: "sa2", label: "Team" },
+      "x",
+    );
+    const clause = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* (yield* ProjectRepository).insert(project);
+        const repo = yield* TicketRepository;
+        yield* repo.insert(ticket);
+        yield* repo.appendEvent(created[0]!);
+        yield* userTokenForTicket({ ticketId: "t1", provider: "google" });
+        return yield* sharedUseClause("t1");
+      }).pipe(Effect.provide(t.layer)),
+    );
+    expect(clause).toBe(', via shared Google account "Team"');
+  });
+
+  it("prefers the person's own link", async () => {
+    const { result, clause, entries } = await run(created, [["u-ada", "google"]], {
+      shared: [["u-ada", "tok-shared"]],
+    });
+    expect(result).toMatchObject({ success: { accessToken: "tok-u-ada" } });
+    expect((result as any).success.sharedAccount).toBeUndefined();
+    expect(clause).toBe("");
+    expect(entries).toEqual([]);
+  });
+
+  it("asks an admin, once a day, to reconnect a shared account that stopped working", async () => {
+    const { result, sent } = await run(created, [], { shared: [["u-ada", null]], calls: 2 });
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "NotConnected", sharedAccount: { label: "Ops bot" } },
+    });
+    expect(sent).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /shared Google account "Ops bot" \(ops-bot\).*An admin needs to reconnect it.*acted as <@u-ada> \(Ada\)/s,
+        ),
+      }),
+    ]);
+  });
+
+  it("stays quiet when the ticket has nowhere to post", async () => {
+    const { sent } = await run(created, [], { shared: [["u-ada", null]], replyChannel: false });
+    expect(sent).toEqual([]);
   });
 });
 

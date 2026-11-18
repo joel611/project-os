@@ -11,7 +11,7 @@ export const auditLog = sqliteTable(
     id: text("id").primaryKey(),
     at: text("at").notNull(),
     kind: text("kind", {
-      enum: ["inbound_event", "digest_event", "worker", "ticket"],
+      enum: ["inbound_event", "digest_event", "worker", "ticket", "connection"],
     }).notNull(),
     action: text("action").notNull(),
     actorType: text("actor_type", { enum: ["person", "worker", "coordinator"] }).notNull(),

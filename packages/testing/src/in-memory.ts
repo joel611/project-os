@@ -665,6 +665,11 @@ export const IdGeneratorSequential = Layer.sync(IdGenerator, () => {
 /** Account links held in memory: `link` stands in for a person finishing `/connect`. */
 export const makeUserConnectionsInMemory = () => {
   const tokens = new Map<string, string>();
+  /** Shared accounts assigned to a person; a null token is one an admin must reconnect. */
+  const shared = new Map<
+    string,
+    { ref: { id: string; label: string; identity?: string }; token: string | null }
+  >();
   const key = (p: Person, provider: ConnectionProvider) => `${p.channelType}:${p.id}:${provider}`;
   const layer = Layer.succeed(UserConnections, {
     connectUrl: (p, provider) => Effect.succeed(`http://connect.test/${provider}/${p.id}`),
@@ -678,15 +683,39 @@ export const makeUserConnectionsInMemory = () => {
     disconnect: (p, provider) => Effect.succeed(tokens.delete(key(p, provider))),
     accessToken: (p, provider) => {
       const token = tokens.get(key(p, provider));
-      return token
-        ? Effect.succeed({ accessToken: token, expiresAt: null, scopes: [] })
-        : Effect.fail(new NotConnected({ provider, personId: p.id, message: "not linked" }));
+      if (token) return Effect.succeed({ accessToken: token, expiresAt: null, scopes: [] });
+      const via = shared.get(key(p, provider));
+      if (!via) {
+        return Effect.fail(new NotConnected({ provider, personId: p.id, message: "not linked" }));
+      }
+      return via.token
+        ? Effect.succeed({
+            accessToken: via.token,
+            expiresAt: null,
+            scopes: [],
+            sharedAccount: via.ref,
+          })
+        : Effect.fail(
+            new NotConnected({
+              provider,
+              personId: p.id,
+              message: "shared account expired",
+              sharedAccount: via.ref,
+            }),
+          );
     },
   });
   return {
     layer,
     link: (p: Person, provider: ConnectionProvider, token: string) =>
       void tokens.set(key(p, provider), token),
+    /** Assigns `p` a shared account for `provider`; a null token stands for a revoked one. */
+    linkShared: (
+      p: Person,
+      provider: ConnectionProvider,
+      ref: { id: string; label: string; identity?: string },
+      token: string | null,
+    ) => void shared.set(key(p, provider), { ref, token }),
   };
 };
 

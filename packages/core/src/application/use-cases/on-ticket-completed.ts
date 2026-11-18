@@ -2,7 +2,7 @@ import { ticketBlockedSummary, ticketCompletedReply } from "@project-os/system-p
 import { Effect } from "effect";
 import { AgentRuntime, ChannelGateway, TicketRepository } from "../ports/index.ts";
 import type { TicketStatus } from "../../domain/index.ts";
-import { actingAs, requesterOf } from "./connections.ts";
+import { actingAs, requesterOf, sharedUseClause } from "./connections.ts";
 import { ticketChannel } from "./prompts.ts";
 import { appendEvent, updateStatus } from "./tickets.ts";
 
@@ -66,7 +66,8 @@ const blockedNotice = (ticketId: string) =>
     const events = yield* repo.listEvents(ticketId);
     // Whose account the Worker acted with, so the person can trace a blocked access.
     const requester = requesterOf(events);
-    const actor = requester ? `\nActing as ${actingAs(requester)}.` : "";
+    const via = yield* sharedUseClause(ticketId);
+    const actor = requester ? `\nActing as ${actingAs(requester)}${via}.` : "";
     const said = events.findLast(
       (e) => e.actor === "worker" && (e.type === "status_update" || e.type === "comment"),
     )?.body;

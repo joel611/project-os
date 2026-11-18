@@ -29,6 +29,9 @@ export interface FakeOAuth {
   hd: string | undefined;
   /** The query of every authorize request, in order. */
   readonly authorizeRequests: URLSearchParams[];
+  /** The GitHub account's numeric id and login; a second account needs a different id. */
+  githubId: number;
+  githubLogin: string;
   /** The GitHub account's public email; null when it keeps it private. */
   githubEmail: string | null;
   readonly stop: () => void;
@@ -38,6 +41,8 @@ export const startFakeOAuth = (): FakeOAuth => {
   let n = 0;
   const tokenRequests: FakeOAuth["tokenRequests"] = [];
   const authorizeRequests: URLSearchParams[] = [];
+  // A GitHub token keeps speaking for the account that was set when it was issued.
+  const githubOwners = new Map<string, { id: number; login: string }>();
 
   const server = Bun.serve({
     port: 0,
@@ -63,6 +68,9 @@ export const startFakeOAuth = (): FakeOAuth => {
           return Response.json({ error: "invalid_grant" }, { status: 400 });
         }
         n += 1;
+        if (provider === "github") {
+          githubOwners.set(`at-github-${n}`, { id: fake.githubId, login: fake.githubLogin });
+        }
         // ClickUp tokens come bare: no refresh token, expiry or scope.
         if (provider === "clickup") {
           return Response.json({ access_token: `at-clickup-${n}`, token_type: "Bearer" });
@@ -83,7 +91,11 @@ export const startFakeOAuth = (): FakeOAuth => {
         return Response.json({ user: { id: 7, username: "ada-cu", email: "ada@example.com" } });
       }
       return provider === "github"
-        ? Response.json({ id: 42, login: "ada-gh", name: null, email: fake.githubEmail })
+        ? Response.json({
+            ...githubOwners.get(req.headers.get("authorization")!.slice("Bearer ".length))!,
+            name: null,
+            email: fake.githubEmail,
+          })
         : Response.json({
             sub: fake.sub,
             email: fake.email,
@@ -111,6 +123,8 @@ export const startFakeOAuth = (): FakeOAuth => {
     emailVerified: true,
     hd: undefined,
     authorizeRequests,
+    githubId: 42,
+    githubLogin: "ada-gh",
     githubEmail: null,
     stop: () => server.stop(true),
   };

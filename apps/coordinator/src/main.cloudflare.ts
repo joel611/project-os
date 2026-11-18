@@ -134,6 +134,7 @@ const buildApp = (bindings: Bindings) => {
       mcp: runtime,
       auth,
       members: () => auth.members(),
+      ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
       ...(connections && { connect: connections }),
     },
   ).compile();

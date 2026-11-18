@@ -156,6 +156,7 @@ createApp(
     mcp: runtime,
     auth,
     members: () => auth.members(),
+    ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
     ...(connections && { connect: connections }),
   },
 ).listen(port);

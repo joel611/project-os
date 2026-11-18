@@ -76,6 +76,7 @@ const auth = ManagedRuntime.make(
     allowedEmails: ["ada@example.com"],
     webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
     google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
+    github: { clientId: "verify", clientSecret: "verify", ...google.endpoints("github") },
   }).pipe(Layer.provide(DrizzleBun(dbPath))),
 ).runSync(Auth);
 await auth.ready();
@@ -86,6 +87,7 @@ createApp(
     access: makeAccess({ serviceToken: SERVICE_TOKEN, auth }),
     auth,
     members: () => auth.members(),
+    sharedAccounts: auth.sharedAccounts!,
     connect: auth.connections!,
     http: {
       run: (e) => runtime.runPromise(e as any),
