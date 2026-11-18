@@ -24,12 +24,17 @@ const edgeOnly = [
 }));
 
 export default defineConfig({
+  resolve: { alias: { "@": `${import.meta.dirname}/apps/web/src` } },
   staged: {
     "*.{js,jsx,ts,tsx,json,jsonc,css,md,mdx}": "vp check --fix",
     "*.{ts,tsx,js,jsx}": "vp test related --run --passWithNoTests",
   },
   test: {
-    include: ["apps/*/src/**/*.test.ts", "packages/*/src/**/*.test.ts", "libs/*/src/**/*.test.ts"],
+    include: [
+      "apps/*/src/**/*.test.{ts,tsx}",
+      "packages/*/src/**/*.test.ts",
+      "libs/*/src/**/*.test.ts",
+    ],
     coverage: {
       provider: "v8",
       include: ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "libs/*/src/**/*.ts"],
