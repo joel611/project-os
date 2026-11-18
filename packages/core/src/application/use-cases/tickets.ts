@@ -106,7 +106,8 @@ export const reassignTicketTo = (input: {
 }) =>
   Effect.gen(function* () {
     const repo = yield* TicketRepository;
-    const target = yield* (yield* WorkerRepository).get(input.workerId);
+    const workers = yield* WorkerRepository;
+    const target = yield* workers.get(input.workerId);
     if (!target.registered) return yield* new WorkerNotFound({ workerId: input.workerId });
     const before = yield* repo.get(input.ticketId);
     const at = yield* nowIso;
@@ -115,7 +116,14 @@ export const reassignTicketTo = (input: {
       { workerType: target.workerType, workerId: target.id },
       at,
     );
-    const from = before.workerId === null ? "Assigned" : `Reassigned from ${before.workerId}`;
+    const previous = before.workerId;
+    const from =
+      previous === null
+        ? "Assigned"
+        : `Reassigned from ${yield* workers.get(previous).pipe(
+            Effect.map(workerLabel),
+            Effect.orElseSucceed(() => previous),
+          )}`;
     yield* repo.appendEvent({
       id: yield* Effect.flatMap(IdGenerator, (g) => g.next),
       ticketId: input.ticketId,

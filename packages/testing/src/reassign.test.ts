@@ -57,6 +57,7 @@ describe("reassignTicketTo", () => {
     const out = await run(
       Effect.gen(function* () {
         yield* (yield* TicketRepository).insert(stuck());
+        yield* device("old");
         yield* device("new");
         const reassigned = yield* reassignTicketTo({
           ticketId: "t1",
@@ -73,7 +74,7 @@ describe("reassignTicketTo", () => {
     expect(out.reassigned).toMatchObject({ status: "assigned", workerId: "new", startedAt: null });
     expect(out.listed.map((t) => t.id)).toEqual(["t1"]);
     expect(out.claimed.status).toBe("in_progress");
-    expect(out.events.map((e) => e.body)).toEqual(["Reassigned from old to box-new by Olga"]);
+    expect(out.events.map((e) => e.body)).toEqual(["Reassigned from box-old to box-new by Olga"]);
     expect(out.audit.find((e) => e.action === "assigned")).toMatchObject({
       actorType: "person",
       actorId: "op1",
