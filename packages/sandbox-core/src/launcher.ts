@@ -76,16 +76,43 @@ const EGRESS_GIT_SETUP = [
     "fi",
 ];
 
-export const SESSION_COMMAND = [...PI_SETUP, PI_RUN].join(" && ");
+// The ticket's skill set, installed where Pi looks for skills before it starts. It is best
+// effort: a Coordinator without skills, or one that can't be reached, must not stop the ticket.
+// The script uses only Node (already there for npm) and refuses names that climb out of the folder.
+const SKILLS_INSTALL_JS = [
+  'const fs=require("fs"),path=require("path");',
+  'const root=path.join(process.env.HOME,".pi","agent","skills");',
+  'fetch(process.env.PROJECT_OS_SKILLS_URL,{headers:{authorization:"Bearer "+process.env.PROJECT_OS_SKILLS_TOKEN}})',
+  ".then(r=>{if(!r.ok)throw new Error(String(r.status));return r.json()})",
+  ".then(b=>{let n=0;for(const s of b.skills||[]){",
+  "if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(s.slug))continue;",
+  "const dir=path.join(root,s.slug);",
+  "for(const f of s.files){const t=path.resolve(dir,f.path);",
+  "if(!t.startsWith(dir+path.sep))continue;",
+  "fs.mkdirSync(path.dirname(t),{recursive:true});fs.writeFileSync(t,f.contents)}n++}",
+  'console.log("skills: installed "+n)})',
+  '.catch(e=>{console.error("skills: not installed ("+e.message+")")})',
+].join("");
+const SKILLS_SETUP = [`node -e '${SKILLS_INSTALL_JS}' || true`];
+
+export const SESSION_COMMAND = [...PI_SETUP, ...SKILLS_SETUP, PI_RUN].join(" && ");
 
 /** The same session, with git pointed at the credential proxy first. */
-export const PROXIED_SESSION_COMMAND = [...PI_SETUP, ...EGRESS_GIT_SETUP, PI_RUN].join(" && ");
+export const PROXIED_SESSION_COMMAND = [
+  ...PI_SETUP,
+  ...SKILLS_SETUP,
+  ...EGRESS_GIT_SETUP,
+  PI_RUN,
+].join(" && ");
 
 export const sessionEnv = (
   config: Pick<SandboxLauncherConfig, "mcpUrl" | "openrouterApiKey" | "model" | "egressUrl">,
-  session: { readonly workerId: string; readonly mcpToken: string },
+  session: { readonly workerId: string; readonly mcpToken: string; readonly ticketId: string },
 ): Record<string, string> => ({
   OPENROUTER_API_KEY: config.openrouterApiKey,
+  // Where the session fetches its ticket's skills, with its own token (never in the command line).
+  PROJECT_OS_SKILLS_URL: `${config.mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(session.ticketId)}/skills`,
+  PROJECT_OS_SKILLS_TOKEN: session.mcpToken,
   PROJECT_OS_MCP_JSON: piMcpJson(config.mcpUrl, session.mcpToken),
   PROJECT_OS_MODEL: config.model,
   PROJECT_OS_PROMPT: workerSessionStart(session.workerId, {
@@ -130,7 +157,7 @@ export const makeSandboxLauncher = (
           config.log(`${name}: launching ${workerId} for ticket ${ticketId}`);
           provider.runner
             .run({
-              env: sessionEnv(config, { workerId, mcpToken }),
+              env: sessionEnv(config, { workerId, mcpToken, ticketId }),
               command: config.egressUrl === undefined ? SESSION_COMMAND : PROXIED_SESSION_COMMAND,
               timeoutSeconds,
             })

@@ -2,6 +2,7 @@ export * from "./memory/index.ts";
 export * from "./org/index.ts";
 export * from "./project/index.ts";
 export * from "./project-source/index.ts";
+export * from "./skill/index.ts";
 export * from "./prompt/index.ts";
 export * from "./ticket/index.ts";
 export * from "./user/index.ts";

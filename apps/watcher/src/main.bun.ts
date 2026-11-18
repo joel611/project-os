@@ -1,6 +1,18 @@
 #!/usr/bin/env bun
-import { existsSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
+import type { SkillBundle } from "@project-os/contracts";
 import { parseArgs, USAGE } from "./cli.ts";
 import { loadConfig } from "./config.ts";
 import {
@@ -121,6 +133,20 @@ const watcher = createWatcher({
     env: process.env,
     configDir: configDir(),
     home: homedir(),
+    log: console.log,
+    skills: {
+      fetchBundle: async (url, secret) => {
+        const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+        return res.ok ? ((await res.json()) as SkillBundle) : undefined;
+      },
+      // One private directory per session, removed when it ends.
+      makeDir: () => mkdtempSync(join(tmpdir(), "project-os-skills-")),
+      writeFile: (file, contents) => {
+        mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+        writeFileSync(file, contents, { mode: 0o600 });
+      },
+      removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
+    },
   }),
   log: console.log,
 });

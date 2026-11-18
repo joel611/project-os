@@ -52,6 +52,27 @@ export const UpdateStatusBody = Schema.Struct({
   error: Schema.optionalKey(Schema.String),
 });
 
+export const CreateSkillSetBody = Schema.Struct({
+  name: Schema.String,
+  description: Schema.optionalKey(Schema.String),
+});
+
+export const UpdateSkillSetBody = Schema.Struct({
+  name: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+});
+
+export const BrowseSkillsBody = Schema.Struct({ source: Schema.NonEmptyString });
+
+export const AddSkillsBody = Schema.Struct({
+  source: Schema.NonEmptyString,
+  slugs: Schema.NonEmptyArray(Schema.NonEmptyString),
+});
+
+export const UpdateSkillsBody = Schema.Struct({
+  skillIds: Schema.optionalKey(Schema.Array(Schema.NonEmptyString)),
+});
+
 export const AssignBody = Schema.Struct({ workerId: Schema.NonEmptyString });
 
 export const decode = <S extends Schema.Decoder<unknown>>(schema: S, body: unknown) =>

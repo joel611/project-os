@@ -30,16 +30,30 @@ export interface AgentLaunch {
   readonly files: readonly AgentFile[];
 }
 
+/** Skill folders written for this one session: `<root>/<layout>/<slug>/...`. */
+export interface InstalledSkills {
+  readonly root: string;
+  readonly slugs: readonly string[];
+}
+
 export interface AgentContext {
   readonly config: WatcherConfig;
   readonly prompt: string;
   readonly configDir: string;
   readonly home: string;
+  /** Present only when the ticket's skill set was installed. */
+  readonly skills?: InstalledSkills;
 }
 
 export interface Agent {
   readonly name: AgentName;
   readonly launch: (ctx: AgentContext) => AgentLaunch;
+  /**
+   * Where under a session's skills root this agent expects skill folders, so a session sees
+   * its own skills and nothing is left in the user's own agent config. Undefined: the agent
+   * can't load skills from outside its config, so none are installed.
+   */
+  readonly skillsLayout?: string;
 }
 
 const authorization = (config: WatcherConfig) => `Bearer ${config.secret}`;
@@ -57,7 +71,9 @@ export const claudeMcpConfig = (config: WatcherConfig): string =>
 
 const claude: Agent = {
   name: "claude",
-  launch: ({ config, prompt, configDir }) => {
+  // Claude Code loads `.claude/skills/*` from every `--add-dir` directory.
+  skillsLayout: ".claude/skills",
+  launch: ({ config, prompt, configDir, skills }) => {
     const mcpFile = join(configDir, "mcp.json");
     return {
       cmd: [
@@ -69,6 +85,7 @@ const claude: Agent = {
         // Headless `-p` cannot prompt, so pre-approve every Coordinator MCP tool (and nothing else).
         "--allowedTools",
         `mcp__${MCP_SERVER_NAME}__*`,
+        ...(skills ? ["--add-dir", skills.root] : []),
         ...(config.model ? ["--model", config.model] : []),
       ],
       env: {},
@@ -91,8 +108,17 @@ export const withoutPiServer = (existing: string): string | undefined => {
 
 const pi: Agent = {
   name: "pi",
-  launch: ({ config, prompt, home }) => ({
-    cmd: ["pi", "--print", ...(config.model ? ["--model", config.model] : []), prompt],
+  skillsLayout: "skills",
+  launch: ({ config, prompt, home, skills }) => ({
+    cmd: [
+      "pi",
+      "--print",
+      ...(config.model ? ["--model", config.model] : []),
+      ...(skills
+        ? skills.slugs.flatMap((slug) => ["--skill", join(skills.root, "skills", slug)])
+        : []),
+      prompt,
+    ],
     env: {},
     files: [
       {

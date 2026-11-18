@@ -9,6 +9,7 @@ import {
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
+  SkillRepository,
   TicketRepository,
   WorkerRepository,
   type Project,
@@ -51,6 +52,7 @@ const run = <A, E>(
     | WorkerRepository
     | ChannelMessageRepository
     | AuditLogRepository
+    | SkillRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(reposOf(db))));
@@ -1115,5 +1117,131 @@ describe("WorkerRepository", () => {
       name: "build-box",
     });
     expect(out.byHash?.id).toBe("shared-a");
+  });
+});
+
+describe("SkillRepository", () => {
+  const set = (over: Partial<{ id: string; name: string }> = {}) => ({
+    id: "set1",
+    name: "dev",
+    description: "code",
+    createdAt: T0,
+    updatedAt: T0,
+    ...over,
+  });
+  const skill = (over: Record<string, unknown> = {}) => ({
+    id: "k1",
+    skillSetId: "set1",
+    source: "acme/skills",
+    slug: "tdd",
+    name: "tdd",
+    description: "d",
+    path: "skills/tdd",
+    sha: "tree-1",
+    fileCount: 1,
+    bytes: 5,
+    fetchedAt: T0,
+    fetchedBy: null,
+    ...over,
+  });
+  const files = [{ path: "SKILL.md", contents: "# tdd" }];
+
+  it("stores sets with unique names, and lists, renames and deletes them", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* SkillRepository;
+        yield* repo.insertSet(set());
+        yield* repo.insertSet(set({ id: "set2", name: "writing" }));
+        const dup = yield* repo.insertSet(set({ id: "set3" })).pipe(Effect.flip);
+        const renamed = yield* repo.updateSet("set1", { name: "development", updatedAt: T1 });
+        const sameName = yield* repo.updateSet("set1", { name: "development", updatedAt: T1 });
+        const clash = yield* repo
+          .updateSet("set1", { name: "writing", updatedAt: T1 })
+          .pipe(Effect.flip);
+        const noRename = yield* repo.updateSet("set1", { description: "x", updatedAt: T2 });
+        const missing = yield* repo.updateSet("nope", { updatedAt: T1 }).pipe(Effect.flip);
+        const got = yield* repo.getSet("set1");
+        const missingGet = yield* repo.getSet("nope").pipe(Effect.flip);
+        const names = (yield* repo.listSets).map((s) => s.name).sort();
+        yield* repo.deleteSet("set2");
+        const missingDelete = yield* repo.deleteSet("set2").pipe(Effect.flip);
+        return {
+          dup,
+          renamed,
+          sameName,
+          clash,
+          noRename,
+          missing,
+          got,
+          missingGet,
+          names,
+          missingDelete,
+        };
+      }),
+    );
+    expect(out.dup._tag).toBe("SkillSetNameTaken");
+    expect(out.renamed.name).toBe("development");
+    expect(out.sameName.name).toBe("development");
+    expect(out.clash._tag).toBe("SkillSetNameTaken");
+    expect(out.noRename).toMatchObject({ name: "development", description: "x", updatedAt: T2 });
+    expect(out.missing._tag).toBe("SkillSetNotFound");
+    expect(out.got.id).toBe("set1");
+    expect(out.missingGet._tag).toBe("SkillSetNotFound");
+    expect(out.names).toEqual(["development", "writing"]);
+    expect(out.missingDelete._tag).toBe("SkillSetNotFound");
+  });
+
+  it("pins skills with their files; an upsert on the same source and slug keeps the id", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* SkillRepository;
+        yield* repo.insertSet(set());
+        const first = yield* repo.upsertSkill(skill(), files);
+        const again = yield* repo.upsertSkill(
+          skill({ id: "k-new", sha: "tree-2", fetchedBy: "Olga" }),
+          [{ path: "SKILL.md", contents: "# v2" }],
+        );
+        yield* repo.upsertSkill(skill({ id: "k2", slug: "review", name: "review" }), files);
+        const listed = yield* repo.listSkills("set1");
+        const got = yield* repo.getSkill("k1");
+        const missing = yield* repo.getSkill("nope").pipe(Effect.flip);
+        const bundle = yield* repo.filesOfSet("set1");
+        yield* repo.removeSkill("k2");
+        const missingRemove = yield* repo.removeSkill("k2").pipe(Effect.flip);
+        return { first, again, listed, got, missing, bundle, missingRemove };
+      }),
+    );
+    // Lists carry no file contents.
+    expect(out.first).not.toHaveProperty("files");
+    expect(out.again.id).toBe("k1");
+    expect(out.again).toMatchObject({ sha: "tree-2", fetchedBy: "Olga" });
+    expect(out.listed.map((s) => s.slug)).toEqual(["review", "tdd"]);
+    expect(out.got.sha).toBe("tree-2");
+    expect(out.missing._tag).toBe("SkillNotFound");
+    expect(out.bundle).toEqual([
+      { slug: "review", name: "review", files },
+      { slug: "tdd", name: "tdd", files: [{ path: "SKILL.md", contents: "# v2" }] },
+    ]);
+    expect(out.missingRemove._tag).toBe("SkillNotFound");
+  });
+
+  it("deleting a set removes its skills, and a ticket keeps its skill set id", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* SkillRepository;
+        yield* repo.insertSet(set());
+        yield* repo.upsertSkill(skill(), files);
+        yield* repo.deleteSet("set1");
+        const left = yield* repo.listSkills("set1");
+        yield* (yield* ProjectRepository).insert(project());
+        const t = yield* (yield* TicketRepository).insert({
+          ...ticket(),
+          skillSetId: "set1",
+        } as Ticket);
+        return { left, t };
+      }),
+    );
+    expect(out.left).toEqual([]);
+    expect(out.t.skillSetId).toBe("set1");
   });
 });

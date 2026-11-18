@@ -30,6 +30,7 @@ import {
   WorkerRepository,
   writeMemory,
   type AuditLogRepository,
+  type SkillRepository,
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 
@@ -44,6 +45,7 @@ export type McpServices =
   | MemoryRepository
   | ProjectRepository
   | ProjectSourceRepository
+  | SkillRepository
   | TicketRepository
   | UserConnections
   | WorkerRepository;

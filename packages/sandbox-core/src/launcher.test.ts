@@ -35,6 +35,94 @@ const daytonaTicket = {
 } as const;
 const ok = async () => ({ exitCode: 0, output: "" });
 
+/** Runs `script` with `sh`, without blocking the event loop (the test's own server must answer). */
+const sh = async (script: string, env: Record<string, string>) => {
+  const { spawn } = await import("node:child_process");
+  return new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+    const child = spawn("sh", ["-c", script], { env: { ...process.env, ...env } });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+};
+
+describe("skills step", () => {
+  it("installs the ticket's skills before Pi runs, and never stops the session when it can't", () => {
+    const steps = SESSION_COMMAND.split(" && ");
+    const skills = steps.findIndex((s) => s.includes("PROJECT_OS_SKILLS_URL"));
+    expect(skills).toBeGreaterThan(steps.findIndex((s) => s.includes("npm install")));
+    expect(skills).toBeLessThan(steps.findIndex((s) => s.startsWith("pi ")));
+    expect(steps[skills]).toMatch(/\|\| true$/);
+    // The token is read from the environment, never written into the command line.
+    expect(SESSION_COMMAND).not.toContain("mcp-token");
+  });
+
+  it("runs the installer against a bundle, writing only inside each skill's folder", async () => {
+    const { mkdtempSync, readFileSync, existsSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const home = mkdtempSync(join(tmpdir(), "skills-home-"));
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        expect(req.headers.get("authorization")).toBe("Bearer tok");
+        return Response.json({
+          set: { id: "s", name: "development" },
+          skills: [
+            {
+              slug: "tdd",
+              name: "tdd",
+              files: [
+                { path: "SKILL.md", contents: "# tdd" },
+                { path: "examples/a.ts", contents: "export {}" },
+                { path: "../escape.txt", contents: "no" },
+              ],
+            },
+            { slug: "../bad", name: "bad", files: [{ path: "SKILL.md", contents: "no" }] },
+          ],
+        });
+      },
+    });
+    try {
+      const script = SESSION_COMMAND.split(" && ").find((s) =>
+        s.includes("PROJECT_OS_SKILLS_URL"),
+      )!;
+      const out = await sh(script, {
+        HOME: home,
+        PROJECT_OS_SKILLS_URL: `http://localhost:${server.port}/tickets/t1/skills`,
+        PROJECT_OS_SKILLS_TOKEN: "tok",
+      });
+      expect(out.stdout).toContain("skills: installed 1");
+      const root = join(home, ".pi", "agent", "skills");
+      expect(readFileSync(join(root, "tdd", "SKILL.md"), "utf8")).toBe("# tdd");
+      expect(readFileSync(join(root, "tdd", "examples", "a.ts"), "utf8")).toBe("export {}");
+      expect(existsSync(join(root, "escape.txt"))).toBe(false);
+      expect(existsSync(join(root, "tdd", "..", "bad"))).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("reports and carries on when the Coordinator refuses", async () => {
+    const server = Bun.serve({ port: 0, fetch: () => new Response("no", { status: 403 }) });
+    try {
+      const script = SESSION_COMMAND.split(" && ").find((s) =>
+        s.includes("PROJECT_OS_SKILLS_URL"),
+      )!;
+      const out = await sh(script, {
+        PROJECT_OS_SKILLS_URL: `http://localhost:${server.port}/x`,
+        PROJECT_OS_SKILLS_TOKEN: "tok",
+      });
+      expect(out.status).toBe(0);
+      expect(out.stderr).toContain("skills: not installed (403)");
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("sandbox launcher", () => {
   it("runs a Pi session with worker id, MCP config and key as env, not in the shell line", async () => {
     const calls: Parameters<SandboxRunner["run"]>[0][] = [];
@@ -50,6 +138,9 @@ describe("sandbox launcher", () => {
       PROJECT_OS_MCP_JSON: piMcpJson("https://tunnel.example/mcp", "mcp-token-t1"),
       PROJECT_OS_MODEL: "openrouter/m",
       PROJECT_OS_PROMPT: workerSessionStart("daytona-t1"),
+      // The session fetches its ticket's skills with its own token, from the Coordinator.
+      PROJECT_OS_SKILLS_URL: "https://tunnel.example/tickets/t1/skills",
+      PROJECT_OS_SKILLS_TOKEN: "mcp-token-t1",
     });
     expect(JSON.parse(calls[0]!.env.PROJECT_OS_MCP_JSON!)).toEqual({
       mcpServers: {
