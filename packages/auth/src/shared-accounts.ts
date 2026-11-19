@@ -6,8 +6,8 @@ import type {
   SharedAssignment,
 } from "@project-os/contracts";
 import { schema, type SqliteDb } from "@project-os/db-sqlite";
-import type { Person } from "@project-os/core";
-import { and, eq } from "drizzle-orm";
+import type { Person, UserAccessToken } from "@project-os/core";
+import { and, asc, eq } from "drizzle-orm";
 import type { BetterAuth } from "./auth.ts";
 import type { Connections } from "./connections.ts";
 
@@ -76,6 +76,19 @@ export const makeSharedAccounts = (db: SqliteDb, auth: BetterAuth, connections: 
   const connectUrl = (row: AccountRow) => connections.forUser.connectLink(row.userId, row.provider);
 
   return {
+    accessToken: async (provider: ConnectionProvider): Promise<UserAccessToken | null> => {
+      const rows = await db
+        .select()
+        .from(schema.sharedAccounts)
+        .where(eq(schema.sharedAccounts.provider, provider))
+        .orderBy(asc(schema.sharedAccounts.createdAt), asc(schema.sharedAccounts.id));
+      for (const row of rows) {
+        const token = await connections.forUser.accessToken(row.userId, provider);
+        if (token?.accessToken) return token;
+      }
+      return null;
+    },
+
     list: async (): Promise<SharedAccountsView> => {
       const rows = await db.select().from(schema.sharedAccounts);
       const assignments = await db.select().from(schema.sharedAccountAssignments);

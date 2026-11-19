@@ -15,7 +15,7 @@ import {
   UserConnections,
   type WorkerLauncher,
 } from "@project-os/core";
-import { DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
+import { DrizzleBun, ensureOrg, LocalLive, makeGithubSkillSource } from "@project-os/infra-local";
 import {
   AgentRuntimeEcho,
   type ChannelDigestCall,
@@ -175,6 +175,7 @@ export const startStack = async (options: {
   readonly workerLauncher?: typeof WorkerLauncher.Service;
   /** Where skills come from. Default: GitHub, which this stack's fetch guard refuses. */
   readonly skillSource?: typeof SkillSource.Service;
+  readonly githubSkills?: { readonly fetch: typeof fetch; readonly token?: string };
   /**
    * Tickets one shared device may hold. Default here 100, so suites that open several
    * tickets on one shared worker don't queue them; production defaults to 1.
@@ -187,6 +188,9 @@ export const startStack = async (options: {
   /** Mounts the credential proxy (`SANDBOX_CREDENTIAL_PROXY`), forwarding to these origins. */
   readonly credentialProxy?: NonNullable<AppDeps["credentialProxy"]>;
 }): Promise<Stack> => {
+  if (options.skillSource && options.githubSkills) {
+    throw new Error("skillSource and githubSkills are mutually exclusive");
+  }
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     if (!isLocal(input)) throw new Error(`integration stack blocked external fetch: ${input}`);
@@ -269,6 +273,12 @@ export const startStack = async (options: {
         adapterUrls: { discord: `http://localhost:${adapter.server!.port}` },
         ...(options.workerLauncher && { workerLauncher: options.workerLauncher }),
         ...(options.skillSource && { skillSource: options.skillSource }),
+        ...(options.githubSkills && {
+          skillSource: makeGithubSkillSource({
+            ...options.githubSkills,
+            getToken: async () => (await auth?.sharedAccounts?.accessToken("github"))?.accessToken,
+          }),
+        }),
         assets: {
           dir: join(dir, "assets"),
           // Known once the Coordinator listens; read only when a link is made.

@@ -145,6 +145,64 @@ describe("makeGithubSkillSource", () => {
     ).toBe(true);
   });
 
+  it("resolves credentials for every API request, preferring shared tokens over the PAT", async () => {
+    const gh = github(repoEntries, blobs, raw);
+    const tokens = ["shared-1", "shared-2", undefined, ""];
+    const source = makeGithubSkillSource({
+      fetch: gh.send,
+      token: "pat",
+      getToken: async () => tokens.shift(),
+    });
+    await run(source.list("acme/skills"));
+    await run(source.list("acme/skills"));
+    expect(
+      gh.calls.flatMap((url, i) =>
+        new URL(url).hostname === "api.github.com" ? [gh.auth[i]] : [],
+      ),
+    ).toEqual(["Bearer shared-1", "Bearer shared-2", "Bearer pat", "Bearer pat"]);
+    expect(
+      gh.calls.flatMap((url, i) =>
+        new URL(url).hostname === "raw.githubusercontent.com" ? [gh.auth[i]] : [],
+      ),
+    ).toEqual([null, null, null, null]);
+  });
+
+  it("uses anonymous API requests when neither shared nor static token exists", async () => {
+    const gh = github(repoEntries, blobs, raw);
+    await run(
+      makeGithubSkillSource({ fetch: gh.send, getToken: async () => undefined }).list(
+        "acme/skills",
+      ),
+    );
+    expect(gh.auth).toEqual([null, null, null, null]);
+  });
+
+  it("reports credential lookup failures as SkillFetchFailed", async () => {
+    const gh = github(repoEntries, blobs, raw);
+    const source = makeGithubSkillSource({
+      fetch: gh.send,
+      token: "pat",
+      getToken: async () => {
+        throw new Error("credential lookup failed");
+      },
+    });
+    const error = await run(Effect.flip(source.list("acme/skills")));
+    expect(error._tag).toBe("SkillFetchFailed");
+    expect(error.message).toBe("credential lookup failed");
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("does not retry rejected shared credentials with the PAT", async () => {
+    const gh = github([], {}, {}, { repo: 401 });
+    const source = makeGithubSkillSource({
+      fetch: gh.send,
+      token: "pat",
+      getToken: async () => "shared",
+    });
+    expect(await fails(source.list("acme/skills"))).toContain("401");
+    expect(gh.auth).toEqual(["Bearer shared"]);
+  });
+
   it("explains rate limits, missing repos and other failures", async () => {
     const limited = makeGithubSkillSource({ fetch: github([], {}, {}, { repo: 403 }).send });
     expect(await fails(limited.list("acme/skills"))).toContain("rate limiting");
