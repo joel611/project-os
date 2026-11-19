@@ -122,8 +122,9 @@ const runtime = ManagedRuntime.make(
       dbPath,
       adapterUrls: { discord: discord?.replyUrl ?? remoteGatewayUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
-      ...(process.env.SKILLS_GITHUB_TOKEN && {
-        skillSource: makeGithubSkillSource({ token: process.env.SKILLS_GITHUB_TOKEN }),
+      skillSource: makeGithubSkillSource({
+        ...(process.env.SKILLS_GITHUB_TOKEN && { token: process.env.SKILLS_GITHUB_TOKEN }),
+        getToken: async () => (await auth.sharedAccounts?.accessToken("github"))?.accessToken,
       }),
       assets: {
         dir: dataPath("assets", process.env.ASSET_DIR),

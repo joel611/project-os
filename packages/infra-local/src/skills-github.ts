@@ -13,6 +13,8 @@ export interface GithubSkillSourceConfig {
   readonly fetch?: typeof fetch;
   /** Raises GitHub's 60 requests an hour for anonymous callers. A read-only token is enough. */
   readonly token?: string;
+  /** Resolved before each API request; takes precedence over the static token. */
+  readonly getToken?: () => Promise<string | undefined>;
   /** How long a repo's file listing is reused. Default 30 seconds. */
   readonly listingTtlMs?: number;
   readonly now?: () => number;
@@ -49,16 +51,17 @@ export const makeGithubSkillSource = (
   const now = config.now ?? Date.now;
   const cache = new Map<string, { readonly at: number; readonly listing: Listing }>();
 
-  const headers: Record<string, string> = {
-    accept: "application/vnd.github+json",
-    "user-agent": "project-os-skills",
-    ...(config.token && { authorization: `Bearer ${config.token}` }),
-  };
-
   const get = (url: string, what: string) =>
     Effect.tryPromise({
       try: async () => {
-        const res = await send(url, { headers });
+        const token = (await config.getToken?.()) || config.token;
+        const res = await send(url, {
+          headers: {
+            accept: "application/vnd.github+json",
+            "user-agent": "project-os-skills",
+            ...(token && { authorization: `Bearer ${token}` }),
+          },
+        });
         if (res.status === 403 || res.status === 429) {
           throw new Error(
             `GitHub is rate limiting the Coordinator while it reads ${what}; try again later.`,
@@ -107,7 +110,7 @@ export const makeGithubSkillSource = (
       try: async () => {
         const res = await send(
           `https://raw.githubusercontent.com/${source}/${branch}/${path}/SKILL.md`,
-          { headers: { "user-agent": headers["user-agent"]! } },
+          { headers: { "user-agent": "project-os-skills" } },
         );
         return res.ok ? parseSkillFrontmatter(await res.text()) : { name: "", description: "" };
       },

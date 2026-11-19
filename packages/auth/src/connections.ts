@@ -305,7 +305,7 @@ export const makeConnections = (auth: BetterAuth, config: ConnectionsConfig) => 
     layer: Layer.succeed(UserConnections, service),
     startLink,
     /** For shared accounts, which are auth users of their own rather than channel people. */
-    forUser: { linkedAccounts, connectLink },
+    forUser: { linkedAccounts, connectLink, accessToken: tokenOf },
   };
 };
 
