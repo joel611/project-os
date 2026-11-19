@@ -568,11 +568,11 @@ Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentia
 
 ### Skills
 
-Skill sets are built in the dashboard's **Skill sets** page and need no setup. The Coordinator reads skills from GitHub without a token, which GitHub limits to 60 requests an hour; set a token to raise that.
+Build skill sets on the dashboard's **Skill sets** page. The Coordinator uses a connected shared GitHub account first, then `SKILLS_GITHUB_TOKEN`, then anonymous access. With multiple shared accounts, it uses the oldest account whose token it can retrieve or refresh. Account ID breaks ties. Personal accounts are not used. Anonymous access has a limit of 60 requests an hour.
 
 | Variable             | Required | Default | Description                                                                                       |
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
-| `SKILLS_GITHUB_TOKEN` | No       |         | A GitHub token with no scopes (public repos only) that the Coordinator uses to read skills. Not sent to Workers |
+| `SKILLS_GITHUB_TOKEN` | No       |         | Fallback token when no shared GitHub credential is available. A token with no scopes reads public repos. Not sent to Workers |
 | `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's skill set before a session starts       |
 
 #### Daytona (paused)
