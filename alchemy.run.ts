@@ -20,6 +20,11 @@ import * as Redacted from "effect/Redacted";
 import { assertNoRenamedModelVars } from "./libs/config/src/models.ts";
 
 const COMPATIBILITY_DATE = "2026-10-01";
+const observability = {
+  enabled: true,
+  logs: { enabled: true, invocationLogs: true },
+  issues: { enabled: true },
+};
 
 const GATEWAY_CONTEXT = ".alchemy/gateway-context";
 const NOT_IN_IMAGE = new Set([
@@ -252,6 +257,7 @@ export default Alchemy.Stack(
         ? `env VITE_COORDINATOR_URL=${new URL(publicUrl).origin} bun run build`
         : "bun run build",
       outdir: "dist/client",
+      observability,
       compatibility: { date: COMPATIBILITY_DATE },
       ...(hosts.dashboard && { domain: { name: hosts.dashboard } }),
       assets: { notFoundHandling: "single-page-application" },
@@ -272,6 +278,7 @@ export default Alchemy.Stack(
       botToken && publicUrl && !plain.DISCORD_SPLIT_GATEWAY_URL
         ? yield* Cloudflare.Worker("DiscordGateway", {
             main: "./apps/discord-gateway/src/main.cloudflare.ts",
+            observability,
             compatibility: { date: COMPATIBILITY_DATE },
             workersDev: false,
             ...(hosts.gateway && { domain: { name: hosts.gateway } }),
@@ -314,6 +321,7 @@ export default Alchemy.Stack(
     // Coordinator: Elysia on Workers (CloudflareAdapter) + MCP for Workers to pull tickets.
     const coordinator = yield* Cloudflare.Worker("Coordinator", {
       main: "./apps/coordinator/src/main.cloudflare.ts",
+      observability,
       // nodejs_compat is the runtime default for dates from 2026-08-04, and it fills
       // `process.env` from the vars and secrets below, which `@project-os/config` reads.
       compatibility: { date: COMPATIBILITY_DATE },
