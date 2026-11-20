@@ -5,7 +5,7 @@ import type { Access } from "../access.ts";
 import { httpRoutes } from "./routes.ts";
 
 const OPERATOR: Access = {
-  caller: async () => ({ kind: "user", userId: "u-op", name: "Olga" }),
+  caller: async () => ({ kind: "user", userId: "u-op", name: "Olga", role: "admin" }),
   personOf: async () => undefined,
 };
 

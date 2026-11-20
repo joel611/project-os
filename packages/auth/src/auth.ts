@@ -1,4 +1,10 @@
-import { CONNECTION_PROVIDERS, type ConnectionProvider, type Member } from "@project-os/contracts";
+import {
+  CONNECTION_PROVIDERS,
+  type ConnectionProvider,
+  isRole,
+  type Member,
+  type Role,
+} from "@project-os/contracts";
 import { schema, type SqliteDb } from "@project-os/db-sqlite";
 import { Effect } from "effect";
 import { betterAuth } from "better-auth";
@@ -406,7 +412,17 @@ export interface SessionUser {
   readonly userId: string;
   readonly email: string;
   readonly name: string;
+  /** Their dashboard role; a user without one (created before roles) is a member. */
+  readonly role: Role;
 }
+
+export type SetRoleResult = "ok" | "not_found" | "last_admin";
+
+/** A stored role as a `Role`; users created before roles existed have none and are members. */
+const roleOf = (value: unknown): Role => (isRole(value) ? value : "member");
+
+/** The `role` column the admin plugin adds, which the adapter types do not carry. */
+const storedRole = (user: object): Role => roleOf((user as { role?: unknown }).role);
 
 /** `allowedDomains`, lowercased and without a leading `@`. */
 const allowedDomains = (config: AuthConfig): ReadonlySet<string> =>
@@ -485,9 +501,17 @@ export const makeAuth = (config: AuthConfig) => {
     const user =
       found?.user ??
       (await ctx.internalAdapter.createUser(
-        { email: lower(admin.email), name: admin.name ?? "Admin", emailVerified: true },
+        {
+          email: lower(admin.email),
+          name: admin.name ?? "Admin",
+          emailVerified: true,
+          role: "admin",
+        },
         { method: "admin-seed" },
       ));
+    // The password admin is always an admin, so a demotion can never lock everyone out.
+    if (storedRole(user) !== "admin")
+      await ctx.internalAdapter.updateUser(user.id, { role: "admin" });
     if (found?.accounts.some((a) => a.providerId === "credential")) return;
     await ctx.internalAdapter.linkAccount({
       providerId: "credential",
@@ -569,7 +593,8 @@ export const makeAuth = (config: AuthConfig) => {
           key: user.id,
           name: user.name,
           email: user.email,
-          admin: isOperator(user.email),
+          role: storedRole(user),
+          operator: isOperator(user.email),
           dashboard: { lastSignInAt: lastSignIn(user.id) },
           channel: identity ? channelOf(identity.person) : null,
           googleLinked: signIn !== undefined,
@@ -585,7 +610,8 @@ export const makeAuth = (config: AuthConfig) => {
           key: identity.id,
           name: identity.person.name ?? identity.person.id,
           email: null,
-          admin: false,
+          role: "member",
+          operator: false,
           // A member signs in with the Google account they linked, so a session means they did.
           dashboard: lastSignInAt ? { lastSignInAt } : null,
           channel: channelOf(identity.person),
@@ -610,8 +636,31 @@ export const makeAuth = (config: AuthConfig) => {
       }),
     );
     return resolved.sort(
-      (a, b) => Number(b.admin) - Number(a.admin) || a.name.localeCompare(b.name),
+      (a, b) =>
+        Number(b.role === "admin") - Number(a.role === "admin") || a.name.localeCompare(b.name),
     );
+  };
+
+  /**
+   * Changes a dashboard user's role. Only dashboard operators have one to change (channel
+   * identities and shared-account placeholders are always members), and the last admin can't be
+   * demoted, so someone can always manage roles.
+   */
+  const setRole = async (userId: string, role: Role): Promise<SetRoleResult> => {
+    const ctx = await auth.$context;
+    const user = await ctx.internalAdapter.findUserById(userId);
+    if (!user || isChannelIdentityEmail(user.email) || isSharedAccountEmail(user.email)) {
+      return "not_found";
+    }
+    if (storedRole(user) === "admin" && role !== "admin") {
+      const admins = (await config.db.select().from(schema.user)).filter(
+        (u) =>
+          u.role === "admin" && !isChannelIdentityEmail(u.email) && !isSharedAccountEmail(u.email),
+      );
+      if (admins.length <= 1) return "last_admin";
+    }
+    await ctx.internalAdapter.updateUser(userId, { role });
+    return "ok";
   };
 
   const google = googleSignInConfig(config);
@@ -657,7 +706,12 @@ export const makeAuth = (config: AuthConfig) => {
         headers: new Headers({ authorization: `Bearer ${token}` }),
       });
       return session
-        ? { userId: session.user.id, email: session.user.email, name: session.user.name }
+        ? {
+            userId: session.user.id,
+            email: session.user.email,
+            name: session.user.name,
+            role: storedRole(session.user),
+          }
         : undefined;
     },
     /**
@@ -686,6 +740,8 @@ export const makeAuth = (config: AuthConfig) => {
     },
     /** Everyone with a dashboard sign-in or a channel identity, matched by Google account. */
     members,
+    /** Promotes or demotes a dashboard user; refuses to demote the last admin. */
+    setRole,
     /** Team-wide accounts admins link and assign; undefined without account linking. */
     sharedAccounts,
     /** Whether this email may use the dashboard and its API. */

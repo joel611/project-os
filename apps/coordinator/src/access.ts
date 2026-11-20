@@ -1,25 +1,50 @@
 import type { SessionUser } from "@project-os/auth";
+import { type Action, can, type Resource, type Role } from "@project-os/contracts";
 import type { Person } from "@project-os/core";
 
 /**
- * Who a request's `Authorization: Bearer` credentials say is calling. A `user` is an Operator; a
- * `member` is a channel person signed in with the Google account they linked, who sees only
- * the Tickets they are involved in.
+ * Who a request's `Authorization: Bearer` credentials say is calling. A `user` is an Operator
+ * with a dashboard `role`; a `member` is a channel person signed in with the Google account they
+ * linked, who sees only the Tickets they are involved in (the `member` role).
  */
 export type Caller =
   | { readonly kind: "anonymous" }
-  | { readonly kind: "user"; readonly userId: string; readonly name: string }
+  | {
+      readonly kind: "user";
+      readonly userId: string;
+      readonly name: string;
+      readonly role: Role;
+    }
   | { readonly kind: "member"; readonly userId: string; readonly person: Person }
   | { readonly kind: "outsider" }
   | { readonly kind: "service" };
 
+/** A route that needs a dashboard user whose role grants `action` on `resource`. */
+export interface Permission<R extends Resource = Resource> {
+  readonly resource: R;
+  readonly action: Action<R>;
+}
+
+const needs = <R extends Resource>(resource: R, action: Action<R>): Permission => ({
+  resource,
+  action,
+});
+
 /**
  * Who may call a route. `worker` is /mcp: Watchers and sandbox sessions, whose credentials the
  * MCP route resolves itself. `token` routes carry their own proof (a signed link, a one-time
- * token) that the handler redeems. `member` routes take Operators and members alike, and the
- * handler narrows what a member sees to their own Tickets.
+ * token) that the handler redeems. `member` routes take any signed-in dashboard user or member,
+ * and the handler narrows what a caller without `ticket:read` sees to their own Tickets. A
+ * `Permission` admits a dashboard user whose role grants it.
  */
-export type RoutePolicy = "public" | "token" | "user" | "member" | "service" | "worker";
+export type RoutePolicy =
+  | "public"
+  | "token"
+  | "user"
+  | "member"
+  | "service"
+  | "worker"
+  | Permission;
 
 /**
  * Every route's policy, keyed `METHOD pattern` as registered (`ALL` for `.all`). A route missing
@@ -44,52 +69,54 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "ALL /mcp": "worker",
   "ALL /egress/:service/*": "worker",
   "GET /tickets/:id/skills": "worker",
-  "GET /skill-sets": "user",
-  "POST /skill-sets": "user",
-  "GET /skill-sets/:id": "user",
-  "PATCH /skill-sets/:id": "user",
-  "DELETE /skill-sets/:id": "user",
-  "POST /skill-sets/browse": "user",
-  "POST /skill-sets/:id/skills": "user",
-  "DELETE /skill-sets/:id/skills/:skillId": "user",
-  "GET /skill-sets/:id/updates": "user",
-  "POST /skill-sets/:id/update": "user",
-  "GET /projects": "user",
-  "POST /projects": "user",
-  "GET /projects/:id": "user",
-  "PATCH /projects/:id": "user",
-  "GET /projects/:id/memory": "user",
-  "GET /projects/:id/audit": "user",
-  "GET /audit": "user",
-  "POST /projects/:id/sources": "user",
-  "PATCH /projects/:id/sources/:sourceId": "user",
-  "DELETE /projects/:id/sources/:sourceId": "user",
-  "GET /projects/:id/tickets": "user",
-  "GET /members": "user",
-  "GET /shared-accounts": "user",
-  "POST /shared-accounts": "user",
-  "POST /shared-accounts/:id/connect": "user",
-  "DELETE /shared-accounts/:id": "user",
-  "POST /shared-accounts/assignments": "user",
-  "GET /workers": "user",
-  "GET /workers/:id": "user",
-  "GET /workers/:id/audit": "user",
-  "GET /activity": "user",
+  "GET /skill-sets": needs("skillSet", "read"),
+  "POST /skill-sets": needs("skillSet", "create"),
+  "GET /skill-sets/:id": needs("skillSet", "read"),
+  "PATCH /skill-sets/:id": needs("skillSet", "update"),
+  "DELETE /skill-sets/:id": needs("skillSet", "delete"),
+  "POST /skill-sets/browse": needs("skillSet", "create"),
+  "POST /skill-sets/:id/skills": needs("skillSet", "update"),
+  "DELETE /skill-sets/:id/skills/:skillId": needs("skillSet", "update"),
+  "GET /skill-sets/:id/updates": needs("skillSet", "read"),
+  "POST /skill-sets/:id/update": needs("skillSet", "update"),
+  "GET /projects": needs("project", "read"),
+  "POST /projects": needs("project", "create"),
+  "GET /projects/:id": needs("project", "read"),
+  "PATCH /projects/:id": needs("project", "update"),
+  "GET /projects/:id/memory": needs("project", "read"),
+  "GET /projects/:id/audit": needs("audit", "read"),
+  "GET /audit": needs("audit", "read"),
+  "POST /projects/:id/sources": needs("source", "create"),
+  "PATCH /projects/:id/sources/:sourceId": needs("source", "update"),
+  "DELETE /projects/:id/sources/:sourceId": needs("source", "delete"),
+  "GET /projects/:id/tickets": needs("ticket", "read"),
+  "GET /members": needs("member", "read"),
+  "POST /members/:key/role": needs("member", "update"),
+  "GET /shared-accounts": needs("sharedAccount", "read"),
+  "POST /shared-accounts": needs("sharedAccount", "create"),
+  "POST /shared-accounts/:id/connect": needs("sharedAccount", "create"),
+  "DELETE /shared-accounts/:id": needs("sharedAccount", "delete"),
+  "POST /shared-accounts/assignments": needs("sharedAccount", "assign"),
+  "GET /workers": needs("worker", "read"),
+  "GET /workers/:id": needs("worker", "read"),
+  "GET /workers/:id/audit": needs("audit", "read"),
+  "GET /activity": needs("project", "read"),
   "GET /me": "member",
   "GET /me/tickets": "member",
   "GET /tickets/:id": "member",
   "GET /tickets/:id/attachments": "member",
-  "POST /tickets/:id/status": "user",
-  "POST /tickets/:id/assign": "user",
+  "POST /tickets/:id/status": needs("ticket", "update"),
+  "POST /tickets/:id/assign": needs("ticket", "update"),
 };
 
 export const policyFor = (method: string, route: string): RoutePolicy =>
   ROUTE_POLICY[`${method} ${route}`] ?? ROUTE_POLICY[`ALL ${route}`] ?? "user";
 
-const ADMITS: Readonly<Record<RoutePolicy, ReadonlyArray<Caller["kind"]>>> = {
+const ADMITS: Readonly<Record<Exclude<RoutePolicy, Permission>, ReadonlyArray<Caller["kind"]>>> = {
   public: ["anonymous", "user", "outsider", "service"],
   token: ["anonymous", "user", "outsider", "service"],
   worker: ["anonymous", "user", "outsider", "service"],
+  // A route nobody listed: dashboard admins only, so a new route is closed until someone decides.
   user: ["user"],
   member: ["user", "member"],
   service: ["service"],
@@ -100,9 +127,18 @@ export interface Denial {
   readonly error: "Unauthorized" | "Forbidden";
 }
 
+/** The role a caller acts with: a dashboard user's own, `member` for a channel member. */
+export const roleOf = (caller: Caller): Role | undefined =>
+  caller.kind === "user" ? caller.role : caller.kind === "member" ? "member" : undefined;
+
 /** Undefined when `caller` may use a route with `policy`. */
 export const authorize = (policy: RoutePolicy, caller: Caller): Denial | undefined => {
-  if (ADMITS[policy].includes(caller.kind)) return undefined;
+  const allowed =
+    typeof policy === "object"
+      ? caller.kind === "user" && can(caller.role, policy.resource, policy.action)
+      : ADMITS[policy].includes(caller.kind) &&
+        (policy !== "user" || (caller.kind === "user" && caller.role === "admin"));
+  if (allowed) return undefined;
   return caller.kind === "anonymous"
     ? { status: 401, error: "Unauthorized" }
     : { status: 403, error: "Forbidden" };
@@ -151,7 +187,7 @@ export const makeAccess = (deps: {
     const user = await deps.auth.sessionUser(token);
     if (!user) return { kind: "anonymous" };
     if (deps.auth.isAllowed(user.email)) {
-      return { kind: "user", userId: user.userId, name: user.name };
+      return { kind: "user", userId: user.userId, name: user.name, role: user.role };
     }
     const person = await deps.auth.memberPerson?.(user);
     return person ? { kind: "member", userId: user.userId, person } : { kind: "outsider" };

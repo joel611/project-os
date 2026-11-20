@@ -37,7 +37,12 @@ describe("makeApi", () => {
   });
 
   it("reads who is signed in and their own tickets", async () => {
-    const viewer = { role: "member", name: "Ada", person: null };
+    const viewer = {
+      role: "member",
+      permissions: { ticket: ["read-own"] },
+      name: "Ada",
+      person: null,
+    };
     const me = respond(200, viewer);
     expect(await me.api.me()).toEqual(viewer);
     expect(me.calls).toEqual(["/api/me"]);
@@ -201,6 +206,16 @@ describe("makeApi", () => {
       { url: "/api/shared-accounts/sa%2F1", method: "DELETE", body: undefined },
       { url: "/api/shared-accounts/assignments", method: "POST", body: assignment },
     ]);
+  });
+
+  it("POSTs a member's new role to their own path", async () => {
+    const seen: Array<{ url: string; body: unknown }> = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      seen.push({ url, body: JSON.parse(String(init?.body)) });
+      return Response.json({ role: "admin" });
+    }) as typeof fetch;
+    expect(await makeApi(fetchFn).setMemberRole("u/1", "admin")).toEqual({ role: "admin" });
+    expect(seen).toEqual([{ url: "/api/members/u%2F1/role", body: { role: "admin" } }]);
   });
 
   it("POSTs the worker to assign a ticket to and decodes the ticket back", async () => {

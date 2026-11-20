@@ -35,7 +35,7 @@ import {
 } from "@/model";
 import { ticketDetailInterval } from "@/polling";
 import { useNow } from "@/use-now";
-import { useViewer } from "@/viewer";
+import { useCan } from "@/viewer";
 
 export type TicketBack =
   | { readonly kind: "project"; readonly projectId: string }
@@ -178,7 +178,7 @@ const AssignDialog = ({ ticket, onClose }: { ticket: Ticket; onClose: () => void
 
 const Details = ({ ticket }: Pick<TicketDetail, "ticket">) => {
   const now = useNow();
-  const operator = useViewer().data?.role === "operator";
+  const operator = useCan("ticket", "update");
   const [assigning, setAssigning] = useState(false);
   return (
     <aside className="h-fit rounded-xl border bg-card p-5 shadow-card lg:sticky lg:top-0">

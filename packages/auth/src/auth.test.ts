@@ -29,7 +29,12 @@ describe("Auth members", () => {
   it("takes no session user for a member unless it is a channel identity", async () => {
     const auth = authWith({ admin });
     expect(
-      await auth.memberPerson({ userId: "u", email: "ops@example.com", name: "Ops" }),
+      await auth.memberPerson({
+        userId: "u",
+        email: "ops@example.com",
+        name: "Ops",
+        role: "admin",
+      }),
     ).toBeUndefined();
   });
 
@@ -206,7 +211,8 @@ describe("Auth member list", () => {
         key: expect.any(String),
         name: "Admin",
         email: "ops@example.com",
-        admin: true,
+        role: "admin",
+        operator: true,
         dashboard: { lastSignInAt: null },
         channel: null,
         googleLinked: false,
@@ -253,17 +259,19 @@ describe("Auth member list", () => {
     await user(`discord-u-zed${CHANNEL}`, "u-zed");
 
     const list = await auth.members();
-    expect(list.map((m) => m.name)).toEqual(["Ada Lovelace", "Admin", "Bob", "u-zed"]);
-    const [ada, , bobRow, zed] = list;
+    expect(list.map((m) => m.name)).toEqual(["Admin", "Ada Lovelace", "Bob", "u-zed"]);
+    const [, ada, bobRow, zed] = list;
     expect(ada).toMatchObject({
-      admin: true,
+      role: "member",
+      operator: true,
       googleLinked: true,
       dashboard: { lastSignInAt: expect.any(String) },
       channel: { type: "discord", id: "u-ada", name: "Ada" },
       github: { login: null },
     });
     expect(bobRow).toMatchObject({
-      admin: false,
+      role: "member",
+      operator: false,
       email: null,
       googleLinked: true,
       dashboard: { lastSignInAt: expect.any(String) },
@@ -277,5 +285,62 @@ describe("Auth member list", () => {
     });
     // Ada is one row: her Discord identity is not listed again.
     expect(list).toHaveLength(4);
+  });
+});
+
+describe("Auth roles", () => {
+  const CHANNEL = "@people.project-os.invalid";
+
+  const withUsers = async () => {
+    const auth = authWith({ admin, allowedEmails: ["ada@example.com"] });
+    await auth.ready();
+    const ctx = await auth.auth.$context;
+    const ada = await ctx.internalAdapter.createUser(
+      { email: "ada@example.com", name: "Ada", emailVerified: true },
+      { method: "test" },
+    );
+    const roleOf = async (email: string) =>
+      ((await ctx.internalAdapter.findUserByEmail(email))!.user as { role?: string }).role;
+    return { auth, ctx, ada, roleOf };
+  };
+
+  it("makes the password admin an admin and every other new user a member", async () => {
+    const { roleOf } = await withUsers();
+    expect(await roleOf("ops@example.com")).toBe("admin");
+    expect(await roleOf("ada@example.com")).toBe("member");
+  });
+
+  it("puts the role on the session user, so a user without one is a member", async () => {
+    const { auth, ada } = await withUsers();
+    const ctx = await auth.auth.$context;
+    const session = await ctx.internalAdapter.createSession(ada.id);
+    expect((await auth.sessionUser(session.token))?.role).toBe("member");
+    expect(await auth.setRole(ada.id, "admin")).toBe("ok");
+    expect((await auth.sessionUser(session.token))?.role).toBe("admin");
+    // A user from before roles existed has none stored.
+    await ctx.internalAdapter.updateUser(ada.id, { role: null });
+    expect((await auth.sessionUser(session.token))?.role).toBe("member");
+  });
+
+  it("promotes and demotes, but never demotes the last admin", async () => {
+    const { auth, ada, roleOf } = await withUsers();
+    const ops = (await (
+      await auth.auth.$context
+    ).internalAdapter.findUserByEmail("ops@example.com"))!.user;
+    expect(await auth.setRole(ops.id, "member")).toBe("last_admin");
+    expect(await roleOf("ops@example.com")).toBe("admin");
+    expect(await auth.setRole(ada.id, "admin")).toBe("ok");
+    expect(await auth.setRole(ops.id, "member")).toBe("ok");
+    expect(await auth.setRole(ada.id, "member")).toBe("last_admin");
+  });
+
+  it("has no role to change for a channel identity or an unknown user", async () => {
+    const { auth, ctx } = await withUsers();
+    const identity = await ctx.internalAdapter.createUser(
+      { email: `discord-u-1${CHANNEL}`, name: "One", emailVerified: true },
+      { method: "test" },
+    );
+    expect(await auth.setRole(identity.id, "admin")).toBe("not_found");
+    expect(await auth.setRole("nobody", "admin")).toBe("not_found");
   });
 });

@@ -58,6 +58,7 @@ describe("members", () => {
     await start(["ada@example.com"]);
     // Ada signs in to the dashboard, then links Google and GitHub from Discord.
     const token = await signIn();
+    await stack.setRole("ada@example.com", "admin");
     await connect(ada, "google");
     await connect(ada, "github");
 
@@ -68,7 +69,8 @@ describe("members", () => {
     const row = body.find((m: { email: string }) => m.email === "ada@example.com");
     expect(row).toMatchObject({
       email: "ada@example.com",
-      admin: true,
+      role: "admin",
+      operator: true,
       googleLinked: true,
       channel: { type: "discord", id: "u-ada", name: "Ada" },
       github: { login: "ada-gh" },
@@ -79,6 +81,7 @@ describe("members", () => {
   it("keeps people apart and shows what is missing", async () => {
     await start(["ada@example.com"]);
     const token = await signIn();
+    await stack.setRole("ada@example.com", "admin");
     // Bob links GitHub only, with a different Google account never used on the dashboard.
     stack.oauth!.sub = "google-bob";
     stack.oauth!.email = "bob@example.com";
@@ -88,10 +91,16 @@ describe("members", () => {
     const { body } = await members(token);
     const by = (name: string) => body.find((m: { name: string }) => m.name === name);
     // Ada: dashboard only, no Discord or GitHub.
-    expect(by("Ada Lovelace")).toMatchObject({ admin: true, channel: null, github: null });
+    expect(by("Ada Lovelace")).toMatchObject({
+      role: "admin",
+      operator: true,
+      channel: null,
+      github: null,
+    });
     // Bob: a Discord member who never opened the dashboard.
     expect(by("Bob")).toMatchObject({
-      admin: false,
+      role: "member",
+      operator: false,
       dashboard: null,
       email: "bob@example.com",
       channel: { id: "u-bob" },

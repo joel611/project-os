@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
-import { authorize, makeAccess, policyFor } from "./access.ts";
+import type { SessionUser } from "@project-os/auth";
+import { authorize, makeAccess, policyFor, roleOf } from "./access.ts";
 
-const sessions: Record<string, { userId: string; email: string; name: string }> = {
-  "ops-session": { userId: "u-ops", email: "Ops@Example.com", name: "Ops" },
-  "channel-session": { userId: "u-ch", email: "discord-1@people.project-os.invalid", name: "1" },
-  "member-session": { userId: "u-m", email: "discord-2@people.project-os.invalid", name: "Ada" },
+const sessions: Record<string, SessionUser> = {
+  "ops-session": { userId: "u-ops", email: "Ops@Example.com", name: "Ops", role: "admin" },
+  "channel-session": {
+    userId: "u-ch",
+    email: "discord-1@people.project-os.invalid",
+    name: "1",
+    role: "member",
+  },
+  "member-session": {
+    userId: "u-m",
+    email: "discord-2@people.project-os.invalid",
+    name: "Ada",
+    role: "member",
+  },
 };
 
 const ADA = { channelType: "discord", id: "2", name: "Ada" } as const;
@@ -39,6 +50,7 @@ describe("makeAccess", () => {
       kind: "user",
       userId: "u-ops",
       name: "Ops",
+      role: "admin",
     });
     expect(await caller("Bearer channel-session")).toEqual({ kind: "outsider" });
     expect(await caller("Bearer expired")).toEqual({ kind: "anonymous" });
@@ -100,15 +112,61 @@ describe("authorize", () => {
       error: "Unauthorized",
     });
     expect(authorize("user", { kind: "service" })).toMatchObject({ status: 403 });
-    expect(authorize("service", { kind: "user", userId: "u", name: "U" })).toMatchObject({
+    expect(
+      authorize("service", { kind: "user", userId: "u", name: "U", role: "admin" }),
+    ).toMatchObject({
       status: 403,
     });
     const member = { kind: "member", userId: "m", person: ADA } as const;
     expect(authorize("member", member)).toBeUndefined();
-    expect(authorize("member", { kind: "user", userId: "u", name: "U" })).toBeUndefined();
+    expect(
+      authorize("member", { kind: "user", userId: "u", name: "U", role: "admin" }),
+    ).toBeUndefined();
     expect(authorize("user", member)).toMatchObject({ status: 403 });
     expect(authorize("member", { kind: "outsider" })).toMatchObject({ status: 403 });
     expect(authorize("public", { kind: "anonymous" })).toBeUndefined();
     expect(authorize("token", { kind: "anonymous" })).toBeUndefined();
+  });
+
+  describe("role permissions", () => {
+    const admin = { kind: "user", userId: "a", name: "A", role: "admin" } as const;
+    const operatorMember = { kind: "user", userId: "o", name: "O", role: "member" } as const;
+    const channelMember = { kind: "member", userId: "m", person: ADA } as const;
+    const manageMembers = policyFor("POST", "/members/:key/role");
+
+    it("lets an admin do everything and a member only read their own tickets", () => {
+      expect(authorize(manageMembers, admin)).toBeUndefined();
+      expect(authorize(policyFor("GET", "/projects"), admin)).toBeUndefined();
+      for (const [method, route] of [
+        ["GET", "/projects"],
+        ["POST", "/projects/:id/sources"],
+        ["GET", "/members"],
+        ["GET", "/audit"],
+        ["POST", "/shared-accounts"],
+        ["POST", "/tickets/:id/status"],
+      ] as const) {
+        expect(authorize(policyFor(method, route), operatorMember)).toMatchObject({ status: 403 });
+        expect(authorize(policyFor(method, route), channelMember)).toMatchObject({ status: 403 });
+      }
+      expect(authorize(policyFor("GET", "/me"), operatorMember)).toBeUndefined();
+      expect(authorize(policyFor("GET", "/tickets/:id"), operatorMember)).toBeUndefined();
+    });
+
+    it("reads the role from a dashboard user or a channel member, and none from anyone else", () => {
+      expect(roleOf(admin)).toBe("admin");
+      expect(roleOf(channelMember)).toBe("member");
+      expect(roleOf({ kind: "outsider" })).toBeUndefined();
+    });
+
+    it("answers 401 to an anonymous caller on a permission route", () => {
+      expect(authorize(manageMembers, { kind: "anonymous" })).toMatchObject({ status: 401 });
+    });
+
+    it("keeps a route nobody listed for admins only", () => {
+      expect(authorize(policyFor("GET", "/not-listed"), admin)).toBeUndefined();
+      expect(authorize(policyFor("GET", "/not-listed"), operatorMember)).toMatchObject({
+        status: 403,
+      });
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ChannelType } from "./enums.ts";
+import { Role } from "./permissions.ts";
 
 /**
  * One person as the dashboard's Members page shows them (`GET /members`): the dashboard
@@ -12,8 +13,10 @@ export const Member = Schema.Struct({
   name: Schema.String,
   /** The Google email: the dashboard sign-in's, else the linked account's when it could be read. */
   email: Schema.NullOr(Schema.String),
+  /** The dashboard role: `admin` or `member`. A channel person without a sign-in is a member. */
+  role: Role,
   /** On the Operator list, so allowed to sign in to the dashboard as themselves. */
-  admin: Schema.Boolean,
+  operator: Schema.Boolean,
   /** A dashboard user exists for this person. `lastSignInAt` is their newest session. */
   dashboard: Schema.NullOr(Schema.Struct({ lastSignInAt: Schema.NullOr(Schema.String) })),
   /** The channel identity that linked the same Google account. */
@@ -32,3 +35,7 @@ export type Member = typeof Member.Type;
 
 export const MemberList = Schema.Array(Member);
 export type MemberList = typeof MemberList.Type;
+
+/** `POST /members/:key/role`: an admin changes a dashboard user's role. */
+export const SetMemberRole = Schema.Struct({ role: Role });
+export type SetMemberRole = typeof SetMemberRole.Type;

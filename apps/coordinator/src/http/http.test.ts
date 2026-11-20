@@ -20,7 +20,7 @@ import { type HandleInboundConfig, type HttpEnv, httpRoutes } from "./routes.ts"
 
 /** Takes every caller for an Operator, for tests of the routes alone. */
 const OPERATOR: Access = {
-  caller: async () => ({ kind: "user", userId: "u-op", name: "Op" }),
+  caller: async () => ({ kind: "user", userId: "u-op", name: "Op", role: "admin" }),
   personOf: async () => undefined,
 };
 
@@ -509,6 +509,64 @@ describe("GET /members", () => {
       members: async () => list as never,
     });
     expect(await call(app, "GET", "/members")).toEqual({ status: 200, body: list });
+  });
+});
+
+describe("POST /members/:key/role", () => {
+  const appWith = (setRole?: (id: string, role: "admin" | "member") => Promise<any>) => {
+    const { layer } = makeTestLayer();
+    const runtime = ManagedRuntime.make(layer);
+    disposers.push(() => runtime.dispose());
+    return httpRoutes({
+      run: (effect) => runtime.runPromise(effect),
+      access: OPERATOR,
+      ...(setRole && { setRole }),
+    });
+  };
+
+  it("answers 501 until roles are wired in", async () => {
+    const res = await call(appWith(), "POST", "/members/u1/role", { role: "admin" });
+    expect(res.status).toBe(501);
+  });
+
+  it("rejects a role that does not exist", async () => {
+    const app = appWith(async () => "ok");
+    expect((await call(app, "POST", "/members/u1/role", { role: "owner" })).status).toBe(400);
+    expect((await call(app, "POST", "/members/u1/role")).status).toBe(400);
+  });
+
+  it("maps the outcomes to 200, 404 and 409", async () => {
+    const outcomes = { ok: 200, not_found: 404, last_admin: 409 } as const;
+    for (const [outcome, status] of Object.entries(outcomes)) {
+      const app = appWith(async () => outcome);
+      const res = await call(app, "POST", "/members/u1/role", { role: "member" });
+      expect(res.status, outcome).toBe(status);
+    }
+    const ok = await call(
+      appWith(async () => "ok"),
+      "POST",
+      "/members/u1/role",
+      { role: "admin" },
+    );
+    expect(ok.body).toEqual({ role: "admin" });
+  });
+});
+
+describe("ticket scope by role", () => {
+  it("shows an operator whose role lacks ticket:read no ticket unless their person is involved", async () => {
+    const { layer } = makeTestLayer();
+    const runtime = ManagedRuntime.make(layer);
+    disposers.push(() => runtime.dispose());
+    const noPerson: Access = {
+      caller: async () => ({ kind: "user", userId: "u-m", name: "M", role: "member" }),
+      personOf: async () => undefined,
+    };
+    const asMember = httpRoutes({ run: (e) => runtime.runPromise(e), access: noPerson });
+    expect(await call(asMember, "GET", "/tickets/t1")).toMatchObject({
+      status: 404,
+      body: { error: "TicketNotFound" },
+    });
+    expect((await call(asMember, "GET", "/tickets/t1/attachments")).status).toBe(404);
   });
 });
 
