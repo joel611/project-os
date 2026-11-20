@@ -29,6 +29,7 @@ import {
   assignTargets,
   EVENT,
   hasAttachments,
+  newestFirst,
   relativeTime,
   STATUS,
   workerName,
@@ -77,7 +78,7 @@ const Main = ({ ticket, events }: TicketDetail) => {
       <section className="flex flex-col gap-1 rounded-xl border bg-card p-5 shadow-card sm:p-6">
         <h2 className="pb-4 text-sm font-semibold">Activity</h2>
         <ol className="relative flex flex-col gap-5 border-l pl-5">
-          {events.map((e) => (
+          {newestFirst(events).map((e) => (
             <li key={e.id} className="relative flex flex-col gap-1">
               <span className="absolute top-1.5 -left-[25px] rounded-full ring-3 ring-card">
                 <ToneDot tone={EVENT[e.type].tone} />
