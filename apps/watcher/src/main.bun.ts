@@ -21,6 +21,7 @@ import {
   saveCredentials,
   writePrivate,
 } from "./credentials.ts";
+import { createLogger, errorMessage } from "./logger.ts";
 import { httpMcpClient } from "./mcp-client.ts";
 import { createWatcher } from "./poll.ts";
 import { registerDevice } from "./register.ts";
@@ -86,8 +87,14 @@ if (command.kind === "uninstall") {
   process.exit(exit);
 }
 
+const logger = createLogger({
+  verbose:
+    command.verbose ||
+    ["1", "true", "on"].includes((process.env.WATCHER_VERBOSE ?? "").toLowerCase()),
+});
 const path = credentialsPath();
 if (command.kind === "register") {
+  logger.debug("registering", { server: command.server ?? process.env.PROJECT_OS_URL, path });
   const server = command.server ?? process.env.PROJECT_OS_URL;
   if (!server) fail(`register needs --server <coordinator url>.\n\n${USAGE}`);
   try {
@@ -105,9 +112,9 @@ if (command.kind === "register") {
       ...(command.agent && { agent: command.agent }),
       ...(command.model && { model: command.model }),
     });
-    console.log(`registered as "${credentials.name}" (${credentials.workerId}); saved ${path}`);
+    logger.info(`registered as "${credentials.name}" (${credentials.workerId}); saved ${path}`);
   } catch (e) {
-    fail(e instanceof Error ? e.message : String(e));
+    fail(errorMessage(e));
   }
 }
 
@@ -117,25 +124,35 @@ if (!credentials) {
 }
 const config = loadConfig(credentials!, (name) => Bun.which(name) !== null);
 if (credentials!.agent && config.agent !== credentials!.agent && !process.env.WATCHER_AGENT) {
-  console.log(`saved agent ${credentials!.agent} isn't installed; using ${config.agent} instead`);
+  logger.warn(`saved agent ${credentials!.agent} isn't installed; using ${config.agent} instead`);
 }
-console.log(
+logger.info(
   `watcher ${config.workerId} (${config.agent}) → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`,
 );
+logger.debug("config", {
+  agent: config.agent,
+  model: config.model,
+  maxSessions: config.maxSessions,
+  intervalMs: config.intervalMs,
+  cwd: config.cwd,
+  skills: config.skills,
+  credentials: path,
+});
 
 const watcher = createWatcher({
   config,
-  client: httpMcpClient(config.mcpUrl, fetch, config.secret),
+  client: httpMcpClient(config.mcpUrl, fetch, config.secret, logger),
   spawner: bunSpawner(config, Bun.spawn, {
     readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
     writePrivate,
     env: process.env,
     configDir: configDir(),
     home: homedir(),
-    log: console.log,
+    logger,
     skills: {
       fetchArchive: async (url, secret) => {
         const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+        logger.debug("skills: archive response", { status: res.status });
         // 204: the ticket has no skills.
         return res.status === 200
           ? {
@@ -153,7 +170,7 @@ const watcher = createWatcher({
       removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
     },
   }),
-  log: console.log,
+  logger,
 });
 
 await watcher.pollOnce();

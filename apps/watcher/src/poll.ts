@@ -1,4 +1,5 @@
 import type { WatcherConfig } from "./config.ts";
+import { errorMessage, type Logger } from "./logger.ts";
 import type { Spawner } from "./spawn.ts";
 
 export interface McpClient {
@@ -9,10 +10,10 @@ export interface WatcherDeps {
   readonly config: WatcherConfig;
   readonly client: McpClient;
   readonly spawner: Spawner;
-  readonly log: (message: string) => void;
+  readonly logger: Logger;
 }
 
-export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => {
+export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) => {
   let running = 0;
   /** Tickets with a session under way, so a slow start isn't launched twice. */
   const inFlight = new Set<string>();
@@ -20,20 +21,25 @@ export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => 
   const start = (ticketId: string) => {
     running++;
     inFlight.add(ticketId);
-    log(`session start (${running}/${config.maxSessions}) for ${ticketId}`);
-    const done = (outcome: string) => {
+    const startedAt = Date.now();
+    logger.info(`session start (${running}/${config.maxSessions}) for ${ticketId}`, { ticketId });
+    const done = (outcome: string, failed: boolean) => {
       running--;
       inFlight.delete(ticketId);
-      log(`session exit ${outcome} (${running}/${config.maxSessions})`);
+      const message = `session exit ${outcome} (${running}/${config.maxSessions})`;
+      const fields = { ticketId, seconds: Math.round((Date.now() - startedAt) / 1000) };
+      if (failed) logger.warn(message, fields);
+      else logger.info(message, fields);
     };
     spawner.spawn(ticketId).then(
-      (code) => done(`code=${code}`),
-      (e) => done(`error=${e instanceof Error ? e.message : String(e)}`),
+      (code) => done(`code=${code}`, code !== 0),
+      (e) => done(`error=${errorMessage(e)}`, true),
     );
   };
 
   const pollOnce = async (): Promise<void> => {
     try {
+      logger.debug("poll: heartbeat", { workerId: config.workerId });
       await client.callTool("worker_heartbeat", {
         workerId: config.workerId,
         workerType: config.workerType,
@@ -43,11 +49,16 @@ export const createWatcher = ({ config, client, spawner, log }: WatcherDeps) => 
         workerType: config.workerType,
       })) as { tickets: ReadonlyArray<{ readonly id: string }> };
       const waiting = out.tickets.filter((t) => !inFlight.has(t.id));
+      logger.debug(`poll: ${out.tickets.length} assigned, ${waiting.length} waiting`, {
+        running,
+        maxSessions: config.maxSessions,
+        ticketIds: out.tickets.map((t) => t.id),
+      });
       for (const ticket of waiting.slice(0, Math.max(0, config.maxSessions - running))) {
         start(ticket.id);
       }
     } catch (e) {
-      log(`poll failed: ${e instanceof Error ? e.message : String(e)}`);
+      logger.error(`poll failed: ${errorMessage(e)}`);
     }
   };
 

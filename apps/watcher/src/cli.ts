@@ -8,20 +8,22 @@ export type Command =
       readonly name?: string;
       readonly agent?: AgentName;
       readonly model?: string;
+      readonly verbose: boolean;
     }
   | { readonly kind: "uninstall"; readonly yes: boolean }
-  | { readonly kind: "run" }
+  | { readonly kind: "run"; readonly verbose: boolean }
   | { readonly kind: "help" };
 
 export const USAGE = `Usage:
-  project-os-watcher register <code> --server <url> [--name <name>] [--agent claude|pi|codex] [--model <model>]
+  project-os-watcher register <code> --server <url> [--name <name>] [--agent claude|pi|codex] [--model <model>] [--verbose]
       Register this computer (code from /register-worker), then run. An admin's
       shared code adds it to the pool for everyone; otherwise it is your personal worker.
       --agent and --model are saved with the registration (default: claude, and the
       agent's own default model).
-  project-os-watcher
+  project-os-watcher [--verbose]
       Run: poll for your tickets and start an agent session for each.
       WATCHER_AGENT and WATCHER_MODEL override the saved choice for this run.
+      --verbose (-v, or WATCHER_VERBOSE=1) also logs every poll, request and skill install.
   project-os-watcher uninstall [--yes]
       Remove what the installer added: stop the Watcher, uninstall the package, delete the
       saved registration and the Coordinator entry in Pi's MCP config. Asks first unless --yes.
@@ -29,9 +31,10 @@ export const USAGE = `Usage:
       Show this help.`;
 
 /** Parses argv after the script name. */
-export const parseArgs = (argv: ReadonlyArray<string>): Command => {
-  const [first, ...rest] = argv;
-  if (first === undefined) return { kind: "run" };
+export const parseArgs = (args: ReadonlyArray<string>): Command => {
+  const verbose = args.includes("--verbose") || args.includes("-v");
+  const [first, ...rest] = args.filter((arg) => arg !== "--verbose" && arg !== "-v");
+  if (first === undefined) return { kind: "run", verbose };
   if (first === "-h" || first === "--help" || first === "help") return { kind: "help" };
   if (first === "uninstall") {
     const unknown = rest.find((arg) => arg !== "--yes" && arg !== "-y");
@@ -61,6 +64,7 @@ export const parseArgs = (argv: ReadonlyArray<string>): Command => {
   }
   return {
     kind: "register",
+    verbose,
     token,
     ...(flags.server && { server: flags.server }),
     ...(flags.name && { name: flags.name }),

@@ -4,6 +4,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { workerSessionStart } from "@project-os/system-prompts";
 import { AGENTS, type Agent, type InstalledSkills } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
+import { errorMessage, type Logger, silentLogger } from "./logger.ts";
 
 export interface Spawner {
   /** Runs one agent session for `ticketId` when given; resolves with its exit code. */
@@ -43,7 +44,7 @@ export interface SpawnerIo {
   readonly configDir: string;
   readonly home: string;
   readonly skills?: SkillsIo;
-  readonly log?: (message: string) => void;
+  readonly logger?: Logger;
 }
 
 /** Where a ticket's skill bundle is served: next to the Coordinator's MCP endpoint. */
@@ -67,11 +68,21 @@ const installSkills = async (
   agent: Agent,
   ticketId: string,
 ): Promise<(InstalledSkills & { readonly set: string }) | undefined> => {
-  if (!config.skills || !io.skills || agent.skillsLayout === undefined) return undefined;
+  const logger = io.logger ?? silentLogger;
+  if (!config.skills || !io.skills || agent.skillsLayout === undefined) {
+    logger.debug("skills: skipped", { ticketId, enabled: config.skills, agent: config.agent });
+    return undefined;
+  }
   const archive = await io.skills
     .fetchArchive(skillsUrl(config.mcpUrl, ticketId), config.secret)
-    .catch(() => undefined);
-  if (!archive) return undefined;
+    .catch((e: unknown) => {
+      logger.warn(`skills: fetch failed: ${errorMessage(e)}`, { ticketId });
+      return undefined;
+    });
+  if (!archive) {
+    logger.debug("skills: none for this ticket", { ticketId });
+    return undefined;
+  }
   const files = (() => {
     try {
       return unzipSync(archive.zip);
@@ -85,7 +96,10 @@ const installSkills = async (
     const [slug, ...rest] = name.split("/");
     if (!slug || !SAFE_SKILL_SLUG.test(slug) || rest.length === 0 || name.endsWith("/")) continue;
     const target = inside(join(root, agent.skillsLayout, slug), rest.join("/"));
-    if (!target) continue;
+    if (!target) {
+      logger.warn(`skills: skipped unsafe path "${name}"`, { ticketId });
+      continue;
+    }
     io.skills.writeFile(target, strFromU8(bytes));
     slugs.add(slug);
   }
@@ -93,7 +107,10 @@ const installSkills = async (
     io.skills.removeDir(root);
     return undefined;
   }
-  io.log?.(`installed ${slugs.size} skill(s) from "${archive.set}" for ${ticketId}`);
+  logger.info(`installed ${slugs.size} skill(s) from "${archive.set}" for ${ticketId}`, {
+    ticketId,
+    slugs: [...slugs],
+  });
   return { root, slugs: [...slugs], set: archive.set };
 };
 
@@ -103,6 +120,7 @@ export const bunSpawner = (
   io: SpawnerIo,
   agent: Agent = AGENTS[config.agent],
 ): Spawner => {
+  const logger = io.logger ?? silentLogger;
   return {
     spawn: async (ticketId) => {
       const skills = ticketId ? await installSkills(config, io, agent, ticketId) : undefined;
@@ -118,6 +136,15 @@ export const bunSpawner = (
         for (const file of launch.files) {
           io.writePrivate(file.path, file.update(io.readFile(file.path)));
         }
+        logger.debug(`launching ${config.agent}`, {
+          ticketId,
+          command: launch.cmd[0],
+          argCount: launch.cmd.length - 1,
+          cwd: config.cwd,
+          model: config.model,
+          skills: skills?.slugs.length ?? 0,
+          files: launch.files.map((file) => file.path),
+        });
         const proc = spawnProcess([...launch.cmd], {
           cwd: config.cwd,
           env: { ...io.env, ...launch.env },

@@ -6,6 +6,7 @@ import { loadConfig } from "../../watcher/src/config.ts";
 import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import { type Stack, startStack } from "./stack.ts";
+import { silentLogger } from "../../watcher/src/logger.ts";
 
 // An Operator reassigns a stuck ticket from the dashboard API: the shared device that claimed it
 // loses access, and another shared device's Watcher (real poll loop, real MCP) picks it up and
@@ -80,7 +81,7 @@ describe("reassign a stuck ticket", () => {
           return run;
         },
       },
-      log: () => {},
+      logger: silentLogger,
     });
     await watcher.pollOnce();
     expect(sessions).toHaveLength(1);
