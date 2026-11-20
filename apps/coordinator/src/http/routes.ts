@@ -1,5 +1,5 @@
 import { healthConfig } from "@project-os/config";
-import type { SharedAccounts } from "@project-os/auth";
+import type { SetRoleResult, SharedAccounts } from "@project-os/auth";
 import {
   AssignSharedAccount,
   CreateSharedAccount,
@@ -8,7 +8,16 @@ import {
   SlashCommand,
   WorkerRegisterRequest,
 } from "@project-os/contracts";
-import { AUDIT_KINDS, type AuditKind, type Member, type Viewer } from "@project-os/contracts";
+import {
+  AUDIT_KINDS,
+  type AuditKind,
+  can,
+  type Member,
+  ROLE_GRANTS,
+  type Role,
+  SetMemberRole,
+  type Viewer,
+} from "@project-os/contracts";
 import {
   addSkillsToSet,
   answerScopePrompt,
@@ -39,6 +48,7 @@ import {
   type AgentRuntime,
   type AssetStore,
   type ChannelGateway,
+  type Person,
   type ChannelMessageRepository,
   type Clock,
   type HandleInboundConfig,
@@ -60,7 +70,7 @@ import {
 } from "@project-os/core";
 import { Effect, Schema } from "effect";
 import { Elysia } from "elysia";
-import type { Access, Caller } from "../access.ts";
+import { type Access, type Caller, roleOf } from "../access.ts";
 import {
   AddSkillsBody,
   AssignBody,
@@ -153,6 +163,8 @@ export interface HttpDeps {
   readonly prompts?: PromptAnswerConfig;
   /** People with a dashboard sign-in or channel identity (`GET /members`). Omitted: 501. */
   readonly members?: () => Promise<ReadonlyArray<Member>>;
+  /** Changes a dashboard user's role (`POST /members/:key/role`). Omitted: 501. */
+  readonly setRole?: (userId: string, role: Role) => Promise<SetRoleResult>;
   /** Shared connector accounts admins link and assign (`/shared-accounts`). Omitted: 501. */
   readonly sharedAccounts?: SharedAccounts;
 }
@@ -164,6 +176,7 @@ export const httpRoutes = ({
   commands,
   prompts = inbound,
   members,
+  setRole,
   sharedAccounts,
   access,
 }: HttpDeps & {
@@ -179,10 +192,19 @@ export const httpRoutes = ({
     return result.body;
   };
 
-  /** The person a member is, so a Ticket route can narrow to theirs; undefined for an Operator. */
-  const memberPerson = async (request: Request) => {
+  /**
+   * Which Tickets the caller may read: every one with `ticket:read`, else the ones their channel
+   * person is involved in (`ticket:read-own`), else none: a dashboard user with the `member` role
+   * whose Google account is linked to no channel person has no Tickets of their own.
+   */
+  const ticketScope = async (
+    request: Request,
+  ): Promise<{ readonly person?: Person; readonly none?: true }> => {
     const caller = await access.caller(request);
-    return caller.kind === "member" ? caller.person : undefined;
+    const role = roleOf(caller);
+    if (role && can(role, "ticket", "read")) return {};
+    const person = await access.personOf(caller);
+    return person ? { person } : { none: true };
   };
 
   /** The admin calling, as an audit actor: `shared-accounts` routes admit only Operators. */
@@ -204,8 +226,10 @@ export const httpRoutes = ({
         { kind: "user" } | { kind: "member" }
       >;
       const person = await access.personOf(caller);
+      const role = roleOf(caller)!;
       return {
-        role: caller.kind === "member" ? "member" : "operator",
+        role,
+        permissions: ROLE_GRANTS[role],
         name: caller.kind === "member" ? (caller.person.name ?? caller.person.id) : caller.name,
         person: person
           ? { channelType: person.channelType, id: person.id, name: person.name ?? null }
@@ -223,6 +247,37 @@ export const httpRoutes = ({
         return { error: "the member list is not configured" };
       }
       return members();
+    })
+    .post("/members/:key/role", async ({ params, body, request, set }) => {
+      if (!setRole) {
+        set.status = 501;
+        return { error: "roles are not configured" };
+      }
+      const parsed = decodeBody(SetMemberRole, body);
+      if (!parsed) {
+        set.status = 400;
+        return { error: "role must be admin or member" };
+      }
+      const result = await setRole(params.key, parsed.role);
+      if (result === "not_found") {
+        set.status = 404;
+        return { error: "MemberNotFound" };
+      }
+      if (result === "last_admin") {
+        set.status = 409;
+        return { error: "LastAdmin" };
+      }
+      const actor = await adminActor(request);
+      await run(
+        audit({
+          kind: "connection",
+          action: "member_role_changed",
+          actor,
+          summary: `Set ${params.key}'s dashboard role to ${parsed.role}`,
+          payload: { userId: params.key, role: parsed.role },
+        }),
+      );
+      return { role: parsed.role };
     })
     .get("/shared-accounts", ({ set }) =>
       sharedAccounts ? sharedAccounts.list() : unconfigured(set),
@@ -549,16 +604,26 @@ export const httpRoutes = ({
       );
     })
     .get("/tickets/:id", async ({ params, request, set }) => {
-      const person = await memberPerson(request);
+      const scope = await ticketScope(request);
+      if (scope.none) {
+        set.status = 404;
+        return { error: "TicketNotFound" };
+      }
       return reply(
         set,
-        toResult(person ? getMyTicket(params.id, person) : getTicket({ ticketId: params.id })),
+        toResult(
+          scope.person ? getMyTicket(params.id, scope.person) : getTicket({ ticketId: params.id }),
+        ),
       );
     })
     .get("/tickets/:id/attachments", async ({ params, request, set }) => {
-      const person = await memberPerson(request);
-      const attachments = person
-        ? listMyTicketAttachments(params.id, person)
+      const scope = await ticketScope(request);
+      if (scope.none) {
+        set.status = 404;
+        return { error: "TicketNotFound" };
+      }
+      const attachments = scope.person
+        ? listMyTicketAttachments(params.id, scope.person)
         : listTicketAttachments(params.id);
       return reply(set, toResult(Effect.map(attachments, (list) => ({ attachments: list }))));
     })

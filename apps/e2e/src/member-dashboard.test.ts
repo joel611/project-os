@@ -109,6 +109,7 @@ describe("member dashboard", () => {
       status: 200,
       body: {
         role: "member",
+        permissions: { ticket: ["read-own"] },
         name: "Ada",
         person: { channelType: "discord", id: "u-ada", name: "Ada" },
       },
@@ -189,10 +190,11 @@ describe("operator with a linked Discord identity", () => {
     await followConnectLink((await slash(ada, "connect", { provider: "google" })).content);
 
     const token = (await signIn())!;
-    expect(await get(token, "/me")).toEqual({
+    await stack.setRole("ada@example.com", "admin");
+    expect(await get(token, "/me")).toMatchObject({
       status: 200,
       body: {
-        role: "operator",
+        role: "admin",
         name: "Ada Lovelace",
         person: { channelType: "discord", id: "u-ada", name: "Ada" },
       },
@@ -207,7 +209,7 @@ describe("operator with a linked Discord identity", () => {
   it("finds no person behind the password operator", async () => {
     await start({});
     expect((await get(stack.operatorToken, "/me")).body).toMatchObject({
-      role: "operator",
+      role: "admin",
       person: null,
     });
   });
@@ -215,7 +217,9 @@ describe("operator with a linked Discord identity", () => {
   it("has no tickets of their own without a linked identity", async () => {
     await start({ allowedEmails: ["ada@example.com"] });
     const token = (await signIn())!;
-    expect((await get(token, "/me")).body).toMatchObject({ role: "operator", person: null });
+    // A new sign-in is a member, and Ada has linked no Discord identity: nothing is hers yet.
+    expect((await get(token, "/me")).body).toMatchObject({ role: "member", person: null });
     expect((await get(token, "/me/tickets")).body).toEqual({ tickets: [], projects: [] });
+    expect((await get(token, "/projects")).status).toBe(403);
   });
 });

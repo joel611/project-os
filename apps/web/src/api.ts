@@ -19,6 +19,7 @@ import {
   Ticket,
   TicketAttachmentsOutput,
   TicketEvent,
+  Role,
   Viewer,
   Worker,
   WorkerStatus,
@@ -166,6 +167,11 @@ export const makeApi = (
     me: () => get("/me", Viewer),
     myTickets: () => get("/me/tickets", MyTickets),
     members: () => get("/members", MemberList),
+    setMemberRole: (key: string, role: Role) =>
+      send(`/members/${id(key)}/role`, Schema.Struct({ role: Role }), {
+        method: "POST",
+        json: { role },
+      }),
     sharedAccounts: () => get("/shared-accounts", SharedAccountsView),
     addSharedAccount: (input: CreateSharedAccount) =>
       send("/shared-accounts", SharedAccountConnect, { method: "POST", json: input }),

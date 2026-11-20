@@ -55,10 +55,12 @@ _Avoid_: worker pool (the Watchers are not in it), provider list.
 **Sandbox token**: the Bearer token the Coordinator mints when it starts a sandbox session, handed to Pi in its MCP config. It acts as that session's worker id only and expires with the session (the provider's timeout plus 5 minutes). It is what keeps one sandbox out of another's Ticket, since sandbox worker ids are easy to guess.
 _Avoid_: worker secret (that is a registered computer's), session token (that is the dashboard's).
 
-**Operator**: a person allowed into the web dashboard: `ADMIN_EMAIL`, signing in with the seeded password, or an email in `ADMIN_EMAILS`, signing in with Google. With `GOOGLE_ALLOWED_DOMAINS` set, anyone with a Google Workspace account at those domains instead of `ADMIN_EMAILS`. Not the same as a Discord admin (`ADMIN_USER_IDS`), who acts in the admin channel.
+**Operator**: a person allowed into the web dashboard: `ADMIN_EMAIL`, signing in with the seeded password, or an email in `ADMIN_EMAILS`, signing in with Google. With `GOOGLE_ALLOWED_DOMAINS` set, anyone with a Google Workspace account at those domains instead of `ADMIN_EMAILS`. Not the same as a Discord admin (`ADMIN_USER_IDS`), who acts in the admin channel. An Operator also has a **Role**.
+
+**Role**: what a dashboard user may do: `admin` or `member`, stored on the Better Auth user and enforced per route as a resource and action (`ticket:update`, `project:create`, ...; the table is `ROLE_GRANTS` in `packages/contracts/src/permissions.ts`). An admin can do everything. A member can read only the Tickets they are involved in. A new Google sign-in starts as a member; the password admin (`ADMIN_EMAIL`) is always an admin; admins change roles on the Members page, and the last admin can't be demoted.
 _Avoid_: admin (alone), user.
 
-**Member**: a person on a channel signed in to the web dashboard with the Google account they linked from that channel (`/dashboard`, the same link as `/connect` Google). They see only **My tickets**: the Tickets they asked for or wrote in (a `created` or `follow_up` event of theirs). Not an Operator, who sees everything and also gets My tickets when their Google account is linked the same way.
+**Member**: a person on a channel signed in to the web dashboard with the Google account they linked from that channel (`/dashboard`, the same link as `/connect` Google). They see only **My tickets**: the Tickets they asked for or wrote in (a `created` or `follow_up` event of theirs). Not an Operator with the `admin` Role, who sees everything and also gets My tickets when their Google account is linked the same way.
 _Avoid_: user (alone), viewer.
 
 **Connection**: a person's linked Google or GitHub account. Workers use the token of the person behind a Ticket's latest message (`user_token`), so the provider's own permissions apply. Made with `/connect`.

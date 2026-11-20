@@ -30,6 +30,8 @@ export interface AppDeps {
   readonly connect?: ConnectDeps;
   /** The Members page's data (`GET /members`), from the auth instance. Omitted: 501. */
   readonly members?: HttpDeps["members"];
+  /** Changes a dashboard user's role (`POST /members/:key/role`), from the auth instance. */
+  readonly setRole?: HttpDeps["setRole"];
   /** Shared connector accounts (`/shared-accounts`), from the auth instance. Omitted: 501. */
   readonly sharedAccounts?: HttpDeps["sharedAccounts"];
   /**
@@ -76,6 +78,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
         httpRoutes({
           ...deps.http,
           ...(deps.members && { members: deps.members }),
+          ...(deps.setRole && { setRole: deps.setRole }),
           ...(deps.sharedAccounts && { sharedAccounts: deps.sharedAccounts }),
           access: deps.access,
         }),

@@ -9,7 +9,7 @@ import { httpRoutes } from "./routes.ts";
 
 /** Takes every caller for an Operator, for tests of the routes alone. */
 const OPERATOR: Access = {
-  caller: async () => ({ kind: "user", userId: "u-op", name: "Op" }),
+  caller: async () => ({ kind: "user", userId: "u-op", name: "Op", role: "admin" }),
   personOf: async () => undefined,
 };
 

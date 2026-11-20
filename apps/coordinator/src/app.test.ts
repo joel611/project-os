@@ -12,7 +12,7 @@ const access: Access = {
   caller: async (request): Promise<Caller> => {
     const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
     if (token === "svc") return { kind: "service" };
-    if (token === "op") return { kind: "user", userId: "u-op", name: "Op" };
+    if (token === "op") return { kind: "user", userId: "u-op", name: "Op", role: "admin" };
     if (token === "ada") return { kind: "member", userId: "u-ada", person: ADA };
     if (token === "eve") return { kind: "outsider" };
     return { kind: "anonymous" };
@@ -85,6 +85,7 @@ describe("coordinator app", () => {
       const me = await call(app, "/me", { token: "ada" });
       expect(await me.json()).toEqual({
         role: "member",
+        permissions: { ticket: ["read-own"] },
         name: "Ada",
         person: { channelType: "discord", id: "u-ada", name: "Ada" },
       });
@@ -95,7 +96,7 @@ describe("coordinator app", () => {
       expect((await call(app, "/me", { token: "eve" })).status).toBe(403);
       expect((await call(app, "/me", {})).status).toBe(401);
       const op = await call(app, "/me", { token: "op" });
-      expect(await op.json()).toEqual({ role: "operator", name: "Op", person: null });
+      expect(await op.json()).toMatchObject({ role: "admin", name: "Op", person: null });
     });
 
     it("names a member by id when the channel gave no name, and an operator's linked person", async () => {
@@ -103,7 +104,7 @@ describe("coordinator app", () => {
         access: {
           caller: async (request) =>
             request.headers.get("authorization") === "Bearer op"
-              ? { kind: "user", userId: "u-op", name: "Op" }
+              ? { kind: "user", userId: "u-op", name: "Op", role: "admin" }
               : { kind: "member", userId: "u-x", person: { channelType: "discord", id: "42" } },
           personOf: async (caller) =>
             caller.kind === "member" ? caller.person : { channelType: "discord", id: "7" },
@@ -111,11 +112,12 @@ describe("coordinator app", () => {
       });
       expect(await (await call(app, "/me", { token: "x" })).json()).toEqual({
         role: "member",
+        permissions: { ticket: ["read-own"] },
         name: "42",
         person: { channelType: "discord", id: "42", name: null },
       });
       expect(await (await call(app, "/me", { token: "op" })).json()).toMatchObject({
-        role: "operator",
+        role: "admin",
         name: "Op",
         person: { id: "7", name: null },
       });

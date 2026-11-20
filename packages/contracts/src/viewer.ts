@@ -1,15 +1,18 @@
 import { Schema } from "effect";
 import { Ticket } from "./entities.ts";
 import { ChannelType } from "./enums.ts";
+import { PermissionMap, Role } from "./permissions.ts";
 
 /**
- * Who is signed in to the dashboard (`GET /me`). An `operator` sees everything; a `member` is a
- * channel person who linked their Google account and sees only the Tickets they are involved in.
+ * Who is signed in to the dashboard (`GET /me`). An `admin` sees everything; a `member` sees only
+ * the Tickets they are involved in. `permissions` is what the role is granted, so the dashboard
+ * can hide what would only 403.
  * `person` is the channel identity linked to this sign-in, when there is one: always for a
  * member, and for an operator whose Google account is also linked from a channel.
  */
 export const Viewer = Schema.Struct({
-  role: Schema.Literals(["operator", "member"]),
+  role: Role,
+  permissions: PermissionMap,
   name: Schema.String,
   person: Schema.NullOr(
     Schema.Struct({
