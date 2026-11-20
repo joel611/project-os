@@ -196,6 +196,12 @@ Once it's set, Google sign-in takes only accounts of those domains, and anyone a
 
 ### Discord members on the dashboard
 
+### Dashboard roles
+
+Every dashboard user has a role. **Admin** can do everything. **Member** can read only the tickets they are involved in, the same view as **My tickets** below. A new Google sign-in (from `ADMIN_EMAILS` or `GOOGLE_ALLOWED_DOMAINS`) starts as a member, so the first thing to do is sign in with the `ADMIN_EMAIL` password, open **Members**, and promote the people who should manage the dashboard. The `ADMIN_EMAIL` operator is always an admin, and the last admin can't be demoted. Nothing needs configuring: roles live in the database, and a migration makes everyone who could already sign in an admin.
+
+Permissions are a resource and an action, for example `source:delete` or `ticket:update`. The table is `ROLE_GRANTS` in `packages/contracts/src/permissions.ts`; the Coordinator enforces it on each route and the dashboard hides what a role can't use.
+
 Anyone on Discord can also sign in to see **My tickets**: the tickets they asked for or wrote in (in the channel, the ticket's thread, or by answering its prompts). Nothing else of the dashboard is theirs. They run `/dashboard` in Discord, open the Google link it gives them (the same one-time link as `/connect provider:Google`), and then choose **Continue with Google** on the dashboard with that same Google account. The Coordinator matches the Google account id, not the email, to the Discord user who linked it. This works outside `ADMIN_EMAILS` and `GOOGLE_ALLOWED_DOMAINS`, since `DISCORD_MEMBER_ROLE_IDS` already decides who may use the bot. `/disconnect provider:Google` ends their dashboard access too. Operators whose Google account is linked the same way also get **My tickets** next to everything else. `/dashboard` needs `WEB_ORIGIN` set.
 
 ---

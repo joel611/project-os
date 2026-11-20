@@ -8,6 +8,7 @@ export type {
   GoogleSignIn,
   OAuthClientConfig,
   SessionUser,
+  SetRoleResult,
 } from "./auth.ts";
 export { SIGN_IN_DONE_PATH } from "./auth.ts";
 export type { Connections, LinkStart } from "./connections.ts";

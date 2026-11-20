@@ -157,6 +157,7 @@ createApp(
     mcp: runtime,
     auth,
     members: () => auth.members(),
+    setRole: (userId, role) => auth.setRole(userId, role),
     ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
     ...(connections && { connect: connections }),
   },

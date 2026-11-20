@@ -129,6 +129,8 @@ export interface Stack {
   readonly webUrl?: string;
   /** The Coordinator's Better Auth, for a test to set up a session the UI can't make. */
   readonly auth: AuthApi;
+  /** Sets the dashboard role of the user with this email, as an admin would on the Members page. */
+  readonly setRole: (email: string, role: "admin" | "member") => Promise<void>;
   /**
    * Connects an MCP client the way Claude Code does (SDK streamable HTTP). `token`: a registered
    * device's secret, as the Watcher puts in Claude Code's MCP config, or a sandbox session's.
@@ -347,6 +349,7 @@ export const startStack = async (options: {
         }),
       },
       members: () => auth!.members(),
+      setRole: (userId, role) => auth!.setRole(userId, role),
       // The auth instance is built after the app, so each call looks it up when it is made.
       ...(oauth && {
         sharedAccounts: new Proxy({} as SharedAccounts, {
@@ -412,6 +415,11 @@ export const startStack = async (options: {
     url,
     coordinator: target,
     operatorToken,
+    setRole: async (email, role) => {
+      const ctx = await auth!.auth.$context;
+      const user = await ctx.internalAdapter.findUserByEmail(email.toLowerCase());
+      await ctx.internalAdapter.updateUser(user!.user.id, { role });
+    },
     posted,
     createdChannels,
     createdThreads,

@@ -4,7 +4,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { api } from "./api.ts";
-import { memberMayVisit, useViewer } from "./viewer.ts";
+import { memberMayVisit, useCan, useViewer } from "./viewer.ts";
 
 describe("memberMayVisit", () => {
   it("keeps a member to My tickets and its ticket pages", () => {
@@ -18,13 +18,43 @@ describe("memberMayVisit", () => {
 
 describe("useViewer", () => {
   it("asks the Coordinator who is signed in", async () => {
-    const viewer = { role: "member", name: "Ada", person: null } as const;
+    const viewer = {
+      role: "member",
+      permissions: { ticket: ["read-own"] },
+      name: "Ada",
+      person: null,
+    } as const;
     vi.spyOn(api, "me").mockResolvedValue(viewer);
     const client = new QueryClient();
     const wrapper = ({ children }: { children: ReactNode }) =>
       createElement(QueryClientProvider, { client }, children);
     const { result } = renderHook(() => useViewer(), { wrapper });
     await waitFor(() => expect(result.current.data).toEqual(viewer));
+    client.clear();
+  });
+});
+
+describe("useCan", () => {
+  const wrapperFor =
+    (client: QueryClient) =>
+    ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+
+  it("follows the signed-in role's permissions, and is false until they are known", async () => {
+    vi.spyOn(api, "me").mockResolvedValue({
+      role: "member",
+      permissions: { ticket: ["read-own"] },
+      name: "Ada",
+      person: null,
+    });
+    const client = new QueryClient();
+    const { result } = renderHook(
+      () => ({ update: useCan("ticket", "update"), own: useCan("ticket", "read-own") }),
+      { wrapper: wrapperFor(client) },
+    );
+    expect(result.current).toEqual({ update: false, own: false });
+    await waitFor(() => expect(result.current.own).toBe(true));
+    expect(result.current.update).toBe(false);
     client.clear();
   });
 });

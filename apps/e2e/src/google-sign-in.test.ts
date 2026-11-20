@@ -92,6 +92,9 @@ describe("Google sign-in", () => {
     expect(verified.status).toBe(200);
     const token = verified.headers.get("set-auth-token")!;
     expect(token).toBeTruthy();
+    // Signing in makes a member, who sees only their own tickets, until an admin promotes them.
+    expect((await projects(token)).status).toBe(403);
+    await stack.setRole(ADA, "admin");
     const res = await projects(token);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
@@ -207,6 +210,7 @@ describe("Google sign-in limited to domains (GOOGLE_ALLOWED_DOMAINS)", () => {
 
     const { token } = await signedIn();
     expect(token).toBeTruthy();
+    await stack.setRole("eve@acme.com", "admin");
     expect((await projects(token!)).status).toBe(200);
     expect(stack.oauth!.authorizeRequests.at(-1)!.get("hd")).toBe("acme.com");
   });
@@ -244,6 +248,7 @@ describe("Google sign-in limited to domains (GOOGLE_ALLOWED_DOMAINS)", () => {
     stack.oauth!.email = "zed@acme.io";
     stack.oauth!.hd = "acme.io";
     const { token } = await signedIn();
+    await stack.setRole("zed@acme.io", "admin");
     expect((await projects(token!)).status).toBe(200);
     expect(stack.oauth!.authorizeRequests.at(-1)!.get("hd")).toBeNull();
   });

@@ -1,9 +1,16 @@
-import type { Member, SharedAccountsView } from "@project-os/contracts";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api";
+import { type Member, type Role, type SharedAccountsView } from "@project-os/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiError, describeError } from "@/api";
 import { CHANNEL_META, PROVIDER_META } from "@/components/source";
 import { Empty, QueryError } from "@/components/states";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -60,11 +67,57 @@ const Who = ({ m }: { m: Member }) => (
   <div className="flex min-w-0 flex-col">
     <span className="flex items-center gap-2 font-medium">
       <span className="truncate">{m.name}</span>
-      {m.admin && <Badge variant="secondary">Admin</Badge>}
+      {m.role === "admin" && <Badge variant="secondary">Admin</Badge>}
     </span>
     {m.email && <span className="truncate text-xs text-muted-foreground">{m.email}</span>}
   </div>
 );
+
+const ROLE_LABEL: Record<Role, string> = { admin: "Admin", member: "Member" };
+
+/**
+ * An admin's role picker for a dashboard operator. Anyone else (a channel person with no
+ * dashboard login of their own) is a member and has nothing to change.
+ */
+const RoleCell = ({ m }: { m: Member }) => {
+  const qc = useQueryClient();
+  const setRole = useMutation({
+    mutationFn: (role: Role) => api.setMemberRole(m.key, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }),
+  });
+  if (!m.operator) return <span className="text-muted-foreground">{ROLE_LABEL[m.role]}</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      <Select
+        items={(Object.keys(ROLE_LABEL) as Role[]).map((value) => ({
+          value,
+          label: ROLE_LABEL[value],
+        }))}
+        value={m.role}
+        onValueChange={(role) => role && setRole.mutate(role as Role)}
+        disabled={setRole.isPending}
+      >
+        <SelectTrigger aria-label={`Role of ${m.name}`} className="h-8 w-32 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {(Object.keys(ROLE_LABEL) as Role[]).map((value) => (
+            <SelectItem key={value} value={value}>
+              {ROLE_LABEL[value]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {setRole.error && (
+        <span className="text-xs text-destructive">
+          {setRole.error instanceof ApiError && setRole.error.code === "LastAdmin"
+            ? "Keep at least one admin."
+            : describeError(setRole.error)}
+        </span>
+      )}
+    </div>
+  );
+};
 
 const NO_SHARED: SharedAccountsView = { accounts: [], assignments: [] };
 
@@ -74,6 +127,9 @@ const Row = ({ m, now, shared }: { m: Member; now: Date; shared: SharedAccountsV
       <Who m={m} />
     </TableCell>
     <TableCell className="py-3.5">{dashboardCell(m, now)}</TableCell>
+    <TableCell className="py-3.5">
+      <RoleCell m={m} />
+    </TableCell>
     <TableCell className="py-3.5">{channelCell(m)}</TableCell>
     <TableCell className="py-3.5">{githubCell(m)}</TableCell>
     <TableCell className="py-3.5 pr-6">
@@ -88,6 +144,10 @@ const Card = ({ m, now, shared }: { m: Member; now: Date; shared: SharedAccounts
     <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1.5 text-sm">
       <dt className="text-muted-foreground">Dashboard</dt>
       <dd>{dashboardCell(m, now)}</dd>
+      <dt className="text-muted-foreground">Role</dt>
+      <dd>
+        <RoleCell m={m} />
+      </dd>
       <dt className="text-muted-foreground">Discord</dt>
       <dd>{channelCell(m)}</dd>
       <dt className="text-muted-foreground">GitHub</dt>
@@ -144,6 +204,7 @@ export const MembersView = () => {
                 <TableRow>
                   <TableHead className="pl-6">Person</TableHead>
                   <TableHead>Dashboard</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Discord</TableHead>
                   <TableHead>GitHub</TableHead>
                   <TableHead className="pr-6">Shared accounts</TableHead>
