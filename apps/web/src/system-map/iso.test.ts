@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { depthOrder, face, layout, nodeId, onLeftFace, onTop, packetAt, project } from "./iso.ts";
 
@@ -43,6 +44,71 @@ describe("layout", () => {
     const map = layout(["discord", "email"], []);
     const order = depthOrder(map.nodes).map((n) => n.id);
     expect(order.indexOf("adapter:discord")).toBeLessThan(order.indexOf("adapter:email"));
+  });
+});
+
+describe("layout properties", () => {
+  const channels = fc.subarray(["discord", "email", "chat"] as const);
+  const workers = fc
+    .uniqueArray(fc.stringMatching(/^[a-z0-9]{1,6}$/), { maxLength: 12 })
+    .map((ids) => ids.map((id) => ({ id, workerType: null })));
+
+  it("emits one block per channel, adapter, Worker and the Coordinator, all with unique ids", () => {
+    fc.assert(
+      fc.property(channels, workers, (c, w) => {
+        const map = layout(c, w);
+        const ids = map.nodes.map((n) => n.id);
+        expect(ids).toHaveLength(c.length * 2 + w.length + 1);
+        expect(new Set(ids).size).toBe(ids.length);
+      }),
+    );
+  });
+
+  it("only draws edges between blocks that exist", () => {
+    fc.assert(
+      fc.property(channels, workers, (c, w) => {
+        const map = layout(c, w);
+        for (const [from, to] of map.edges) {
+          expect(map.byId.has(from)).toBe(true);
+          expect(map.byId.has(to)).toBe(true);
+        }
+      }),
+    );
+  });
+
+  it("keeps every block inside the view box however many Workers there are", () => {
+    fc.assert(
+      fc.property(channels, workers, (c, w) => {
+        const map = layout(c, w);
+        for (const n of map.nodes) {
+          const p = project(n.u, n.v, n.h);
+          expect(p.x).toBeGreaterThan(map.viewBox.x);
+          expect(p.x).toBeLessThan(map.viewBox.x + map.viewBox.w);
+          expect(p.y).toBeGreaterThan(map.viewBox.y);
+        }
+      }),
+    );
+  });
+
+  it("orders blocks back to front", () => {
+    fc.assert(
+      fc.property(channels, workers, (c, w) => {
+        const depth = depthOrder(layout(c, w).nodes).map((n) => n.u + n.v);
+        expect(depth).toEqual([...depth].sort((a, b) => a - b));
+      }),
+    );
+  });
+
+  it("starts a packet on its source block and ends it on its target", () => {
+    fc.assert(
+      fc.property(channels, workers, fc.nat(), fc.nat(), (c, w, i, j) => {
+        const { nodes } = layout(c, w);
+        const a = nodes[i % nodes.length]!;
+        const b = nodes[j % nodes.length]!;
+        expect(packetAt(a, b, 0).floor.x).toBeCloseTo(project(a.u, a.v).x);
+        expect(packetAt(a, b, 1).floor.y).toBeCloseTo(project(b.u, b.v).y);
+      }),
+    );
   });
 });
 

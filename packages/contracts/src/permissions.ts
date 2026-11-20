@@ -48,7 +48,8 @@ export const allows = <R extends Resource>(
   resource: R,
   action: Action<R>,
 ): boolean =>
-  ((grants as Readonly<Record<string, ReadonlyArray<string>>>)[resource] ?? []).includes(action);
+  Object.hasOwn(grants, resource) &&
+  (grants as Readonly<Record<string, ReadonlyArray<string>>>)[resource]!.includes(action);
 
 /** Whether `role` may do `action` on `resource`. */
 export const can = <R extends Resource>(role: Role, resource: R, action: Action<R>): boolean =>

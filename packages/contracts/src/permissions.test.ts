@@ -1,5 +1,14 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
-import { allows, can, isRole, PERMISSION_STATEMENTS, ROLE_GRANTS, ROLES } from "./permissions.ts";
+import {
+  allows,
+  can,
+  isRole,
+  PERMISSION_STATEMENTS,
+  ROLE_GRANTS,
+  ROLES,
+  type Resource,
+} from "./permissions.ts";
 
 describe("role permissions", () => {
   it("grants an admin every action on every resource", () => {
@@ -28,5 +37,44 @@ describe("role permissions", () => {
     expect(ROLES.every(isRole)).toBe(true);
     expect(isRole("owner")).toBe(false);
     expect(isRole(undefined)).toBe(false);
+  });
+
+  describe("properties", () => {
+    const resource = fc.constantFrom(...(Object.keys(PERMISSION_STATEMENTS) as Resource[]));
+    const anyAction = fc.constantFrom(
+      ...new Set(Object.values(PERMISSION_STATEMENTS).flatMap((a) => [...a])),
+    );
+
+    it("never lets a member do anything an admin cannot", () => {
+      fc.assert(
+        fc.property(resource, anyAction, (r, a) => {
+          if (can("member", r, a as never)) expect(can("admin", r, a as never)).toBe(true);
+        }),
+      );
+    });
+
+    it("denies every resource and action the grants do not list", () => {
+      fc.assert(
+        fc.property(fc.string(), fc.string(), (r, a) => {
+          expect(allows({}, r as never, a as never)).toBe(false);
+        }),
+      );
+    });
+
+    it("allows exactly the listed actions", () => {
+      fc.assert(
+        fc.property(fc.array(fc.string()), fc.string(), (listed, probe) => {
+          expect(allows({ ticket: listed }, "ticket", probe as never)).toBe(listed.includes(probe));
+        }),
+      );
+    });
+
+    it("accepts a string as a role only when it is one of ROLES", () => {
+      fc.assert(
+        fc.property(fc.anything(), (v) => {
+          expect(isRole(v)).toBe(typeof v === "string" && (ROLES as readonly string[]).includes(v));
+        }),
+      );
+    });
   });
 });
