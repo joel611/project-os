@@ -156,9 +156,19 @@ const watcher = createWatcher({
         // 204: the ticket has no skills.
         return res.status === 200
           ? {
-              set: decodeURIComponent(res.headers.get("x-skill-set") ?? ""),
+              set: decodeURIComponent(res.headers.get("x-task-type") ?? ""),
               zip: new Uint8Array(await res.arrayBuffer()),
             }
+          : undefined;
+      },
+      fetchTaskType: async (url, secret) => {
+        const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+        logger.debug("task type: response", { status: res.status });
+        // 204: the ticket has no task type.
+        if (res.status !== 200) return undefined;
+        const body = (await res.json()) as { name?: unknown; instructions?: unknown };
+        return typeof body.name === "string" && typeof body.instructions === "string"
+          ? { name: body.name, instructions: body.instructions }
           : undefined;
       },
       // One private directory per session, removed when it ends.

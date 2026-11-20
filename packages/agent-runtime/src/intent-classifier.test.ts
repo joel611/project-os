@@ -225,7 +225,7 @@ describe.skipIf(!process.env.OPENROUTER_API_KEY)("live Jev (opt-in)", () => {
   });
 });
 
-describe("skill sets", () => {
+describe("task types", () => {
   const sets = [
     { id: "s-dev", name: "development", description: "Writing and fixing code" },
     { id: "s-doc", name: "writing", description: "" },
@@ -237,7 +237,7 @@ describe("skill sets", () => {
         return yield* c.classify({
           content: "fix the login bug",
           projectContext: "",
-          skillSets: sets,
+          taskTypes: sets,
           ...(ticketContext && { ticketContext }),
         });
       }).pipe(Effect.provide(makeIntentClassifier(s))),
@@ -247,11 +247,11 @@ describe("skill sets", () => {
     const s = scripted({
       answers: {
         intent: choice("new_request", 0.9),
-        skill_set: choice("development", 0.8),
+        task_type: choice("development", 0.8),
       },
     });
     const result = await withSets(s);
-    const question = s.requests[0]!.questions.skill_set as { criteria: Record<string, string> };
+    const question = s.requests[0]!.questions.task_type as { criteria: Record<string, string> };
     expect(question.criteria).toEqual({
       development: "Writing and fixing code",
       // A set with no description is judged by its name.
@@ -259,36 +259,36 @@ describe("skill sets", () => {
       none: expect.any(String),
     });
     // The answer is a set's name; the result carries its id.
-    expect(result.skillSet).toEqual({ choice: "s-dev", confidence: 0.8 });
+    expect(result.taskType).toEqual({ choice: "s-dev", confidence: 0.8 });
   });
 
   it("maps `none`, or a name it can't place, to none", async () => {
     const none = await withSets(
-      scripted({ answers: { intent: choice("new_request", 0.9), skill_set: choice("none", 0.9) } }),
+      scripted({ answers: { intent: choice("new_request", 0.9), task_type: choice("none", 0.9) } }),
     );
-    expect(none.skillSet).toEqual({ choice: "none", confidence: 0.9 });
+    expect(none.taskType).toEqual({ choice: "none", confidence: 0.9 });
     const unknown = await withSets(
       scripted({
-        answers: { intent: choice("new_request", 0.9), skill_set: choice("ghost", 0.9) },
+        answers: { intent: choice("new_request", 0.9), task_type: choice("ghost", 0.9) },
       }),
     );
-    expect(unknown.skillSet?.choice).toBe("none");
+    expect(unknown.taskType?.choice).toBe("none");
   });
 
   it("leaves the answer out when the model gave none", async () => {
     const result = await withSets(scripted({ answers: { intent: choice("new_request", 0.9) } }));
-    expect(result.skillSet).toBeUndefined();
+    expect(result.taskType).toBeUndefined();
   });
 
   it("doesn't ask for a message in a ticket's thread", async () => {
     const s = scripted({ answers: { intent: choice("follow_up", 0.9) } });
     await withSets(s, "Ticket: t");
-    expect(Object.keys(s.requests[0]!.questions)).not.toContain("skill_set");
+    expect(Object.keys(s.requests[0]!.questions)).not.toContain("task_type");
   });
 
   it("asks no skill question when there are no sets", async () => {
     const s = scripted({ answers: { intent: choice("new_request", 0.9) } });
     await call(makeIntentClassifier(s));
-    expect(Object.keys(s.requests[0]!.questions)).not.toContain("skill_set");
+    expect(Object.keys(s.requests[0]!.questions)).not.toContain("task_type");
   });
 });

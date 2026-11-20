@@ -21,7 +21,7 @@ export type SpawnProcess = (
   },
 ) => { exited: Promise<number> };
 
-/** What the Watcher needs to put a ticket's skill set on disk for one session. */
+/** What the Watcher needs to put a ticket's task type on disk for one session. */
 export interface SkillsIo {
   /**
    * The ticket's skills as a zip (entries `<slug>/<path>`) and the set's name, fetched with
@@ -31,6 +31,14 @@ export interface SkillsIo {
     url: string,
     secret: string,
   ) => Promise<{ readonly set: string; readonly zip: Uint8Array } | undefined>;
+  /**
+   * The ticket's task type, with the instructions that go into the session's prompt; undefined
+   * when the ticket has none or it can't be had.
+   */
+  readonly fetchTaskType: (
+    url: string,
+    secret: string,
+  ) => Promise<{ readonly name: string; readonly instructions: string } | undefined>;
   /** A new empty private directory. */
   readonly makeDir: () => string;
   readonly writeFile: (path: string, contents: string) => void;
@@ -51,6 +59,9 @@ export interface SpawnerIo {
 export const skillsUrl = (mcpUrl: string, ticketId: string): string =>
   `${mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(ticketId)}/skills`;
 
+/** Where a ticket's task type is served, next to the skill bundle. */
+export const taskTypeUrl = (mcpUrl: string, ticketId: string): string =>
+  `${mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(ticketId)}/task-type`;
 /** A file path inside `root`, or undefined when `relative` would climb out of it. */
 const inside = (root: string, relative: string): string | undefined => {
   if (relative.startsWith("/") || relative.includes("\\")) return undefined;
@@ -124,8 +135,20 @@ export const bunSpawner = (
   return {
     spawn: async (ticketId) => {
       const skills = ticketId ? await installSkills(config, io, agent, ticketId) : undefined;
+      const taskType =
+        ticketId && config.skills && io.skills
+          ? await io.skills
+              .fetchTaskType(taskTypeUrl(config.mcpUrl, ticketId), config.secret)
+              .catch((e: unknown) => {
+                logger.warn(`task type: fetch failed: ${errorMessage(e)}`, { ticketId });
+                return undefined;
+              })
+          : undefined;
       try {
-        const prompt = workerSessionStart(config.workerId, ticketId ? { ticketId } : {});
+        const prompt = workerSessionStart(config.workerId, {
+          ...(ticketId && { ticketId }),
+          ...(taskType && { taskType }),
+        });
         const launch = agent.launch({
           config,
           prompt,

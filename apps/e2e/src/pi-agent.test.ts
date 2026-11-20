@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/
 // through durableAgentRuntime. Faked: the chat model (pi-ai's faux provider, swapped in by a
 // PiAgent subclass); every outbound fetch is refused. Real: workerd, DO SQLite storage, D1.
 
-// Every migration, oldest first; safe to re-run on a database that already has them.
+// Every migration, oldest first.
 const migrations = new URL("../../../packages/db-sqlite/migrations/", import.meta.url);
 const migration = readdirSync(migrations)
   .sort()
@@ -54,15 +54,11 @@ const boot = async (root = mkdtempSync(join(dir, "state-"))) => {
   });
   instances.push(mf);
   const db = await mf.getD1Database("DB");
-  for (const statement of migration.split("--> statement-breakpoint")) {
+  // A restart reuses the persisted database: renames and ADDs only run once.
+  const migrated = await db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'orgs'").first();
+  for (const statement of migrated ? [] : migration.split("--> statement-breakpoint")) {
     if (statement.trim() === "") continue;
-    await db
-      .prepare(statement)
-      .run()
-      .catch((e: Error) => {
-        // An ALTER TABLE ADD from an earlier run on the same persisted database.
-        if (!/duplicate column/i.test(e.message)) throw e;
-      });
+    await db.prepare(statement).run();
   }
   await db
     .prepare(

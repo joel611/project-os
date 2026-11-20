@@ -10,8 +10,8 @@ import {
   type Executor,
   IntentClassifier,
   type IntentResult,
-  NO_SKILL_SET,
-  type SkillSetChoice,
+  NO_TASK_TYPE,
+  type TaskTypeChoice,
   type TicketScope,
 } from "@project-os/core";
 import {
@@ -21,8 +21,8 @@ import {
   INTENT_QUESTION,
   SCOPE_CRITERIA,
   SCOPE_QUESTION,
-  SKILL_SET_NONE_CRITERIA,
-  SKILL_SET_QUESTION,
+  TASK_TYPE_NONE_CRITERIA,
+  TASK_TYPE_QUESTION,
 } from "@project-os/system-prompts";
 import { Effect, Layer } from "effect";
 
@@ -66,33 +66,33 @@ const isScope = (value: string): value is TicketScope => value in SCOPES;
 const choiceOf = (answer: ClassifierAnswer | undefined) =>
   answer?.type === "choice" ? answer : undefined;
 
-/** The question for the offered skill sets: option keys are set names, mapped back to ids. */
-const skillSetQuestion = (sets: ReadonlyArray<SkillSetChoice>): ClassifierContext["questions"] => ({
-  skill_set: {
+/** The question for the offered task types: option keys are set names, mapped back to ids. */
+const taskTypeQuestion = (sets: ReadonlyArray<TaskTypeChoice>): ClassifierContext["questions"] => ({
+  task_type: {
     type: "choice",
-    instructions: SKILL_SET_QUESTION,
+    instructions: TASK_TYPE_QUESTION,
     criteria: {
       ...Object.fromEntries(sets.map((s) => [s.name, s.description || s.name])),
-      [NO_SKILL_SET]: SKILL_SET_NONE_CRITERIA,
+      [NO_TASK_TYPE]: TASK_TYPE_NONE_CRITERIA,
     },
   },
 });
 
 const toResult = (
   result: ClassifierResult,
-  skillSets: ReadonlyArray<SkillSetChoice>,
+  taskTypes: ReadonlyArray<TaskTypeChoice>,
 ): IntentResult => {
   const intent = choiceOf(result.answers.intent);
   if (!intent) throw new ClassifierError({ message: "classifier returned no `intent` answer" });
   const executor = choiceOf(result.answers.executor);
   const scope = choiceOf(result.answers.scope);
-  const skillSet = choiceOf(result.answers.skill_set);
-  const chosenSet = skillSet && skillSets.find((s) => s.name === skillSet.choice);
+  const taskType = choiceOf(result.answers.task_type);
+  const chosenSet = taskType && taskTypes.find((s) => s.name === taskType.choice);
   return {
-    ...(skillSet && {
-      skillSet: {
-        choice: chosenSet ? chosenSet.id : NO_SKILL_SET,
-        confidence: skillSet.confidence,
+    ...(taskType && {
+      taskType: {
+        choice: chosenSet ? chosenSet.id : NO_TASK_TYPE,
+        confidence: taskType.confidence,
       },
     }),
     ...(scope && isScope(scope.choice)
@@ -129,7 +129,7 @@ export const makeIntentClassifier = (input: {
   readonly model: ClassifierModel<ClassifierApi>;
 }) =>
   Layer.succeed(IntentClassifier, {
-    classify: ({ content, projectContext, ticketContext, skillSets = [] }) =>
+    classify: ({ content, projectContext, ticketContext, taskTypes = [] }) =>
       Effect.tryPromise({
         try: () =>
           input.classifier.classify(
@@ -138,9 +138,9 @@ export const makeIntentClassifier = (input: {
               ? {
                   state: { message: content, project_context: projectContext },
                   questions:
-                    skillSets.length === 0
+                    taskTypes.length === 0
                       ? QUESTIONS
-                      : { ...QUESTIONS, ...skillSetQuestion(skillSets) },
+                      : { ...QUESTIONS, ...taskTypeQuestion(taskTypes) },
                 }
               : {
                   state: {
@@ -156,7 +156,7 @@ export const makeIntentClassifier = (input: {
         Effect.flatMap((result) =>
           result.stopReason === "stop"
             ? Effect.try({
-                try: () => toResult(result, skillSets),
+                try: () => toResult(result, taskTypes),
                 catch: (e) => e as ClassifierError,
               })
             : Effect.fail(

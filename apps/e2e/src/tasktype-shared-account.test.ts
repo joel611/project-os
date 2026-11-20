@@ -12,11 +12,11 @@ import { type Stack, startStack } from "./stack.ts";
 
 const skillMd = "---\nname: tdd\ndescription: Test first\n---\n# Test first";
 const classifier = Layer.succeed(IntentClassifier, {
-  classify: ({ skillSets = [] }) =>
+  classify: ({ taskTypes = [] }) =>
     Effect.succeed({
       intent: "new_request",
       confidence: 1,
-      ...(skillSets[0] && { skillSet: { choice: skillSets[0].id, confidence: 1 } }),
+      ...(taskTypes[0] && { taskType: { choice: taskTypes[0].id, confidence: 1 } }),
     }),
 });
 
@@ -91,7 +91,7 @@ const linkShared = async (identity = 900, label = "Ops bot") => {
   return created.account.id;
 };
 
-const browseSkills = () => stack!.json("POST", "/skill-sets/browse", { source: "acme/skills" });
+const browseSkills = () => stack!.json("POST", "/task-types/browse", { source: "acme/skills" });
 const apiAuth = () =>
   requests.filter((r) => r.host === "api.github.com").map((r) => r.authorization);
 const expectApiAuth = (token: string | null) => {
@@ -104,7 +104,7 @@ const expectApiAuth = (token: string | null) => {
   expect(new Set(rawAuth)).toEqual(new Set([null]));
 };
 
-describe("skillset shared GitHub credentials", () => {
+describe("tasktype shared GitHub credentials", () => {
   it("rejects mutually exclusive skill source providers", async () => {
     await expect(
       startStack({
@@ -131,8 +131,8 @@ describe("skillset shared GitHub credentials", () => {
 
     const found = await browseSkills();
     expect(found.skills).toEqual([expect.objectContaining({ slug: "tdd", name: "tdd" })]);
-    const set = await s.json("POST", "/skill-sets", { name: "development", description: "Code" });
-    const imported = await s.json("POST", `/skill-sets/${set.id}/skills`, {
+    const set = await s.json("POST", "/task-types", { name: "development", description: "Code" });
+    const imported = await s.json("POST", `/task-types/${set.id}/skills`, {
       source: "acme/skills",
       slugs: ["tdd"],
     });
@@ -157,7 +157,7 @@ describe("skillset shared GitHub credentials", () => {
       fetch,
     );
     const [ticket] = await s.json("GET", `/projects/${projectId}/tickets`);
-    expect(ticket.skillSetId).toBe(set.id);
+    expect(ticket.taskTypeId).toBe(set.id);
     const bundle = await fetch(`${s.url}/tickets/${ticket.id}/skills`, {
       headers: { authorization: `Bearer ${secret}` },
     });
