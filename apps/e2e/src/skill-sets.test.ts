@@ -21,6 +21,7 @@ import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import { bunSpawner } from "../../watcher/src/spawn.ts";
 import { type Stack, startStack } from "./stack.ts";
+import { collectLogger } from "../../watcher/src/logger.ts";
 
 // Skill sets, end to end: an Operator builds "development" in the dashboard API (browse a repo,
 // pick a skill), Jev routes a Discord request to it, and the skills reach the Worker before the
@@ -238,7 +239,7 @@ describe("skill sets", () => {
       config,
       client: httpMcpClient(config.mcpUrl, fetch, config.secret),
       spawner,
-      log: (m) => logs.push(m),
+      logger: collectLogger(logs),
     });
     await watcher.pollOnce();
     await new Promise((r) => setTimeout(r, 50));

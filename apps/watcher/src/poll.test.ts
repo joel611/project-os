@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { WatcherConfig } from "./config.ts";
 import { createWatcher, type McpClient } from "./poll.ts";
 import type { Spawner } from "./spawn.ts";
+import { collectLogger } from "./logger.ts";
 
 const config: WatcherConfig = {
   mcpUrl: "http://mcp",
@@ -36,7 +37,7 @@ const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {
     config: { ...config, ...cfg },
     client,
     spawner,
-    log: (m) => logs.push(m),
+    logger: collectLogger(logs),
   });
   return { w, calls, spawned, exits, logs };
 };
@@ -112,7 +113,7 @@ describe("watcher poll", () => {
         },
       },
       spawner: { spawn: async () => 0 },
-      log: (m) => logs.push(m),
+      logger: collectLogger(logs),
     });
     await expect(w.pollOnce()).resolves.toBeUndefined();
     expect(logs.some((l) => l.includes("down"))).toBe(true);
@@ -126,7 +127,7 @@ describe("watcher poll error reporting", () => {
       config,
       client: { callTool: callTool ?? (async () => ({ tickets: [{ id: "t" }] })) },
       spawner: { spawn },
-      log: (m) => logs.push(m),
+      logger: collectLogger(logs),
     });
     await w.pollOnce();
     await new Promise((r) => setTimeout(r, 0));

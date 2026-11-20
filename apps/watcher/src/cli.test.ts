@@ -3,12 +3,15 @@ import { parseArgs, USAGE } from "./cli.ts";
 
 describe("parseArgs", () => {
   it("runs with no arguments", () => {
-    expect(parseArgs([])).toEqual({ kind: "run" });
+    expect(parseArgs([])).toEqual({ kind: "run", verbose: false });
+    expect(parseArgs(["--verbose"])).toEqual({ kind: "run", verbose: true });
+    expect(parseArgs(["-v"])).toEqual({ kind: "run", verbose: true });
   });
 
   it("parses register with its code, server and name", () => {
     expect(parseArgs(["register", "abc", "--server", "https://c", "--name", "my laptop"])).toEqual({
       kind: "register",
+      verbose: false,
       token: "abc",
       server: "https://c",
       name: "my laptop",
@@ -30,6 +33,7 @@ describe("parseArgs", () => {
       ]),
     ).toEqual({
       kind: "register",
+      verbose: false,
       token: "abc",
       server: "https://c",
       agent: "codex",
@@ -48,7 +52,15 @@ describe("parseArgs", () => {
   });
 
   it("documents every command in --help", () => {
-    for (const word of ["register", "uninstall", "--help", "--agent", "--model", "--yes"]) {
+    for (const word of [
+      "register",
+      "uninstall",
+      "--help",
+      "--agent",
+      "--model",
+      "--yes",
+      "--verbose",
+    ]) {
       expect(USAGE).toContain(word);
     }
   });

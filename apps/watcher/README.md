@@ -35,6 +35,7 @@ A code from `/register-worker` makes this computer your personal worker. A code 
 | `--name <name>`   | no       | Display name for this device. Defaults to the worker id.                                           |
 | `--agent <agent>` | no       | `claude`, `pi`, or `codex`. Saved with the registration. Default `claude`.                         |
 | `--model <model>` | no       | Passed to the agent as `--model`. Saved with the registration. Unset uses the agent's own default. |
+| `--verbose`, `-v` | no       | Debug logging for this run. Also works on the run command with no `register`.                      |
 
 ## Environment variables
 
@@ -44,12 +45,19 @@ Read at run time. Where one overrides a saved choice, it applies to that run onl
 | ------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `WATCHER_AGENT`           | saved agent                                                | Force `claude`, `pi`, or `codex`. Any other value is an error.                   |
 | `WATCHER_MODEL`           | saved model                                                | Model for the agent. A saved model only follows the agent it was saved with.     |
+| `WATCHER_VERBOSE`         | off                                                        | `1`, `true`, or `on` is the same as `--verbose`.                                 |
 | `WATCHER_SKILLS`          | on                                                         | `0`, `false`, or `off` skips installing the Ticket's skill set before a session. |
 | `POLL_INTERVAL_MS`        | `300000` (5 minutes)                                       | Time between polls. This is the pickup latency for a new Ticket.                 |
 | `MAX_SESSIONS`            | `1`                                                        | Agent sessions this Watcher runs at once.                                        |
 | `WORKER_CWD`              | current directory                                          | Working directory for agent sessions.                                            |
 | `PROJECT_OS_URL`          | none                                                       | `register` only: Coordinator URL when `--server` is omitted.                     |
 | `PROJECT_OS_WATCHER_HOME` | `$XDG_CONFIG_HOME/project-os`, else `~/.config/project-os` | Directory holding the saved registration.                                        |
+
+## Logging
+
+Logs go to stdout through [pino](https://getpino.io), each line with a timestamp. A terminal gets colored output, fields on indented lines below (`[2026-11-20 15:20:04.123] INFO: session start (1/1) for t1`). A pipe or Docker gets JSON lines with an ISO `time`.
+
+By default it logs startup, session start and exit with duration, skill installs, and failures. `--verbose` (or `WATCHER_VERBOSE=1`) adds each heartbeat, assigned-ticket list, MCP request status and timing, skill fetch result, and the agent launch (command, working directory, model). Secrets and the prompt are never logged.
 
 ## Agent selection
 

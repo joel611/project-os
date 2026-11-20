@@ -3,6 +3,7 @@ import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
 import { bunSpawner, skillsUrl, type SkillsIo, type SpawnerIo } from "./spawn.ts";
 import { strToU8, zipSync } from "fflate";
+import { collectLogger } from "./logger.ts";
 
 const config: WatcherConfig = {
   mcpUrl: "http://coord:8080/mcp",
@@ -134,7 +135,7 @@ describe("skills for a ticket", () => {
     const logs: string[] = [];
     const { io } = fakeIo();
     return {
-      io: { ...io, skills, log: (m: string) => logs.push(m) },
+      io: { ...io, skills, logger: collectLogger(logs) },
       written,
       removed,
       urls,
@@ -174,7 +175,8 @@ describe("skills for a ticket", () => {
     expect(cmd[cmd.indexOf("--add-dir") + 1]).toBe("/tmp/sk");
     expect(cmd[2]).toContain("This session is for ticket `t1`");
     expect(s.removed).toEqual(["/tmp/sk"]);
-    expect(s.logs[0]).toContain('installed 1 skill(s) from "development"');
+    expect(s.logs).toContain('skills: skipped unsafe path "tdd/../escape.md"');
+    expect(s.logs.some((l) => l.includes('installed 1 skill(s) from "development"'))).toBe(true);
   });
 
   it("lays skills out the way Pi wants them", async () => {
