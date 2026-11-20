@@ -7,6 +7,7 @@ import { loadConfig } from "../../watcher/src/config.ts";
 import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import { type Stack, startStack } from "./stack.ts";
+import { silentLogger } from "../../watcher/src/logger.ts";
 
 // Discord message -> daytona_pi Ticket -> sandbox launcher (pool: Daytona) -> session -> reply.
 // The Daytona SDK is faked at the SandboxRunner seam. The sandbox's Pi session is played by an
@@ -109,7 +110,7 @@ describe("daytona worker loop", () => {
       config,
       client: httpMcpClient(config.mcpUrl, fetch, config.secret),
       spawner: { spawn: async () => spawns.push(1) },
-      log: () => {},
+      logger: silentLogger,
     });
     await watcher.pollOnce();
 

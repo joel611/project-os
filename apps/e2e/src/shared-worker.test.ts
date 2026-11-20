@@ -9,6 +9,7 @@ import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import type { Spawner } from "../../watcher/src/spawn.ts";
 import { ADMIN_CHANNEL, ADMIN_USER, type Stack, startStack } from "./stack.ts";
+import { collectLogger } from "../../watcher/src/logger.ts";
 
 // A shared worker: an admin runs `/register-worker shared:True`, the Watcher on that computer
 // trades the code for credentials, then (real MCP client, real poll loop, against the real
@@ -49,7 +50,7 @@ const watcherFor = (session: () => Promise<number>) => {
     config,
     client: httpMcpClient(config.mcpUrl, fetch, config.secret),
     spawner,
-    log: (m) => logs.push(m),
+    logger: collectLogger(logs),
   });
   return { watcher, logs, sessions };
 };

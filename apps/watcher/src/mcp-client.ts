@@ -1,3 +1,4 @@
+import { type Logger, silentLogger } from "./logger.ts";
 import type { McpClient } from "./poll.ts";
 
 interface RpcResponse {
@@ -7,10 +8,16 @@ interface RpcResponse {
 
 // Minimal MCP streamable-HTTP client: one JSON-RPC tools/call per request.
 // `secret`: a registered device's Bearer token (unset only in tests of the anonymous path).
-export const httpMcpClient = (url: string, fetcher: typeof fetch, secret?: string): McpClient => {
+export const httpMcpClient = (
+  url: string,
+  fetcher: typeof fetch,
+  secret?: string,
+  logger: Logger = silentLogger,
+): McpClient => {
   let id = 0;
   return {
     callTool: async (name, args) => {
+      const startedAt = Date.now();
       const res = await fetcher(url, {
         method: "POST",
         headers: {
@@ -25,6 +32,7 @@ export const httpMcpClient = (url: string, fetcher: typeof fetch, secret?: strin
           params: { name, arguments: args },
         }),
       });
+      logger.debug(`mcp ${name}`, { status: res.status, ms: Date.now() - startedAt });
       if (!res.ok) throw new Error(`MCP ${name}: HTTP ${res.status}`);
       const body = (await res.json()) as RpcResponse;
       if (body.error) throw new Error(`MCP ${name}: ${body.error.message}`);

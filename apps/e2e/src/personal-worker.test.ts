@@ -11,6 +11,7 @@ import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { createWatcher } from "../../watcher/src/poll.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
 import { type Stack, startStack } from "./stack.ts";
+import { silentLogger } from "../../watcher/src/logger.ts";
 
 // /register-worker in Discord -> Coordinator /commands -> one-time code in a private reply ->
 // the Watcher on Ada's computer runs the command line from that reply: POST /workers/register
@@ -119,7 +120,7 @@ describe("personal worker", () => {
           return s;
         },
       },
-      log: () => {},
+      logger: silentLogger,
     });
     await watcher.pollOnce(); // first heartbeat: now online, nothing to do yet
     expect(sessions).toEqual([]);
