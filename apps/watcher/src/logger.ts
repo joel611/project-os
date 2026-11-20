@@ -45,7 +45,7 @@ export const createLogger = (options: {
           colorize: true,
           translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
           ignore: "pid,hostname",
-          sync: true,
+          destination: process.stdout,
         })
       : process.stdout,
   );
