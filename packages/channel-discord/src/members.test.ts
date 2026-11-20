@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { isAllowedMember, memberRoleIds, parseIds } from "./members.ts";
 
@@ -10,6 +11,24 @@ describe("parseIds", () => {
 
   it("splits and trims a comma-separated list", () => {
     expect([...parseIds(" r1, r2 ,,r3")!]).toEqual(["r1", "r2", "r3"]);
+  });
+
+  it("returns exactly the ids it was given, ignoring spacing and empty entries", () => {
+    const id = fc.stringMatching(/^[A-Za-z0-9]{1,8}$/);
+    fc.assert(
+      fc.property(fc.array(id, { minLength: 1 }), fc.constantFrom("", " ", "  "), (ids, pad) => {
+        const parsed = parseIds(ids.map((i) => `${pad}${i}${pad}`).join(",") + ",,");
+        expect([...parsed!].sort()).toEqual([...new Set(ids)].sort());
+      }),
+    );
+  });
+
+  it("applies no gate when the list holds only separators and blanks", () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[ ,]*$/), (raw) => {
+        expect(parseIds(raw)).toBeUndefined();
+      }),
+    );
   });
 });
 
