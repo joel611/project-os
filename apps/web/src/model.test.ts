@@ -9,6 +9,7 @@ import {
   hasAttachments,
   isShownInline,
   lastSeen,
+  newestFirst,
   workerGroup,
   workerName,
   relativeTime,
@@ -60,6 +61,25 @@ describe("splitTickets", () => {
     ]);
     expect(active.map((t) => t.id)).toEqual(["new-running", "old-open"]);
     expect(done.map((t) => t.id)).toEqual(["failed", "done"]);
+  });
+});
+
+describe("newestFirst", () => {
+  it("orders events newest first and keeps feed order for equal timestamps reversed", () => {
+    const ev = (id: string, createdAt: string) => ({ id, createdAt });
+    const out = newestFirst([
+      ev("a", "2026-01-01T00:00:00Z"),
+      ev("b", "2026-01-03T00:00:00Z"),
+      ev("c", "2026-01-02T00:00:00Z"),
+      ev("d", "2026-01-02T00:00:00Z"),
+    ]);
+    expect(out.map((e) => e.id)).toEqual(["b", "d", "c", "a"]);
+  });
+
+  it("does not mutate its input", () => {
+    const input = [{ createdAt: "2026-01-01T00:00:00Z" }, { createdAt: "2026-01-02T00:00:00Z" }];
+    newestFirst(input);
+    expect(input[0]?.createdAt).toBe("2026-01-01T00:00:00Z");
   });
 });
 
