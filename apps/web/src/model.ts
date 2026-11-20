@@ -57,6 +57,15 @@ export const splitTickets = (tickets: ReadonlyArray<Ticket>) => ({
   done: tickets.filter((t) => STATUS[t.status].terminal).sort(byRecentActivity),
 });
 
+/** Ticket activity timeline, newest first. Stable for events sharing a timestamp (later in the feed wins). */
+export const newestFirst = <E extends { readonly createdAt: string }>(
+  events: ReadonlyArray<E>,
+): E[] =>
+  events
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => b.e.createdAt.localeCompare(a.e.createdAt) || b.i - a.i)
+    .map(({ e }) => e);
+
 const UNITS = [
   { ms: 86_400_000, suffix: "d" },
   { ms: 3_600_000, suffix: "h" },
