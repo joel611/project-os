@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
 // Dependency rules from apps/site/reference/architecture.md §8.4.
@@ -28,8 +29,15 @@ export default defineConfig({
     "*.{js,jsx,ts,tsx,json,jsonc,css,md,mdx}": "vp check --fix",
     "*.{ts,tsx,js,jsx}": "vp test related --run --passWithNoTests",
   },
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./apps/web/src", import.meta.url)) },
+  },
   test: {
-    include: ["apps/*/src/**/*.test.ts", "packages/*/src/**/*.test.ts", "libs/*/src/**/*.test.ts"],
+    include: [
+      "apps/*/src/**/*.test.{ts,tsx}",
+      "packages/*/src/**/*.test.ts",
+      "libs/*/src/**/*.test.ts",
+    ],
     coverage: {
       provider: "v8",
       include: ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "libs/*/src/**/*.ts"],

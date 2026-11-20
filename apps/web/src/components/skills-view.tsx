@@ -99,7 +99,7 @@ const SetDialog = ({ set, onClose }: { set?: SkillSetDetail["set"]; onClose: () 
 };
 
 /** Paste a repo, pick which of its skills to download into the set. */
-const AddSkillsDialog = ({ set, onClose }: { set: SkillSetDetail; onClose: () => void }) => {
+export const AddSkillsDialog = ({ set, onClose }: { set: SkillSetDetail; onClose: () => void }) => {
   const qc = useQueryClient();
   const [source, setSource] = useState("");
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
@@ -117,6 +117,7 @@ const AddSkillsDialog = ({ set, onClose }: { set: SkillSetDetail; onClose: () =>
   });
   const found: ReadonlyArray<SkillCandidate> = browse.data?.skills ?? [];
   const have = new Set(set.skills.map((s) => `${s.source}/${s.slug}`));
+  const allPicked = found.length > 0 && found.every((c) => picked.has(c.slug));
   const toggle = (slug: string) =>
     setPicked((prev) => {
       const next = new Set(prev);
@@ -154,34 +155,49 @@ const AddSkillsDialog = ({ set, onClose }: { set: SkillSetDetail; onClose: () =>
           <p className="text-sm text-muted-foreground">No skills found in {browse.data.source}.</p>
         )}
         {found.length > 0 && (
-          <ul className="flex flex-col divide-y rounded-lg border">
-            {found.map((c) => {
-              const already = have.has(`${c.source}/${c.slug}`);
-              return (
-                <li key={c.path}>
-                  <label className="flex cursor-pointer items-start gap-3 p-3 text-sm">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={picked.has(c.slug)}
-                      onChange={() => toggle(c.slug)}
-                    />
-                    <span className="flex min-w-0 flex-col gap-0.5">
-                      <span className="flex items-center gap-2 font-medium">
-                        {c.name}
-                        {already && <Badge variant="secondary">In set</Badge>}
-                      </span>
-                      {c.description && (
-                        <span className="line-clamp-2 text-xs text-muted-foreground">
-                          {c.description}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {picked.size} of {found.length} selected
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPicked(allPicked ? new Set() : new Set(found.map((c) => c.slug)))}
+              >
+                {allPicked ? "Deselect all" : "Select all"}
+              </Button>
+            </div>
+            <ul className="flex flex-col divide-y rounded-lg border">
+              {found.map((c) => {
+                const already = have.has(`${c.source}/${c.slug}`);
+                return (
+                  <li key={c.path}>
+                    <label className="flex cursor-pointer items-start gap-3 p-3 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={picked.has(c.slug)}
+                        onChange={() => toggle(c.slug)}
+                      />
+                      <span className="flex min-w-0 flex-col gap-0.5">
+                        <span className="flex items-center gap-2 font-medium">
+                          {c.name}
+                          {already && <Badge variant="secondary">In set</Badge>}
                         </span>
-                      )}
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
+                        {c.description && (
+                          <span className="line-clamp-2 text-xs text-muted-foreground">
+                            {c.description}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
         <Problem error={add.error} />
         <DialogFooter>
