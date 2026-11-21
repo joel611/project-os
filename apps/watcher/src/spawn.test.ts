@@ -15,6 +15,7 @@ const config: WatcherConfig = {
   cwd: "/work",
   secret: "s3cret",
   skills: true,
+  runLog: true,
 };
 
 const fakeIo = (existing: Record<string, string> = {}) => {

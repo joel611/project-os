@@ -40,6 +40,24 @@ export interface SandboxLauncherConfig {
   readonly model: string;
   readonly timeoutSeconds?: number;
   readonly log: (message: string) => void;
+  /**
+   * Called when a session ends, with everything it printed, so the Coordinator can keep it as
+   * the ticket's run log. `secrets` are the values the session was given (its token, the model
+   * key), to be masked before anything is stored. A throwing hook is logged, never fatal.
+   */
+  readonly onSessionEnd?: (session: SandboxSessionEnd) => void | Promise<void>;
+}
+
+/** What a finished sandbox session reports to `onSessionEnd`. */
+export interface SandboxSessionEnd {
+  readonly ticketId: string;
+  readonly workerId: string;
+  readonly agent: "pi";
+  readonly model: string;
+  readonly startedAt: string;
+  readonly exitCode: number;
+  readonly output: string;
+  readonly secrets: ReadonlyArray<string>;
 }
 
 /** Name of the Coordinator in Pi's `mcp.json`; its tools are `mcp__project-os__*`. */
@@ -159,6 +177,24 @@ export const makeSandboxLauncher = (
           if (provider === undefined) throw new Error(`no ${workerType} provider in the pool`);
           const name = SANDBOX_PROVIDER_OF[provider.workerType];
           config.log(`${name}: launching ${workerId} for ticket ${ticketId}`);
+          const startedAt = new Date().toISOString();
+          const keep = (exitCode: number, output: string) =>
+            Promise.resolve(
+              config.onSessionEnd?.({
+                ticketId,
+                workerId,
+                agent: "pi",
+                model: config.model,
+                startedAt,
+                exitCode,
+                output,
+                secrets: [mcpToken, config.openrouterApiKey],
+              }),
+            ).catch((e: unknown) =>
+              config.log(
+                `${name}: ${workerId} run log not kept: ${e instanceof Error ? e.message : String(e)}`,
+              ),
+            );
           provider.runner
             .run({
               env: sessionEnv(config, {
@@ -171,16 +207,19 @@ export const makeSandboxLauncher = (
               timeoutSeconds,
             })
             .then(
-              ({ exitCode, output }) =>
+              ({ exitCode, output }) => {
                 config.log(
                   exitCode === 0
                     ? `${name}: ${workerId} finished`
                     : `${name}: ${workerId} exited ${exitCode}: ${output.slice(-500)}`,
-                ),
-              (e) =>
-                config.log(
-                  `${name}: ${workerId} failed: ${e instanceof Error ? e.message : String(e)}`,
-                ),
+                );
+                return keep(exitCode, output);
+              },
+              (e) => {
+                const message = e instanceof Error ? e.message : String(e);
+                config.log(`${name}: ${workerId} failed: ${message}`);
+                return keep(1, `Session failed to run: ${message}`);
+              },
             );
         },
         catch: (e) => new LaunchFailed({ message: e instanceof Error ? e.message : String(e) }),

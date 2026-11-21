@@ -3,15 +3,16 @@ import { parseArgs, USAGE } from "./cli.ts";
 
 describe("parseArgs", () => {
   it("runs with no arguments", () => {
-    expect(parseArgs([])).toEqual({ kind: "run", verbose: false });
-    expect(parseArgs(["--verbose"])).toEqual({ kind: "run", verbose: true });
-    expect(parseArgs(["-v"])).toEqual({ kind: "run", verbose: true });
+    expect(parseArgs([])).toEqual({ kind: "run", verbose: false, runLog: true });
+    expect(parseArgs(["--verbose"])).toEqual({ kind: "run", verbose: true, runLog: true });
+    expect(parseArgs(["-v"])).toEqual({ kind: "run", verbose: true, runLog: true });
   });
 
   it("parses register with its code, server and name", () => {
     expect(parseArgs(["register", "abc", "--server", "https://c", "--name", "my laptop"])).toEqual({
       kind: "register",
       verbose: false,
+      runLog: true,
       token: "abc",
       server: "https://c",
       name: "my laptop",
@@ -34,6 +35,7 @@ describe("parseArgs", () => {
     ).toEqual({
       kind: "register",
       verbose: false,
+      runLog: true,
       token: "abc",
       server: "https://c",
       agent: "codex",

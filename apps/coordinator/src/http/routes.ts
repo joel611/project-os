@@ -36,6 +36,8 @@ import {
   getTicket,
   listMyTicketAttachments,
   listMyTickets,
+  listTicketRuns,
+  readTicketRun,
   handleInbound,
   readAudit,
   readProjectAudit,
@@ -61,6 +63,7 @@ import {
   type PromptAnswerConfig,
   type ProjectRepository,
   type ProjectSourceRepository,
+  type RunRepository,
   type Sidekick,
   type SkillRepository,
   type SkillSource,
@@ -145,6 +148,7 @@ export type HttpEnv =
   | AuditLogRepository
   | ProjectRepository
   | ProjectSourceRepository
+  | RunRepository
   | Sidekick
   | SkillRepository
   | SkillSource
@@ -634,6 +638,25 @@ export const httpRoutes = ({
         ? listMyTicketAttachments(params.id, scope.person)
         : listTicketAttachments(params.id);
       return reply(set, toResult(Effect.map(attachments, (list) => ({ attachments: list }))));
+    })
+    .get("/tickets/:id/runs", async ({ params, request, set }) => {
+      const scope = await ticketScope(request);
+      if (scope.none) {
+        set.status = 404;
+        return { error: "TicketNotFound" };
+      }
+      return reply(
+        set,
+        toResult(listTicketRuns(params.id, scope.person).pipe(Effect.map((runs) => ({ runs })))),
+      );
+    })
+    .get("/tickets/:id/runs/:runId", async ({ params, request, set }) => {
+      const scope = await ticketScope(request);
+      if (scope.none) {
+        set.status = 404;
+        return { error: "TicketNotFound" };
+      }
+      return reply(set, toResult(readTicketRun(params.id, params.runId, scope.person)));
     })
     .post("/tickets/:id/status", ({ params, body, set }) =>
       reply(

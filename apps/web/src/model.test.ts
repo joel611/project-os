@@ -20,6 +20,9 @@ import {
   sourceUrl,
   splitTickets,
   STATUS,
+  filterRunEvents,
+  runDuration,
+  runToJsonl,
 } from "./model.ts";
 
 const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): Ticket => ({
@@ -355,5 +358,35 @@ describe("normalizeAlias", () => {
         },
       ),
     );
+  });
+});
+
+describe("run helpers", () => {
+  const now = new Date("2026-11-04T01:00:00.000Z");
+  it("says how long a run took, or has been going", () => {
+    const at = (iso: string) => ({ startedAt: "2026-11-04T00:00:00.000Z", endedAt: iso });
+    expect(runDuration(at("2026-11-04T00:00:42.000Z"), now)).toBe("42s");
+    expect(runDuration(at("2026-11-04T00:02:05.000Z"), now)).toBe("2m 5s");
+    expect(runDuration(at("2026-11-04T01:30:00.000Z"), now)).toBe("1h 30m");
+    expect(runDuration({ startedAt: "2026-11-04T00:59:00.000Z", endedAt: null }, now)).toBe(
+      "1m 0s",
+    );
+  });
+
+  const events = [
+    { at: "t", type: "message", text: "Reading the login page" },
+    { at: "t", type: "tool_call", tool: "Bash", text: "ls -la" },
+    { at: "t", type: "tool_result", tool: "Bash", text: "total 0" },
+  ] as const;
+  it("filters by search (text and tool) and by hidden types", () => {
+    expect(filterRunEvents(events, { search: "", hidden: new Set() })).toHaveLength(3);
+    expect(filterRunEvents(events, { search: "LOGIN", hidden: new Set() })).toHaveLength(1);
+    expect(
+      filterRunEvents(events, { search: "bash", hidden: new Set(["tool_result"]) }),
+    ).toHaveLength(1);
+  });
+
+  it("exports one JSON event per line", () => {
+    expect(runToJsonl(events).trim().split("\n")).toHaveLength(3);
   });
 });

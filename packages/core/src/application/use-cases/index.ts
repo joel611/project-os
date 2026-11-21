@@ -10,6 +10,7 @@ export * from "./audit.ts";
 export * from "./memory.ts";
 export * from "./on-ticket-completed.ts";
 export * from "./sidekick.ts";
+export * from "./runs.ts";
 export * from "./skills.ts";
 export * from "./tickets.ts";
 export * from "./connections.ts";

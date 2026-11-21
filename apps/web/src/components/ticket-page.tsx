@@ -6,6 +6,7 @@ import { type SyntheticEvent, useState } from "react";
 import { api, ApiError, describeError, type TicketDetail } from "@/api";
 import { Empty, QueryError } from "@/components/states";
 import { TicketFiles } from "@/components/ticket-files";
+import { TicketRuns } from "@/components/ticket-runs";
 import { StatusBadge, ToneDot } from "@/components/tone";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,6 +76,7 @@ const Main = ({ ticket, events }: TicketDetail) => {
         </section>
       )}
       {hasAttachments(events) && <TicketFiles ticketId={ticket.id} />}
+      <TicketRuns ticketId={ticket.id} live={ticketDetailInterval(ticket) !== false} />
       <section className="flex flex-col gap-1 rounded-xl border bg-card p-5 shadow-card sm:p-6">
         <h2 className="pb-4 text-sm font-semibold">Activity</h2>
         <ol className="relative flex flex-col gap-5 border-l pl-5">

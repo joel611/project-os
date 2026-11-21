@@ -18,7 +18,7 @@ import {
 import { type Effect, Layer, ManagedRuntime } from "effect";
 import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
-import { healthSweep } from "@project-os/core";
+import { healthSweep, recordSandboxRun } from "@project-os/core";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
@@ -69,6 +69,12 @@ const buildApp = (bindings: Bindings) => {
 
   const workerLauncher = sandboxLauncherFromEnv(process.env, {
     log: console.log,
+    // `runtime` is built below, before any session can end. Held open so the write finishes.
+    onSessionEnd: (session) => {
+      const kept = runtime.runPromise(recordSandboxRun(session));
+      waitUntil(kept.catch(() => undefined));
+      return kept;
+    },
     runners: Object.fromEntries(
       Object.entries(configuredRunners(process.env)).map(([provider, runner]) => [
         provider,

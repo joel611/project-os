@@ -15,6 +15,9 @@ const memoryBackend = () => {
     put: async (key, body, meta) => {
       files.set(key, { bytes: await bytesOf(body), ...meta });
     },
+    remove: async (key) => {
+      files.delete(key);
+    },
     get: async (key) => {
       const file = files.get(key);
       return (
@@ -103,6 +106,7 @@ describe("makeAssetStore", () => {
         get: async () => {
           throw new Error("read failed");
         },
+        remove: async () => {},
       },
       fetch: ok("hello"),
     });

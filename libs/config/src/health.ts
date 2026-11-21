@@ -13,4 +13,6 @@ export const healthConfig = () => ({
   sharedWorkerMaxTickets: envNumber("SHARED_WORKER_MAX_TICKETS", 1),
   /** Audit log entries older than this are deleted by the sweep. */
   auditRetentionMs: envNumber("AUDIT_RETENTION_DAYS", 90) * 24 * 60 * MINUTE_MS,
+  /** Run transcripts older than this are deleted by the sweep. */
+  runLogRetentionMs: envNumber("RUN_LOG_RETENTION_DAYS", 30) * 24 * 60 * MINUTE_MS,
 });
