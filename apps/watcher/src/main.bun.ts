@@ -186,6 +186,12 @@ const runLog: RunLogIo = {
   newRunId: () => crypto.randomUUID(),
   now: () => new Date(),
   secrets: envSecrets,
+  flushEveryMs: 3_000,
+  sleep: (ms) => Bun.sleep(ms),
+  terminal: {
+    out: (text) => void process.stdout.write(text),
+    err: (text) => void process.stderr.write(text),
+  },
 };
 const sendSpooled = () =>
   config.runLog

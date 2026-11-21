@@ -62,24 +62,20 @@ export interface SpawnerIo {
   /** Where run logs go. Without it (or with `config.runLog` off) a session is not recorded. */
   readonly runLog?: RunLogIo;
   readonly logger?: Logger;
-  /** Where the agent's output is shown. Default: this process's stdout and stderr. */
-  readonly terminal?: {
-    readonly out: (text: string) => void;
-    readonly err: (text: string) => void;
-  };
 }
 
 /** Calls `onLine` for each line of `stream`, and for a last line that ends without a newline. */
 const readLines = async (
-  stream: ReadableStream<Uint8Array>,
+  stream: ReadableStream<Uint8Array> | null | undefined,
   onLine: (line: string) => void,
 ): Promise<void> => {
+  if (!stream) return;
   const decoder = new TextDecoder();
   let pending = "";
   for await (const chunk of stream) {
     pending += decoder.decode(chunk, { stream: true });
     const lines = pending.split("\n");
-    pending = lines.pop() ?? "";
+    pending = lines.pop()!;
     for (const line of lines) onLine(line.replace(/\r$/, ""));
   }
   pending += decoder.decode();
@@ -176,10 +172,11 @@ export const bunSpawner = (
               })
           : undefined;
       // A session is recorded when the device allows it and the ticket is known.
+      const log = ticketId && config.runLog ? io.runLog : undefined;
       const recorder =
-        ticketId && config.runLog && io.runLog
+        ticketId && log
           ? createRunRecorder({
-              io: io.runLog,
+              io: log,
               url: runsUrl(config.mcpUrl, ticketId),
               secret: config.secret,
               agent: config.agent,
@@ -218,28 +215,23 @@ export const bunSpawner = (
           stdout: recorder ? "pipe" : "inherit",
           stderr: recorder ? "pipe" : "inherit",
         });
-        if (!recorder) return await proc.exited;
-        const out = io.terminal?.out ?? ((text: string) => void process.stdout.write(text));
-        const err = io.terminal?.err ?? ((text: string) => void process.stderr.write(text));
+        if (!recorder || !log) return await proc.exited;
         const parse = agent.parser?.();
-        const at = () => (io.runLog?.now() ?? new Date()).toISOString();
+        const at = () => log.now().toISOString();
         const reads = [
-          proc.stdout &&
-            readLines(proc.stdout, (line) => {
-              const events = parse ? parse(line, at()) : [outputEvent(line, at(), "stdout")];
-              for (const event of events) {
-                recorder.push(event);
-                const shown = parse ? terminalText(event) : line;
-                if (shown !== undefined) out(`${shown}\n`);
-              }
-              if (!parse && events.length === 0) out(`${line}\n`);
-            }),
-          proc.stderr &&
-            readLines(proc.stderr, (line) => {
-              recorder.push(outputEvent(line, at(), "stderr"));
-              err(`${line}\n`);
-            }),
-        ].filter((read) => read !== undefined && read !== null);
+          readLines(proc.stdout, (line) => {
+            const events = parse ? parse(line, at()) : [outputEvent(line, at(), "stdout")];
+            for (const event of events) {
+              recorder.push(event);
+              const shown = parse ? terminalText(event) : line;
+              if (shown !== undefined) log.terminal.out(`${shown}\n`);
+            }
+          }),
+          readLines(proc.stderr, (line) => {
+            recorder.push(outputEvent(line, at(), "stderr"));
+            log.terminal.err(`${line}\n`);
+          }),
+        ];
         const exitCode = await proc.exited;
         // The last lines can arrive after the process has exited.
         await Promise.allSettled(reads);

@@ -8,7 +8,10 @@ import {
   pruneRuns,
   readTicketRun,
   recordSandboxRun,
+  AssetStore,
+  AssetStoreFailed,
   RunRepository,
+  runChunkKey,
 } from "@project-os/core";
 import type { RunUpload } from "@project-os/contracts";
 import { Effect } from "effect";
@@ -222,5 +225,113 @@ describe("run logs", () => {
     expect(out.pruned).toBe(1);
     expect(out.stored).toMatchObject({ expired: true, eventCount: 1 });
     expect(out.read.events).toEqual([]);
+  });
+
+  it("rejects a negative seq and an oversized chunk", async () => {
+    const out = await withTicket(
+      Effect.gen(function* () {
+        const negative = yield* Effect.flip(ingestRun("t1", { id: "w1" }, chunk(-1, [ev("a")])));
+        const huge = yield* Effect.flip(
+          ingestRun(
+            "t1",
+            { id: "w1" },
+            chunk(
+              0,
+              Array.from({ length: 501 }, () => ev("a")),
+            ),
+          ),
+        );
+        return { negative, huge };
+      }),
+    );
+    expect(out.negative._tag).toBe("RunRejected");
+    expect(out.huge._tag).toBe("RunRejected");
+  });
+
+  it("skips a damaged line and a missing chunk when reading", async () => {
+    const out = await withTicket(
+      Effect.gen(function* () {
+        yield* ingestRun("t1", { id: "w1" }, chunk(0, [ev("a")]));
+        yield* ingestRun("t1", { id: "w1" }, chunk(1, [ev("b")]));
+        const store = yield* AssetStore;
+        const bytes = new TextEncoder().encode(
+          'not json\n\n{"at":"t","type":"output","text":"ok"}\n',
+        );
+        yield* store.put({
+          key: runChunkKey("t1", "run-00000001", 0),
+          body: new Response(bytes).body!,
+          contentType: "application/x-ndjson",
+          size: bytes.length,
+          maxBytes: bytes.length,
+        });
+        yield* store.remove(runChunkKey("t1", "run-00000001", 1));
+        return yield* readTicketRun("t1", "run-00000001");
+      }),
+    );
+    expect(out.events.map((e) => e.text)).toEqual(["ok"]);
+  });
+
+  it("applies the exit once, and drops events sent after it", async () => {
+    const out = await withTicket(
+      Effect.gen(function* () {
+        yield* ingestRun("t1", { id: "w1" }, chunk(0, [ev("a")], { finished: { exitCode: 1 } }));
+        const late = yield* ingestRun(
+          "t1",
+          { id: "w1" },
+          chunk(1, [ev("late")], { finished: { exitCode: 0 } }),
+        );
+        return late;
+      }),
+    );
+    expect(out).toMatchObject({ status: "failed", exitCode: 1, eventCount: 1 });
+  });
+
+  it("finishes a run with an empty last chunk", async () => {
+    const out = await withTicket(
+      Effect.gen(function* () {
+        yield* ingestRun("t1", { id: "w1" }, chunk(0, [ev("a")]));
+        return yield* ingestRun("t1", { id: "w1" }, chunk(1, [], { finished: { exitCode: 0 } }));
+      }),
+    );
+    expect(out).toMatchObject({ status: "succeeded", nextSeq: 1, eventCount: 1 });
+  });
+
+  it("splits a long sandbox output into chunks and reads it all back", async () => {
+    const out = await withTicket(
+      Effect.gen(function* () {
+        const output = Array.from({ length: 1_200 }, (_, i) => `line ${i}`).join("\n");
+        yield* recordSandboxRun({
+          ticketId: "t1",
+          workerId: "w1",
+          agent: "pi",
+          model: "m",
+          startedAt: T0,
+          exitCode: 0,
+          output,
+          secrets: [],
+        });
+        const [only] = yield* listTicketRuns("t1");
+        return { only, read: yield* readTicketRun("t1", only!.id) };
+      }),
+    );
+    expect(out.only).toMatchObject({ nextSeq: 3, eventCount: 1_201, status: "succeeded" });
+    expect(out.read.events).toHaveLength(1_201);
+  });
+
+  it("leaves a run for the next sweep when its transcript can't be deleted", async () => {
+    const out = await withTicket(
+      Effect.gen(function* () {
+        yield* ingestRun("t1", { id: "w1" }, chunk(0, [ev("a")]));
+        const store = yield* AssetStore;
+        const failing = {
+          ...store,
+          remove: () => Effect.fail(new AssetStoreFailed({ message: "x" })),
+        };
+        const pruned = yield* pruneRuns(-DAY).pipe(Effect.provideService(AssetStore, failing));
+        return { pruned, run: yield* (yield* RunRepository).get("run-00000001") };
+      }),
+    );
+    expect(out.pruned).toBe(0);
+    expect(out.run?.expired).toBe(false);
   });
 });

@@ -113,6 +113,7 @@ const watcherSession = async (
   };
   const config = loadConfig(credentials, () => true);
   const spool = new Map<string, string>();
+  const shown: string[] = [];
   const runLog: RunLogIo = {
     post: async (url, secret, upload) => {
       if (options.reachable && !options.reachable()) throw new Error("offline");
@@ -140,8 +141,8 @@ const watcherSession = async (
     secrets: [],
     flushEveryMs: 60_000,
     sleep: async () => {},
+    terminal: { out: (t) => void shown.push(t), err: (t) => void shown.push(t) },
   };
-  const shown: string[] = [];
   const spawnProcess: SpawnProcess = (cmd) => {
     shown.push(cmd.join(" "));
     return {
@@ -158,7 +159,6 @@ const watcherSession = async (
     home: "/home/me",
     runLog,
     logger: silentLogger,
-    terminal: { out: (t) => void shown.push(t), err: (t) => void shown.push(t) },
   });
   const exit = await spawner.spawn(ticketId);
   return { exit, shown, spool, runLog, config };

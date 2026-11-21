@@ -34,9 +34,14 @@ export interface RunLogIo {
   readonly now: () => Date;
   /** Values to mask exactly, besides the device secret (the environment's tokens and keys). */
   readonly secrets: ReadonlyArray<string>;
-  /** How often events are sent while a session runs. Default 3 s. */
-  readonly flushEveryMs?: number;
-  readonly sleep?: (ms: number) => Promise<void>;
+  /** How often events are sent while a session runs. */
+  readonly flushEveryMs: number;
+  readonly sleep: (ms: number) => Promise<void>;
+  /** Where the agent's output is shown while the session runs. */
+  readonly terminal: {
+    readonly out: (text: string) => void;
+    readonly err: (text: string) => void;
+  };
 }
 
 /** Events held back from one flush at most; a bigger backlog goes out chunk by chunk. */
@@ -45,8 +50,6 @@ const FLUSH_AT = 100;
 const SPOOL_MAX_EVENTS = 5_000;
 /** Tries (with growing pauses) to deliver the last chunk before the rest is spooled. */
 const FINAL_ATTEMPTS = 3;
-
-const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The Coordinator will never take this upload: unknown ticket, not ours, or malformed. */
 const permanent = (status: number) => status === 400 || status === 403 || status === 404;
@@ -76,7 +79,6 @@ export const createRunRecorder = (options: {
 }): RunRecorder => {
   const { io } = options;
   const logger = options.logger ?? silentLogger;
-  const sleep = io.sleep ?? defaultSleep;
   const runId = io.newRunId();
   const startedAt = io.now().toISOString();
   const secrets = [options.secret, ...io.secrets];
@@ -146,18 +148,20 @@ export const createRunRecorder = (options: {
     return true;
   };
 
+  // `drain` never rejects (an upload that throws is a failed upload), so the chain never breaks.
   const flush = (): Promise<boolean> => {
-    const next = chain.then(drain, drain);
-    chain = next.catch(() => false);
-    return next.catch(() => false);
+    const next = chain.then(drain);
+    chain = next;
+    return next;
   };
 
-  const timer = setInterval(() => void flush(), io.flushEveryMs ?? 3_000);
+  const timer = setInterval(() => void flush(), io.flushEveryMs);
   // A pending flush must not keep a finished Watcher alive.
   (timer as { unref?: () => void }).unref?.();
 
-  const spoolRest = () => {
-    const rest = [...(inflight ?? []), ...buffer];
+  const spoolRest = (exitCode: number) => {
+    // A failed upload always leaves its chunk in `inflight`.
+    const rest = [...inflight!, ...buffer];
     const events = rest.slice(-SPOOL_MAX_EVENTS);
     const uploads: SpooledUpload[] = [];
     for (let i = 0; i < Math.max(events.length, 1); i += RUN_CHUNK_MAX_EVENTS) {
@@ -172,7 +176,7 @@ export const createRunRecorder = (options: {
           ...(options.model === undefined ? {} : { model: options.model }),
           startedAt,
           events: slice,
-          ...(last && finished !== undefined ? { finished: { exitCode: finished } } : {}),
+          ...(last ? { finished: { exitCode } } : {}),
         },
       });
     }
@@ -192,10 +196,10 @@ export const createRunRecorder = (options: {
       finished = exitCode;
       for (let attempt = 1; attempt <= FINAL_ATTEMPTS; attempt++) {
         if (await flush()) return;
-        if (attempt < FINAL_ATTEMPTS) await sleep(1_000 * attempt ** 2);
+        if (attempt < FINAL_ATTEMPTS) await io.sleep(1_000 * attempt ** 2);
       }
       try {
-        if (!gaveUp) spoolRest();
+        spoolRest(exitCode);
       } catch (e) {
         logger.warn(`run log: could not save the rest: ${errorMessage(e)}`, { runId });
       }
@@ -224,15 +228,15 @@ export const resendSpooled = async (
     }
     let done = true;
     for (const { url, upload } of uploads) {
-      try {
-        const result = await io.post(url, secret, upload);
-        // 409: the Coordinator has this chunk; carry on with the next.
-        if (result.ok || result.status === 409 || permanent(result.status)) continue;
+      // 409: the Coordinator has this chunk; carry on with the next.
+      const handled = await io.post(url, secret, upload).then(
+        (result) => result.ok || result.status === 409 || permanent(result.status),
+        () => false,
+      );
+      if (!handled) {
         done = false;
-      } catch {
-        done = false;
+        break;
       }
-      if (!done) break;
     }
     if (done) {
       io.spool.remove(file.name);

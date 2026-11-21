@@ -70,4 +70,65 @@ describe("claude stream-json parser", () => {
     expect(terminalText({ at: AT, type: "tool_call", tool: "Bash", text: "{}" })).toBe("→ Bash {}");
     expect(terminalText({ at: AT, type: "tool_result", text: "big" })).toBeUndefined();
   });
+
+  it("reads odd but valid shapes without losing or inventing events", () => {
+    const parse = makeClaudeParser();
+    const one = (value: unknown) => parse(line(value), AT);
+    // Not an object at all.
+    expect(one(42)).toEqual([{ at: AT, type: "output", text: "42" }]);
+    // An init with no model or tool list.
+    expect(one({ type: "system", subtype: "init" })[0]!.text).toBe(
+      "Session started (unknown model, 0 tools).",
+    );
+    // Plain-string content: an assistant says it, a user turn is just the prompt.
+    expect(one({ type: "assistant", message: { content: "plain" } })).toEqual([
+      { at: AT, type: "message", text: "plain" },
+    ]);
+    expect(one({ type: "user", message: { content: "prompt" } })).toEqual([]);
+    // Content that is neither a string nor a list.
+    expect(one({ type: "assistant", message: {} })[0]).toMatchObject({ type: "output" });
+    // Parts: not an object, unknown type, tool_use without a name or id, results without an id.
+    expect(
+      one({
+        type: "assistant",
+        message: {
+          content: [
+            "x",
+            { type: "thinking" },
+            { type: "tool_use" },
+            { type: "tool_result", content: { odd: true } },
+            { type: "tool_result" },
+          ],
+        },
+      }).map((e) => [e.type, e.tool, e.text]),
+    ).toEqual([
+      ["tool_call", "tool", "{}"],
+      ["tool_result", undefined, '{"odd":true}'],
+      ["tool_result", undefined, ""],
+    ]);
+  });
+
+  it("describes results with and without usage, and failures with and without a reason", () => {
+    const parse = makeClaudeParser();
+    const text = (value: unknown) => parse(line(value), AT)[0]!.text;
+    expect(
+      text({ type: "result", subtype: "success", usage: { input_tokens: 5, output_tokens: 7 } }),
+    ).toBe("Session finished (5 in / 7 out tokens).");
+    expect(text({ type: "result", subtype: "success", usage: { input_tokens: 5 } })).toBe(
+      "Session finished (5 in / 0 out tokens).",
+    );
+    expect(text({ type: "result", subtype: "error_during_execution", result: "it broke" })).toBe(
+      "Session ended with error_during_execution: it broke",
+    );
+    expect(text({ type: "result", is_error: true })).toBe("Session ended with an error.");
+  });
+
+  it("clips long lines on the terminal and names a tool-less call", () => {
+    expect(terminalText({ at: AT, type: "tool_call", text: "x".repeat(300) })).toBe(
+      `→ tool ${"x".repeat(200)}…`,
+    );
+    expect(terminalText({ at: AT, type: "error", text: "bad" })).toBe("! bad");
+    expect(terminalText({ at: AT, type: "lifecycle", text: "up" })).toBe("up");
+    expect(terminalText({ at: AT, type: "output", text: "raw" })).toBe("raw");
+  });
 });

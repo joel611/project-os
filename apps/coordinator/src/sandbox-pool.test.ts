@@ -20,6 +20,25 @@ describe("sandbox pool from env", () => {
     expect(sandboxLauncherFromEnv(base, { log: () => {} })).toBeUndefined();
   });
 
+  it("passes the end-of-session hook to the launcher", async () => {
+    const ended: string[] = [];
+    const l = sandboxLauncherFromEnv(base, {
+      log: () => {},
+      runners: { daytona: runner() },
+      onSessionEnd: (session) => void ended.push(session.workerId),
+    });
+    await Effect.runPromise(
+      l!.launch({
+        ticketId: "t1",
+        workerType: "daytona_pi",
+        workerId: "daytona-t1",
+        mcpToken: "tok",
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ended).toEqual(["daytona-t1"]);
+  });
+
   it("builds the real runners from credentials and takes a session timeout", async () => {
     const logs: string[] = [];
     const l = sandboxLauncherFromEnv(

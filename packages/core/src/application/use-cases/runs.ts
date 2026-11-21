@@ -30,7 +30,7 @@ export const DEFAULT_RUN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface RunLogConfig {
   /** Transcript bytes kept per run. Default 20 MB. */
-  readonly maxBytes?: number;
+  readonly maxBytes?: number | undefined;
 }
 
 const encoder = new TextEncoder();
@@ -64,7 +64,7 @@ const auditRun = (ticket: Ticket, run: Run, action: "run_started" | "run_finishe
     summary:
       action === "run_started"
         ? `${run.agent} session started on "${ticket.title}"`
-        : `${run.agent} session ${run.status} (exit ${run.exitCode ?? "?"}) on "${ticket.title}"`,
+        : `${run.agent} session ${run.status} (exit ${run.exitCode}) on "${ticket.title}"`,
     payload: {
       title: ticket.title,
       status: ticket.status,
@@ -87,7 +87,7 @@ const storeChunk = (
   ticket: Ticket,
   workerId: string,
   upload: RunUpload,
-  options: { readonly secrets?: ReadonlyArray<string>; readonly maxBytes?: number },
+  options: { readonly secrets?: ReadonlyArray<string>; readonly maxBytes?: number | undefined },
 ) =>
   Effect.gen(function* () {
     if (!SAFE_RUN_ID.test(upload.runId)) {
@@ -203,9 +203,7 @@ export const ingestRun = (
         message: "This ticket isn't assigned to this worker.",
       });
     }
-    return yield* storeChunk(ticket, caller.id, upload, {
-      ...(config.maxBytes === undefined ? {} : { maxBytes: config.maxBytes }),
-    });
+    return yield* storeChunk(ticket, caller.id, upload, { maxBytes: config.maxBytes });
   });
 
 /** What a sandbox launcher reports when a session ends. */
@@ -213,7 +211,7 @@ export interface SandboxRun {
   readonly ticketId: string;
   readonly workerId: string;
   readonly agent: string;
-  readonly model?: string;
+  readonly model: string;
   readonly startedAt: string;
   readonly exitCode: number;
   /** Everything the session printed (stdout and stderr together). */
@@ -252,12 +250,12 @@ export const recordSandboxRun = (input: SandboxRun, config: RunLogConfig = {}) =
           runId,
           seq: seq++,
           agent: input.agent,
-          ...(input.model === undefined ? {} : { model: input.model }),
+          model: input.model,
           startedAt: input.startedAt,
           events: slice,
           ...(last ? { finished: { exitCode: input.exitCode } } : {}),
         },
-        { secrets: input.secrets, ...(config.maxBytes === undefined ? {} : config) },
+        { secrets: input.secrets, maxBytes: config.maxBytes },
       );
     }
   });

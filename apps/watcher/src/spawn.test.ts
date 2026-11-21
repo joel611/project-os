@@ -4,6 +4,8 @@ import type { WatcherConfig } from "./config.ts";
 import { bunSpawner, skillsUrl, type SkillsIo, type SpawnerIo } from "./spawn.ts";
 import { strToU8, zipSync } from "fflate";
 import { collectLogger } from "./logger.ts";
+import type { RunLogIo } from "./run-log.ts";
+import type { SpawnProcess } from "./spawn.ts";
 
 const config: WatcherConfig = {
   mcpUrl: "http://coord:8080/mcp",
@@ -155,7 +157,7 @@ describe("skills for a ticket", () => {
       },
       io,
     );
-    await spawner.spawn(ticketId);
+    await spawner.spawn(ticketId ?? undefined);
     return cmd;
   };
 
@@ -295,5 +297,79 @@ describe("skills for a ticket", () => {
     // A device wired without skill IO (old callers) still starts sessions.
     const { io } = fakeIo();
     expect(await runTicket(config, io, "t1")).toContain("claude");
+  });
+});
+
+describe("recording a session", () => {
+  const posted: Array<{
+    url: string;
+    events: Array<{ type: string; text: string; tool?: string }>;
+    model?: string;
+    finished?: unknown;
+  }> = [];
+  const shown: string[] = [];
+  const runLog: RunLogIo = {
+    post: async (url, _secret, upload) => {
+      posted.push({
+        url,
+        events: [...upload.events],
+        ...(upload.model && { model: upload.model }),
+        ...(upload.finished && { finished: upload.finished }),
+      });
+      return { ok: true, nextSeq: upload.seq + 1 };
+    },
+    spool: { write: () => {}, list: () => [], remove: () => {} },
+    newRunId: () => "run-00000001",
+    now: () => new Date("2026-11-04T00:00:00.000Z"),
+    secrets: [],
+    flushEveryMs: 3_600_000,
+    sleep: async () => {},
+    terminal: { out: (t) => void shown.push(t), err: (t) => void shown.push(`ERR ${t}`) },
+  };
+  const record = async (
+    cfg: WatcherConfig,
+    proc: (cmd: string[]) => ReturnType<SpawnProcess>,
+    ticketId: string | null = "t1",
+  ) => {
+    posted.length = 0;
+    shown.length = 0;
+    const { io } = fakeIo();
+    const seen: string[][] = [];
+    const spawner = bunSpawner(cfg, (cmd) => (seen.push(cmd), proc(cmd)), { ...io, runLog });
+    const code = await spawner.spawn(ticketId ?? undefined);
+    return { code, seen: seen[0]! };
+  };
+  const text = (value: string) => new Response(value).body!;
+
+  it("pipes a plain-text agent's lines, with the model, and shows them as they came", async () => {
+    const { code, seen } = await record({ ...config, agent: "pi", model: "m1" }, () => ({
+      exited: Promise.resolve(0),
+      stdout: text("first\nlast without newline"),
+      stderr: text("warn\n"),
+    }));
+    expect(code).toBe(0);
+    expect(seen).not.toContain("--output-format");
+    expect(posted[0]).toMatchObject({ url: "http://coord:8080/tickets/t1/runs", model: "m1" });
+    const texts = posted[0]!.events.map((e) => e.text);
+    expect(texts.at(-1)).toBe("pi exited with code 0.");
+    expect(texts.slice(0, -1).sort()).toEqual(["first", "last without newline", "warn"]);
+    expect(shown.sort()).toEqual(["ERR warn\n", "first\n", "last without newline\n"]);
+  });
+
+  it("asks Claude Code for its event stream, and keeps a process that has no pipes", async () => {
+    const { seen } = await record(config, () => ({ exited: Promise.resolve(3) }));
+    expect(seen).toContain("stream-json");
+    expect(posted[0]!.events.at(-1)).toMatchObject({
+      type: "error",
+      text: "claude exited with code 3.",
+    });
+    expect(posted[0]!.finished).toEqual({ exitCode: 3 });
+  });
+
+  it("does not record without a ticket, or when the device turned it off", async () => {
+    await record(config, () => ({ exited: Promise.resolve(0) }), null);
+    expect(posted).toEqual([]);
+    await record({ ...config, runLog: false }, () => ({ exited: Promise.resolve(0) }));
+    expect(posted).toEqual([]);
   });
 });
