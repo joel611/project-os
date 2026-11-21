@@ -1,14 +1,14 @@
 import {
   SkillNotFound,
-  SkillSetNameTaken,
-  SkillSetNotFound,
+  TaskTypeNameTaken,
+  TaskTypeNotFound,
   type Skill,
   type SkillRepository,
-  type SkillSet,
+  type TaskType,
 } from "@project-os/core";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
-import { skills, skillSets } from "../schema/index.ts";
+import { skills, taskTypes } from "../schema/index.ts";
 import { q, type SqliteDb } from "./db.ts";
 
 type Impl = (typeof SkillRepository)["Service"];
@@ -16,7 +16,7 @@ type Impl = (typeof SkillRepository)["Service"];
 /** A skill row without its files: what lists and the dashboard get. */
 const summary = (row: typeof skills.$inferSelect): Skill => ({
   id: row.id,
-  skillSetId: row.skillSetId,
+  taskTypeId: row.taskTypeId,
   source: row.source,
   slug: row.slug,
   name: row.name,
@@ -31,27 +31,27 @@ const summary = (row: typeof skills.$inferSelect): Skill => ({
 });
 
 export const makeSkillRepository = (db: SqliteDb): Impl => {
-  const findSet = (id: string): Effect.Effect<SkillSet, SkillSetNotFound> =>
-    q(() => db.select().from(skillSets).where(eq(skillSets.id, id)).limit(1)).pipe(
+  const findSet = (id: string): Effect.Effect<TaskType, TaskTypeNotFound> =>
+    q(() => db.select().from(taskTypes).where(eq(taskTypes.id, id)).limit(1)).pipe(
       Effect.flatMap(([row]) =>
-        row ? Effect.succeed(row) : Effect.fail(new SkillSetNotFound({ skillSetId: id })),
+        row ? Effect.succeed(row) : Effect.fail(new TaskTypeNotFound({ taskTypeId: id })),
       ),
     );
 
   const nameTaken = (name: string, exceptId: string) =>
-    q(() => db.select().from(skillSets).where(eq(skillSets.name, name))).pipe(
+    q(() => db.select().from(taskTypes).where(eq(taskTypes.name, name))).pipe(
       Effect.map((rows) => rows.some((r) => r.id !== exceptId)),
     );
 
   return {
-    listSets: q(() => db.select().from(skillSets)),
+    listSets: q(() => db.select().from(taskTypes)),
     getSet: findSet,
     insertSet: (set) =>
       nameTaken(set.name, set.id).pipe(
         Effect.flatMap((taken) =>
           taken
-            ? Effect.fail(new SkillSetNameTaken({ setName: set.name }))
-            : q(() => db.insert(skillSets).values(set).returning()).pipe(
+            ? Effect.fail(new TaskTypeNameTaken({ setName: set.name }))
+            : q(() => db.insert(taskTypes).values(set).returning()).pipe(
                 Effect.map(([row]) => row!),
               ),
         ),
@@ -60,21 +60,21 @@ export const makeSkillRepository = (db: SqliteDb): Impl => {
       Effect.gen(function* () {
         yield* findSet(id);
         if (patch.name !== undefined && (yield* nameTaken(patch.name, id))) {
-          return yield* new SkillSetNameTaken({ setName: patch.name });
+          return yield* new TaskTypeNameTaken({ setName: patch.name });
         }
         const [row] = yield* q(() =>
-          db.update(skillSets).set(patch).where(eq(skillSets.id, id)).returning(),
+          db.update(taskTypes).set(patch).where(eq(taskTypes.id, id)).returning(),
         );
         return row!;
       }),
     deleteSet: (id) =>
       findSet(id).pipe(
-        Effect.flatMap(() => q(() => db.delete(skills).where(eq(skills.skillSetId, id)))),
-        Effect.flatMap(() => q(() => db.delete(skillSets).where(eq(skillSets.id, id)))),
+        Effect.flatMap(() => q(() => db.delete(skills).where(eq(skills.taskTypeId, id)))),
+        Effect.flatMap(() => q(() => db.delete(taskTypes).where(eq(taskTypes.id, id)))),
         Effect.asVoid,
       ),
     listSkills: (setId) =>
-      q(() => db.select().from(skills).where(eq(skills.skillSetId, setId))).pipe(
+      q(() => db.select().from(skills).where(eq(skills.taskTypeId, setId))).pipe(
         Effect.map((rows) => rows.map(summary).sort((a, b) => a.name.localeCompare(b.name))),
       ),
     getSkill: (id) =>
@@ -90,7 +90,7 @@ export const makeSkillRepository = (db: SqliteDb): Impl => {
           .from(skills)
           .where(
             and(
-              eq(skills.skillSetId, skill.skillSetId),
+              eq(skills.taskTypeId, skill.taskTypeId),
               eq(skills.source, skill.source),
               eq(skills.slug, skill.slug),
             ),

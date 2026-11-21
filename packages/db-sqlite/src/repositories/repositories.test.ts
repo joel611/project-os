@@ -1125,13 +1125,14 @@ describe("SkillRepository", () => {
     id: "set1",
     name: "dev",
     description: "code",
+    instructions: "",
     createdAt: T0,
     updatedAt: T0,
     ...over,
   });
   const skill = (over: Record<string, unknown> = {}) => ({
     id: "k1",
-    skillSetId: "set1",
+    taskTypeId: "set1",
     source: "acme/skills",
     slug: "tdd",
     name: "tdd",
@@ -1179,16 +1180,16 @@ describe("SkillRepository", () => {
         };
       }),
     );
-    expect(out.dup._tag).toBe("SkillSetNameTaken");
+    expect(out.dup._tag).toBe("TaskTypeNameTaken");
     expect(out.renamed.name).toBe("development");
     expect(out.sameName.name).toBe("development");
-    expect(out.clash._tag).toBe("SkillSetNameTaken");
+    expect(out.clash._tag).toBe("TaskTypeNameTaken");
     expect(out.noRename).toMatchObject({ name: "development", description: "x", updatedAt: T2 });
-    expect(out.missing._tag).toBe("SkillSetNotFound");
+    expect(out.missing._tag).toBe("TaskTypeNotFound");
     expect(out.got.id).toBe("set1");
-    expect(out.missingGet._tag).toBe("SkillSetNotFound");
+    expect(out.missingGet._tag).toBe("TaskTypeNotFound");
     expect(out.names).toEqual(["development", "writing"]);
-    expect(out.missingDelete._tag).toBe("SkillSetNotFound");
+    expect(out.missingDelete._tag).toBe("TaskTypeNotFound");
   });
 
   it("pins skills with where their zip is kept; an upsert on the same source and slug keeps the id", async () => {
@@ -1227,7 +1228,7 @@ describe("SkillRepository", () => {
     expect(out.missingRemove._tag).toBe("SkillNotFound");
   });
 
-  it("deleting a set removes its skills, and a ticket keeps its skill set id", async () => {
+  it("deleting a set removes its skills, and a ticket keeps its task type id", async () => {
     const out = await run(
       Effect.gen(function* () {
         const repo = yield* SkillRepository;
@@ -1238,12 +1239,12 @@ describe("SkillRepository", () => {
         yield* (yield* ProjectRepository).insert(project());
         const t = yield* (yield* TicketRepository).insert({
           ...ticket(),
-          skillSetId: "set1",
+          taskTypeId: "set1",
         } as Ticket);
         return { left, t };
       }),
     );
     expect(out.left).toEqual([]);
-    expect(out.t.skillSetId).toBe("set1");
+    expect(out.t.taskTypeId).toBe("set1");
   });
 });

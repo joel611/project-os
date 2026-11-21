@@ -179,6 +179,18 @@ describe("sandbox launcher", () => {
     expect(calls[0]!.command).not.toContain("mcp-token-t1");
   });
 
+  it("puts the ticket's task type instructions into the session prompt", async () => {
+    const calls: Parameters<SandboxRunner["run"]>[0][] = [];
+    const { launcher } = setup(async (input) => {
+      calls.push(input);
+      return { exitCode: 0, output: "" };
+    });
+    const taskType = { name: "development", instructions: "Start with tdd." };
+    await Effect.runPromise(launcher.launch({ ...daytonaTicket, taskType }));
+    expect(calls[0]!.env.PROJECT_OS_PROMPT).toBe(workerSessionStart("daytona-t1", { taskType }));
+    expect(calls[0]!.env.PROJECT_OS_PROMPT).toContain("Start with tdd.");
+  });
+
   it("behind the credential proxy, hands the session the proxy and points git at it", async () => {
     const calls: Parameters<SandboxRunner["run"]>[0][] = [];
     const { launcher } = setup(

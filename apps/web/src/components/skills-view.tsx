@@ -1,7 +1,7 @@
 import type {
   Skill,
   SkillCandidate,
-  SkillSetDetail,
+  TaskTypeDetail,
   SkillUpdateStatus,
 } from "@project-os/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,21 +27,22 @@ import { relativeTime } from "@/model";
 import { SLOW_MS } from "@/polling";
 import { useNow } from "@/use-now";
 
-const KEY = ["skill-sets"] as const;
+const KEY = ["task-types"] as const;
 
 const Problem = ({ error }: { error: Error | null }) =>
   error ? <p className="text-sm text-destructive">{describeError(error)}</p> : null;
 
-/** Create a set, or edit its name and description. */
-const SetDialog = ({ set, onClose }: { set?: SkillSetDetail["set"]; onClose: () => void }) => {
+/** Create a task type, or edit its name, description and instructions. */
+const SetDialog = ({ set, onClose }: { set?: TaskTypeDetail["set"]; onClose: () => void }) => {
   const qc = useQueryClient();
   const [name, setName] = useState(set?.name ?? "");
   const [description, setDescription] = useState(set?.description ?? "");
+  const [instructions, setInstructions] = useState(set?.instructions ?? "");
   const save = useMutation({
     mutationFn: () =>
       set
-        ? api.updateSkillSet(set.id, { name, description })
-        : api.createSkillSet({ name, description }),
+        ? api.updateTaskType(set.id, { name, description, instructions })
+        : api.createTaskType({ name, description, instructions }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: KEY });
       onClose();
@@ -56,16 +57,16 @@ const SetDialog = ({ set, onClose }: { set?: SkillSetDetail["set"]; onClose: () 
       <DialogContent>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>{set ? "Edit skill set" : "New skill set"}</DialogTitle>
+            <DialogTitle>{set ? "Edit task type" : "New task type"}</DialogTitle>
             <DialogDescription>
-              The classifier reads the description to decide which requests get this set, so say
-              what kind of work it is for.
+              The classifier reads the description to decide which requests get this task type, so
+              say what kind of work it is for. The instructions go into the Worker's system prompt.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="skill-set-name">Name</Label>
+            <Label htmlFor="task-type-name">Name</Label>
             <Input
-              id="skill-set-name"
+              id="task-type-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="development"
@@ -74,13 +75,23 @@ const SetDialog = ({ set, onClose }: { set?: SkillSetDetail["set"]; onClose: () 
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="skill-set-description">Used for</Label>
+            <Label htmlFor="task-type-description">Used for</Label>
             <Textarea
-              id="skill-set-description"
+              id="task-type-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Writing and changing code, fixing bugs, reviewing pull requests, running tests"
               rows={3}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="task-type-instructions">Instructions</Label>
+            <Textarea
+              id="task-type-instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="How to use these skills to do this kind of work, e.g. which skill to start with, what to check before finishing"
+              rows={6}
             />
           </div>
           <Problem error={save.error} />
@@ -99,7 +110,7 @@ const SetDialog = ({ set, onClose }: { set?: SkillSetDetail["set"]; onClose: () 
 };
 
 /** Paste a repo, pick which of its skills to download into the set. */
-export const AddSkillsDialog = ({ set, onClose }: { set: SkillSetDetail; onClose: () => void }) => {
+export const AddSkillsDialog = ({ set, onClose }: { set: TaskTypeDetail; onClose: () => void }) => {
   const qc = useQueryClient();
   const [source, setSource] = useState("");
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
@@ -276,7 +287,7 @@ const SkillRow = ({
   );
 };
 
-const SetCard = ({ detail, now }: { detail: SkillSetDetail; now: Date }) => {
+const SetCard = ({ detail, now }: { detail: TaskTypeDetail; now: Date }) => {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<"edit" | "add" | "delete" | null>(null);
   const [statuses, setStatuses] = useState<ReadonlyMap<string, SkillUpdateStatus>>(new Map());
@@ -292,7 +303,7 @@ const SetCard = ({ detail, now }: { detail: SkillSetDetail; now: Date }) => {
     },
   });
   const remove = useMutation({
-    mutationFn: () => api.deleteSkillSet(detail.set.id),
+    mutationFn: () => api.deleteTaskType(detail.set.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
   const outdated = [...statuses.values()].filter((s) => s.state === "update_available");
@@ -334,7 +345,7 @@ const SetCard = ({ detail, now }: { detail: SkillSetDetail; now: Date }) => {
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="Delete skill set"
+            aria-label="Delete task type"
             onClick={() => setDialog("delete")}
           >
             <Trash2 />
@@ -398,13 +409,13 @@ const SetCard = ({ detail, now }: { detail: SkillSetDetail; now: Date }) => {
 export const SkillsView = () => {
   const now = useNow();
   const [creating, setCreating] = useState(false);
-  const sets = useQuery({ queryKey: KEY, queryFn: api.skillSets, refetchInterval: SLOW_MS });
+  const sets = useQuery({ queryKey: KEY, queryFn: api.taskTypes, refetchInterval: SLOW_MS });
   const list = sets.data?.sets ?? [];
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-[28px] leading-tight font-semibold tracking-tight">Skill sets</h1>
+          <h1 className="text-[28px] leading-tight font-semibold tracking-tight">Task types</h1>
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Groups of agent skills from skills.sh. When a new request fits a set, its skills are put
             on the Worker before the ticket starts. Skills are pinned to the version you downloaded
@@ -413,7 +424,7 @@ export const SkillsView = () => {
           </p>
         </div>
         <Button onClick={() => setCreating(true)}>
-          <Plus /> New skill set
+          <Plus /> New task type
         </Button>
       </header>
       {sets.error ? (
@@ -422,7 +433,7 @@ export const SkillsView = () => {
         <Skeleton className="h-40 w-full rounded-xl" />
       ) : list.length === 0 ? (
         <Empty
-          title="No skill sets yet"
+          title="No task types yet"
           hint='Create one, such as "development", then add skills to it from skills.sh.'
         />
       ) : (

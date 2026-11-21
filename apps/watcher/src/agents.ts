@@ -41,7 +41,7 @@ export interface AgentContext {
   readonly prompt: string;
   readonly configDir: string;
   readonly home: string;
-  /** Present only when the ticket's skill set was installed. */
+  /** Present only when the ticket's task type was installed. */
   readonly skills?: InstalledSkills;
 }
 

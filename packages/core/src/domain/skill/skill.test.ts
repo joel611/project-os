@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-  chosenSkillSet,
+  chosenTaskType,
   isSafeSkillPath,
   parseSkillFrontmatter,
   parseSkillSource,
@@ -98,11 +98,11 @@ describe("updateStatusOf", () => {
   });
 });
 
-describe("chosenSkillSet", () => {
+describe("chosenTaskType", () => {
   it("is the set Jev is sure of, else null", () => {
-    expect(chosenSkillSet({})).toBeNull();
-    expect(chosenSkillSet({ skillSet: { choice: "s1", confidence: 0.9 } })).toBe("s1");
-    expect(chosenSkillSet({ skillSet: { choice: "s1", confidence: 0.5 } })).toBeNull();
-    expect(chosenSkillSet({ skillSet: { choice: "none", confidence: 0.99 } })).toBeNull();
+    expect(chosenTaskType({})).toBeNull();
+    expect(chosenTaskType({ taskType: { choice: "s1", confidence: 0.9 } })).toBe("s1");
+    expect(chosenTaskType({ taskType: { choice: "s1", confidence: 0.5 } })).toBeNull();
+    expect(chosenTaskType({ taskType: { choice: "none", confidence: 0.99 } })).toBeNull();
   });
 });

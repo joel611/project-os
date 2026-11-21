@@ -173,8 +173,8 @@ export class AgentRuntimeError extends Data.TaggedError("AgentRuntimeError")<{
   readonly message: string;
 }> {}
 
-/** A skill set the classifier may route a request to. */
-export interface SkillSetChoice {
+/** A task type the classifier may route a request to. */
+export interface TaskTypeChoice {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -196,8 +196,8 @@ export interface IntentResult {
     readonly confidence: number;
     readonly probabilities: Readonly<Record<string, number>>;
   };
-  /** Only when skill sets were offered: the id of the one chosen (`none`: no set fits). */
-  readonly skillSet?: { readonly choice: string; readonly confidence: number };
+  /** Only when task types were offered: the id of the one chosen (`none`: no set fits). */
+  readonly taskType?: { readonly choice: string; readonly confidence: number };
   /** The model that answered, as `provider/model`. */
   readonly model?: string;
   /** Only when `ticketContext` was given: is the message about that ticket? */
@@ -216,8 +216,8 @@ export class IntentClassifier extends Context.Service<
       readonly projectContext: string;
       /** The ticket whose thread the message was said in (see `ticketContext`). */
       readonly ticketContext?: string;
-      /** The skill sets a new request may be routed to; none when no set has skills. */
-      readonly skillSets?: ReadonlyArray<SkillSetChoice>;
+      /** The task types a new request may be routed to; none when no set has skills. */
+      readonly taskTypes?: ReadonlyArray<TaskTypeChoice>;
     }) => Effect.Effect<IntentResult, ClassifierError>;
   }
 >()("@project-os/core/IntentClassifier") {}
@@ -339,6 +339,8 @@ export class WorkerLauncher extends Context.Service<
       readonly workerId: string;
       /** The session's Bearer token for MCP: it acts as `workerId` only, until it expires. */
       readonly mcpToken: string;
+      /** The ticket's task type, whose instructions go into the session's prompt. */
+      readonly taskType?: { readonly name: string; readonly instructions: string };
     }) => Effect.Effect<void, LaunchFailed>;
   }
 >()("@project-os/core/WorkerLauncher") {}

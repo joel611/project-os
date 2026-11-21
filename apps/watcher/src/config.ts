@@ -15,7 +15,7 @@ export interface WatcherConfig {
   readonly cwd: string;
   /** Bearer secret this device got at registration; every MCP call sends it. */
   readonly secret: string;
-  /** Install the ticket's skill set before a session starts (`WATCHER_SKILLS=0` turns it off). */
+  /** Install the ticket's task type before a session starts (`WATCHER_SKILLS=0` turns it off). */
   readonly skills: boolean;
 }
 

@@ -124,6 +124,7 @@ describe("skills for a ticket", () => {
         urls.push([url, secret]);
         return answer();
       },
+      fetchTaskType: async () => undefined,
       makeDir: () => "/tmp/sk",
       writeFile: (path, contents) => {
         written[path] = contents;
@@ -177,6 +178,58 @@ describe("skills for a ticket", () => {
     expect(s.removed).toEqual(["/tmp/sk"]);
     expect(s.logs).toContain('skills: skipped unsafe path "tdd/../escape.md"');
     expect(s.logs.some((l) => l.includes('installed 1 skill(s) from "development"'))).toBe(true);
+  });
+
+  it("puts the ticket's task type instructions into the prompt", async () => {
+    const s = skillsIo(async () => bundle);
+    const asked: Array<[string, string]> = [];
+    const io: SpawnerIo = {
+      ...s.io,
+      skills: {
+        ...s.io.skills!,
+        fetchTaskType: async (url, secret) => {
+          asked.push([url, secret]);
+          return { name: "development", instructions: "Start with the tdd skill." };
+        },
+      },
+    };
+    const cmd = await runTicket(config, io, "t1");
+    expect(asked).toEqual([["http://coord:8080/tickets/t1/task-type", "s3cret"]]);
+    expect(cmd[2]).toContain('Task type "development"');
+    expect(cmd[2]).toContain("Start with the tdd skill.");
+  });
+
+  it("starts the session without instructions when the task type can't be fetched", async () => {
+    const s = skillsIo(async () => bundle);
+    const io: SpawnerIo = {
+      ...s.io,
+      skills: {
+        ...s.io.skills!,
+        fetchTaskType: async () => {
+          throw new Error("down");
+        },
+      },
+    };
+    const cmd = await runTicket(config, io, "t1");
+    expect(cmd[2]).not.toContain("Task type");
+    expect(s.logs.some((l) => l.includes("task type: fetch failed: down"))).toBe(true);
+  });
+
+  it("skips the task type when skills are turned off", async () => {
+    const s = skillsIo(async () => bundle);
+    let asked = false;
+    const io: SpawnerIo = {
+      ...s.io,
+      skills: {
+        ...s.io.skills!,
+        fetchTaskType: async () => {
+          asked = true;
+          return undefined;
+        },
+      },
+    };
+    await runTicket({ ...config, skills: false }, io, "t1");
+    expect(asked).toBe(false);
   });
 
   it("lays skills out the way Pi wants them", async () => {

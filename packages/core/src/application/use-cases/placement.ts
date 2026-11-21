@@ -25,6 +25,7 @@ import {
   sandboxWorkerId,
 } from "./sandbox-credentials.ts";
 import { SIDEKICK_WORKER_ID } from "./sidekick.ts";
+import { taskTypeOf } from "./skills.ts";
 import { auditTicket, COORDINATOR } from "./audit.ts";
 
 /** A registered device counts as online if it heartbeat within this window, unless told otherwise. */
@@ -289,10 +290,21 @@ export const placeOrQueue = (request: PlaceRequest) =>
       const launcher = yield* WorkerLauncher;
       const provider = (yield* launcher.pool).find((entry) => entry.workerType === workerType);
       const mcpToken = yield* issueSandboxToken(workerId, sandboxTokenTtlSeconds(provider));
-      const failure = yield* launcher.launch({ ticketId, workerType, workerId, mcpToken }).pipe(
-        Effect.as(undefined),
-        Effect.catchTag("LaunchFailed", (e) => Effect.succeed(e.message)),
-      );
+      const ticketTaskType = yield* taskTypeOf(assigned.taskTypeId);
+      const failure = yield* launcher
+        .launch({
+          ticketId,
+          workerType,
+          workerId,
+          mcpToken,
+          ...(ticketTaskType && {
+            taskType: { name: ticketTaskType.name, instructions: ticketTaskType.instructions },
+          }),
+        })
+        .pipe(
+          Effect.as(undefined),
+          Effect.catchTag("LaunchFailed", (e) => Effect.succeed(e.message)),
+        );
       if (failure !== undefined) {
         yield* revokeSandboxToken(mcpToken);
         const reason = `could not start ${workerId}: ${failure}`;

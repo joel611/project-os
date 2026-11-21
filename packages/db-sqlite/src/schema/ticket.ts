@@ -18,7 +18,7 @@ export const tickets = sqliteTable(
     priority: text("priority"),
     workerType: text("worker_type", { enum: WORKER_TYPES }),
     workerId: text("worker_id"),
-    skillSetId: text("skill_set_id"),
+    taskTypeId: text("task_type_id"),
     requester: text("requester", { mode: "json" }).$type<Requester>(),
     result: text("result", { mode: "json" }),
     error: text("error"),

@@ -13,7 +13,7 @@ export const PERMISSION_STATEMENTS = {
   project: ["read", "create", "update"],
   source: ["create", "update", "delete"],
   worker: ["read"],
-  skillSet: ["read", "create", "update", "delete"],
+  taskType: ["read", "create", "update", "delete"],
   sharedAccount: ["read", "create", "delete", "assign"],
   member: ["read", "update"],
   audit: ["read"],
