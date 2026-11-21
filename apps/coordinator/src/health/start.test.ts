@@ -6,6 +6,7 @@ import {
   ProjectSourceRepository,
   KeyValueStore,
   Scheduler,
+  SkillRepository,
   TicketRepository,
   WorkerLauncher,
   WorkerRepository,
@@ -38,6 +39,7 @@ describe("startHealthSweep", () => {
       Layer.succeed(ProjectSourceRepository, {} as never),
       Layer.succeed(WorkerRepository, { list: Effect.succeed([]) } as never),
       Layer.succeed(WorkerLauncher, { pool: Effect.succeed([]), launch: () => Effect.void }),
+      Layer.succeed(SkillRepository, {} as never),
       Layer.succeed(TicketRepository, {
         listByStatus: (statuses: ReadonlyArray<string>) => {
           queried.push([...statuses]);

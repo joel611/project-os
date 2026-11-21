@@ -28,9 +28,9 @@ import type {
 import type {
   Skill,
   SkillNotFound,
-  SkillSet,
-  SkillSetNameTaken,
-  SkillSetNotFound,
+  TaskType,
+  TaskTypeNameTaken,
+  TaskTypeNotFound,
 } from "../../domain/skill/index.ts";
 import type { Worker, WorkerNotFound, WorkerType } from "../../domain/worker/index.ts";
 
@@ -286,14 +286,14 @@ export class WorkerRepository extends Context.Service<
   }
 >()("@project-os/core/WorkerRepository") {}
 
-/** Skill sets and the skills pinned in them. Skill files are read separately: lists stay small. */
+/** Task types and the skills pinned in them. Skill files are read separately: lists stay small. */
 export class SkillRepository extends Context.Service<
   SkillRepository,
   {
-    readonly listSets: Effect.Effect<ReadonlyArray<SkillSet>>;
-    readonly getSet: (id: string) => Effect.Effect<SkillSet, SkillSetNotFound>;
-    /** Fails `SkillSetNameTaken` when another set has the name. */
-    readonly insertSet: (set: SkillSet) => Effect.Effect<SkillSet, SkillSetNameTaken>;
+    readonly listSets: Effect.Effect<ReadonlyArray<TaskType>>;
+    readonly getSet: (id: string) => Effect.Effect<TaskType, TaskTypeNotFound>;
+    /** Fails `TaskTypeNameTaken` when another set has the name. */
+    readonly insertSet: (set: TaskType) => Effect.Effect<TaskType, TaskTypeNameTaken>;
     readonly updateSet: (
       id: string,
       patch: {
@@ -301,9 +301,9 @@ export class SkillRepository extends Context.Service<
         readonly description?: string;
         readonly updatedAt: string;
       },
-    ) => Effect.Effect<SkillSet, SkillSetNotFound | SkillSetNameTaken>;
+    ) => Effect.Effect<TaskType, TaskTypeNotFound | TaskTypeNameTaken>;
     /** Removes the set and its skills; tickets that used it keep only the dangling id. */
-    readonly deleteSet: (id: string) => Effect.Effect<void, SkillSetNotFound>;
+    readonly deleteSet: (id: string) => Effect.Effect<void, TaskTypeNotFound>;
     readonly listSkills: (setId: string) => Effect.Effect<ReadonlyArray<Skill>>;
     readonly getSkill: (id: string) => Effect.Effect<Skill, SkillNotFound>;
     /**

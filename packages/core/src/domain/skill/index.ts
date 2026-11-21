@@ -2,17 +2,17 @@ import type {
   Skill,
   SkillCandidate,
   SkillFile,
-  SkillSet,
+  TaskType,
   SkillUpdateStatus,
 } from "@project-os/contracts";
 import { SAFE_SKILL_SLUG } from "@project-os/contracts";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { Data } from "effect";
 
-export type { Skill, SkillCandidate, SkillFile, SkillSet, SkillUpdateStatus };
+export type { Skill, SkillCandidate, SkillFile, TaskType, SkillUpdateStatus };
 
-export class SkillSetNotFound extends Data.TaggedError("SkillSetNotFound")<{
-  readonly skillSetId: string;
+export class TaskTypeNotFound extends Data.TaggedError("TaskTypeNotFound")<{
+  readonly taskTypeId: string;
 }> {}
 
 export class SkillNotFound extends Data.TaggedError("SkillNotFound")<{
@@ -20,12 +20,12 @@ export class SkillNotFound extends Data.TaggedError("SkillNotFound")<{
 }> {}
 
 /** A set with this name exists already (names are what Jev chooses between). */
-export class SkillSetNameTaken extends Data.TaggedError("SkillSetNameTaken")<{
+export class TaskTypeNameTaken extends Data.TaggedError("TaskTypeNameTaken")<{
   readonly setName: string;
 }> {}
 
 /** The name or description can't be used, e.g. the reserved name `none`. */
-export class InvalidSkillSet extends Data.TaggedError("InvalidSkillSet")<{
+export class InvalidTaskType extends Data.TaggedError("InvalidTaskType")<{
   readonly message: string;
 }> {}
 
@@ -39,11 +39,11 @@ export class SkillFetchFailed extends Data.TaggedError("SkillFetchFailed")<{
   readonly message: string;
 }> {}
 
-/** Jev's "no skill set fits" answer. A set can't take this name. */
-export const NO_SKILL_SET = "none";
+/** Jev's "no task type fits" answer. A set can't take this name. */
+export const NO_TASK_TYPE = "none";
 
-/** Below this the skill-set answer is dropped and the Worker gets no skills. */
-export const SKILL_SET_MIN_CONFIDENCE = 0.7;
+/** Below this the task-type answer is dropped and the Worker gets no skills. */
+export const TASK_TYPE_MIN_CONFIDENCE = 0.7;
 
 /** What one skill may weigh: a skill is prose and a few scripts, not a dataset. */
 export const SKILL_LIMITS = {
@@ -126,14 +126,14 @@ export const updateStatusOf = (skill: Skill, latestSha: string | null): SkillUpd
   latestSha,
 });
 
-/** The skill set a classified request is routed to; null when none fits or Jev is unsure. */
-export const chosenSkillSet = (result: {
-  readonly skillSet?: { readonly choice: string; readonly confidence: number };
+/** The task type a classified request is routed to; null when none fits or Jev is unsure. */
+export const chosenTaskType = (result: {
+  readonly taskType?: { readonly choice: string; readonly confidence: number };
 }): string | null =>
-  result.skillSet &&
-  result.skillSet.choice !== NO_SKILL_SET &&
-  result.skillSet.confidence >= SKILL_SET_MIN_CONFIDENCE
-    ? result.skillSet.choice
+  result.taskType &&
+  result.taskType.choice !== NO_TASK_TYPE &&
+  result.taskType.confidence >= TASK_TYPE_MIN_CONFIDENCE
+    ? result.taskType.choice
     : null;
 
 /** A skill folder as a zip, entries `<slug>/<path>`: what is stored, and what a Worker unpacks. */
@@ -148,7 +148,7 @@ export const mergeSkillArchives = (archives: ReadonlyArray<Uint8Array>): Uint8Ar
 
 /** Where a skill's zip is kept. The SHA is in the key, so an update never overwrites a version. */
 export const skillArchiveKey = (skill: {
-  readonly skillSetId: string;
+  readonly taskTypeId: string;
   readonly id: string;
   readonly sha: string;
-}): string => `skills/${skill.skillSetId}/${skill.id}/${skill.sha}.zip`;
+}): string => `skills/${skill.taskTypeId}/${skill.id}/${skill.sha}.zip`;

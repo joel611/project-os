@@ -24,12 +24,13 @@ import {
   audit,
   browseSkillSource,
   checkSkillUpdates,
-  createSkillSet,
-  deleteSkillSet,
-  getSkillSet,
-  listSkillSets,
+  createTaskType,
+  deleteTaskType,
+  getTaskType,
+  listTaskTypes,
   removeSkillFromSet,
-  updateSkillSet,
+  updateTaskType,
+  withTaskType,
   updateSkillsInSet,
   getMyTicket,
   getTicket,
@@ -75,8 +76,8 @@ import {
   AddSkillsBody,
   AssignBody,
   BrowseSkillsBody,
-  CreateSkillSetBody,
-  UpdateSkillSetBody,
+  CreateTaskTypeBody,
+  UpdateTaskTypeBody,
   UpdateSkillsBody,
   changeStatusAndNotify,
   CreateProjectBody,
@@ -469,35 +470,39 @@ export const httpRoutes = ({
     .delete("/projects/:id/sources/:sourceId", ({ params, set }) =>
       reply(set, toResult(unlinkSource(params.id, params.sourceId))),
     )
-    .get("/skill-sets", ({ set }) => reply(set, toResult(listSkillSets)))
-    .post("/skill-sets", ({ body, set }) =>
+    .get("/task-types", ({ set }) => reply(set, toResult(listTaskTypes)))
+    .post("/task-types", ({ body, set }) =>
       reply(
         set,
         toResult(
-          decode(CreateSkillSetBody, body).pipe(
-            Effect.flatMap(({ name, description }) =>
-              createSkillSet({ name, description: description ?? "" }),
+          decode(CreateTaskTypeBody, body).pipe(
+            Effect.flatMap(({ name, description, instructions }) =>
+              createTaskType({
+                name,
+                description: description ?? "",
+                ...(instructions !== undefined && { instructions }),
+              }),
             ),
           ),
           201,
         ),
       ),
     )
-    .get("/skill-sets/:id", ({ params, set }) => reply(set, toResult(getSkillSet(params.id))))
-    .patch("/skill-sets/:id", ({ params, body, set }) =>
+    .get("/task-types/:id", ({ params, set }) => reply(set, toResult(getTaskType(params.id))))
+    .patch("/task-types/:id", ({ params, body, set }) =>
       reply(
         set,
         toResult(
-          decode(UpdateSkillSetBody, body).pipe(
-            Effect.flatMap((patch) => updateSkillSet(params.id, patch)),
+          decode(UpdateTaskTypeBody, body).pipe(
+            Effect.flatMap((patch) => updateTaskType(params.id, patch)),
           ),
         ),
       ),
     )
-    .delete("/skill-sets/:id", ({ params, set }) =>
-      reply(set, toResult(deleteSkillSet(params.id).pipe(Effect.as({ deleted: true })))),
+    .delete("/task-types/:id", ({ params, set }) =>
+      reply(set, toResult(deleteTaskType(params.id).pipe(Effect.as({ deleted: true })))),
     )
-    .post("/skill-sets/browse", ({ body, set }) =>
+    .post("/task-types/browse", ({ body, set }) =>
       reply(
         set,
         toResult(
@@ -507,7 +512,7 @@ export const httpRoutes = ({
         ),
       ),
     )
-    .post("/skill-sets/:id/skills", async ({ params, body, request, set }) => {
+    .post("/task-types/:id/skills", async ({ params, body, request, set }) => {
       // The route's `user` policy lets in only an Operator.
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
       return reply(
@@ -523,13 +528,13 @@ export const httpRoutes = ({
         ),
       );
     })
-    .delete("/skill-sets/:id/skills/:skillId", ({ params, set }) =>
+    .delete("/task-types/:id/skills/:skillId", ({ params, set }) =>
       reply(set, toResult(removeSkillFromSet(params.skillId).pipe(Effect.as({ deleted: true })))),
     )
-    .get("/skill-sets/:id/updates", ({ params, set }) =>
+    .get("/task-types/:id/updates", ({ params, set }) =>
       reply(set, toResult(checkSkillUpdates(params.id))),
     )
-    .post("/skill-sets/:id/update", async ({ params, body, request, set }) => {
+    .post("/task-types/:id/update", async ({ params, body, request, set }) => {
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
       return reply(
         set,
@@ -612,7 +617,10 @@ export const httpRoutes = ({
       return reply(
         set,
         toResult(
-          scope.person ? getMyTicket(params.id, scope.person) : getTicket({ ticketId: params.id }),
+          (scope.person
+            ? getMyTicket(params.id, scope.person)
+            : getTicket({ ticketId: params.id })
+          ).pipe(Effect.flatMap(withTaskType)),
         ),
       );
     })

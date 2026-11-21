@@ -7,20 +7,22 @@ export const SkillFile = Schema.Struct({ path: Schema.String, contents: Schema.S
 export type SkillFile = typeof SkillFile.Type;
 
 /** A named group of skills a Ticket can be routed to, e.g. "development". */
-export const SkillSet = Schema.Struct({
+export const TaskType = Schema.Struct({
   id: Id,
   name: Schema.NonEmptyString,
   /** What the set is for; Jev picks a set from this, so say which requests belong to it. */
   description: Schema.String,
+  /** How the Worker should use these skills for this kind of work; added to its system prompt. */
+  instructions: Schema.String,
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
-export type SkillSet = typeof SkillSet.Type;
+export type TaskType = typeof TaskType.Type;
 
 /** A skill pinned in a set: one folder of a GitHub repo, at the commit that was downloaded. */
 export const Skill = Schema.Struct({
   id: Id,
-  skillSetId: Id,
+  taskTypeId: Id,
   /** `owner/repo` on GitHub, as skills.sh lists it. */
   source: Schema.String,
   /** Folder name of the skill; with `source` it is the skills.sh id `owner/repo/slug`. */
@@ -41,16 +43,16 @@ export const Skill = Schema.Struct({
 });
 export type Skill = typeof Skill.Type;
 
-export const SkillSetDetail = Schema.Struct({
-  set: SkillSet,
+export const TaskTypeDetail = Schema.Struct({
+  set: TaskType,
   skills: Schema.Array(Skill),
 });
-export type SkillSetDetail = typeof SkillSetDetail.Type;
+export type TaskTypeDetail = typeof TaskTypeDetail.Type;
 
-export const SkillSetList = Schema.Struct({
-  sets: Schema.Array(SkillSetDetail),
+export const TaskTypeList = Schema.Struct({
+  sets: Schema.Array(TaskTypeDetail),
 });
-export type SkillSetList = typeof SkillSetList.Type;
+export type TaskTypeList = typeof TaskTypeList.Type;
 
 /** A skill found in a repo, not yet added to a set. */
 export const SkillCandidate = Schema.Struct({

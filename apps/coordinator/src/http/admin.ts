@@ -52,14 +52,16 @@ export const UpdateStatusBody = Schema.Struct({
   error: Schema.optionalKey(Schema.String),
 });
 
-export const CreateSkillSetBody = Schema.Struct({
+export const CreateTaskTypeBody = Schema.Struct({
   name: Schema.String,
   description: Schema.optionalKey(Schema.String),
+  instructions: Schema.optionalKey(Schema.String),
 });
 
-export const UpdateSkillSetBody = Schema.Struct({
+export const UpdateTaskTypeBody = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
+  instructions: Schema.optionalKey(Schema.String),
 });
 
 export const BrowseSkillsBody = Schema.Struct({ source: Schema.NonEmptyString });

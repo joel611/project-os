@@ -23,7 +23,7 @@ import { bunSpawner } from "../../watcher/src/spawn.ts";
 import { type Stack, startStack } from "./stack.ts";
 import { collectLogger } from "../../watcher/src/logger.ts";
 
-// Skill sets, end to end: an Operator builds "development" in the dashboard API (browse a repo,
+// Task types, end to end: an Operator builds "development" in the dashboard API (browse a repo,
 // pick a skill), Jev routes a Discord request to it, and the skills reach the Worker before the
 // ticket starts: a sandbox session fetches them with its own token, a Watcher writes them to a
 // private folder for the session and removes it afterwards. GitHub is a fake repo.
@@ -54,14 +54,14 @@ let upstream = newUpstream();
 
 /** Jev picks the set named "development" for anything about code, and none otherwise. */
 const jev = Layer.succeed(IntentClassifier, {
-  classify: ({ content, skillSets = [] }) =>
+  classify: ({ content, taskTypes = [] }) =>
     Effect.succeed({
       intent: "new_request",
       confidence: 1,
-      ...(skillSets.length > 0 && {
-        skillSet: {
+      ...(taskTypes.length > 0 && {
+        taskType: {
           choice: content.includes("code")
-            ? (skillSets.find((s) => s.name === "development")?.id ?? "none")
+            ? (taskTypes.find((s) => s.name === "development")?.id ?? "none")
             : "none",
           confidence: 0.95,
         },
@@ -70,7 +70,12 @@ const jev = Layer.succeed(IntentClassifier, {
 });
 
 let stack: Stack;
-let launched: Array<{ ticketId: string; workerId: string; mcpToken: string }>;
+let launched: Array<{
+  ticketId: string;
+  workerId: string;
+  mcpToken: string;
+  taskType?: { name: string; instructions: string };
+}>;
 const dirs: string[] = [];
 
 beforeEach(async () => {
@@ -100,15 +105,16 @@ const say = (content: string) =>
   );
 
 const buildDevelopmentSet = async () => {
-  const set = await stack.json("POST", "/skill-sets", {
+  const set = await stack.json("POST", "/task-types", {
     name: "development",
     description: "Writing, fixing and reviewing code",
+    instructions: "Start with the tdd skill: write the failing test first.",
   });
-  const found = await stack.json("POST", "/skill-sets/browse", {
+  const found = await stack.json("POST", "/task-types/browse", {
     source: "https://skills.sh/acme/skills",
   });
   expect(found.skills.map((s: { slug: string }) => s.slug).sort()).toEqual(["docs", "tdd"]);
-  const added = await stack.json("POST", `/skill-sets/${set.id}/skills`, {
+  const added = await stack.json("POST", `/task-types/${set.id}/skills`, {
     source: "acme/skills",
     slugs: ["tdd"],
   });
@@ -133,7 +139,7 @@ const zipFiles = async (res: Response) =>
     ]),
   );
 
-describe("skill sets", () => {
+describe("task types", () => {
   it("routes a code request to its set, and a sandbox session fetches the pinned skills", async () => {
     const { set } = await buildDevelopmentSet();
     await say("please fix the login code");
@@ -141,8 +147,8 @@ describe("skill sets", () => {
     const [code, other] = ((await projectTickets()) as any[]).sort((a, b) =>
       a.inputSummary.includes("code") ? -1 : b.inputSummary.includes("code") ? 1 : 0,
     );
-    expect(code.skillSetId).toBe(set.id);
-    expect(other.skillSetId).toBeNull();
+    expect(code.taskTypeId).toBe(set.id);
+    expect(other.taskTypeId).toBeNull();
 
     const session = launched.find((l) => l.ticketId === code.id)!;
     const res = await bundleFor(code.id, session.mcpToken);
@@ -152,13 +158,40 @@ describe("skill sets", () => {
       "tdd/SKILL.md": md("tdd", "Test first"),
       "tdd/examples/a.ts": "export {}",
     });
-    void set;
+
+    // The ticket shows which task type it used, and the session's prompt carries its instructions.
+    expect((await stack.json("GET", `/tickets/${code.id}`)).taskType).toEqual({
+      id: set.id,
+      name: "development",
+    });
+    expect((await stack.json("GET", `/tickets/${other.id}`)).taskType).toBeNull();
+    expect(session.taskType).toEqual({
+      name: "development",
+      instructions: "Start with the tdd skill: write the failing test first.",
+    });
+    expect(other.taskTypeId).toBeNull();
+    expect(launched.find((l) => l.ticketId === other.id)!.taskType).toBeUndefined();
+    const served = await fetch(`${stack.url}/tickets/${code.id}/task-type`, {
+      headers: { authorization: `Bearer ${session.mcpToken}` },
+    });
+    expect(await served.json()).toEqual({
+      id: set.id,
+      name: "development",
+      instructions: "Start with the tdd skill: write the failing test first.",
+    });
 
     // The other ticket's session gets nothing, and can't read this one's.
     const otherSession = launched.find((l) => l.ticketId === other.id)!;
     expect((await bundleFor(other.id, otherSession.mcpToken)).status).toBe(204);
     expect((await bundleFor(code.id, otherSession.mcpToken)).status).toBe(403);
     expect((await bundleFor(code.id, "nope")).status).toBe(401);
+    const taskTypeOf = (ticketId: string, token: string) =>
+      fetch(`${stack.url}/tickets/${ticketId}/task-type`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+    expect((await taskTypeOf(other.id, otherSession.mcpToken)).status).toBe(204);
+    expect((await taskTypeOf(code.id, otherSession.mcpToken)).status).toBe(403);
+    expect((await taskTypeOf(code.id, "nope")).status).toBe(401);
   });
 
   it("keeps a ticket on the version it was routed with until an Operator updates the skill", async () => {
@@ -174,9 +207,9 @@ describe("skill sets", () => {
     });
     expect(Object.keys(await zipFiles(await bundleFor(ticket.id, token)))).toHaveLength(2);
 
-    const report = await stack.json("GET", `/skill-sets/${set.id}/updates`);
+    const report = await stack.json("GET", `/task-types/${set.id}/updates`);
     expect(report.statuses[0]).toMatchObject({ skillId: skill.id, state: "update_available" });
-    await stack.json("POST", `/skill-sets/${set.id}/update`, {});
+    await stack.json("POST", `/task-types/${set.id}/update`, {});
     expect(await zipFiles(await bundleFor(ticket.id, token))).toEqual({
       "tdd/SKILL.md": md("tdd", "Test first, v2"),
     });
@@ -213,11 +246,12 @@ describe("skill sets", () => {
         configDir: tmpdir(),
         home: tmpdir(),
         skills: {
+          fetchTaskType: async () => undefined,
           fetchArchive: async (url, token) => {
             const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
             return res.status === 200
               ? {
-                  set: decodeURIComponent(res.headers.get("x-skill-set") ?? ""),
+                  set: decodeURIComponent(res.headers.get("x-task-type") ?? ""),
                   zip: new Uint8Array(await res.arrayBuffer()),
                 }
               : undefined;
@@ -259,15 +293,15 @@ describe("skill sets", () => {
   });
 
   it("answers an Operator's mistakes with the right errors", async () => {
-    await stack.json("POST", "/skill-sets", { name: "development" });
-    expect(await stack.json("POST", "/skill-sets", { name: "development" })).toMatchObject({
-      error: "SkillSetNameTaken",
+    await stack.json("POST", "/task-types", { name: "development" });
+    expect(await stack.json("POST", "/task-types", { name: "development" })).toMatchObject({
+      error: "TaskTypeNameTaken",
     });
-    expect(await stack.json("POST", "/skill-sets", { name: "none" })).toMatchObject({
-      error: "InvalidSkillSet",
+    expect(await stack.json("POST", "/task-types", { name: "none" })).toMatchObject({
+      error: "InvalidTaskType",
     });
     expect(
-      await stack.json("POST", "/skill-sets/browse", { source: "acme/missing" }),
+      await stack.json("POST", "/task-types/browse", { source: "acme/missing" }),
     ).toMatchObject({
       error: "SkillFetchFailed",
     });

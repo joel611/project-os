@@ -33,12 +33,12 @@ import {
   SkillFetchFailed,
   SkillNotFound,
   SkillRepository,
-  SkillSetNameTaken,
-  SkillSetNotFound,
+  TaskTypeNameTaken,
+  TaskTypeNotFound,
   SkillSource,
   type Skill,
   type SkillFile,
-  type SkillSet,
+  type TaskType,
   type SidekickToken,
   SourceNotFound,
   PromptSendFailed,
@@ -720,20 +720,20 @@ export const makeUserConnectionsInMemory = () => {
 };
 
 export const SkillRepositoryInMemory = Layer.sync(SkillRepository, () => {
-  const sets = new Map<string, SkillSet>();
+  const sets = new Map<string, TaskType>();
   const stored = new Map<string, { skill: Skill }>();
-  const inSet = (setId: string) => [...stored.values()].filter((e) => e.skill.skillSetId === setId);
+  const inSet = (setId: string) => [...stored.values()].filter((e) => e.skill.taskTypeId === setId);
   const takenBy = (name: string) => [...sets.values()].find((s) => s.name === name);
-  const getSet = (id: string): Effect.Effect<SkillSet, SkillSetNotFound> => {
+  const getSet = (id: string): Effect.Effect<TaskType, TaskTypeNotFound> => {
     const set = sets.get(id);
-    return set ? Effect.succeed(set) : Effect.fail(new SkillSetNotFound({ skillSetId: id }));
+    return set ? Effect.succeed(set) : Effect.fail(new TaskTypeNotFound({ taskTypeId: id }));
   };
   return {
     listSets: Effect.sync(() => [...sets.values()]),
     getSet,
     insertSet: (set) =>
       Effect.suspend(() => {
-        if (takenBy(set.name)) return Effect.fail(new SkillSetNameTaken({ setName: set.name }));
+        if (takenBy(set.name)) return Effect.fail(new TaskTypeNameTaken({ setName: set.name }));
         sets.set(set.id, set);
         return Effect.succeed(set);
       }),
@@ -742,7 +742,7 @@ export const SkillRepositoryInMemory = Layer.sync(SkillRepository, () => {
         const current = yield* getSet(id);
         if (patch.name !== undefined && takenBy(patch.name)?.id !== undefined) {
           if (takenBy(patch.name)!.id !== id) {
-            return yield* new SkillSetNameTaken({ setName: patch.name });
+            return yield* new TaskTypeNameTaken({ setName: patch.name });
           }
         }
         const next = { ...current, ...patch };
@@ -768,7 +768,7 @@ export const SkillRepositoryInMemory = Layer.sync(SkillRepository, () => {
     },
     upsertSkill: (skill) =>
       Effect.sync(() => {
-        const same = inSet(skill.skillSetId).find(
+        const same = inSet(skill.taskTypeId).find(
           (e) => e.skill.source === skill.source && e.skill.slug === skill.slug,
         );
         const next = { ...skill, id: same?.skill.id ?? skill.id };

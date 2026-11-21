@@ -255,7 +255,7 @@ const SidebarBody = () => {
             </Link>
             <Link to="/skills" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
               <Sparkles className="size-4 shrink-0" />
-              Skill sets
+              Task types
             </Link>
             <Link to="/members" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
               <Users className="size-4 shrink-0" />

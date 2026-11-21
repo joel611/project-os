@@ -46,7 +46,7 @@ Read at run time. Where one overrides a saved choice, it applies to that run onl
 | `WATCHER_AGENT`           | saved agent                                                | Force `claude`, `pi`, or `codex`. Any other value is an error.                   |
 | `WATCHER_MODEL`           | saved model                                                | Model for the agent. A saved model only follows the agent it was saved with.     |
 | `WATCHER_VERBOSE`         | off                                                        | `1`, `true`, or `on` is the same as `--verbose`.                                 |
-| `WATCHER_SKILLS`          | on                                                         | `0`, `false`, or `off` skips installing the Ticket's skill set before a session. |
+| `WATCHER_SKILLS`          | on                                                         | `0`, `false`, or `off` skips installing the Ticket's task type before a session. |
 | `POLL_INTERVAL_MS`        | `300000` (5 minutes)                                       | Time between polls. This is the pickup latency for a new Ticket.                 |
 | `MAX_SESSIONS`            | `1`                                                        | Agent sessions this Watcher runs at once.                                        |
 | `WORKER_CWD`              | current directory                                          | Working directory for agent sessions.                                            |
