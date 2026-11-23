@@ -15,6 +15,9 @@ const memoryBackend = () => {
     put: async (key, body, meta) => {
       files.set(key, { bytes: await bytesOf(body), ...meta });
     },
+    remove: async (key) => {
+      files.delete(key);
+    },
     get: async (key) => {
       const file = files.get(key);
       return (
@@ -103,12 +106,32 @@ describe("makeAssetStore", () => {
         get: async () => {
           throw new Error("read failed");
         },
+        remove: async () => {},
       },
       fetch: ok("hello"),
     });
     expect(await ingest(store)).toMatchObject({ failure: { message: "bucket gone" } });
     expect(await Effect.runPromise(Effect.result(store.get("k")))).toMatchObject({
       failure: { message: "read failed" },
+    });
+  });
+
+  it("removes a stored file, and reports a backend failure", async () => {
+    const { files, backend } = memoryBackend();
+    const store = makeAssetStore({ backend });
+    files.set("k", { bytes: new Uint8Array([1]), contentType: "text/plain", size: 1 });
+    await Effect.runPromise(store.remove("k"));
+    expect(files.has("k")).toBe(false);
+    const broken = makeAssetStore({
+      backend: {
+        ...backend,
+        remove: async () => {
+          throw new Error("bucket gone");
+        },
+      },
+    });
+    expect(await Effect.runPromise(Effect.result(broken.remove("k")))).toMatchObject({
+      failure: { message: "bucket gone" },
     });
   });
 
@@ -259,6 +282,7 @@ describe("AssetStoreUnavailable", () => {
     expect(await run((s) => s.verify("k", 1, "s"))).toMatchObject({ success: false });
     expect(await run((s) => s.uploadLink("k"))).toMatchObject({ success: undefined });
     expect(await run((s) => s.verifyUpload("k", 1, "s"))).toMatchObject({ success: false });
+    expect(await run((s) => s.remove("k"))).toMatchObject({ success: undefined });
     expect(
       await run((s) =>
         s.put({
@@ -291,6 +315,17 @@ describe("makeDiskBackend", () => {
     const found = await backend.get("t1/a1/hero.png");
     expect(found).toMatchObject({ contentType: "image/png", size: 9 });
     expect(new TextDecoder().decode(await bytesOf(found!.body))).toBe("png-bytes");
+  });
+
+  it("removes a file, and a missing one is fine", async () => {
+    const backend = disk();
+    await backend.put("t1/a1/x.txt", new Response("x").body!, {
+      contentType: "text/plain",
+      size: 1,
+    });
+    await backend.remove("t1/a1/x.txt");
+    await backend.remove("t1/a1/x.txt");
+    expect(await backend.get("t1/a1/x.txt")).toBeUndefined();
   });
 
   it("leaves no half-written file when the body fails partway", async () => {

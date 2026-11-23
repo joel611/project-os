@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { WATCHER_AGENTS, type WatcherAgent } from "@project-os/contracts";
 import type { WatcherConfig } from "./config.ts";
+import { type LineParser, makeClaudeParser } from "./run-events.ts";
 
 export const AGENT_NAMES = WATCHER_AGENTS;
 export type AgentName = WatcherAgent;
@@ -43,6 +44,8 @@ export interface AgentContext {
   readonly home: string;
   /** Present only when the ticket's task type was installed. */
   readonly skills?: InstalledSkills;
+  /** Ask the agent for its structured event stream, so the run log can say what it did. */
+  readonly structuredOutput?: boolean;
 }
 
 export interface Agent {
@@ -54,6 +57,11 @@ export interface Agent {
    * can't load skills from outside its config, so none are installed.
    */
   readonly skillsLayout?: string;
+  /**
+   * Reads the lines of the agent's structured stream (asked for with `structuredOutput`) into run
+   * events. Without one, an agent's output is recorded as plain lines.
+   */
+  readonly parser?: () => LineParser;
 }
 
 const authorization = (config: WatcherConfig) => `Bearer ${config.secret}`;
@@ -73,7 +81,8 @@ const claude: Agent = {
   name: "claude",
   // Claude Code loads `.claude/skills/*` from every `--add-dir` directory.
   skillsLayout: ".claude/skills",
-  launch: ({ config, prompt, configDir, skills }) => {
+  parser: makeClaudeParser,
+  launch: ({ config, prompt, configDir, skills, structuredOutput }) => {
     const mcpFile = join(configDir, "mcp.json");
     return {
       cmd: [
@@ -87,6 +96,8 @@ const claude: Agent = {
         `mcp__${MCP_SERVER_NAME}__*`,
         ...(skills ? ["--add-dir", skills.root] : []),
         ...(config.model ? ["--model", config.model] : []),
+        // One JSON event per line (tool calls, results, messages); `-p` needs `--verbose` for it.
+        ...(structuredOutput ? ["--output-format", "stream-json", "--verbose"] : []),
       ],
       env: {},
       files: [{ path: mcpFile, update: () => claudeMcpConfig(config) }],

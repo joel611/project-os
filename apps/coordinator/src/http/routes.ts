@@ -36,6 +36,8 @@ import {
   getTicket,
   listMyTicketAttachments,
   listMyTickets,
+  listTicketRuns,
+  readTicketRun,
   handleInbound,
   readAudit,
   readProjectAudit,
@@ -61,6 +63,7 @@ import {
   type PromptAnswerConfig,
   type ProjectRepository,
   type ProjectSourceRepository,
+  type RunRepository,
   type Sidekick,
   type SkillRepository,
   type SkillSource,
@@ -145,6 +148,7 @@ export type HttpEnv =
   | AuditLogRepository
   | ProjectRepository
   | ProjectSourceRepository
+  | RunRepository
   | Sidekick
   | SkillRepository
   | SkillSource
@@ -206,6 +210,23 @@ export const httpRoutes = ({
     if (role && can(role, "ticket", "read")) return {};
     const person = await access.personOf(caller);
     return person ? { person } : { none: true };
+  };
+
+  /**
+   * Runs a ticket route for the caller's scope: everything for an Operator, their own Tickets for
+   * a member, and a plain 404 for someone with no Tickets of their own.
+   */
+  const forTicket = async (
+    request: Request,
+    set: { status?: number | string },
+    make: (person: Person | undefined) => Effect.Effect<HttpResult, never, HttpEnv>,
+  ) => {
+    const scope = await ticketScope(request);
+    if (scope.none) {
+      set.status = 404;
+      return { error: "TicketNotFound" };
+    }
+    return reply(set, make(scope.person));
   };
 
   /** The admin calling, as an audit actor: `shared-accounts` routes admit only Operators. */
@@ -608,33 +629,33 @@ export const httpRoutes = ({
         ),
       );
     })
-    .get("/tickets/:id", async ({ params, request, set }) => {
-      const scope = await ticketScope(request);
-      if (scope.none) {
-        set.status = 404;
-        return { error: "TicketNotFound" };
-      }
-      return reply(
-        set,
+    .get("/tickets/:id", ({ params, request, set }) =>
+      forTicket(request, set, (person) =>
         toResult(
-          (scope.person
-            ? getMyTicket(params.id, scope.person)
-            : getTicket({ ticketId: params.id })
-          ).pipe(Effect.flatMap(withTaskType)),
+          (person ? getMyTicket(params.id, person) : getTicket({ ticketId: params.id })).pipe(
+            Effect.flatMap(withTaskType),
+          ),
         ),
-      );
-    })
-    .get("/tickets/:id/attachments", async ({ params, request, set }) => {
-      const scope = await ticketScope(request);
-      if (scope.none) {
-        set.status = 404;
-        return { error: "TicketNotFound" };
-      }
-      const attachments = scope.person
-        ? listMyTicketAttachments(params.id, scope.person)
-        : listTicketAttachments(params.id);
-      return reply(set, toResult(Effect.map(attachments, (list) => ({ attachments: list }))));
-    })
+      ),
+    )
+    .get("/tickets/:id/attachments", ({ params, request, set }) =>
+      forTicket(request, set, (person) =>
+        toResult(
+          Effect.map(
+            person ? listMyTicketAttachments(params.id, person) : listTicketAttachments(params.id),
+            (list) => ({ attachments: list }),
+          ),
+        ),
+      ),
+    )
+    .get("/tickets/:id/runs", ({ params, request, set }) =>
+      forTicket(request, set, (person) =>
+        toResult(listTicketRuns(params.id, person).pipe(Effect.map((runs) => ({ runs })))),
+      ),
+    )
+    .get("/tickets/:id/runs/:runId", ({ params, request, set }) =>
+      forTicket(request, set, (person) => toResult(readTicketRun(params.id, params.runId, person))),
+    )
     .post("/tickets/:id/status", ({ params, body, set }) =>
       reply(
         set,

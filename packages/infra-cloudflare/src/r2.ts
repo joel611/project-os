@@ -12,6 +12,9 @@ export const makeR2Backend = (bucket: R2Bucket): BlobBackend => ({
     // If the body fails, the pipe error is the cause; the put then fails on the cut-off stream.
     await Promise.all([bucket.put(key, sized.readable, { httpMetadata: { contentType } }), piped]);
   },
+  remove: async (key) => {
+    await bucket.delete(key);
+  },
   get: async (key) => {
     const object = await bucket.get(key);
     if (object === null) return undefined;

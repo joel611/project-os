@@ -32,6 +32,7 @@ const fakeBucket = () => {
         contentType: options?.httpMetadata?.contentType,
       });
     },
+    delete: async (key: string) => void objects.delete(key),
     get: async (key: string) => {
       const object = objects.get(key);
       return object
@@ -75,6 +76,13 @@ describe("R2 blob backend", () => {
     await expect(
       backend.put("k", body(new Uint8Array([1, 2, 3])), { contentType: "image/png", size: 5 }),
     ).rejects.toThrow();
+  });
+
+  it("deletes an object", async () => {
+    const { bucket, objects } = fakeBucket();
+    objects.set("k", { bytes: new Uint8Array([1]) });
+    await makeR2Backend(bucket).remove("k");
+    expect(objects.has("k")).toBe(false);
   });
 
   it("reads a missing key as undefined and an untyped object as binary", async () => {

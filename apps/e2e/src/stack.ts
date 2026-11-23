@@ -11,6 +11,8 @@ import {
   digestChannels,
   type IntentClassifier,
   issueSandboxToken,
+  recordSandboxRun,
+  type SandboxRun,
   type SkillSource,
   UserConnections,
   type WorkerLauncher,
@@ -138,6 +140,8 @@ export interface Stack {
   readonly worker: (token: string) => Promise<Client>;
   /** Mints the MCP token a sandbox session launched as `workerId` would get. */
   readonly sandboxToken: (workerId: string) => Promise<string>;
+  /** Keeps a finished sandbox session's output as a run, as the Coordinator's launcher hook does. */
+  readonly recordSandboxRun: (session: SandboxRun) => Promise<void>;
   /**
    * Adds a shared worker the way an admin does: `/register-worker shared:True` in the admin
    * channel, the Watcher trading the code at POST /workers/register, then a heartbeat so it
@@ -459,6 +463,7 @@ export const startStack = async (options: {
       return project.id as string;
     },
     worker,
+    recordSandboxRun: (session) => runtime.runPromise(recordSandboxRun(session) as any),
     sandboxToken: (workerId) =>
       runtime.runPromise(issueSandboxToken(workerId, 600) as Effect.Effect<string, never, any>),
     registerSharedWorker: async (name = "shared-box") => {

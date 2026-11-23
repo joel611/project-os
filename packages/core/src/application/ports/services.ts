@@ -100,6 +100,8 @@ export class AssetStore extends Context.Service<
     readonly uploadLink: (
       key: string,
     ) => Effect.Effect<{ readonly url: string; readonly expiresInSeconds: number } | undefined>;
+    /** Deletes the file stored under `key`; nothing there is fine. */
+    readonly remove: (key: string) => Effect.Effect<void, AssetStoreFailed>;
     /** Whether `sig` is a valid, unexpired upload signature for `key`. */
     readonly verifyUpload: (key: string, expires: number, sig: string) => Effect.Effect<boolean>;
     /**

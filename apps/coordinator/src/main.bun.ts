@@ -15,6 +15,7 @@ import {
 } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { Auth } from "@project-os/auth";
+import { recordSandboxRun } from "@project-os/core";
 import {
   DEFAULT_ORG,
   DrizzleBun,
@@ -95,6 +96,8 @@ const AiLive = Layer.orDie(
 
 const workerLauncher = sandboxLauncherFromEnv(process.env, {
   log: console.log,
+  // `runtime` is built below, before any session can end.
+  onSessionEnd: (session) => runtime.runPromise(recordSandboxRun(session)),
 });
 
 const remoteGatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;

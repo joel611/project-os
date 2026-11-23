@@ -2,6 +2,10 @@ import {
   type DetectedSource,
   detectSource,
   type ProjectSourceType,
+  type Run,
+  type RunEvent,
+  type RunEventType,
+  type RunStatus,
   TERMINAL_STATUSES,
   type Ticket,
   type TicketEvent,
@@ -282,3 +286,49 @@ export const formatBytes = (bytes: number): string => {
   }
   return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unit]}`;
 };
+
+export const RUN_STATUS: Readonly<
+  Record<RunStatus, { readonly label: string; readonly tone: Tone }>
+> = {
+  running: { label: "Running", tone: "progress" },
+  succeeded: { label: "Succeeded", tone: "success" },
+  failed: { label: "Failed", tone: "danger" },
+};
+
+export const RUN_EVENT: Readonly<
+  Record<RunEventType, { readonly label: string; readonly tone: Tone }>
+> = {
+  lifecycle: { label: "Session", tone: "info" },
+  message: { label: "Agent", tone: "neutral" },
+  tool_call: { label: "Tool call", tone: "progress" },
+  tool_result: { label: "Tool result", tone: "neutral" },
+  output: { label: "Output", tone: "neutral" },
+  error: { label: "Error", tone: "danger" },
+};
+
+/** How long a run took, like `2m 5s`; the time since it started while it is still running. */
+export const runDuration = (run: Pick<Run, "startedAt" | "endedAt">, now: Date): string => {
+  const end = run.endedAt ? Date.parse(run.endedAt) : now.getTime();
+  const seconds = Math.max(0, Math.round((end - Date.parse(run.startedAt)) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+};
+
+/** The events that match the search and the type filter; a blank search matches everything. */
+export const filterRunEvents = (
+  events: ReadonlyArray<RunEvent>,
+  options: { readonly search: string; readonly hidden: ReadonlySet<RunEventType> },
+): ReadonlyArray<RunEvent> => {
+  const needle = options.search.trim().toLowerCase();
+  return events.filter(
+    (e) =>
+      !options.hidden.has(e.type) &&
+      (needle === "" || `${e.tool ?? ""} ${e.text}`.toLowerCase().includes(needle)),
+  );
+};
+
+/** The transcript as it is stored, one JSON event per line, for downloading. */
+export const runToJsonl = (events: ReadonlyArray<RunEvent>): string =>
+  events.map((e) => JSON.stringify(e)).join("\n") + "\n";

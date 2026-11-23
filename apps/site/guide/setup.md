@@ -535,6 +535,7 @@ The sweep runs on a timer in host runs and on a per-minute Cron on Cloudflare.
 | `HEALTH_FOLLOW_UP_MIN`       | No       | `15`    | An `in_progress` ticket quiet this long gets a "Status?" follow-up |
 | `HEALTH_INACTIVITY_FAIL_MIN` | No       | `30`    | An `in_progress` ticket quiet this long is failed                  |
 | `AUDIT_RETENTION_DAYS`       | No       | `90`    | Audit log entries older than this are deleted                      |
+| `RUN_LOG_RETENTION_DAYS`     | No       | `30`    | Run transcripts older than this are deleted (their summaries stay) |
 
 ### Registered workers
 
@@ -580,6 +581,7 @@ Build task types on the dashboard's **Task types** page. The Coordinator uses a 
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
 | `SKILLS_GITHUB_TOKEN` | No       |         | Fallback token when no shared GitHub credential is available. A token with no scopes reads public repos. Not sent to Workers |
 | `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's task type before a session starts       |
+| `WATCHER_RUN_LOG`    | No       | on      | On a Watcher computer, `0` (or `--no-run-log`) keeps session transcripts local instead of sending them to the Coordinator |
 
 #### Daytona (paused)
 
