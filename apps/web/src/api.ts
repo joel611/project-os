@@ -9,6 +9,8 @@ import {
   MyTickets,
   Project,
   ProjectSource,
+  Run,
+  RunEvent,
   SharedAccountConnect,
   SharedAccountsView,
   Skill,
@@ -44,6 +46,10 @@ const TicketDetail = Schema.Struct({
   taskType: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
 });
 export type TicketDetail = typeof TicketDetail.Type;
+
+const TicketRuns = Schema.Struct({ runs: Schema.Array(Run) });
+const RunTranscriptView = Schema.Struct({ run: Run, events: Schema.Array(RunEvent) });
+export type RunTranscriptView = typeof RunTranscriptView.Type;
 
 export interface SourcePatch {
   readonly alias?: string;
@@ -200,6 +206,9 @@ export const makeApi = (
     projectAudit: (projectId: string, query: Omit<AuditFilter, "projectId"> = {}) =>
       get(`/projects/${id(projectId)}/audit${auditSearch(query)}`, AuditPage),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
+    ticketRuns: (ticketId: string) => get(`/tickets/${id(ticketId)}/runs`, TicketRuns),
+    ticketRun: (ticketId: string, runId: string) =>
+      get(`/tickets/${id(ticketId)}/runs/${id(runId)}`, RunTranscriptView),
     ticketAttachments: (ticketId: string) =>
       get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),
     workers: () => get("/workers", Schema.Array(WorkerView)),

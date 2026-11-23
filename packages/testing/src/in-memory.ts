@@ -17,6 +17,7 @@ import {
   AssetStoreFailed,
   KeyValueStore,
   AuditLogRepository,
+  RunRepository,
   MemoryRepository,
   NotConnected,
   type Person,
@@ -59,6 +60,7 @@ import {
 import {
   type ChannelMessage,
   type AuditEntry,
+  type Run,
   type ConnectionProvider,
   CONNECTION_PROVIDERS,
   type CreateChannelInstruction,
@@ -593,6 +595,11 @@ export const makeAssetStoreRecording = (options?: { readonly fail?: string }) =>
             : undefined,
         ),
       verifyUpload: (_key, _expires, sig) => Effect.succeed(sig === VALID_ASSET_SIG),
+      remove: (key) =>
+        Effect.sync(() => {
+          files.delete(key);
+          stored.delete(key);
+        }),
       put: ({ key, body, contentType }) =>
         options?.fail === undefined
           ? Effect.promise(async () => {
@@ -854,3 +861,19 @@ export const makeSkillSourceFake = (
     },
   };
 };
+
+export const RunRepositoryInMemory = Layer.sync(RunRepository, () => {
+  const rows = new Map<string, Run>();
+  return {
+    get: (id) => Effect.sync(() => rows.get(id)),
+    save: (run) => Effect.sync(() => void rows.set(run.id, run)),
+    listByTicket: (ticketId) =>
+      Effect.sync(() =>
+        [...rows.values()]
+          .filter((r) => r.ticketId === ticketId)
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+      ),
+    listStoredBefore: (at) =>
+      Effect.sync(() => [...rows.values()].filter((r) => r.startedAt < at && !r.expired)),
+  };
+});

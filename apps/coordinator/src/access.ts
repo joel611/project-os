@@ -70,6 +70,7 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "ALL /egress/:service/*": "worker",
   "GET /tickets/:id/skills": "worker",
   "GET /tickets/:id/task-type": "worker",
+  "POST /tickets/:id/runs": "worker",
   "GET /task-types": needs("taskType", "read"),
   "POST /task-types": needs("taskType", "create"),
   "GET /task-types/:id": needs("taskType", "read"),
@@ -106,6 +107,8 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /me/tickets": "member",
   "GET /tickets/:id": "member",
   "GET /tickets/:id/attachments": "member",
+  "GET /tickets/:id/runs": "member",
+  "GET /tickets/:id/runs/:runId": "member",
   "POST /tickets/:id/status": needs("ticket", "update"),
   "POST /tickets/:id/assign": needs("ticket", "update"),
 };

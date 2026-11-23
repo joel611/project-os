@@ -34,6 +34,7 @@ describe("loadConfig", () => {
       cwd: process.cwd(),
       secret: "s",
       skills: true,
+      runLog: true,
     });
   });
 

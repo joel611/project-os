@@ -7,6 +7,7 @@ import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { type EgressDeps, egressRoutes } from "./egress/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
+import { runRoutes } from "./runs/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
 
 export interface AppDeps {
@@ -95,6 +96,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
   const proxy = deps.credentialProxy;
   const withMcp = withAssets
     .use(mcpRoutes(deps.mcp, { credentialProxy: proxy !== undefined }))
-    .use(skillRoutes({ runtime: deps.mcp }));
+    .use(skillRoutes({ runtime: deps.mcp }))
+    .use(runRoutes({ runtime: deps.mcp }));
   return proxy ? withMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withMcp;
 };

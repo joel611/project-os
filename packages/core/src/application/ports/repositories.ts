@@ -6,6 +6,7 @@ import type {
   MemoryEntry,
   MemoryEntryType,
   Requester,
+  Run,
 } from "@project-os/contracts";
 import { Context, type Effect } from "effect";
 import type { Project, ProjectNotFound } from "../../domain/project/index.ts";
@@ -314,3 +315,17 @@ export class SkillRepository extends Context.Service<
     readonly removeSkill: (id: string) => Effect.Effect<void, SkillNotFound>;
   }
 >()("@project-os/core/SkillRepository") {}
+
+/** One row per agent session on a Ticket; the transcript lives in file storage. */
+export class RunRepository extends Context.Service<
+  RunRepository,
+  {
+    readonly get: (id: string) => Effect.Effect<Run | undefined>;
+    /** Inserts the run, or replaces the one with the same id. */
+    readonly save: (run: Run) => Effect.Effect<void>;
+    /** A ticket's runs, oldest first. */
+    readonly listByTicket: (ticketId: string) => Effect.Effect<ReadonlyArray<Run>>;
+    /** Runs started before `at` whose transcript is still stored. */
+    readonly listStoredBefore: (at: string) => Effect.Effect<ReadonlyArray<Run>>;
+  }
+>()("@project-os/core/RunRepository") {}

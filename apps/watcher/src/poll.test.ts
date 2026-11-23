@@ -14,6 +14,7 @@ const config: WatcherConfig = {
   cwd: "/tmp",
   secret: "s3cret",
   skills: true,
+  runLog: true,
 };
 
 const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {

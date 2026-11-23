@@ -15,6 +15,7 @@ describe("healthConfig", () => {
       sweepEveryMs: 60_000,
       sharedWorkerMaxTickets: 1,
       auditRetentionMs: 7_776_000_000,
+      runLogRetentionMs: 2_592_000_000,
     });
   });
 

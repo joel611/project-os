@@ -3,7 +3,12 @@ import type { WorkerLauncher } from "@project-os/core";
 import { BOAT_SIZES, type BoatSize, boatSandboxRunner } from "@project-os/sandbox-boat";
 import { cloudflareSandboxRunnerLive } from "@project-os/sandbox-cloudflare";
 import { daytonaSandboxRunner } from "@project-os/sandbox-daytona";
-import { makeSandboxLauncher, resolvePool, type SandboxRunner } from "@project-os/sandbox-core";
+import {
+  makeSandboxLauncher,
+  resolvePool,
+  type SandboxLauncherConfig,
+  type SandboxRunner,
+} from "@project-os/sandbox-core";
 import { credentialProxyEnabled } from "./config.ts";
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -100,6 +105,8 @@ export const sandboxLauncherFromEnv = (
   options: {
     readonly log: (message: string) => void;
     readonly runners?: Partial<Record<SandboxProvider, SandboxRunner>>;
+    /** Gets every finished session's output, to keep as the ticket's run log. */
+    readonly onSessionEnd?: SandboxLauncherConfig["onSessionEnd"];
   },
 ): typeof WorkerLauncher.Service | undefined => {
   const providers = resolvePool({
@@ -131,5 +138,6 @@ export const sandboxLauncherFromEnv = (
     model,
     ...(timeout === undefined ? {} : { timeoutSeconds: timeout }),
     log: options.log,
+    ...(options.onSessionEnd && { onSessionEnd: options.onSessionEnd }),
   });
 };

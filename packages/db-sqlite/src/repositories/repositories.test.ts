@@ -2,13 +2,14 @@ import { Database } from "bun:sqlite";
 import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditEntry, ChannelMessage, MemoryEntry } from "@project-os/contracts";
+import type { AuditEntry, ChannelMessage, MemoryEntry, Run } from "@project-os/contracts";
 import {
   AuditLogRepository,
   ChannelMessageRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
+  RunRepository,
   SkillRepository,
   TicketRepository,
   WorkerRepository,
@@ -53,6 +54,7 @@ const run = <A, E>(
     | ChannelMessageRepository
     | AuditLogRepository
     | SkillRepository
+    | RunRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(reposOf(db))));
@@ -1246,5 +1248,50 @@ describe("SkillRepository", () => {
     );
     expect(out.left).toEqual([]);
     expect(out.t.taskTypeId).toBe("set1");
+  });
+});
+
+describe("RunRepository", () => {
+  const mkRun = (id: string, startedAt: string, over: Partial<Run> = {}): Run => ({
+    id,
+    ticketId: "t1",
+    workerId: "w1",
+    agent: "claude",
+    model: null,
+    status: "running",
+    exitCode: null,
+    startedAt,
+    endedAt: null,
+    eventCount: 0,
+    errorCount: 0,
+    bytes: 0,
+    nextSeq: 0,
+    truncated: false,
+    expired: false,
+    ...over,
+  });
+
+  it("saves and updates a run, lists a ticket's oldest first, and finds the stored old ones", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        yield* (yield* TicketRepository).insert(ticket());
+        const repo = yield* RunRepository;
+        yield* repo.save(mkRun("r2", T1));
+        yield* repo.save(mkRun("r1", T0));
+        yield* repo.save(mkRun("r1", T0, { status: "succeeded", exitCode: 0, eventCount: 4 }));
+        yield* repo.save(mkRun("old", "2026-11-03T00:00:00.000Z", { expired: true }));
+        return {
+          one: yield* repo.get("r1"),
+          missing: yield* repo.get("nope"),
+          listed: (yield* repo.listByTicket("t1")).map((r) => r.id),
+          stored: (yield* repo.listStoredBefore(T1)).map((r) => r.id),
+        };
+      }),
+    );
+    expect(out.one).toMatchObject({ status: "succeeded", exitCode: 0, eventCount: 4 });
+    expect(out.missing).toBeUndefined();
+    expect(out.listed).toEqual(["old", "r1", "r2"]);
+    expect(out.stored).toEqual(["r1"]);
   });
 });
