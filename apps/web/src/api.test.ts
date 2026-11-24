@@ -452,3 +452,64 @@ describe("task type calls", () => {
     ]);
   });
 });
+
+describe("auditReport", () => {
+  const withAuth = (response: () => Response) => {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    const expired = vi.fn();
+    const api = makeApi(
+      (async (url: string, init?: { headers?: Record<string, string> }) => {
+        calls.push({ url, headers: init?.headers ?? {} });
+        return response();
+      }) as unknown as typeof fetch,
+      "/api",
+      { token: () => "tok", expired },
+    );
+    return { api, calls, expired };
+  };
+
+  it("downloads the Markdown with the name the Coordinator suggests", async () => {
+    const { api, calls } = withAuth(
+      () =>
+        new Response("# Incident report\n", {
+          headers: { "content-disposition": 'attachment; filename="incident-report-1.md"' },
+        }),
+    );
+    expect(await api.auditReport({ hours: 168, projectId: "a/b" })).toEqual({
+      filename: "incident-report-1.md",
+      markdown: "# Incident report\n",
+    });
+    expect(calls).toEqual([
+      {
+        url: "/api/audit/report?hours=168&projectId=a%2Fb",
+        headers: { authorization: "Bearer tok" },
+      },
+    ]);
+  });
+
+  it("falls back to a default name and no query, and without a token sends no header", async () => {
+    const calls: Array<{ headers: Record<string, string> }> = [];
+    const api = makeApi(
+      (async (_url: string, init?: { headers?: Record<string, string> }) => {
+        calls.push({ headers: init?.headers ?? {} });
+        return new Response("x");
+      }) as unknown as typeof fetch,
+      "/api",
+      { token: () => null, expired: () => {} },
+    );
+    expect(await api.auditReport()).toEqual({ filename: "incident-report.md", markdown: "x" });
+    expect(calls[0]!.headers).toEqual({});
+  });
+
+  it("throws the Coordinator's error, and ends the session on a 401", async () => {
+    const forbidden = withAuth(
+      () => new Response(JSON.stringify({ error: "nope" }), { status: 403 }),
+    );
+    await expect(forbidden.api.auditReport()).rejects.toMatchObject({ status: 403, code: "nope" });
+    const expired = withAuth(
+      () => new Response("not json", { status: 401, statusText: "Unauthorized" }),
+    );
+    await expect(expired.api.auditReport()).rejects.toBeInstanceOf(ApiError);
+    expect(expired.expired).toHaveBeenCalled();
+  });
+});

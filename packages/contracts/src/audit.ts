@@ -9,6 +9,7 @@ export const AUDIT_KINDS = [
   "worker",
   "ticket",
   "connection",
+  "runtime_error",
 ] as const;
 export const AuditKind = Schema.Literals(AUDIT_KINDS);
 export type AuditKind = typeof AuditKind.Type;
@@ -122,3 +123,24 @@ export const TicketAuditPayload = Schema.Struct({
   reason: Schema.optionalKey(Schema.String),
 });
 export type TicketAuditPayload = typeof TicketAuditPayload.Type;
+
+/** Where in the Coordinator an uncaught error surfaced. */
+export const RuntimeErrorSource = Schema.Literals(["http", "health_sweep", "channel_digest"]);
+export type RuntimeErrorSource = typeof RuntimeErrorSource.Type;
+
+/**
+ * `runtime_error` / `raised`: an error the Coordinator did not handle (a route that threw, or a
+ * Cron job that failed). Message and stack are masked for secrets and clipped. `fingerprint` is
+ * the same for the same error from the same place, so repeats can be grouped; the log keeps one
+ * row per fingerprint per hour; repeats inside that hour are not logged.
+ */
+export const RuntimeErrorAuditPayload = Schema.Struct({
+  source: RuntimeErrorSource,
+  /** `METHOD /route/:pattern` for `http`, the job name otherwise. */
+  where: Schema.String,
+  name: Schema.String,
+  message: Schema.String,
+  stack: Schema.optionalKey(Schema.String),
+  fingerprint: Schema.String,
+});
+export type RuntimeErrorAuditPayload = typeof RuntimeErrorAuditPayload.Type;

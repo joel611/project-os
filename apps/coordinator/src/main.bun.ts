@@ -34,6 +34,7 @@ import { coordinatorConfig } from "./config.ts";
 import { channelDigester, startChannelDigest } from "./digest/index.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { makeLifecycleNotifications } from "./lifecycle.ts";
+import { makeRuntimeErrorLogger, runtimeErrorSecrets } from "./runtime-errors.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 import { setupTelemetry } from "./telemetry.ts";
 
@@ -146,9 +147,15 @@ await runtime.runPromise(
   startChannelDigest({ ...digestConfig, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
 );
 
+const runtimeErrors = makeRuntimeErrorLogger({
+  run: (effect) => runtime.runPromise(effect as Effect.Effect<unknown, never, AdminEnv>),
+  secrets: runtimeErrorSecrets(process.env),
+});
+
 createApp(
   {},
   {
+    onUnhandledError: runtimeErrors.route,
     ...coordinatorConfig({
       env: process.env,
       run: (effect) => runtime.runPromise(effect),

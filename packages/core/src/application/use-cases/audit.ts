@@ -6,11 +6,14 @@ import type {
   DigestAuditPayload,
   InboundAuditPayload,
   InboundMessage,
+  RuntimeErrorAuditPayload,
+  RuntimeErrorSource,
   TicketAuditPayload,
   TicketStatus,
   Worker,
   WorkerAuditPayload,
 } from "@project-os/contracts";
+import { redactSecrets } from "@project-os/contracts";
 import { Effect } from "effect";
 import type { InboundOutcome } from "./handle-inbound.ts";
 import { isSharedDevice, type Ticket, workerLabel } from "../../domain/index.ts";
@@ -338,4 +341,67 @@ export const pruneAudit = (retentionMs: number) =>
     const now = yield* Effect.flatMap(Clock, (c) => c.now);
     const cutoff = new Date(now.getTime() - retentionMs).toISOString();
     return yield* (yield* AuditLogRepository).removeBefore(cutoff);
+  });
+
+/** Longest message and stack a `runtime_error` row keeps. */
+const ERROR_MESSAGE_MAX = 500;
+const ERROR_STACK_MAX = 4000;
+const HOUR_MS = 60 * 60 * 1000;
+
+const cut = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
+
+/** Small stable hash (FNV-1a) of `text`, in hex. */
+const fnv = (text: string): string => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+};
+
+/** What was thrown, as `{ name, message, stack }`; non-Errors become their string form. */
+const describeThrown = (error: unknown) =>
+  error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { name: "NonError", message: String(error), stack: undefined };
+
+/**
+ * Logs an error the Coordinator did not handle: a route that threw, or a Cron job that failed.
+ * Secrets are masked (pattern-matched ones, plus any of `secrets`). The same error from the same
+ * place is logged once an hour (numbers in the message are ignored when grouping), so a loop
+ * that fails every minute adds a row an hour, not sixty.
+ */
+export const auditRuntimeError = (input: {
+  readonly source: RuntimeErrorSource;
+  readonly where: string;
+  readonly error: unknown;
+  readonly secrets?: ReadonlyArray<string>;
+}) =>
+  Effect.gen(function* () {
+    const thrown = describeThrown(input.error);
+    const mask = (text: string) => redactSecrets(text, input.secrets ?? []);
+    const message = cut(mask(thrown.message), ERROR_MESSAGE_MAX);
+    const fingerprint = fnv(
+      `${input.source}|${input.where}|${thrown.name}|${message.replace(/\d+/g, "#")}`,
+    );
+    const now = yield* Effect.flatMap(Clock, (c) => c.now);
+    const payload: RuntimeErrorAuditPayload = {
+      source: input.source,
+      where: input.where,
+      name: thrown.name,
+      message,
+      ...(thrown.stack === undefined ? {} : { stack: cut(mask(thrown.stack), ERROR_STACK_MAX) }),
+      fingerprint,
+    };
+    return yield* audit({
+      kind: "runtime_error",
+      action: "raised",
+      actor: COORDINATOR,
+      summary: clip(`${input.where}: ${thrown.name}: ${message}`),
+      payload,
+      at: now.toISOString(),
+      dedupeKey: `runtime-error:${fingerprint}:${Math.floor(now.getTime() / HOUR_MS)}`,
+    });
   });

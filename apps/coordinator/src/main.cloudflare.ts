@@ -28,6 +28,7 @@ import { channelDigester, digestAndLog } from "./digest/index.ts";
 import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
+import { makeRuntimeErrorLogger, runtimeErrorSecrets } from "./runtime-errors.ts";
 
 export { PiAgent } from "./pi-agent.ts";
 
@@ -125,9 +126,17 @@ const buildApp = (bindings: Bindings) => {
     autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
   });
 
+  // Unhandled route errors and failed Cron jobs go to the audit log (kind `runtime_error`).
+  const errors = makeRuntimeErrorLogger({
+    run: (effect) => runtime.runPromise(effect as Effect.Effect<unknown, never, AdminEnv>),
+    secrets: runtimeErrorSecrets(process.env),
+    keepAlive: waitUntil,
+  });
+
   const app = createApp(
     { adapter: CloudflareAdapter },
     {
+      onUnhandledError: errors.route,
       ...coordinatorConfig({
         env: process.env,
         run: (effect) => runtime.runPromise(effect),
@@ -148,7 +157,7 @@ const buildApp = (bindings: Bindings) => {
   const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
   // Same Cron tick as the sweep (ADR 0001); a project is digested only once its chat is quiet.
   const digestRun = () => runtime.runPromise(digestAndLog(digestConfig));
-  return { app, sweep, digest: digestRun };
+  return { app, sweep, digest: digestRun, errors };
 };
 
 const built = buildApp(workerEnv as unknown as Bindings);
@@ -161,7 +170,7 @@ export default {
     _env: unknown,
     ctx: { waitUntil(p: Promise<unknown>): void },
   ) => {
-    ctx.waitUntil(built.sweep().catch((e) => console.error("health sweep failed", e)));
-    ctx.waitUntil(built.digest().catch((e) => console.error("channel digest failed", e)));
+    ctx.waitUntil(built.sweep().catch(built.errors.job("health_sweep", "health sweep")));
+    ctx.waitUntil(built.digest().catch(built.errors.job("channel_digest", "channel digest")));
   },
 };
