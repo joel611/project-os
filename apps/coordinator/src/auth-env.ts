@@ -1,4 +1,5 @@
 import type { AuthSettings, OAuthClientConfig } from "@project-os/auth";
+import type { Member } from "@project-os/contracts";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -16,6 +17,37 @@ export const serviceTokenFromEnv = (env: Env): string =>
     "COORDINATOR_SERVICE_TOKEN",
     "Channel Adapters send it on /inbound, /commands and /prompts/answer",
   );
+
+/** Shortest `ADMIN_MCP_TOKEN` accepted: it is a static credential, so it must not be guessable. */
+export const ADMIN_MCP_TOKEN_MIN_LENGTH = 32;
+
+/**
+ * `ADMIN_MCP_TOKEN` turns on the read-only admin MCP at `/mcp/admin` (generate one with
+ * `openssl rand -base64 32`). Unset: the endpoint is not mounted. A short one fails the start.
+ * The configured secrets are masked wherever they appear in tool output.
+ */
+export const adminMcpFromEnv = (
+  env: Env,
+  deps: {
+    readonly workerStaleMs: number;
+    readonly members?: () => Promise<ReadonlyArray<Member>>;
+  },
+) => {
+  const token = nonEmpty(env, "ADMIN_MCP_TOKEN");
+  if (token === undefined) return undefined;
+  if (token.length < ADMIN_MCP_TOKEN_MIN_LENGTH) {
+    throw new Error(
+      `ADMIN_MCP_TOKEN must be at least ${ADMIN_MCP_TOKEN_MIN_LENGTH} characters (generate one with \`openssl rand -base64 32\`)`,
+    );
+  }
+  const secrets = [
+    token,
+    ...["COORDINATOR_SERVICE_TOKEN", "BETTER_AUTH_SECRET", "ADMIN_PASSWORD"]
+      .map((key) => nonEmpty(env, key))
+      .filter((value): value is string => value !== undefined),
+  ];
+  return { token, secrets, ...deps };
+};
 
 const oauthClient = (env: Env, prefix: string): OAuthClientConfig | undefined => {
   const clientId = nonEmpty(env, `${prefix}_CLIENT_ID`);

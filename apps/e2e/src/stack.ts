@@ -193,6 +193,8 @@ export const startStack = async (options: {
   readonly failDigest?: string;
   /** Mounts the credential proxy (`SANDBOX_CREDENTIAL_PROXY`), forwarding to these origins. */
   readonly credentialProxy?: NonNullable<AppDeps["credentialProxy"]>;
+  /** Mounts the read-only admin MCP (`/mcp/admin`) with this token (ADMIN_MCP_TOKEN). */
+  readonly adminMcpToken?: string;
 }): Promise<Stack> => {
   if (options.skillSource && options.githubSkills) {
     throw new Error("skillSource and githubSkills are mutually exclusive");
@@ -340,6 +342,14 @@ export const startStack = async (options: {
       }),
       mcp: runtime,
       ...(options.credentialProxy && { credentialProxy: options.credentialProxy }),
+      ...(options.adminMcpToken && {
+        adminMcp: {
+          token: options.adminMcpToken,
+          secrets: [options.adminMcpToken, SERVICE_TOKEN],
+          workerStaleMs: 60_000,
+          members: () => auth!.members(),
+        },
+      }),
       auth: {
         handler: (request: Request) => auth!.handler(request),
         ...(oauth && {
