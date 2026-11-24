@@ -29,7 +29,7 @@ import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { assetBaseUrl } from "./assets/base-url.ts";
 import { makeAccess } from "./access.ts";
-import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { adminMcpFromEnv, authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
 import { channelDigester, startChannelDigest } from "./digest/index.ts";
 import { startHealthSweep } from "./health/start.ts";
@@ -146,6 +146,11 @@ await runtime.runPromise(
   startChannelDigest({ ...digestConfig, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
 );
 
+const adminMcp = adminMcpFromEnv(process.env, {
+  workerStaleMs: healthConfig().workerStaleMs,
+  members: () => auth.members(),
+});
+
 createApp(
   {},
   {
@@ -158,6 +163,7 @@ createApp(
     }),
     access: makeAccess({ serviceToken, auth }),
     mcp: runtime,
+    ...(adminMcp && { adminMcp }),
     auth,
     members: () => auth.members(),
     setRole: (userId, role) => auth.setRole(userId, role),

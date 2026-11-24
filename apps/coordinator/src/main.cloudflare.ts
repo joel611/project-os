@@ -22,7 +22,7 @@ import { healthSweep, recordSandboxRun } from "@project-os/core";
 import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
 import { createApp, parseOrigins } from "./app.ts";
 import { makeAccess } from "./access.ts";
-import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { adminMcpFromEnv, authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
 import { channelDigester, digestAndLog } from "./digest/index.ts";
 import { heldOpen } from "./held-open.ts";
@@ -125,6 +125,10 @@ const buildApp = (bindings: Bindings) => {
     autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
   });
 
+  const adminMcp = adminMcpFromEnv(process.env, {
+    workerStaleMs: healthConfig().workerStaleMs,
+    members: () => auth.members(),
+  });
   const app = createApp(
     { adapter: CloudflareAdapter },
     {
@@ -137,6 +141,7 @@ const buildApp = (bindings: Bindings) => {
       }),
       access: makeAccess({ serviceToken, auth }),
       mcp: runtime,
+      ...(adminMcp && { adminMcp }),
       auth,
       members: () => auth.members(),
       setRole: (userId, role) => auth.setRole(userId, role),
