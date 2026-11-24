@@ -10,7 +10,7 @@ export type {
   SessionUser,
   SetRoleResult,
 } from "./auth.ts";
-export { SIGN_IN_DONE_PATH } from "./auth.ts";
+export { GOOGLE_SCOPES, SIGN_IN_DONE_PATH } from "./auth.ts";
 export type { Connections, LinkStart } from "./connections.ts";
 export { CONNECT_DONE_PATH, emailFor } from "./connections.ts";
 export { Auth } from "./service.ts";

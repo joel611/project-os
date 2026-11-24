@@ -3,12 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "dev": "bun --env-file=../../.env --watch src/main.bun.ts",
-    "start": "bun src/main.bun.ts"
+  "exports": {
+    ".": "./src/gmail.ts"
   },
   "dependencies": {
-    "@project-os/config": "workspace:*",
     "@project-os/contracts": "workspace:*"
   }
 }

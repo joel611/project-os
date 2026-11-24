@@ -5,6 +5,7 @@ import type {
   CreatedChannel,
   CreatedThread,
   CreateThreadInstruction,
+  Requester,
   ReactInstruction,
   ResolveAttachmentsInstruction,
   ResolvedAttachments,
@@ -455,3 +456,69 @@ export class SkillSource extends Context.Service<
     >;
   }
 >()("@project-os/core/SkillSource") {}
+
+/** One message read from a mailbox. */
+export interface MailMessage {
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly fromName: string | null;
+  readonly fromAddress: string;
+  readonly subject: string;
+  /** Plain text, as the mailbox has it: the Email Digest redacts it. */
+  readonly body: string;
+  readonly receivedAt: string;
+}
+
+/** Reading a mailbox failed; `reconnect` when the person has to link Gmail again. */
+export class EmailSourceError extends Data.TaggedError("EmailSourceError")<{
+  readonly message: string;
+  readonly reconnect: boolean;
+}> {}
+
+/**
+ * Reads new mail from a person's mailbox, read-only, with their own Google link. The first sync
+ * (no cursor) reads nothing and starts the cursor at the mailbox's present; later syncs return
+ * the inbox mail that arrived since, at most `limit`, and a cursor that stops after the last one.
+ */
+export class EmailSource extends Context.Service<
+  EmailSource,
+  {
+    readonly sync: (input: {
+      readonly owner: Requester;
+      readonly cursor: string | null;
+      readonly limit: number;
+    }) => Effect.Effect<
+      { readonly messages: ReadonlyArray<MailMessage>; readonly cursor: string },
+      EmailSourceError
+    >;
+  }
+>()("@project-os/core/EmailSource") {}
+
+export class EmailClassifierError extends Data.TaggedError("EmailClassifierError")<{
+  readonly message: string;
+}> {}
+
+/** A project an email may belong to, with what the classifier knows about it. */
+export interface EmailProjectChoice {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  /** Emails people filed here by hand, newest first. */
+  readonly examples: ReadonlyArray<{ readonly from: string; readonly subject: string }>;
+}
+
+/** Picks the project an email belongs to, with how sure it is; null when it fits none. */
+export class EmailClassifier extends Context.Service<
+  EmailClassifier,
+  {
+    readonly classify: (input: {
+      readonly from: string;
+      readonly subject: string;
+      readonly body: string;
+      readonly projects: ReadonlyArray<EmailProjectChoice>;
+    }) => Effect.Effect<
+      { readonly projectId: string | null; readonly confidence: number },
+      EmailClassifierError
+    >;
+  }
+>()("@project-os/core/EmailClassifier") {}

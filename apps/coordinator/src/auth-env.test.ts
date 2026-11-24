@@ -34,6 +34,18 @@ describe("authConfigFromEnv", () => {
     expect(config.allowedDomains).toEqual(["acme.com", "acme.io"]);
   });
 
+  it("asks Google for mail read access only when the Email Digest is on", () => {
+    const env = { BETTER_AUTH_SECRET: "s", GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "gs" };
+    expect(authConfigFromEnv(env, base).google?.scopes).toBeUndefined();
+    const on = authConfigFromEnv({ ...env, EMAIL_DIGEST: "true" }, base).google?.scopes;
+    expect(on).toContain("https://www.googleapis.com/auth/gmail.readonly");
+    expect(on).toContain("https://www.googleapis.com/auth/drive.readonly");
+    // No Google client: nothing to scope.
+    expect(
+      authConfigFromEnv({ BETTER_AUTH_SECRET: "s", EMAIL_DIGEST: "true" }, base).google,
+    ).toBeUndefined();
+  });
+
   it("links accounts with whichever OAuth clients are fully set", () => {
     const config = authConfigFromEnv(
       {

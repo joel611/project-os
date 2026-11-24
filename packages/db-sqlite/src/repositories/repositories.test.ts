@@ -2,10 +2,17 @@ import { Database } from "bun:sqlite";
 import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditEntry, ChannelMessage, MemoryEntry, Run } from "@project-os/contracts";
+import type {
+  AuditEntry,
+  ChannelMessage,
+  EmailItem,
+  MemoryEntry,
+  Run,
+} from "@project-os/contracts";
 import {
   AuditLogRepository,
   ChannelMessageRepository,
+  EmailRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
@@ -55,6 +62,7 @@ const run = <A, E>(
     | AuditLogRepository
     | SkillRepository
     | RunRepository
+    | EmailRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(reposOf(db))));
@@ -1293,5 +1301,131 @@ describe("RunRepository", () => {
     expect(out.missing).toBeUndefined();
     expect(out.listed).toEqual(["old", "r1", "r2"]);
     expect(out.stored).toEqual(["r1"]);
+  });
+});
+
+const mailItem = (over: Partial<EmailItem> = {}): EmailItem => ({
+  id: "e1",
+  owner: { channelType: "discord", id: "u1" },
+  messageId: "g1",
+  threadId: "t1",
+  fromName: "Dana",
+  fromAddress: "dana@acme.test",
+  subject: "Hello",
+  body: "text",
+  receivedAt: T0,
+  status: "unassigned",
+  projectId: null,
+  assignedBy: null,
+  suggestedProjectId: null,
+  confidence: null,
+  ...over,
+});
+
+describe("EmailRepository", () => {
+  const ada = { channelType: "discord", id: "u1" } as const;
+  const bob = { channelType: "discord", id: "u2" } as const;
+
+  it("keeps a mailbox per person and lists only the switched-on ones", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        const none = yield* repo.mailbox(ada);
+        const base = { cursor: null, lastSyncAt: null, needsReconnect: false };
+        yield* repo.saveMailbox({ owner: ada, enabled: true, ...base });
+        yield* repo.saveMailbox({ owner: bob, enabled: false, ...base });
+        yield* repo.saveMailbox({
+          owner: ada,
+          enabled: true,
+          cursor: "h9",
+          lastSyncAt: T1,
+          needsReconnect: true,
+        });
+        return {
+          none,
+          ada: yield* repo.mailbox(ada),
+          enabled: (yield* repo.enabledMailboxes).map((m) => m.owner.id),
+        };
+      }),
+    );
+    expect(out.none).toBeNull();
+    expect(out.ada).toEqual({
+      owner: ada,
+      enabled: true,
+      cursor: "h9",
+      lastSyncAt: T1,
+      needsReconnect: true,
+    });
+    expect(out.enabled).toEqual(["u1"]);
+  });
+
+  it("stores each message once per owner, lists waiting mail newest first, and updates", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        const first = yield* repo.insert(mailItem());
+        const again = yield* repo.insert(mailItem({ id: "e9" }));
+        yield* repo.insert(mailItem({ id: "e2", messageId: "g2", receivedAt: T2 }));
+        yield* repo.insert(mailItem({ id: "e3", messageId: "g1", owner: bob }));
+        yield* repo.update("e1", { suggestedProjectId: "p1", confidence: 0.5 });
+        const waiting = (yield* repo.listUnassigned(ada)).map((e) => e.id);
+        yield* repo.update("e2", {
+          status: "assigned",
+          projectId: "p1",
+          assignedBy: "person",
+          body: "",
+        });
+        return {
+          first,
+          again,
+          waiting,
+          afterAssign: (yield* repo.listUnassigned(ada)).map((e) => e.id),
+          e1: yield* repo.get("e1"),
+          e2: yield* repo.get("e2"),
+          missing: yield* repo.get("nope"),
+        };
+      }),
+    );
+    expect(out.first).toBe(true);
+    expect(out.again).toBe(false);
+    expect(out.waiting).toEqual(["e2", "e1"]);
+    expect(out.afterAssign).toEqual(["e1"]);
+    expect(out.e1).toMatchObject({ suggestedProjectId: "p1", confidence: 0.5, owner: ada });
+    expect(out.e2).toMatchObject({ status: "assigned", body: "", assignedBy: "person" });
+    expect(out.missing).toBeNull();
+  });
+
+  it("offers hand-filed emails as examples and drops old ones by status", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        const filed = { status: "assigned", projectId: "p1" } as const;
+        yield* repo.insert(mailItem({ id: "e1", messageId: "a", ...filed, assignedBy: "person" }));
+        yield* repo.insert(
+          mailItem({
+            id: "e2",
+            messageId: "b",
+            ...filed,
+            assignedBy: "classifier",
+            receivedAt: T2,
+          }),
+        );
+        yield* repo.insert(mailItem({ id: "e3", messageId: "c", receivedAt: T0 }));
+        yield* repo.insert(
+          mailItem({ id: "e4", messageId: "d", status: "dismissed", receivedAt: T0 }),
+        );
+        yield* repo.insert(mailItem({ id: "e5", messageId: "f", receivedAt: T2 }));
+        const examples = (yield* repo.examples(10)).map((e) => e.id);
+        const removed = yield* repo.removeOlder({ waitingBefore: T1, filedBefore: T0 });
+        const left: string[] = [];
+        for (const id of ["e1", "e2", "e3", "e4", "e5"]) {
+          if (yield* repo.get(id)) left.push(id);
+        }
+        return { examples, removed, left };
+      }),
+    );
+    expect(out.examples).toEqual(["e1"]);
+    expect(out.removed).toBe(2);
+    expect(out.left).toEqual(["e1", "e2", "e5"]);
   });
 });

@@ -23,6 +23,8 @@ const STATUS = {
   SkillFetchFailed: 502,
   InvalidTransition: 409,
   RunNotFound: 404,
+  EmailNotFound: 404,
+  EmailDigestFailed: 502,
   RunOutOfOrder: 409,
   RunRejected: 400,
   AssetStoreFailed: 503,

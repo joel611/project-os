@@ -1,6 +1,7 @@
 import { healthConfig } from "@project-os/config";
 import type { SetRoleResult, SharedAccounts } from "@project-os/auth";
 import {
+  AssignEmail,
   AssignSharedAccount,
   CreateSharedAccount,
   InboundMessage,
@@ -16,11 +17,15 @@ import {
   ROLE_GRANTS,
   type Role,
   SetMemberRole,
+  SetMyEmailEnabled,
   type Viewer,
 } from "@project-os/contracts";
 import {
   addSkillsToSet,
   answerScopePrompt,
+  assignEmail,
+  getMyEmail,
+  setMailboxEnabled,
   audit,
   browseSkillSource,
   checkSkillUpdates,
@@ -52,7 +57,9 @@ import {
   type AssetStore,
   type ChannelGateway,
   type Person,
+  type ChannelDigester,
   type ChannelMessageRepository,
+  type EmailRepository,
   type Clock,
   type HandleInboundConfig,
   type IdGenerator,
@@ -139,8 +146,10 @@ export type HttpEnv =
   | AgentRuntime
   | AssetStore
   | ChannelGateway
+  | ChannelDigester
   | ChannelMessageRepository
   | Clock
+  | EmailRepository
   | IdGenerator
   | IntentClassifier
   | KeyValueStore
@@ -172,6 +181,8 @@ export interface HttpDeps {
   readonly setRole?: (userId: string, role: Role) => Promise<SetRoleResult>;
   /** Shared connector accounts admins link and assign (`/shared-accounts`). Omitted: 501. */
   readonly sharedAccounts?: SharedAccounts;
+  /** The Email Digest is on (`EMAIL_DIGEST`): people may switch their mailbox on. */
+  readonly emailDigest?: boolean;
 }
 
 export const httpRoutes = ({
@@ -183,6 +194,7 @@ export const httpRoutes = ({
   members,
   setRole,
   sharedAccounts,
+  emailDigest = false,
   access,
 }: HttpDeps & {
   /** Who is calling: members get only their own Tickets on the routes they may use. */
@@ -262,6 +274,39 @@ export const httpRoutes = ({
       const person = await access.personOf(await access.caller(request));
       if (!person) return { tickets: [], projects: [] };
       return reply(set, toResult(listMyTickets(person)));
+    })
+    .get("/me/email", async ({ request }) => {
+      const person = await access.personOf(await access.caller(request));
+      // An Operator with no channel identity has no mailbox of their own.
+      if (!person) return run(getMyEmail({ channelType: "discord", id: "" }, false));
+      return run(getMyEmail(person, emailDigest));
+    })
+    .post("/me/email/enabled", async ({ request, body, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      const parsed = decodeBody(SetMyEmailEnabled, body);
+      if (!emailDigest || !person || !parsed) {
+        set.status = !emailDigest ? 501 : !person ? 403 : 400;
+        return {
+          error: !emailDigest
+            ? "Email is not turned on here"
+            : !person
+              ? "Link your Discord account to read your mail"
+              : "enabled must be true or false",
+        };
+      }
+      await run(setMailboxEnabled(person, parsed.enabled));
+      return run(getMyEmail(person, emailDigest));
+    })
+    .post("/me/email/:id/assign", async ({ request, params, body, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      const parsed = decodeBody(AssignEmail, body);
+      if (!person || !parsed) {
+        set.status = !person ? 403 : 400;
+        return {
+          error: !person ? "No mailbox for this account" : "projectId is a project id or null",
+        };
+      }
+      return reply(set, toResult(assignEmail(person, params.id, parsed.projectId)));
     })
     .get("/members", async ({ set }) => {
       if (!members) {
