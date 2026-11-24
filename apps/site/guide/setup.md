@@ -430,6 +430,27 @@ Also set `OPENROUTER_API_KEY` in `.env`, and the models if you want others than 
 
 The dashboard expects the Coordinator on `:8080` (override with `COORDINATOR_URL`) and opens on a sign-in page. Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or with Google (step 2). `bun run --cwd apps/web build` exports it as a static site.
 
+## 7b. Admin MCP (optional)
+
+The Coordinator can expose a **read-only** MCP server at `/mcp/admin` so an admin's Claude can read live data while tracing or debugging production: projects and their sources and memory, tickets with their event logs, worker runs and transcripts, workers, the audit log, the activity feed and members. It has no write tools.
+
+1. Generate a token and set it on the Coordinator (a secret on Cloudflare):
+
+   ```bash
+   ADMIN_MCP_TOKEN=$(openssl rand -base64 32)
+   ```
+
+2. Add the server to Claude Code:
+
+   ```bash
+   claude mcp add --transport http project-os-admin https://<coordinator>/mcp/admin \
+     --header "Authorization: Bearer $ADMIN_MCP_TOKEN"
+   ```
+
+The token is one shared secret with no user behind it: anyone holding it reads everything the dashboard shows an admin, so keep it out of repos and rotate it by changing the variable. It is checked in constant time, and Worker, dashboard and service credentials are refused on this route (the admin token is refused on `/mcp`).
+
+Connector OAuth tokens, device secrets and sessions are never read by any tool. Every tool result is also scanned for credential-shaped strings (GitHub, Google, Slack, OpenRouter keys, `Bearer` headers, `token=` pairs, JWTs) and for the Coordinator's own configured secrets, which become `[REDACTED]`. Free text that happens to hold an unrecognisable secret is not caught, so treat what the tools return as sensitive.
+
 ## 8. Cloudflare
 
 Deploying to Cloudflare with Alchemy is covered in [Deploy to Cloudflare](deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `COORDINATOR_SERVICE_TOKEN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets). The deploy fails without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and the Discord gateway container gets the service token too. `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `apps/site/guide/deployment.md`).
@@ -445,6 +466,7 @@ The Coordinator's own settings. Each feature below has its own table.
 | Variable                    | Required | Default                   | Description                                                                                                                                                                 |
 | --------------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `COORDINATOR_SERVICE_TOKEN` | Yes      |                           | Shared secret Channel Adapters send on `/inbound`, `/commands` and `/prompts/answer`. The Coordinator refuses to start without it. `openssl rand -base64 32`                |
+| `ADMIN_MCP_TOKEN`           | No       |                           | Turns on the read-only admin MCP at `/mcp/admin` (section 7b) and is the Bearer token it checks. At least 32 characters or the Coordinator refuses to start. Unset: no such endpoint. `openssl rand -base64 32` |
 | `BETTER_AUTH_SECRET`        | Yes      |                           | Signs dashboard sessions and encrypts stored OAuth tokens. The Coordinator refuses to start without it. Changing it signs everyone out and makes linked accounts unreadable |
 | `ADMIN_EMAIL`               | Yes\*    |                           | The dashboard operator, created on first start. \*Without it and `ADMIN_PASSWORD`, nobody can sign in (sign-up is off)                                                      |
 | `ADMIN_PASSWORD`            | Yes\*    |                           | The operator's password, at least 8 characters. Never overwritten once the operator exists                                                                                  |

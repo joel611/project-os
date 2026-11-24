@@ -67,6 +67,7 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "POST /commands": "service",
   "POST /prompts/answer": "service",
   "ALL /mcp": "worker",
+  "ALL /mcp/admin": "token",
   "ALL /egress/:service/*": "worker",
   "GET /tickets/:id/skills": "worker",
   "GET /tickets/:id/task-type": "worker",
@@ -156,7 +157,7 @@ export const bearerToken = (request: Request): string | undefined => {
 const sha256 = async (value: string) =>
   new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
 
-const sameSecret = async (a: string, b: string) => {
+export const sameSecret = async (a: string, b: string) => {
   const [x, y] = await Promise.all([sha256(a), sha256(b)]);
   let diff = 0;
   for (let i = 0; i < x.length; i++) diff |= x[i]! ^ y[i]!;

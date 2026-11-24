@@ -238,6 +238,18 @@ describe("coordinator app", () => {
     });
   });
 
+  it("mounts /mcp/admin only with an MCP runtime and an admin MCP config", async () => {
+    const req = () => new Request("http://localhost/mcp/admin", { method: "DELETE" });
+    const runtime = ManagedRuntime.make(Layer.empty) as McpRuntime;
+    const adminMcp = { token: "t".repeat(32), secrets: [], workerStaleMs: 1000 };
+    expect((await createApp({}, { access }).handle(req())).status).toBe(404);
+    expect((await createApp({}, { access, mcp: runtime }).handle(req())).status).toBe(404);
+    expect((await createApp({}, { access, adminMcp }).handle(req())).status).toBe(404);
+    const mounted = createApp({}, { access, mcp: runtime, adminMcp });
+    expect((await mounted.handle(req())).status).toBe(401);
+    await runtime.dispose();
+  });
+
   it("mounts /mcp only when given an MCP runtime", async () => {
     const req = () => new Request("http://localhost/mcp", { method: "DELETE" });
     expect((await createApp({}, { access }).handle(req())).status).toBe(404);

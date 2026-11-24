@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
+import { adminMcpFromEnv, authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 
 const base = { baseURL: "http://localhost:8080" };
 
@@ -70,5 +70,34 @@ describe("authConfigFromEnv", () => {
     expect(() =>
       authConfigFromEnv({ BETTER_AUTH_SECRET: "s", ADMIN_EMAIL: "ops@example.com" }, base),
     ).toThrow(/ADMIN_PASSWORD/);
+  });
+});
+
+describe("adminMcpFromEnv", () => {
+  const deps = { workerStaleMs: 1000 };
+  const token = "t".repeat(32);
+
+  it("is off without ADMIN_MCP_TOKEN, set or blank", () => {
+    expect(adminMcpFromEnv({}, deps)).toBeUndefined();
+    expect(adminMcpFromEnv({ ADMIN_MCP_TOKEN: "  " }, deps)).toBeUndefined();
+  });
+
+  it("refuses a token that is too short", () => {
+    expect(() => adminMcpFromEnv({ ADMIN_MCP_TOKEN: "short" }, deps)).toThrow(
+      /ADMIN_MCP_TOKEN must be at least 32 characters/,
+    );
+  });
+
+  it("masks the token and the other configured secrets in tool output", () => {
+    const config = adminMcpFromEnv(
+      {
+        ADMIN_MCP_TOKEN: token,
+        COORDINATOR_SERVICE_TOKEN: "service-token-value",
+        BETTER_AUTH_SECRET: "auth-secret-value",
+      },
+      deps,
+    );
+    expect(config).toMatchObject({ token, workerStaleMs: 1000 });
+    expect(config?.secrets).toEqual([token, "service-token-value", "auth-secret-value"]);
   });
 });

@@ -142,6 +142,7 @@ const optionalSecrets = [
   "BOAT_API_KEY",
   "CLOUDFLARE_SANDBOX_TOKEN",
   "SKILLS_GITHUB_TOKEN",
+  "ADMIN_MCP_TOKEN",
 ] as const;
 
 const readVars = Effect.gen(function* () {

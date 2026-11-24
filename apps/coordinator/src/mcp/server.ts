@@ -4,14 +4,17 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { authenticateCaller } from "@project-os/core";
 import { Effect, Schema, type ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
-import { bearerToken } from "../access.ts";
+import { bearerToken, sameSecret } from "../access.ts";
+import { makeAdminTools, type AdminToolDeps } from "./admin-tools.ts";
 import { makeTools, type McpServices, type McpTool } from "./tools.ts";
 
 export type McpRuntime = ManagedRuntime.ManagedRuntime<McpServices, never>;
 
 const jsonSchema = (schema: Schema.Constraint) => {
   const { schema: root, definitions } = Schema.toJsonSchemaDocument(schema);
-  return { ...root, $defs: definitions } as unknown as { type: "object" };
+  // An empty struct ("no arguments") comes out as `{ not: { type: "null" } }`; MCP wants an object.
+  const object = "type" in root ? root : { type: "object", additionalProperties: false };
+  return { ...object, $defs: definitions } as unknown as { type: "object" };
 };
 
 /**
@@ -91,6 +94,34 @@ export const mcpRoutes = (
       } finally {
         // enableJsonResponse: a POST's response is complete once handleRequest resolves, so closing
         // here cuts nothing off.
+        await server.close();
+      }
+    },
+    { parse: "none" },
+  );
+
+/**
+ * Elysia plugin: the admin MCP at `/mcp/admin`, read-only views of the dashboard's data for
+ * tracing and debugging. One static Bearer `token` (ADMIN_MCP_TOKEN), compared in constant time;
+ * Worker, dashboard and service credentials are refused. Same stateless transport as `/mcp`.
+ */
+export const adminMcpRoutes = (
+  runtime: McpRuntime,
+  options: AdminToolDeps & { readonly token: string },
+) =>
+  new Elysia({ name: "mcp-admin" }).all(
+    "/mcp/admin",
+    async ({ request }) => {
+      const presented = bearerToken(request);
+      if (!presented || !(await sameSecret(presented, options.token))) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
+      const server = makeMcpServer(runtime, makeAdminTools(options));
+      await server.connect(transport);
+      try {
+        return await transport.handleRequest(request);
+      } finally {
         await server.close();
       }
     },

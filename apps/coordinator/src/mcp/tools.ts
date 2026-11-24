@@ -78,7 +78,7 @@ export const toFailure = (error: unknown): ToolFailure => {
   return { _tag: "Error", message: String(error) };
 };
 
-const define = <I extends Schema.Constraint, O extends Schema.Constraint, E, R>(spec: {
+export const define = <I extends Schema.Constraint, O extends Schema.Constraint, E, R>(spec: {
   readonly name: string;
   readonly description: string;
   readonly input: I;

@@ -6,7 +6,7 @@ import { type AuthDeps, authRoutes } from "./auth/routes.ts";
 import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { type EgressDeps, egressRoutes } from "./egress/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
-import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
+import { adminMcpRoutes, mcpRoutes, type McpRuntime } from "./mcp/server.ts";
 import { runRoutes } from "./runs/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
 
@@ -17,6 +17,11 @@ export interface AppDeps {
   readonly http?: HttpDeps;
   /** MCP server (#12). Omitted: `/mcp` is not mounted. */
   readonly mcp?: McpRuntime;
+  /**
+   * Read-only admin MCP (`/mcp/admin`), on the MCP runtime, for an admin's Claude to trace and
+   * debug production. Needs `mcp`. Omitted (no `ADMIN_MCP_TOKEN`): not mounted.
+   */
+  readonly adminMcp?: Parameters<typeof adminMcpRoutes>[1];
   /** Sign-in (`/api/auth/*`). Omitted: not mounted. */
   readonly auth?: AuthDeps;
   /** Signed downloads of attached files (`/assets/*`). Omitted: not mounted. */
@@ -98,5 +103,8 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
     .use(mcpRoutes(deps.mcp, { credentialProxy: proxy !== undefined }))
     .use(skillRoutes({ runtime: deps.mcp }))
     .use(runRoutes({ runtime: deps.mcp }));
-  return proxy ? withMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withMcp;
+  const withAdminMcp = deps.adminMcp
+    ? withMcp.use(adminMcpRoutes(deps.mcp, deps.adminMcp))
+    : withMcp;
+  return proxy ? withAdminMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withAdminMcp;
 };
