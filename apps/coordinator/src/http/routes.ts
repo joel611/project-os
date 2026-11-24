@@ -39,6 +39,8 @@ import {
   listTicketRuns,
   readTicketRun,
   handleInbound,
+  incidentReport,
+  type IncidentReport,
   readAudit,
   readProjectAudit,
   readWorkerAudit,
@@ -449,6 +451,29 @@ export const httpRoutes = ({
     .get("/projects/:id/memory", ({ params, set }) =>
       reply(set, toResult(listProjectMemory(params.id))),
     )
+    .get("/audit/report", async ({ query, set }) => {
+      const hours = query.hours ? Number(query.hours) : undefined;
+      if (hours !== undefined && (!Number.isInteger(hours) || hours < 1)) {
+        set.status = 400;
+        return { error: "hours must be a positive whole number" };
+      }
+      const projectId =
+        typeof query.projectId === "string" && query.projectId ? query.projectId : undefined;
+      const result = await run(
+        toResult(
+          incidentReport({
+            ...(projectId && { projectId }),
+            ...(hours !== undefined && { hours }),
+          }),
+        ),
+      );
+      set.status = result.status;
+      if (result.status !== 200) return result.body;
+      const report = result.body as IncidentReport;
+      set.headers["content-type"] = "text/markdown; charset=utf-8";
+      set.headers["content-disposition"] = `attachment; filename="${report.filename}"`;
+      return report.markdown;
+    })
     .get("/audit", ({ query, set }) => {
       const read = auditQuery(query);
       if (typeof read === "string") {

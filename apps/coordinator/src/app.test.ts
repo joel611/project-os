@@ -247,3 +247,31 @@ describe("coordinator app", () => {
     await runtime.dispose();
   });
 });
+
+describe("onUnhandledError", () => {
+  const crashing = (extra: Partial<AppDeps> = {}) =>
+    createApp({}, { access, http: { run: () => Promise.reject(new Error("boom")) }, ...extra });
+  const get = (app: ReturnType<typeof createApp>, path: string) =>
+    app.handle(new Request(`http://localhost${path}`, { headers: { authorization: "Bearer op" } }));
+
+  it("reports an error a route threw, by route pattern, and not a missing route", async () => {
+    const seen: Array<{ where: string; message: string }> = [];
+    const app = crashing({
+      onUnhandledError: ({ where, error }) =>
+        void seen.push({ where, message: (error as Error).message }),
+    });
+    expect((await get(app, "/projects")).status).toBe(500);
+    expect((await get(app, "/nothing/here")).status).toBe(404);
+    expect(seen).toEqual([{ where: "GET /projects", message: "boom" }]);
+  });
+
+  it("answers the same when reporting itself throws, or when nothing reports", async () => {
+    const broken = crashing({
+      onUnhandledError: () => {
+        throw new Error("logger down");
+      },
+    });
+    expect((await get(broken, "/projects")).status).toBe(500);
+    expect((await get(crashing(), "/projects")).status).toBe(500);
+  });
+});

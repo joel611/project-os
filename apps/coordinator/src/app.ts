@@ -41,7 +41,29 @@ export interface AppDeps {
    * CORS is not authentication: it only stops other sites' pages from reading responses.
    */
   readonly corsOrigins?: ReadonlyArray<string>;
+  /**
+   * Called with every error a route did not handle (a thrown exception, not a 404 or a rejected
+   * body), after the response is chosen. It must not throw. The entry files point it at the
+   * audit log (`auditRuntimeError`).
+   */
+  readonly onUnhandledError?: (failure: UnhandledRouteError) => void;
 }
+
+/** An error no route handled: where it happened and what was thrown. */
+export interface UnhandledRouteError {
+  /** `METHOD /route/:pattern`. */
+  readonly where: string;
+  readonly error: unknown;
+}
+
+/** Elysia error codes that mean the caller's request was wrong, not that the Coordinator broke. */
+const CLIENT_ERROR_CODES = new Set([
+  "NOT_FOUND",
+  "VALIDATION",
+  "PARSE",
+  "INVALID_COOKIE_SIGNATURE",
+  "INVALID_FILE_TYPE",
+]);
 
 /** `WEB_ORIGIN`: comma-separated origins, whitespace and a trailing slash ignored. */
 export const parseOrigins = (raw: string | undefined): ReadonlyArray<string> =>
@@ -55,12 +77,22 @@ export const parseOrigins = (raw: string | undefined): ReadonlyArray<string> =>
  * through the provider Layer chosen by the entry file (main.bun.ts / main.cloudflare.ts).
  */
 export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps: AppDeps) => {
-  const base = new Elysia(options).onBeforeHandle(async ({ request, route, set }) => {
-    const denied = await deny(deps.access, request, route);
-    if (!denied) return;
-    set.status = denied.status;
-    return { error: denied.error };
-  });
+  const report = deps.onUnhandledError;
+  const base = new Elysia(options)
+    .onError(({ code, error, request, route }) => {
+      if (!report || CLIENT_ERROR_CODES.has(String(code))) return;
+      try {
+        report({ where: `${request.method} ${route}`, error });
+      } catch {
+        // Reporting is best effort; the response must not change because it failed.
+      }
+    })
+    .onBeforeHandle(async ({ request, route, set }) => {
+      const denied = await deny(deps.access, request, route);
+      if (!denied) return;
+      set.status = denied.status;
+      return { error: denied.error };
+    });
   const withCors = deps.corsOrigins?.length
     ? base.use(
         cors({

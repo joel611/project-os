@@ -171,6 +171,20 @@ export const makeApi = (
     if (!res.ok) throw new ApiError(res.status, errorCode(body, res));
     return Schema.decodeUnknownSync(schema)(body);
   };
+  /** A Markdown file from the Coordinator (the incident report), with the name it suggests. */
+  const getReport = async (path: string) => {
+    const token = auth.token();
+    const res = await fetchFn(`${base}${path}`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+    if (res.status === 401) auth.expired();
+    if (!res.ok) {
+      const body: unknown = await res.json().catch(() => null);
+      throw new ApiError(res.status, errorCode(body, res));
+    }
+    const named = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
+    return { filename: named?.[1] ?? "incident-report.md", markdown: await res.text() };
+  };
   const get = <S extends Schema.Decoder<unknown>>(path: string, schema: S) => send(path, schema);
   const id = encodeURIComponent;
 
@@ -202,6 +216,13 @@ export const makeApi = (
     tickets: (projectId: string) => get(`/projects/${id(projectId)}/tickets`, Schema.Array(Ticket)),
     memory: (projectId: string) =>
       get(`/projects/${id(projectId)}/memory`, Schema.Array(MemoryEntry)),
+    auditReport: (query: { readonly hours?: number; readonly projectId?: string } = {}) => {
+      const params = new URLSearchParams();
+      if (query.hours) params.set("hours", String(query.hours));
+      if (query.projectId) params.set("projectId", query.projectId);
+      const search = params.toString();
+      return getReport(`/audit/report${search ? `?${search}` : ""}`);
+    },
     audit: (query: AuditFilter = {}) => get(`/audit${auditSearch(query)}`, AuditPage),
     projectAudit: (projectId: string, query: Omit<AuditFilter, "projectId"> = {}) =>
       get(`/projects/${id(projectId)}/audit${auditSearch(query)}`, AuditPage),

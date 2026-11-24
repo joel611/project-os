@@ -88,6 +88,7 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /projects/:id/memory": needs("project", "read"),
   "GET /projects/:id/audit": needs("audit", "read"),
   "GET /audit": needs("audit", "read"),
+  "GET /audit/report": needs("audit", "read"),
   "POST /projects/:id/sources": needs("source", "create"),
   "PATCH /projects/:id/sources/:sourceId": needs("source", "update"),
   "DELETE /projects/:id/sources/:sourceId": needs("source", "delete"),
