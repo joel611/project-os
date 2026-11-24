@@ -13,12 +13,14 @@ import {
   BookOpenText,
   ChevronDown,
   Cpu,
+  Download,
+  OctagonAlert,
   KeyRound,
   MessageSquare,
   Ticket as TicketIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { api } from "@/api";
+import { api, describeError } from "@/api";
 import { CHANNEL_META } from "@/components/source";
 import { Empty, QueryError } from "@/components/states";
 import { ToneDot } from "@/components/tone";
@@ -45,6 +47,7 @@ export const KIND_META: Readonly<
   worker: { label: "Workers", Icon: Cpu },
   ticket: { label: "Tickets", Icon: TicketIcon },
   connection: { label: "Accounts", Icon: KeyRound },
+  runtime_error: { label: "Errors", Icon: OctagonAlert },
 };
 
 const ACTION_LABEL: Readonly<Record<string, string>> = {
@@ -53,6 +56,7 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   classify_failed: "classify failed",
   digested: "digested",
   failed: "failed",
+  raised: "error",
   registered: "registered",
   removed: "removed",
   first_seen: "first seen",
@@ -79,6 +83,7 @@ export const actionTone = (entry: AuditEntry): Tone => {
     case "failed":
     case "classify_failed":
     case "went_offline":
+    case "raised":
       return "danger";
     case "classified":
       return (entry.payload as ClassifiedAuditPayload | null)?.outcome === "error"
@@ -351,6 +356,76 @@ const Row = ({
   );
 };
 
+const REPORT_WINDOWS = [
+  { value: "24", label: "Last 24 hours" },
+  { value: "168", label: "Last 7 days" },
+] as const;
+
+/** Downloads the incident report (errors, failed tickets, outages) as a Markdown file. */
+const ExportReport = ({ projectId }: { projectId: string | undefined }) => {
+  const [hours, setHours] = useState<string>("24");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      const report = await api.auditReport({
+        hours: Number(hours),
+        ...(projectId && { projectId }),
+      });
+      const url = URL.createObjectURL(new Blob([report.markdown], { type: "text/markdown" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = report.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setFailed(describeError(error as Error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="ml-auto flex flex-wrap items-center gap-2">
+      <Select
+        items={REPORT_WINDOWS.map((w) => ({ value: w.value, label: w.label }))}
+        value={hours}
+        onValueChange={(value) => setHours(value ?? "24")}
+      >
+        <SelectTrigger
+          aria-label="Report window"
+          className="h-[34px] min-w-36 border-border bg-card text-xs font-medium shadow-card dark:bg-card dark:hover:bg-card"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end" alignItemWithTrigger={false}>
+          {REPORT_WINDOWS.map((w) => (
+            <SelectItem key={w.value} value={w.value} className="text-xs">
+              {w.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-[34px] gap-1.5 text-xs"
+        disabled={busy}
+        onClick={run}
+      >
+        <Download className="size-3.5" /> {busy ? "Exporting…" : "Export incident report"}
+      </Button>
+      {failed && (
+        <span role="alert" className="text-xs text-tone-danger">
+          {failed}
+        </span>
+      )}
+    </div>
+  );
+};
+
 const CHIP =
   "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
 
@@ -432,11 +507,13 @@ export const AuditFeed = ({
     (workerList.data ?? []).flatMap((w) => (w.name ? [[w.id, w.name] as const] : [])),
   );
   const entries = feed.data?.pages.flatMap((p) => p.entries) ?? [];
+  const exportScope = workerId ? undefined : (projectId ?? (project || undefined));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <KindFilter value={kind} onChange={setKind} />
+        {!workerId && <ExportReport projectId={exportScope} />}
         {projects && (
           <Select
             items={[

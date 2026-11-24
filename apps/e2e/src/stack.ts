@@ -36,6 +36,7 @@ import { makeAccess } from "../../coordinator/src/access.ts";
 import { type AppDeps, createApp } from "../../coordinator/src/app.ts";
 import { coordinatorConfig } from "../../coordinator/src/config.ts";
 import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
+import { makeRuntimeErrorLogger } from "../../coordinator/src/runtime-errors.ts";
 import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
 import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 
@@ -306,9 +307,15 @@ export const startStack = async (options: {
     run: (effect) => runtime.runPromise(effect as any),
     orgId: ORG_ID,
   });
+  const runtimeErrors = makeRuntimeErrorLogger({
+    run: (effect) => runtime.runPromise(effect as any),
+    secrets: [SERVICE_TOKEN],
+    log: () => {},
+  });
   const coordinator = createApp(
     {},
     {
+      onUnhandledError: runtimeErrors.route,
       access: makeAccess({
         serviceToken: SERVICE_TOKEN,
         auth: {

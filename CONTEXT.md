@@ -28,6 +28,12 @@ _Avoid_: task, job.
 **Run**: one agent session on a Ticket, recorded so the ticket can be debugged afterwards. A Watcher pipes the agent's output (Claude Code's structured stream, plain lines for Pi and Codex), masks secrets, and uploads it in numbered chunks to `POST /tickets/:id/runs` with the device's Bearer; a sandbox launcher hands the Coordinator the session's whole output when it ends. A `RunEvent` is a message, tool call, tool result, output line, error or lifecycle note. The transcript is stored as JSONL chunks in file storage (R2 on Cloudflare) and the `ticket_runs` row keeps the summary; the audit log gets `run_started` / `run_finished`. Secrets are masked on the worker (the device secret, credential-looking environment values, token patterns) and again at the Coordinator. Admins see every Run; a requester sees the Runs of Tickets they asked for. Transcripts are deleted after `RUN_LOG_RETENTION_DAYS` (default 30), the summary stays. A Watcher opts out with `--no-run-log` or `WATCHER_RUN_LOG=0`.
 _Avoid_: log (alone), transcript (that is the stored part of a Run), session (that is the agent's process).
 
+**Runtime error**: an error the Coordinator did not handle (a route that threw, or a failed health sweep or Channel Digest Cron run), saved as an audit log row of kind `runtime_error`, action `raised`, with where it happened, the masked message and stack, and a fingerprint. The same error from the same place is logged once an hour. Errors that Cloudflare itself logs (Workers Logs) are not copied here.
+_Avoid_: exception, crash log.
+
+**Incident report**: the Markdown file the dashboard's Audit page exports (`GET /audit/report`, last 24 hours or 7 days, all projects or one): runtime errors grouped by fingerprint, tickets that failed or blocked, Workers that went offline, and failed digest or classifier runs, with secrets masked. An admin posts it in the project's Discord channel so a Worker can investigate.
+_Avoid_: bug report, error log.
+
 **Worker**: an agent session that works exactly one Ticket through MCP tools and never talks to channels. Pulls work: on session start it lists Tickets assigned to it and claims one.
 _Avoid_: agent (alone), runner.
 
