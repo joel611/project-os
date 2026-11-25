@@ -30,6 +30,10 @@ const fakePi = (script: (emit: (event: PiEvent) => void, text: string) => Promis
   return { createSession, opened, state };
 };
 
+const init = (cx: {
+  request: (m: typeof methods.agent.initialize, p: { protocolVersion: number }) => Promise<unknown>;
+}) => cx.request(methods.agent.initialize, { protocolVersion: 1 });
+
 const drive = async (pi: ReturnType<typeof fakePi>, mcpServers: McpServer[]) => {
   const updates: SessionUpdate[] = [];
   const app = createPiAcpAgent({ createSession: pi.createSession });
@@ -95,10 +99,109 @@ describe("createPiAcpAgent", () => {
     expect(pi.state.disposed).toBe(true);
   });
 
-  it("fails the prompt when Pi fails", async () => {
+  it("reports its version and skips unusable MCP servers quietly without a log", async () => {
+    const app = createPiAcpAgent({
+      createSession: fakePi(async () => {}).createSession,
+      version: "1.2.3",
+    });
+    const info = await client({ name: "test" }).connectWith(app, async (cx) => {
+      const init = await cx.request(methods.agent.initialize, { protocolVersion: 1 });
+      await cx.request(methods.agent.session.new, {
+        cwd: "/work",
+        mcpServers: [{ type: "sse", name: "old", url: "http://x/sse", headers: [] }],
+      });
+      return init.agentInfo;
+    });
+    expect(info).toMatchObject({ name: "pi-acp", version: "1.2.3" });
+  });
+
+  it("fails the prompt with Pi's reason", async () => {
     const pi = fakePi(async () => {
       throw new Error("model unavailable");
     });
-    await expect(drive(pi, [])).rejects.toThrow();
+    await expect(drive(pi, [])).rejects.toThrow("model unavailable");
+  });
+
+  it("fails session/new with the reason Pi could not start", async () => {
+    let attempt = 0;
+    const app = createPiAcpAgent({
+      createSession: async () => {
+        // Whatever was thrown, the client gets its text.
+        throw attempt++ === 0 ? "Model not found: nope" : new Error("Model not found: nope");
+      },
+    });
+    await expect(
+      client({ name: "test" }).connectWith(app, async (cx) => {
+        await init(cx);
+        return cx.request(methods.agent.session.new, { cwd: "/work", mcpServers: [] });
+      }),
+    ).rejects.toThrow("Model not found: nope");
+    await expect(
+      client({ name: "test" }).connectWith(app, async (cx) => {
+        await init(cx);
+        return cx.request(methods.agent.session.new, { cwd: "/work", mcpServers: [] });
+      }),
+    ).rejects.toThrow("Model not found: nope");
+  });
+
+  it("reports MCP servers Pi cannot use, and ignores non-text prompt content", async () => {
+    const logged: string[] = [];
+    const pi = fakePi(async () => {});
+    const app = createPiAcpAgent({ createSession: pi.createSession, log: (m) => logged.push(m) });
+    await client({ name: "test" }).connectWith(app, async (cx) => {
+      await init(cx);
+      const { sessionId } = await cx.request(methods.agent.session.new, {
+        cwd: "/work",
+        mcpServers: [{ type: "sse", name: "old", url: "http://x/sse", headers: [] }],
+      });
+      await cx.request(methods.agent.session.prompt, {
+        sessionId,
+        prompt: [
+          { type: "text", text: "a" },
+          { type: "image", data: "", mimeType: "image/png" },
+          { type: "text", text: "b" },
+        ],
+      });
+    });
+    expect(logged).toEqual(['MCP server "old" skipped: Pi does not support SSE MCP servers']);
+    expect(pi.state.prompts).toEqual(["a\nb"]);
+  });
+
+  it("aborts Pi on cancel and ends the turn as cancelled", async () => {
+    let release: () => void = () => {};
+    const pi = fakePi(() => new Promise<void>((resolve) => (release = resolve)));
+    const app = createPiAcpAgent({ createSession: pi.createSession });
+    const stop = await client({ name: "test" }).connectWith(app, async (cx) => {
+      await init(cx);
+      const { sessionId } = await cx.request(methods.agent.session.new, {
+        cwd: "/work",
+        mcpServers: [],
+      });
+      const turn = cx.request(methods.agent.session.prompt, {
+        sessionId,
+        prompt: [{ type: "text", text: "long job" }],
+      });
+      await expect.poll(() => pi.state.prompts.length).toBe(1);
+      await cx.notify(methods.agent.session.cancel, { sessionId });
+      await expect.poll(() => pi.state.aborted).toBe(true);
+      release();
+      // A cancel for a session that is gone is ignored.
+      await cx.notify(methods.agent.session.cancel, { sessionId: "gone" });
+      return turn;
+    });
+    expect(stop.stopReason).toBe("cancelled");
+  });
+
+  it("rejects a prompt for an unknown session", async () => {
+    const app = createPiAcpAgent({ createSession: fakePi(async () => {}).createSession });
+    await expect(
+      client({ name: "test" }).connectWith(app, async (cx) => {
+        await init(cx);
+        return cx.request(methods.agent.session.prompt, {
+          sessionId: "nope",
+          prompt: [{ type: "text", text: "x" }],
+        });
+      }),
+    ).rejects.toThrow("Unknown session nope");
   });
 });

@@ -64,6 +64,7 @@ describe("toSessionUpdates", () => {
     expect(resultText({ content: [{ type: "text", text: "a" }, { type: "image" }] })).toBe("a");
     expect(resultText("plain")).toBe("plain");
     expect(resultText({ ok: true })).toBe('{"ok":true}');
+    expect(resultText(undefined)).toBe('""');
     expect(toolKind("mcp__x__y")).toBe("other");
   });
 });

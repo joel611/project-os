@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "bin": {
-    "pi-acp": "./src/main.ts"
+    "pi-acp": "./src/main.bun.ts"
   },
   "type": "module",
   "exports": {

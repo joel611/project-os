@@ -209,7 +209,7 @@ export const bunSpawner = (
               ...(config.model && { PI_ACP_MODEL: config.model }),
               ...(skills && {
                 PI_ACP_SKILL_PATHS: skills.slugs
-                  .map((slug) => join(skills.root, agent.skillsLayout ?? "", slug))
+                  .map((slug) => join(skills.root, "skills", slug))
                   .join(":"),
               }),
             },

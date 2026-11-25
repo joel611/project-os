@@ -92,6 +92,7 @@ describe("Pi over ACP", () => {
         exited: connection.closed.then(() => 0),
         stdin: toAgent.writable,
         stdout: fromAgent.readable,
+        stderr: new Response("pi warning\n").body,
         kill: () => connection.close(),
       };
     };
@@ -170,16 +171,19 @@ describe("Pi over ACP", () => {
     const { events } = (await stack.json("GET", `/tickets/${ticket!.id}/runs/${runs[0]!.id}`)) as {
       events: Array<{ type: string; text: string; tool?: string }>;
     };
-    expect(events.map((e) => e.type)).toEqual([
+    // Pi's stderr is kept too, marked as such.
+    expect(events.find((e) => e.tool === "stderr")?.text).toBe("pi warning");
+    expect(events.filter((e) => e.tool !== "stderr").map((e) => e.type)).toEqual([
       "lifecycle",
       "message",
       "tool_call",
       "tool_result",
       "lifecycle",
     ]);
-    expect(events[1]!.text).toBe("Claiming the ticket.");
-    expect(events[2]).toMatchObject({ tool: "mcp__project-os__ticket_claim" });
-    expect(events[3]).toMatchObject({ tool: "mcp__project-os__ticket_claim" });
+    const steps = events.filter((e) => e.tool !== "stderr");
+    expect(steps[1]!.text).toBe("Claiming the ticket.");
+    expect(steps[2]).toMatchObject({ tool: "mcp__project-os__ticket_claim" });
+    expect(steps[3]).toMatchObject({ tool: "mcp__project-os__ticket_claim" });
     // Secrets are masked in storage, as for every other agent.
     const stored = JSON.stringify(events);
     expect(stored).not.toContain(device.secret);

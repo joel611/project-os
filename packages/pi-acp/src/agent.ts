@@ -12,6 +12,8 @@ import { toSessionUpdates } from "./events.ts";
 import { convertMcpServers } from "./mcp.ts";
 import type { PiRun, PiSessionFactory } from "./session.ts";
 
+const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
 export interface PiAcpOptions {
   readonly createSession: PiSessionFactory;
   readonly version?: string;
@@ -55,7 +57,12 @@ export const createPiAcpAgent = (options: PiAcpOptions): AgentApp => {
     .onRequest(methods.agent.session.new, async ({ params }) => {
       const { servers, skipped } = convertMcpServers(params.mcpServers);
       for (const { name, reason } of skipped) log(`MCP server "${name}" skipped: ${reason}`);
-      const run = await options.createSession({ cwd: params.cwd, mcpServers: servers });
+      // The protocol's own "internal error" would hide why; carry the reason to the client.
+      const run = await options
+        .createSession({ cwd: params.cwd, mcpServers: servers })
+        .catch((error: unknown) => {
+          throw RequestError.internalError(undefined, reason(error));
+        });
       const sessionId = crypto.randomUUID();
       sessions.set(sessionId, { run, cancelled: false });
       return { sessionId };
@@ -75,9 +82,11 @@ export const createPiAcpAgent = (options: PiAcpOptions): AgentApp => {
       });
       try {
         await live.run.prompt(promptText(params.prompt));
+      } catch (error) {
+        throw RequestError.internalError(undefined, reason(error));
       } finally {
         unsubscribe();
-        await sent.catch(() => undefined);
+        await Promise.allSettled([sent]);
       }
       return { stopReason: live.cancelled ? "cancelled" : "end_turn" };
     })

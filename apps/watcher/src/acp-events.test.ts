@@ -67,4 +67,38 @@ describe("makeAcpRunEvents", () => {
     ).toEqual([]);
     expect(events.flush("t4")).toEqual([]);
   });
+
+  it("ignores empty or non-text chunks and tool content that is not text", () => {
+    const events = makeAcpRunEvents();
+    expect(events.push(chunk(""), "t1")).toEqual([]);
+    expect(
+      events.push(
+        {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "image", data: "", mimeType: "image/png" },
+        },
+        "t2",
+      ),
+    ).toEqual([]);
+    events.push({ sessionUpdate: "tool_call", toolCallId: "c1", title: "edit" }, "t3");
+    const [result] = events.push(
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "c1",
+        status: "completed",
+        content: [{ type: "diff", path: "a.ts", newText: "x" }],
+      },
+      "t4",
+    );
+    expect(result).toEqual({ at: "t4", type: "tool_result", tool: "edit", text: "" });
+  });
+
+  it("takes a tool's name from its update when the start did not carry one", () => {
+    const events = makeAcpRunEvents();
+    const [result] = events.push(
+      { sessionUpdate: "tool_call_update", toolCallId: "c9", title: "grep", status: "completed" },
+      "t1",
+    );
+    expect(result).toMatchObject({ tool: "grep" });
+  });
 });

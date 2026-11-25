@@ -56,6 +56,8 @@ export default defineConfig({
         "apps/e2e/src/r2/**",
         // Manual scripts, run by hand against live services.
         "**/*.smoke.ts",
+        // Pi SDK glue: needs a real Pi (and its model runtime), checked by pi.smoke.ts.
+        "packages/pi-acp/src/pi.ts",
         "**/dist/**",
         "**/migrations/**",
         "**/index.ts",
