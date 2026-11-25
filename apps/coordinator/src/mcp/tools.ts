@@ -215,7 +215,11 @@ export const makeTools = (
     }),
     define({
       name: "project_memory_write",
-      description: "Create a project memory entry (linked to ticketId when given).",
+      description:
+        "Create a project memory entry (linked to ticketId when given). Keep it short and precise: " +
+        "one or two sentences with the durable outcome. Link to a PR, issue or document instead of " +
+        "repeating details available there. Keep execution logs, branch names, commit hashes, worktree " +
+        "paths and test commands/counts on the ticket, not in memory. Retain essential unresolved caveats.",
       input: C.ProjectMemoryWriteInput,
       output: C.ProjectMemoryWriteOutput,
       run: (i) => Effect.map(writeMemory(i), (entry) => ({ entry })),
