@@ -5,6 +5,8 @@ import {
   AgentRuntime,
   claimTicketUseCase,
   Clock,
+  EmailClassifier,
+  EmailSource,
   IdGenerator,
   KeyValueStore,
   ProjectRepository,
@@ -31,6 +33,26 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const live = () => LocalLive({ dbPath, adapterUrls: {} });
 
 describe("LocalLive", () => {
+  it("has no mailbox or email classifier until an entry file supplies them", async () => {
+    const out = await Effect.runPromise(
+      Effect.gen(function* () {
+        const read = yield* Effect.flip(
+          (yield* EmailSource).sync({
+            owner: { channelType: "discord", id: "u1" },
+            cursor: null,
+            limit: 1,
+          }),
+        );
+        const classify = yield* Effect.flip(
+          (yield* EmailClassifier).classify({ from: "a", subject: "b", body: "c", projects: [] }),
+        );
+        return { read, classify };
+      }).pipe(Effect.provide(live())),
+    );
+    expect(out.read).toMatchObject({ reconnect: false, message: "Email is not configured." });
+    expect(out.classify.message).toBe("Email is not configured.");
+  });
+
   it("satisfies Clock, IdGenerator, KV, Scheduler and WorkerLauncher", async () => {
     const program = Effect.gen(function* () {
       const now = yield* (yield* Clock).now;

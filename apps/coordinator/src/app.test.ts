@@ -123,6 +123,53 @@ describe("coordinator app", () => {
       });
     });
 
+    it("lets a member switch on and read their own mailbox, and nobody else's", async () => {
+      const off = fullApp();
+      expect(await (await call(off, "/me/email", { token: "ada" })).json()).toMatchObject({
+        available: false,
+        enabled: false,
+        unassigned: [],
+      });
+      const refused = await call(off, "/me/email/enabled", {
+        method: "POST",
+        token: "ada",
+        body: { enabled: true },
+      });
+      expect(refused.status).toBe(501);
+
+      const app = fullApp({ emailDigest: true });
+      const bad = await call(app, "/me/email/enabled", {
+        method: "POST",
+        token: "ada",
+        body: { enabled: "yes" },
+      });
+      expect(bad.status).toBe(400);
+      const on = await call(app, "/me/email/enabled", {
+        method: "POST",
+        token: "ada",
+        body: { enabled: true },
+      });
+      expect(on.status).toBe(200);
+      expect(await on.json()).toMatchObject({ available: true, enabled: true });
+
+      const assign = (token: string, body: unknown) =>
+        call(app, "/me/email/e1/assign", { method: "POST", token, body });
+      expect((await assign("ada", { projectId: "p1" })).status).toBe(404);
+      expect((await assign("ada", { projectId: 5 })).status).toBe(400);
+      // An operator with no channel identity has no mailbox to switch on or file from.
+      expect(await (await call(app, "/me/email", { token: "op" })).json()).toMatchObject({
+        available: false,
+      });
+      const noPerson = await call(app, "/me/email/enabled", {
+        method: "POST",
+        token: "op",
+        body: { enabled: true },
+      });
+      expect(noPerson.status).toBe(403);
+      expect((await assign("op", { projectId: null })).status).toBe(403);
+      expect((await call(app, "/me/email", { token: "eve" })).status).toBe(403);
+    });
+
     it("lets only an allowed operator read the dashboard API", async () => {
       const app = fullApp();
       expect((await call(app, "/projects")).status).toBe(401);

@@ -21,3 +21,5 @@ export * from "./placement.ts";
 export * from "./sandbox-credentials.ts";
 export * from "./secrets.ts";
 export * from "./my-tickets.ts";
+export * from "./email-digest.ts";
+export * from "./email-redact.ts";

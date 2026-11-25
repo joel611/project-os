@@ -54,6 +54,26 @@ describe("makeApi", () => {
     expect(mine.calls).toEqual(["/api/me/tickets"]);
   });
 
+  it("reads and changes the signed-in person's mailbox", async () => {
+    const mailbox = {
+      available: true,
+      enabled: true,
+      needsReconnect: false,
+      lastSyncAt: null,
+      projects: [{ id: "p1", name: "Acme" }],
+      unassigned: [],
+    };
+    const read = respond(200, mailbox);
+    expect(await read.api.myEmail()).toEqual(mailbox);
+    expect(read.calls).toEqual(["/api/me/email"]);
+    const toggled = respond(200, mailbox);
+    expect(await toggled.api.setEmailEnabled(true)).toEqual(mailbox);
+    expect(toggled.calls).toEqual(["/api/me/email/enabled"]);
+    const assigned = respond(200, { saved: 2 });
+    expect(await assigned.api.assignEmail("e 1", "p1")).toEqual({ saved: 2 });
+    expect(assigned.calls).toEqual(["/api/me/email/e%201/assign"]);
+  });
+
   it("picks the API base from the Coordinator URL, else /api", () => {
     expect(apiBase(undefined)).toBe("/api");
     expect(apiBase("")).toBe("/api");

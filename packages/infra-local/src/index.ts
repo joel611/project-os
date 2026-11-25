@@ -23,6 +23,7 @@ import {
   SidekickPending,
   SystemClockLive,
   UserConnectionsUnavailable,
+  EmailUnavailable,
 } from "./shared.ts";
 
 export { DrizzleBun, SystemClockLive, UserConnectionsUnavailable, openLocalDb };
@@ -71,6 +72,7 @@ export const LocalLive = (config: LocalConfig) =>
     SidekickPending,
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
+    EmailUnavailable,
     Layer.succeed(SkillSource, config.skillSource ?? makeGithubSkillSource()),
     config.assets
       ? Layer.succeed(

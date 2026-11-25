@@ -25,6 +25,12 @@ import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
 import { channelDigester, digestAndLog } from "./digest/index.ts";
+import {
+  emailClassifier,
+  emailDigestAndLog,
+  emailDigestEnabled,
+  gmailEmailSource,
+} from "./email/index.ts";
 import { heldOpen } from "./held-open.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
@@ -83,6 +89,7 @@ const buildApp = (bindings: Bindings) => {
     ),
   });
 
+  const emailDigest = emailDigestEnabled(process.env);
   const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
   const digestConfig = channelDigestConfig();
   const digester = channelDigester(models, modelRefs.channelDigest);
@@ -111,9 +118,18 @@ const buildApp = (bindings: Bindings) => {
       }),
       makeIntentClassifier({ classifier: models, model: jev }),
       digester,
+      emailClassifier(models, modelRefs.decision),
       Layer.effectDiscard(ensureOrg(bindings.DB)),
       Auth.connectionsLayer,
-    ).pipe(Layer.provideMerge(authLayer)),
+    ).pipe(
+      // Reads mail with each person's own Google link, so it is built on the connections above.
+      // workerd throws "Illegal invocation" when the global `fetch` is called detached.
+      (base) =>
+        gmailEmailSource({ fetch: (input, init) => fetch(input, init) }).pipe(
+          Layer.provideMerge(base),
+        ),
+      Layer.provideMerge(authLayer),
+    ),
     { memoMap: authRuntime.memoMap },
   );
 
@@ -142,13 +158,16 @@ const buildApp = (bindings: Bindings) => {
       setRole: (userId, role) => auth.setRole(userId, role),
       ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
       ...(connections && { connect: connections }),
+      emailDigest,
     },
   ).compile();
 
   const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
   // Same Cron tick as the sweep (ADR 0001); a project is digested only once its chat is quiet.
   const digestRun = () => runtime.runPromise(digestAndLog(digestConfig));
-  return { app, sweep, digest: digestRun };
+  const emailRun = () =>
+    emailDigest ? runtime.runPromise(emailDigestAndLog()) : Promise.resolve();
+  return { app, sweep, digest: digestRun, email: emailRun };
 };
 
 const built = buildApp(workerEnv as unknown as Bindings);
@@ -163,5 +182,6 @@ export default {
   ) => {
     ctx.waitUntil(built.sweep().catch((e) => console.error("health sweep failed", e)));
     ctx.waitUntil(built.digest().catch((e) => console.error("channel digest failed", e)));
+    ctx.waitUntil(built.email().catch((e) => console.error("email digest failed", e)));
   },
 };

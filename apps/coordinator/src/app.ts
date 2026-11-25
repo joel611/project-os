@@ -35,6 +35,8 @@ export interface AppDeps {
   readonly setRole?: HttpDeps["setRole"];
   /** Shared connector accounts (`/shared-accounts`), from the auth instance. Omitted: 501. */
   readonly sharedAccounts?: HttpDeps["sharedAccounts"];
+  /** The Email Digest is on: people may switch their mailbox on (`GET/POST /me/email`). */
+  readonly emailDigest?: boolean;
   /**
    * Origins a browser may call this API from (the web dashboard when it is served from
    * another origin). Omitted or empty: no CORS headers, so browsers block cross-origin calls.
@@ -81,6 +83,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
           ...(deps.members && { members: deps.members }),
           ...(deps.setRole && { setRole: deps.setRole }),
           ...(deps.sharedAccounts && { sharedAccounts: deps.sharedAccounts }),
+          ...(deps.emailDigest && { emailDigest: true }),
           access: deps.access,
         }),
       )

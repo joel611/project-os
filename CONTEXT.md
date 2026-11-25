@@ -18,6 +18,8 @@ _Avoid_: bot, integration (alone).
 **Channel Digest**: the Coordinator's scheduled pass (the same per-minute Cron tick as the health sweep) that reads what people said in a Project's Discord channel and its Ticket threads, @mention or not, and saves the decisions and lasting facts in it to Project Memory without anyone asking. The messages wait as ChannelMessages until their conversation goes quiet, and are deleted once digested. Each entry keeps the messages it came from (who, when, a quote, a link), so "why do we…?" has an answer. On per Project by default and silent; both are Project settings in the dashboard.
 _Avoid_: summary, transcript (nothing keeps the conversation itself).
 
+**Email Digest**: the Coordinator's read-only pass over a person's Gmail inbox, on the same per-minute Cron tick. Each person switches their own mailbox on in the dashboard. New inbox emails are redacted (secrets, codes, card and phone numbers, link query strings, address parts), matched to a Project by the classifier, and filed when it is at least 90% sure: the decisions and lasting facts go to Project Memory with the sender, subject and a redacted quote, and the body is deleted. Less sure emails wait in the dashboard for the person to pick a Project; filing by hand teaches the classifier, which sees those emails as examples next time. It never sends or changes mail.
+
 **Ticket**: the internal work item the Coordinator creates for each piece of work. All status, follow-ups, and results live on it as TicketEvents. Channels only see what the Coordinator chooses to surface.
 _Avoid_: task, job.
 

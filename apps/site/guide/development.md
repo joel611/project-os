@@ -13,7 +13,7 @@ apps/
   site/                 # This product site: VitePress config and every page's Markdown
 packages/
   channel-discord/      # Discord bot, hosted by the Coordinator
-  channel-email/        # Stub
+  channel-email/        # Gmail reader for the Email Digest (read-only)
   core/                 # Domain + ports (provider-free)
   agent-runtime/        # Intent classifier + agent loop
   db-sqlite/            # Drizzle schema (SQLite / D1)

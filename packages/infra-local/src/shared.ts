@@ -3,6 +3,10 @@
 import {
   AgentRuntime,
   ConnectionsUnavailable,
+  EmailClassifier,
+  EmailClassifierError,
+  EmailSource,
+  EmailSourceError,
   IdGenerator,
   Sidekick,
   SidekickError,
@@ -53,3 +57,14 @@ export const UserConnectionsUnavailable = Layer.succeed(UserConnections, {
   disconnect: () => Effect.succeed(false),
   accessToken: notConfigured,
 });
+
+/** Placeholders until an entry file supplies mailbox reading and the email classifier. */
+export const EmailUnavailable = Layer.mergeAll(
+  Layer.succeed(EmailSource, {
+    sync: () =>
+      Effect.fail(new EmailSourceError({ message: "Email is not configured.", reconnect: false })),
+  }),
+  Layer.succeed(EmailClassifier, {
+    classify: () => Effect.fail(new EmailClassifierError({ message: "Email is not configured." })),
+  }),
+);
