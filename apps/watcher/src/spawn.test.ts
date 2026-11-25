@@ -18,6 +18,8 @@ const config: WatcherConfig = {
   secret: "s3cret",
   skills: true,
   runLog: true,
+  piAcp: false,
+  piAcpCommand: ["pi-acp"],
 };
 
 const fakeIo = (existing: Record<string, string> = {}) => {

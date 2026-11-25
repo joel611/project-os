@@ -19,6 +19,13 @@ export interface WatcherConfig {
   readonly skills: boolean;
   /** Send each session's transcript to the Coordinator (`WATCHER_RUN_LOG=0` or `--no-run-log` turns it off). */
   readonly runLog: boolean;
+  /**
+   * Run Pi through ACP (`WATCHER_PI_ACP=1`): the Watcher starts `piAcpCommand` and drives the
+   * session over the protocol, which gives Pi a structured run log. Only affects `agent: "pi"`.
+   */
+  readonly piAcp: boolean;
+  /** Program that speaks ACP for Pi (`WATCHER_PI_ACP_COMMAND`, a space-separated command line). */
+  readonly piAcpCommand: readonly string[];
 }
 
 const loadAgent = (
@@ -62,5 +69,7 @@ export const loadConfig = (
     secret: credentials.secret,
     skills: !["0", "false", "off"].includes((process.env.WATCHER_SKILLS ?? "").toLowerCase()),
     runLog: !["0", "false", "off"].includes((process.env.WATCHER_RUN_LOG ?? "").toLowerCase()),
+    piAcp: ["1", "true", "on"].includes((process.env.WATCHER_PI_ACP ?? "").toLowerCase()),
+    piAcpCommand: (process.env.WATCHER_PI_ACP_COMMAND || "pi-acp").split(/\s+/).filter(Boolean),
   };
 };

@@ -594,6 +594,8 @@ Build task types on the dashboard's **Task types** page. The Coordinator uses a 
 | `SKILLS_GITHUB_TOKEN` | No       |         | Fallback token when no shared GitHub credential is available. A token with no scopes reads public repos. Not sent to Workers |
 | `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's task type before a session starts       |
 | `WATCHER_RUN_LOG`    | No       | on      | On a Watcher computer, `0` (or `--no-run-log`) keeps session transcripts local instead of sending them to the Coordinator |
+| `WATCHER_PI_ACP`     | No       | off     | On a Watcher computer, `1` runs Pi through ACP (the Agent Client Protocol) instead of `pi --print`, which gives Pi a structured run log |
+| `WATCHER_PI_ACP_COMMAND` | No   | `pi-acp` | Program the Watcher starts to speak ACP for Pi; the repo's `@project-os/pi-acp` package provides it |
 
 #### Daytona (paused)
 

@@ -1,0 +1,16 @@
+{
+  "name": "@project-os/pi-acp",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "pi-acp": "./src/main.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "2.12.0",
+    "@earendil-works/pi-coding-agent": "1.6.0"
+  }
+}

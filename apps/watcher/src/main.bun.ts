@@ -207,6 +207,19 @@ const watcher = createWatcher({
   spawner: bunSpawner(config, (cmd, options) => Bun.spawn(cmd, options), {
     readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
     writePrivate,
+    spawnAcp: (cmd, options) => {
+      const proc = Bun.spawn(cmd, { ...options, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+      return {
+        exited: proc.exited,
+        stdout: proc.stdout,
+        stderr: proc.stderr,
+        stdin: new WritableStream<Uint8Array>({
+          write: (chunk) => void proc.stdin.write(chunk),
+          close: () => void proc.stdin.end(),
+        }),
+        kill: () => proc.kill(),
+      };
+    },
     env: process.env,
     configDir: configDir(),
     home: homedir(),
