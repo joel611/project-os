@@ -1,4 +1,5 @@
-import type { AuthSettings, OAuthClientConfig } from "@project-os/auth";
+import { GOOGLE_SCOPES, type AuthSettings, type OAuthClientConfig } from "@project-os/auth";
+import { GMAIL_READ_SCOPE } from "@project-os/contracts";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -38,7 +39,12 @@ export const authConfigFromEnv = (
   env: Env,
   base: Pick<AuthSettings, "baseURL" | "webOrigins">,
 ): AuthSettings => {
-  const google = oauthClient(env, "GOOGLE");
+  const googleClient = oauthClient(env, "GOOGLE");
+  // With the Email Digest on, linking Google also asks to read mail (and nothing more).
+  const google =
+    googleClient && /^(true|1|yes|on)$/i.test(env.EMAIL_DIGEST?.trim() ?? "")
+      ? { ...googleClient, scopes: [...GOOGLE_SCOPES, GMAIL_READ_SCOPE] }
+      : googleClient;
   const github = oauthClient(env, "GITHUB");
   const clickup = oauthClient(env, "CLICKUP");
   const adminEmail = nonEmpty(env, "ADMIN_EMAIL");

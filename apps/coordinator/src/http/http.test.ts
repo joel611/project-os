@@ -11,7 +11,11 @@ import {
   writeMemory,
 } from "@project-os/core";
 import { LocalLive, openLocalDb } from "@project-os/infra-local";
-import { classifierReturning, makeTestLayer } from "@project-os/testing";
+import {
+  classifierReturning,
+  makeChannelDigesterRecording,
+  makeTestLayer,
+} from "@project-os/testing";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { Access } from "../access.ts";
@@ -713,7 +717,11 @@ describe("with the infra-local Layer (SQLite)", () => {
         launch: () => Effect.void,
       };
       const app = appFor(
-        Layer.mergeAll(LocalLive({ dbPath, adapterUrls: {}, workerLauncher }), classifier),
+        Layer.mergeAll(
+          LocalLive({ dbPath, adapterUrls: {}, workerLauncher }),
+          classifier,
+          makeChannelDigesterRecording().layer,
+        ),
       );
 
       const { project } = await linkedProject(app);

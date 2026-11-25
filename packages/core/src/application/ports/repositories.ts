@@ -3,6 +3,7 @@ import type {
   AuditEntry,
   AuditKind,
   ChannelType,
+  EmailItem,
   MemoryEntry,
   MemoryEntryType,
   Requester,
@@ -329,3 +330,46 @@ export class RunRepository extends Context.Service<
     readonly listStoredBefore: (at: string) => Effect.Effect<ReadonlyArray<Run>>;
   }
 >()("@project-os/core/RunRepository") {}
+
+/** A person's mailbox: whether it is read, and where the last sync stopped. */
+export interface Mailbox {
+  readonly owner: Requester;
+  readonly enabled: boolean;
+  /** Gmail history id of the last message seen; null until the first sync. */
+  readonly cursor: string | null;
+  readonly lastSyncAt: string | null;
+  /** The Gmail link is gone or lacks the read scope: the person has to `/connect google` again. */
+  readonly needsReconnect: boolean;
+}
+
+/** Emails held for the Email Digest, and the mailboxes they come from. */
+export class EmailRepository extends Context.Service<
+  EmailRepository,
+  {
+    readonly mailbox: (owner: Requester) => Effect.Effect<Mailbox | null>;
+    readonly saveMailbox: (mailbox: Mailbox) => Effect.Effect<void>;
+    /** Mailboxes that are switched on. */
+    readonly enabledMailboxes: Effect.Effect<ReadonlyArray<Mailbox>>;
+    /** Stores an email; false when the owner already has one with that `messageId`. */
+    readonly insert: (email: EmailItem) => Effect.Effect<boolean>;
+    readonly get: (id: string) => Effect.Effect<EmailItem | null>;
+    readonly update: (
+      id: string,
+      patch: Partial<
+        Pick<
+          EmailItem,
+          "status" | "projectId" | "assignedBy" | "body" | "suggestedProjectId" | "confidence"
+        >
+      >,
+    ) => Effect.Effect<void>;
+    /** The owner's emails still waiting for a project, newest first. */
+    readonly listUnassigned: (owner: Requester) => Effect.Effect<ReadonlyArray<EmailItem>>;
+    /** Emails people filed by hand, newest first: what the classifier learns from. */
+    readonly examples: (limit: number) => Effect.Effect<ReadonlyArray<EmailItem>>;
+    /** Drops waiting and dismissed emails received before `waitingBefore`, filed ones before `filedBefore`. */
+    readonly removeOlder: (input: {
+      readonly waitingBefore: string;
+      readonly filedBefore: string;
+    }) => Effect.Effect<number>;
+  }
+>()("@project-os/core/EmailRepository") {}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   FolderKanban,
   Inbox,
+  Mail,
   LogOut,
   Menu,
   Monitor,
@@ -212,6 +213,13 @@ const MyTicketsLink = () => (
   </Link>
 );
 
+const EmailLink = () => (
+  <Link to="/email" className={NAV_ITEM} activeProps={{ className: NAV_ACTIVE }}>
+    <Mail className="size-4 shrink-0" />
+    Email
+  </Link>
+);
+
 /** Who is signed in, above Sign out. */
 const SignedInAs = () => {
   const viewer = useViewer();
@@ -236,7 +244,10 @@ const SidebarBody = () => {
         <span className="text-[15px] font-semibold tracking-tight">project-os</span>
       </Link>
       {member ? (
-        <MyTicketsLink />
+        <nav className="flex flex-col gap-0.5">
+          <MyTicketsLink />
+          <EmailLink />
+        </nav>
       ) : (
         <>
           <nav className="flex flex-col gap-0.5">
@@ -262,6 +273,7 @@ const SidebarBody = () => {
               Members
             </Link>
             <MyTicketsLink />
+            <EmailLink />
           </nav>
           <section>
             <SectionTitle>Projects</SectionTitle>

@@ -27,6 +27,8 @@ export interface FakeOAuth {
   emailVerified: boolean;
   /** The Google Workspace domain (`hd`); undefined for a personal account. */
   hd: string | undefined;
+  /** The scopes the token response reports granted. */
+  scope: string;
   /** The query of every authorize request, in order. */
   readonly authorizeRequests: URLSearchParams[];
   /** The GitHub account's numeric id and login; a second account needs a different id. */
@@ -80,7 +82,7 @@ export const startFakeOAuth = (): FakeOAuth => {
           refresh_token: `rt-${provider}-${n}`,
           token_type: "Bearer",
           ...(fake.expiresIn > 0 && { expires_in: fake.expiresIn }),
-          scope: "openid email profile drive.readonly",
+          scope: fake.scope,
         });
       }
       // userinfo
@@ -116,6 +118,7 @@ export const startFakeOAuth = (): FakeOAuth => {
     tokenRequests,
     expiresIn: 3600,
     failRefresh: false,
+    scope: "openid email profile drive.readonly",
     failUserInfo: false,
     malformedUserInfo: undefined,
     sub: "google-ada",

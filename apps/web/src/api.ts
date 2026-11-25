@@ -6,6 +6,7 @@ import {
   type CreateSharedAccount,
   MemberList,
   MemoryEntry,
+  MyEmail,
   MyTickets,
   Project,
   ProjectSource,
@@ -177,6 +178,14 @@ export const makeApi = (
   return {
     me: () => get("/me", Viewer),
     myTickets: () => get("/me/tickets", MyTickets),
+    myEmail: () => get("/me/email", MyEmail),
+    setEmailEnabled: (enabled: boolean) =>
+      send("/me/email/enabled", MyEmail, { method: "POST", json: { enabled } }),
+    assignEmail: (emailId: string, projectId: string | null) =>
+      send(`/me/email/${id(emailId)}/assign`, Schema.Struct({ saved: Schema.Number }), {
+        method: "POST",
+        json: { projectId },
+      }),
     members: () => get("/members", MemberList),
     setMemberRole: (key: string, role: Role) =>
       send(`/members/${id(key)}/role`, Schema.Struct({ role: Role }), {
