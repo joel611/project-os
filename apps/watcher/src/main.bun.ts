@@ -25,6 +25,7 @@ import { createLogger, errorMessage } from "./logger.ts";
 import { httpMcpClient } from "./mcp-client.ts";
 import { createWatcher } from "./poll.ts";
 import { registerDevice } from "./register.ts";
+import { type RunLogIo, resendSpooled } from "./run-log.ts";
 import { bunSpawner } from "./spawn.ts";
 import { uninstallWatcher } from "./uninstall.ts";
 
@@ -122,7 +123,9 @@ const credentials = loadCredentials(path);
 if (!credentials) {
   fail(`This computer isn't registered yet (no ${path}).\n\n${USAGE}`);
 }
-const config = loadConfig(credentials!, (name) => Bun.which(name) !== null);
+const loaded = loadConfig(credentials!, (name) => Bun.which(name) !== null);
+// `--no-run-log` wins over the environment.
+const config = command.runLog ? loaded : { ...loaded, runLog: false };
 if (credentials!.agent && config.agent !== credentials!.agent && !process.env.WATCHER_AGENT) {
   logger.warn(`saved agent ${credentials!.agent} isn't installed; using ${config.agent} instead`);
 }
@@ -136,19 +139,79 @@ logger.debug("config", {
   intervalMs: config.intervalMs,
   cwd: config.cwd,
   skills: config.skills,
+  runLog: config.runLog,
   credentials: path,
 });
+
+/** Values from this computer's environment that look like credentials, to mask in run logs. */
+const envSecrets = Object.entries(process.env)
+  .filter(
+    ([name, value]) =>
+      /(TOKEN|SECRET|KEY|PASSWORD|PASSWD)/i.test(name) && (value ?? "").length >= 8,
+  )
+  .map(([, value]) => value!);
+
+const spoolDir = join(configDir(), "run-spool");
+const runLog: RunLogIo = {
+  post: async (url, secret, upload) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+      body: JSON.stringify(upload),
+    });
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { nextSeq?: unknown };
+      return {
+        ok: true,
+        nextSeq: typeof body.nextSeq === "number" ? body.nextSeq : upload.seq + 1,
+      };
+    }
+    const body = (await res.json().catch(() => ({}))) as { expected?: unknown };
+    return {
+      ok: false,
+      status: res.status,
+      ...(typeof body.expected === "number" && { expected: body.expected }),
+    };
+  },
+  spool: {
+    write: (name, contents) => writePrivate(join(spoolDir, name), contents),
+    list: () =>
+      existsSync(spoolDir)
+        ? readdirSync(spoolDir)
+            .filter((name) => name.endsWith(".json"))
+            .map((name) => ({ name, contents: readFileSync(join(spoolDir, name), "utf8") }))
+        : [],
+    remove: (name) => rmSync(join(spoolDir, name), { force: true }),
+  },
+  newRunId: () => crypto.randomUUID(),
+  now: () => new Date(),
+  secrets: envSecrets,
+  flushEveryMs: 3_000,
+  sleep: (ms) => Bun.sleep(ms),
+  terminal: {
+    out: (text) => void process.stdout.write(text),
+    err: (text) => void process.stderr.write(text),
+  },
+};
+const sendSpooled = () =>
+  config.runLog
+    ? resendSpooled(runLog, config.secret, logger).then(
+        (n) => n > 0 && logger.info(`sent ${n} saved run log(s)`),
+        () => undefined,
+      )
+    : undefined;
 
 const watcher = createWatcher({
   config,
   client: httpMcpClient(config.mcpUrl, fetch, config.secret, logger),
-  spawner: bunSpawner(config, Bun.spawn, {
+  spawner: bunSpawner(config, (cmd, options) => Bun.spawn(cmd, options), {
     readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
     writePrivate,
     env: process.env,
     configDir: configDir(),
     home: homedir(),
     logger,
+    ...(config.runLog && { runLog }),
     skills: {
       fetchArchive: async (url, secret) => {
         const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
@@ -156,9 +219,19 @@ const watcher = createWatcher({
         // 204: the ticket has no skills.
         return res.status === 200
           ? {
-              set: decodeURIComponent(res.headers.get("x-skill-set") ?? ""),
+              set: decodeURIComponent(res.headers.get("x-task-type") ?? ""),
               zip: new Uint8Array(await res.arrayBuffer()),
             }
+          : undefined;
+      },
+      fetchTaskType: async (url, secret) => {
+        const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+        logger.debug("task type: response", { status: res.status });
+        // 204: the ticket has no task type.
+        if (res.status !== 200) return undefined;
+        const body = (await res.json()) as { name?: unknown; instructions?: unknown };
+        return typeof body.name === "string" && typeof body.instructions === "string"
+          ? { name: body.name, instructions: body.instructions }
           : undefined;
       },
       // One private directory per session, removed when it ends.
@@ -174,4 +247,8 @@ const watcher = createWatcher({
 });
 
 await watcher.pollOnce();
-setInterval(() => void watcher.pollOnce(), config.intervalMs);
+void sendSpooled();
+setInterval(() => {
+  void watcher.pollOnce();
+  void sendSpooled();
+}, config.intervalMs);

@@ -22,6 +22,9 @@ export const makeDiskBackend = (dir: string): BlobBackend => {
         throw err;
       }
     },
+    remove: async (key) => {
+      await rm(pathOf(key), { force: true });
+    },
     get: async (key) => {
       const file = Bun.file(pathOf(key));
       if (!(await file.exists())) return undefined;

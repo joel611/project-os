@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   ADMIN_SESSION_INSTRUCTIONS,
   CHANNEL_DIGEST_INSTRUCTIONS,
+  emailClassifyMessage,
+  emailProjectCriteria,
   channelDigestRequest,
   EXECUTOR_CRITERIA,
   EXECUTOR_QUESTION,
@@ -217,10 +219,45 @@ describe("full text", () => {
   });
 });
 
-describe("skill set question", () => {
+describe("task type question", () => {
   it("is asked of new requests, with an answer for 'none'", async () => {
-    const { SKILL_SET_QUESTION, SKILL_SET_NONE_CRITERIA } = await import("./intent-classifier.ts");
-    expect(SKILL_SET_QUESTION).toContain("Which skill set");
-    expect(SKILL_SET_NONE_CRITERIA).toContain("No skill set fits");
+    const { TASK_TYPE_QUESTION, TASK_TYPE_NONE_CRITERIA } = await import("./intent-classifier.ts");
+    expect(TASK_TYPE_QUESTION).toContain("Which task type");
+    expect(TASK_TYPE_NONE_CRITERIA).toContain("No task type fits");
+  });
+});
+
+describe("worker prompt task type", () => {
+  it("adds the task type's instructions after the rules, only when it has some", async () => {
+    const { workerSessionStart } = await import("./worker.ts");
+    const withType = workerSessionStart("w1", {
+      taskType: { name: "development", instructions: "  Start with tdd.  " },
+    });
+    expect(withType).toContain('Task type "development"');
+    expect(withType.endsWith("Start with tdd.")).toBe(true);
+    expect(withType.indexOf("Your worker_id")).toBeLessThan(withType.indexOf("Task type"));
+    expect(workerSessionStart("w1", { taskType: { name: "dev", instructions: "  " } })).toBe(
+      workerSessionStart("w1"),
+    );
+  });
+});
+
+describe("email classification prompts", () => {
+  it("describes a project with its instructions and clips long ones", () => {
+    expect(emailProjectCriteria({ name: "Acme", description: "", examples: [] })).toBe(
+      "The project Acme",
+    );
+    const long = emailProjectCriteria({ name: "Acme", description: "x".repeat(900), examples: [] });
+    expect(long.length).toBeLessThan(520);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  it("cuts a long email body", () => {
+    const text = emailClassifyMessage({ from: "a", subject: "b", body: "y".repeat(5000) });
+    expect(text.startsWith("From: a\nSubject: b\n\n")).toBe(true);
+    expect(text.endsWith("…")).toBe(true);
+    expect(emailClassifyMessage({ from: "a", subject: "b", body: "short" }).endsWith("short")).toBe(
+      true,
+    );
   });
 });

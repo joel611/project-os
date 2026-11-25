@@ -1,9 +1,11 @@
 import {
   AuditLogRepository,
   ChannelMessageRepository,
+  EmailRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
+  RunRepository,
   SkillRepository,
   TicketRepository,
   WorkerRepository,
@@ -11,10 +13,12 @@ import {
 import { Effect, Layer } from "effect";
 import { DrizzleSqlite } from "./db.ts";
 import { makeChannelMessageRepository } from "./channel-message.ts";
+import { makeEmailRepository } from "./email.ts";
 import { makeAuditLogRepository } from "./audit-log.ts";
 import { makeMemoryRepository } from "./memory.ts";
 import { makeProjectRepository } from "./project.ts";
 import { makeProjectSourceRepository } from "./project-source.ts";
+import { makeRunRepository } from "./run.ts";
 import { makeSkillRepository } from "./skill.ts";
 import { makeTicketRepository } from "./ticket.ts";
 import { makeWorkerRepository } from "./worker.ts";
@@ -33,6 +37,8 @@ export const SqliteRepositories = Layer.unwrap(
       Layer.succeed(ChannelMessageRepository, makeChannelMessageRepository(db)),
       Layer.succeed(AuditLogRepository, makeAuditLogRepository(db)),
       Layer.succeed(SkillRepository, makeSkillRepository(db)),
+      Layer.succeed(RunRepository, makeRunRepository(db)),
+      Layer.succeed(EmailRepository, makeEmailRepository(db)),
     ),
   ),
 );

@@ -7,6 +7,7 @@ import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
 import { type EgressDeps, egressRoutes } from "./egress/routes.ts";
 import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
+import { runRoutes } from "./runs/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
 
 export interface AppDeps {
@@ -34,6 +35,8 @@ export interface AppDeps {
   readonly setRole?: HttpDeps["setRole"];
   /** Shared connector accounts (`/shared-accounts`), from the auth instance. Omitted: 501. */
   readonly sharedAccounts?: HttpDeps["sharedAccounts"];
+  /** The Email Digest is on: people may switch their mailbox on (`GET/POST /me/email`). */
+  readonly emailDigest?: boolean;
   /**
    * Origins a browser may call this API from (the web dashboard when it is served from
    * another origin). Omitted or empty: no CORS headers, so browsers block cross-origin calls.
@@ -80,6 +83,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
           ...(deps.members && { members: deps.members }),
           ...(deps.setRole && { setRole: deps.setRole }),
           ...(deps.sharedAccounts && { sharedAccounts: deps.sharedAccounts }),
+          ...(deps.emailDigest && { emailDigest: true }),
           access: deps.access,
         }),
       )
@@ -95,6 +99,7 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
   const proxy = deps.credentialProxy;
   const withMcp = withAssets
     .use(mcpRoutes(deps.mcp, { credentialProxy: proxy !== undefined }))
-    .use(skillRoutes({ runtime: deps.mcp }));
+    .use(skillRoutes({ runtime: deps.mcp }))
+    .use(runRoutes({ runtime: deps.mcp }));
   return proxy ? withMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withMcp;
 };

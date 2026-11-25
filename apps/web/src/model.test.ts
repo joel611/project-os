@@ -1,6 +1,8 @@
 import { TICKET_STATUSES, type Ticket } from "@project-os/contracts";
+import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  normalizeAlias,
   checkSource,
   formatBytes,
   groupSources,
@@ -18,6 +20,9 @@ import {
   sourceUrl,
   splitTickets,
   STATUS,
+  filterRunEvents,
+  runDuration,
+  runToJsonl,
 } from "./model.ts";
 
 const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): Ticket => ({
@@ -312,5 +317,76 @@ describe("formatBytes", () => {
     expect(formatBytes(5 * 1024 * 1024)).toBe("5 MB");
     expect(formatBytes(3.25 * 1024 ** 3)).toBe("3.3 GB");
     expect(formatBytes(2048 * 1024 ** 3)).toBe("2048 GB");
+  });
+
+  it("formats any byte count as a number and a known unit", () => {
+    fc.assert(
+      fc.property(fc.nat({ max: Number.MAX_SAFE_INTEGER }), (bytes) => {
+        expect(formatBytes(bytes)).toMatch(/^\d+(\.\d)? (B|KB|MB|GB)$/);
+      }),
+    );
+  });
+
+  it("shows byte counts under 1 KB exactly", () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 1023 }), (bytes) => {
+        expect(formatBytes(bytes)).toBe(`${bytes} B`);
+      }),
+    );
+  });
+});
+
+describe("normalizeAlias", () => {
+  it("returns a valid alias that normalizing again leaves unchanged", () => {
+    fc.assert(
+      fc.property(fc.string(), (raw) => {
+        const once = normalizeAlias(raw);
+        if (once === null) return;
+        expect(once.length).toBeLessThanOrEqual(40);
+        expect(normalizeAlias(once)).toBe(once);
+      }),
+    );
+  });
+
+  it("accepts any lowercase word joined by single dashes", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.stringMatching(/^[a-z0-9]{1,5}$/), { minLength: 1, maxLength: 6 }),
+        (parts) => {
+          const alias = parts.join("-");
+          expect(normalizeAlias(alias)).toBe(alias);
+        },
+      ),
+    );
+  });
+});
+
+describe("run helpers", () => {
+  const now = new Date("2026-11-04T01:00:00.000Z");
+  it("says how long a run took, or has been going", () => {
+    const at = (iso: string) => ({ startedAt: "2026-11-04T00:00:00.000Z", endedAt: iso });
+    expect(runDuration(at("2026-11-04T00:00:42.000Z"), now)).toBe("42s");
+    expect(runDuration(at("2026-11-04T00:02:05.000Z"), now)).toBe("2m 5s");
+    expect(runDuration(at("2026-11-04T01:30:00.000Z"), now)).toBe("1h 30m");
+    expect(runDuration({ startedAt: "2026-11-04T00:59:00.000Z", endedAt: null }, now)).toBe(
+      "1m 0s",
+    );
+  });
+
+  const events = [
+    { at: "t", type: "message", text: "Reading the login page" },
+    { at: "t", type: "tool_call", tool: "Bash", text: "ls -la" },
+    { at: "t", type: "tool_result", tool: "Bash", text: "total 0" },
+  ] as const;
+  it("filters by search (text and tool) and by hidden types", () => {
+    expect(filterRunEvents(events, { search: "", hidden: new Set() })).toHaveLength(3);
+    expect(filterRunEvents(events, { search: "LOGIN", hidden: new Set() })).toHaveLength(1);
+    expect(
+      filterRunEvents(events, { search: "bash", hidden: new Set(["tool_result"]) }),
+    ).toHaveLength(1);
+  });
+
+  it("exports one JSON event per line", () => {
+    expect(runToJsonl(events).trim().split("\n")).toHaveLength(3);
   });
 });

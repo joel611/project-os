@@ -2,13 +2,21 @@ import { Database } from "bun:sqlite";
 import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditEntry, ChannelMessage, MemoryEntry } from "@project-os/contracts";
+import type {
+  AuditEntry,
+  ChannelMessage,
+  EmailItem,
+  MemoryEntry,
+  Run,
+} from "@project-os/contracts";
 import {
   AuditLogRepository,
   ChannelMessageRepository,
+  EmailRepository,
   MemoryRepository,
   ProjectRepository,
   ProjectSourceRepository,
+  RunRepository,
   SkillRepository,
   TicketRepository,
   WorkerRepository,
@@ -53,6 +61,8 @@ const run = <A, E>(
     | ChannelMessageRepository
     | AuditLogRepository
     | SkillRepository
+    | RunRepository
+    | EmailRepository
   >,
   db = makeDb(),
 ) => Effect.runPromise(program.pipe(Effect.provide(reposOf(db))));
@@ -1125,13 +1135,14 @@ describe("SkillRepository", () => {
     id: "set1",
     name: "dev",
     description: "code",
+    instructions: "",
     createdAt: T0,
     updatedAt: T0,
     ...over,
   });
   const skill = (over: Record<string, unknown> = {}) => ({
     id: "k1",
-    skillSetId: "set1",
+    taskTypeId: "set1",
     source: "acme/skills",
     slug: "tdd",
     name: "tdd",
@@ -1179,16 +1190,16 @@ describe("SkillRepository", () => {
         };
       }),
     );
-    expect(out.dup._tag).toBe("SkillSetNameTaken");
+    expect(out.dup._tag).toBe("TaskTypeNameTaken");
     expect(out.renamed.name).toBe("development");
     expect(out.sameName.name).toBe("development");
-    expect(out.clash._tag).toBe("SkillSetNameTaken");
+    expect(out.clash._tag).toBe("TaskTypeNameTaken");
     expect(out.noRename).toMatchObject({ name: "development", description: "x", updatedAt: T2 });
-    expect(out.missing._tag).toBe("SkillSetNotFound");
+    expect(out.missing._tag).toBe("TaskTypeNotFound");
     expect(out.got.id).toBe("set1");
-    expect(out.missingGet._tag).toBe("SkillSetNotFound");
+    expect(out.missingGet._tag).toBe("TaskTypeNotFound");
     expect(out.names).toEqual(["development", "writing"]);
-    expect(out.missingDelete._tag).toBe("SkillSetNotFound");
+    expect(out.missingDelete._tag).toBe("TaskTypeNotFound");
   });
 
   it("pins skills with where their zip is kept; an upsert on the same source and slug keeps the id", async () => {
@@ -1227,7 +1238,7 @@ describe("SkillRepository", () => {
     expect(out.missingRemove._tag).toBe("SkillNotFound");
   });
 
-  it("deleting a set removes its skills, and a ticket keeps its skill set id", async () => {
+  it("deleting a set removes its skills, and a ticket keeps its task type id", async () => {
     const out = await run(
       Effect.gen(function* () {
         const repo = yield* SkillRepository;
@@ -1238,12 +1249,183 @@ describe("SkillRepository", () => {
         yield* (yield* ProjectRepository).insert(project());
         const t = yield* (yield* TicketRepository).insert({
           ...ticket(),
-          skillSetId: "set1",
+          taskTypeId: "set1",
         } as Ticket);
         return { left, t };
       }),
     );
     expect(out.left).toEqual([]);
-    expect(out.t.skillSetId).toBe("set1");
+    expect(out.t.taskTypeId).toBe("set1");
+  });
+});
+
+describe("RunRepository", () => {
+  const mkRun = (id: string, startedAt: string, over: Partial<Run> = {}): Run => ({
+    id,
+    ticketId: "t1",
+    workerId: "w1",
+    agent: "claude",
+    model: null,
+    status: "running",
+    exitCode: null,
+    startedAt,
+    endedAt: null,
+    eventCount: 0,
+    errorCount: 0,
+    bytes: 0,
+    nextSeq: 0,
+    truncated: false,
+    expired: false,
+    ...over,
+  });
+
+  it("saves and updates a run, lists a ticket's oldest first, and finds the stored old ones", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        yield* seeded;
+        yield* (yield* TicketRepository).insert(ticket());
+        const repo = yield* RunRepository;
+        yield* repo.save(mkRun("r2", T1));
+        yield* repo.save(mkRun("r1", T0));
+        yield* repo.save(mkRun("r1", T0, { status: "succeeded", exitCode: 0, eventCount: 4 }));
+        yield* repo.save(mkRun("old", "2026-11-03T00:00:00.000Z", { expired: true }));
+        return {
+          one: yield* repo.get("r1"),
+          missing: yield* repo.get("nope"),
+          listed: (yield* repo.listByTicket("t1")).map((r) => r.id),
+          stored: (yield* repo.listStoredBefore(T1)).map((r) => r.id),
+        };
+      }),
+    );
+    expect(out.one).toMatchObject({ status: "succeeded", exitCode: 0, eventCount: 4 });
+    expect(out.missing).toBeUndefined();
+    expect(out.listed).toEqual(["old", "r1", "r2"]);
+    expect(out.stored).toEqual(["r1"]);
+  });
+});
+
+const mailItem = (over: Partial<EmailItem> = {}): EmailItem => ({
+  id: "e1",
+  owner: { channelType: "discord", id: "u1" },
+  messageId: "g1",
+  threadId: "t1",
+  fromName: "Dana",
+  fromAddress: "dana@acme.test",
+  subject: "Hello",
+  body: "text",
+  receivedAt: T0,
+  status: "unassigned",
+  projectId: null,
+  assignedBy: null,
+  suggestedProjectId: null,
+  confidence: null,
+  ...over,
+});
+
+describe("EmailRepository", () => {
+  const ada = { channelType: "discord", id: "u1" } as const;
+  const bob = { channelType: "discord", id: "u2" } as const;
+
+  it("keeps a mailbox per person and lists only the switched-on ones", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        const none = yield* repo.mailbox(ada);
+        const base = { cursor: null, lastSyncAt: null, needsReconnect: false };
+        yield* repo.saveMailbox({ owner: ada, enabled: true, ...base });
+        yield* repo.saveMailbox({ owner: bob, enabled: false, ...base });
+        yield* repo.saveMailbox({
+          owner: ada,
+          enabled: true,
+          cursor: "h9",
+          lastSyncAt: T1,
+          needsReconnect: true,
+        });
+        return {
+          none,
+          ada: yield* repo.mailbox(ada),
+          enabled: (yield* repo.enabledMailboxes).map((m) => m.owner.id),
+        };
+      }),
+    );
+    expect(out.none).toBeNull();
+    expect(out.ada).toEqual({
+      owner: ada,
+      enabled: true,
+      cursor: "h9",
+      lastSyncAt: T1,
+      needsReconnect: true,
+    });
+    expect(out.enabled).toEqual(["u1"]);
+  });
+
+  it("stores each message once per owner, lists waiting mail newest first, and updates", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        const first = yield* repo.insert(mailItem());
+        const again = yield* repo.insert(mailItem({ id: "e9" }));
+        yield* repo.insert(mailItem({ id: "e2", messageId: "g2", receivedAt: T2 }));
+        yield* repo.insert(mailItem({ id: "e3", messageId: "g1", owner: bob }));
+        yield* repo.update("e1", { suggestedProjectId: "p1", confidence: 0.5 });
+        const waiting = (yield* repo.listUnassigned(ada)).map((e) => e.id);
+        yield* repo.update("e2", {
+          status: "assigned",
+          projectId: "p1",
+          assignedBy: "person",
+          body: "",
+        });
+        return {
+          first,
+          again,
+          waiting,
+          afterAssign: (yield* repo.listUnassigned(ada)).map((e) => e.id),
+          e1: yield* repo.get("e1"),
+          e2: yield* repo.get("e2"),
+          missing: yield* repo.get("nope"),
+        };
+      }),
+    );
+    expect(out.first).toBe(true);
+    expect(out.again).toBe(false);
+    expect(out.waiting).toEqual(["e2", "e1"]);
+    expect(out.afterAssign).toEqual(["e1"]);
+    expect(out.e1).toMatchObject({ suggestedProjectId: "p1", confidence: 0.5, owner: ada });
+    expect(out.e2).toMatchObject({ status: "assigned", body: "", assignedBy: "person" });
+    expect(out.missing).toBeNull();
+  });
+
+  it("offers hand-filed emails as examples and drops old ones by status", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        const filed = { status: "assigned", projectId: "p1" } as const;
+        yield* repo.insert(mailItem({ id: "e1", messageId: "a", ...filed, assignedBy: "person" }));
+        yield* repo.insert(
+          mailItem({
+            id: "e2",
+            messageId: "b",
+            ...filed,
+            assignedBy: "classifier",
+            receivedAt: T2,
+          }),
+        );
+        yield* repo.insert(mailItem({ id: "e3", messageId: "c", receivedAt: T0 }));
+        yield* repo.insert(
+          mailItem({ id: "e4", messageId: "d", status: "dismissed", receivedAt: T0 }),
+        );
+        yield* repo.insert(mailItem({ id: "e5", messageId: "f", receivedAt: T2 }));
+        const examples = (yield* repo.examples(10)).map((e) => e.id);
+        const removed = yield* repo.removeOlder({ waitingBefore: T1, filedBefore: T0 });
+        const left: string[] = [];
+        for (const id of ["e1", "e2", "e3", "e4", "e5"]) {
+          if (yield* repo.get(id)) left.push(id);
+        }
+        return { examples, removed, left };
+      }),
+    );
+    expect(out.examples).toEqual(["e1"]);
+    expect(out.removed).toBe(2);
+    expect(out.left).toEqual(["e1", "e2", "e5"]);
   });
 });

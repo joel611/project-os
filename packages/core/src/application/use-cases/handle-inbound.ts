@@ -4,7 +4,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import {
   ACTIVE_STATUSES,
   canReopen,
-  chosenSkillSet,
+  chosenTaskType,
   isTerminal,
   type Ticket,
   type TicketStatus,
@@ -15,7 +15,7 @@ import {
   IdGenerator,
   IntentClassifier,
   type IntentResult,
-  type SkillSetChoice,
+  type TaskTypeChoice,
   KeyValueStore,
   type Person,
   ProjectRepository,
@@ -32,7 +32,7 @@ import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts
 import { recordChannelMessage } from "./channel-digest.ts";
 import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
-import { skillSetChoices } from "./skills.ts";
+import { taskTypeChoices } from "./skills.ts";
 import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
 import { notifyTicket } from "./on-ticket-completed.ts";
 import {
@@ -348,14 +348,14 @@ export const handleInbound = (
       projectContext: string,
       projectId: string | null,
       ticket?: string,
-      skillSets: ReadonlyArray<SkillSetChoice> = [],
+      taskTypes: ReadonlyArray<TaskTypeChoice> = [],
     ) =>
       classifier
         .classify({
           content: message.content,
           projectContext,
           ...(ticket === undefined ? {} : { ticketContext: ticket }),
-          ...(skillSets.length === 0 ? {} : { skillSets }),
+          ...(taskTypes.length === 0 ? {} : { taskTypes }),
         })
         .pipe(
           Effect.tap((result) =>
@@ -549,7 +549,7 @@ export const handleInbound = (
 
     const result =
       override?.result ??
-      (yield* classify(project.customInstructions, project.id, undefined, yield* skillSetChoices));
+      (yield* classify(project.customInstructions, project.id, undefined, yield* taskTypeChoices));
     if (!isConfident(result.confidence)) return yield* clarify();
 
     const active = (yield* tickets.listByStatus(ACTIVE_STATUSES))
@@ -570,7 +570,7 @@ export const handleInbound = (
           priority: null,
           workerType: null,
           workerId: null,
-          skillSetId: chosenSkillSet(result),
+          taskTypeId: chosenTaskType(result),
           requester,
           result: null,
           error: null,

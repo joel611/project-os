@@ -11,6 +11,7 @@ import {
   PROXIED_SESSION_COMMAND,
   SESSION_COMMAND,
   SKILLS_STEP,
+  type SandboxLauncherConfig,
   type SandboxProvider,
   type SandboxRunner,
 } from "./launcher.ts";
@@ -19,6 +20,7 @@ const setup = (
   run: SandboxRunner["run"],
   extra: ReadonlyArray<SandboxProvider> = [],
   egressUrl?: string,
+  onSessionEnd?: SandboxLauncherConfig["onSessionEnd"],
 ) => {
   const logs: string[] = [];
   const launcher = makeSandboxLauncher({
@@ -27,6 +29,7 @@ const setup = (
     openrouterApiKey: "sk-or",
     model: "openrouter/m",
     ...(egressUrl && { egressUrl }),
+    ...(onSessionEnd && { onSessionEnd }),
     log: (m) => logs.push(m),
   });
   return { launcher, logs };
@@ -179,6 +182,18 @@ describe("sandbox launcher", () => {
     expect(calls[0]!.command).not.toContain("mcp-token-t1");
   });
 
+  it("puts the ticket's task type instructions into the session prompt", async () => {
+    const calls: Parameters<SandboxRunner["run"]>[0][] = [];
+    const { launcher } = setup(async (input) => {
+      calls.push(input);
+      return { exitCode: 0, output: "" };
+    });
+    const taskType = { name: "development", instructions: "Start with tdd." };
+    await Effect.runPromise(launcher.launch({ ...daytonaTicket, taskType }));
+    expect(calls[0]!.env.PROJECT_OS_PROMPT).toBe(workerSessionStart("daytona-t1", { taskType }));
+    expect(calls[0]!.env.PROJECT_OS_PROMPT).toContain("Start with tdd.");
+  });
+
   it("behind the credential proxy, hands the session the proxy and points git at it", async () => {
     const calls: Parameters<SandboxRunner["run"]>[0][] = [];
     const { launcher } = setup(
@@ -298,5 +313,53 @@ describe("sandbox launcher", () => {
     await Effect.runPromise(launcher.launch(daytonaTicket));
     await settle();
     expect(logs.at(-1)).toBe("daytona: daytona-t1 exited 2: pi: bad model");
+  });
+
+  it("hands a finished session's output, with the values to mask, to onSessionEnd", async () => {
+    const ended: unknown[] = [];
+    const { launcher } = setup(
+      async () => ({ exitCode: 2, output: "pi: bad model" }),
+      [],
+      undefined,
+      (session) => void ended.push(session),
+    );
+    await Effect.runPromise(launcher.launch(daytonaTicket));
+    await settle();
+    expect(ended).toEqual([
+      expect.objectContaining({
+        ticketId: "t1",
+        workerId: "daytona-t1",
+        agent: "pi",
+        model: "openrouter/m",
+        exitCode: 2,
+        output: "pi: bad model",
+        secrets: ["mcp-token-t1", "sk-or"],
+      }),
+    ]);
+  });
+
+  it("keeps a session that failed to run as a one-line run, and logs a hook that throws", async () => {
+    const ended: Array<{ exitCode: number; output: string }> = [];
+    const { launcher } = setup(
+      () => Promise.reject(new Error("no capacity")),
+      [],
+      undefined,
+      (session) => void ended.push(session),
+    );
+    await Effect.runPromise(launcher.launch(daytonaTicket));
+    await settle();
+    expect(ended).toEqual([
+      expect.objectContaining({ exitCode: 1, output: "Session failed to run: no capacity" }),
+    ]);
+
+    const failing = setup(ok, [], undefined, () => Promise.reject(new Error("db down")));
+    await Effect.runPromise(failing.launcher.launch(daytonaTicket));
+    await settle();
+    expect(failing.logs.at(-1)).toBe("daytona: daytona-t1 run log not kept: db down");
+
+    const odd = setup(ok, [], undefined, () => Promise.reject("weird"));
+    await Effect.runPromise(odd.launcher.launch(daytonaTicket));
+    await settle();
+    expect(odd.logs.at(-1)).toBe("daytona: daytona-t1 run log not kept: weird");
   });
 });

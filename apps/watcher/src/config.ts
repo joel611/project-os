@@ -15,8 +15,10 @@ export interface WatcherConfig {
   readonly cwd: string;
   /** Bearer secret this device got at registration; every MCP call sends it. */
   readonly secret: string;
-  /** Install the ticket's skill set before a session starts (`WATCHER_SKILLS=0` turns it off). */
+  /** Install the ticket's task type before a session starts (`WATCHER_SKILLS=0` turns it off). */
   readonly skills: boolean;
+  /** Send each session's transcript to the Coordinator (`WATCHER_RUN_LOG=0` or `--no-run-log` turns it off). */
+  readonly runLog: boolean;
 }
 
 const loadAgent = (
@@ -59,5 +61,6 @@ export const loadConfig = (
     cwd: env("WORKER_CWD", process.cwd()),
     secret: credentials.secret,
     skills: !["0", "false", "off"].includes((process.env.WATCHER_SKILLS ?? "").toLowerCase()),
+    runLog: !["0", "false", "off"].includes((process.env.WATCHER_RUN_LOG ?? "").toLowerCase()),
   };
 };

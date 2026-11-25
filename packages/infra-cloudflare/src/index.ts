@@ -22,6 +22,7 @@ import {
   SidekickPending,
   SystemClockLive,
   UserConnectionsUnavailable,
+  EmailUnavailable,
 } from "@project-os/infra-local/shared";
 import { drizzle } from "drizzle-orm/d1";
 import { Effect, Layer } from "effect";
@@ -106,6 +107,7 @@ export const CloudflareLive = (config: CloudflareConfig) =>
     config.agent ?? Layer.merge(AgentRuntimePending, SidekickPending),
     Layer.succeed(WorkerLauncher, config.workerLauncher ?? noopLauncher),
     UserConnectionsUnavailable,
+    EmailUnavailable,
     Layer.succeed(
       SkillSource,
       // workerd throws "Illegal invocation" when the global `fetch` is called detached.

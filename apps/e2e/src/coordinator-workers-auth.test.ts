@@ -116,7 +116,7 @@ describe("Coordinator on Workers", () => {
     // A link minted the way the Coordinator does, with the Worker's BETTER_AUTH_SECRET.
     const link = await Effect.runPromise(
       makeAssetStore({
-        backend: { put: async () => {}, get: async () => undefined },
+        backend: { put: async () => {}, get: async () => undefined, remove: async () => {} },
         links: { publicUrl: "http://coordinator.test", secret: SECRET },
       }).link("t1/a1/hero.png"),
     );
@@ -132,7 +132,7 @@ describe("Coordinator on Workers", () => {
     // A correctly signed link to a key nobody stored: past the check, nothing there.
     const missing = await Effect.runPromise(
       makeAssetStore({
-        backend: { put: async () => {}, get: async () => undefined },
+        backend: { put: async () => {}, get: async () => undefined, remove: async () => {} },
         links: { publicUrl: "http://coordinator.test", secret: SECRET },
       }).link("t1/a1/missing.png"),
     );

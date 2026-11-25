@@ -6,6 +6,7 @@ import { type SyntheticEvent, useState } from "react";
 import { api, ApiError, describeError, type TicketDetail } from "@/api";
 import { Empty, QueryError } from "@/components/states";
 import { TicketFiles } from "@/components/ticket-files";
+import { TicketRuns } from "@/components/ticket-runs";
 import { StatusBadge, ToneDot } from "@/components/tone";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,6 +76,7 @@ const Main = ({ ticket, events }: TicketDetail) => {
         </section>
       )}
       {hasAttachments(events) && <TicketFiles ticketId={ticket.id} />}
+      <TicketRuns ticketId={ticket.id} live={ticketDetailInterval(ticket) !== false} />
       <section className="flex flex-col gap-1 rounded-xl border bg-card p-5 shadow-card sm:p-6">
         <h2 className="pb-4 text-sm font-semibold">Activity</h2>
         <ol className="relative flex flex-col gap-5 border-l pl-5">
@@ -177,7 +179,7 @@ const AssignDialog = ({ ticket, onClose }: { ticket: Ticket; onClose: () => void
   );
 };
 
-const Details = ({ ticket }: Pick<TicketDetail, "ticket">) => {
+const Details = ({ ticket, taskType }: Pick<TicketDetail, "ticket" | "taskType">) => {
   const now = useNow();
   const operator = useCan("ticket", "update");
   const [assigning, setAssigning] = useState(false);
@@ -187,6 +189,7 @@ const Details = ({ ticket }: Pick<TicketDetail, "ticket">) => {
       <dl className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-1">
         <Field label="Status">{STATUS[ticket.status].label}</Field>
         <Field label="Intent">{ticket.intent}</Field>
+        <Field label="Task type">{taskType?.name ?? "—"}</Field>
         <Field label="Worker">
           <span className="flex flex-wrap items-center gap-2">
             {ticket.workerId ?? "—"}
@@ -268,7 +271,7 @@ export const TicketPage = ({ ticketId, back }: { ticketId: string; back: TicketB
             <Main {...detail.data} />
           </div>
           <div className="order-1 lg:order-2">
-            <Details ticket={detail.data.ticket} />
+            <Details ticket={detail.data.ticket} taskType={detail.data.taskType} />
           </div>
         </div>
       )}

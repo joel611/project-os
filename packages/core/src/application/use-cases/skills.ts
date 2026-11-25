@@ -1,10 +1,10 @@
-import type { SkillCandidates, SkillUpdateReport } from "@project-os/contracts";
+import type { SkillCandidates, SkillUpdateReport, Ticket } from "@project-os/contracts";
 import { Effect } from "effect";
 import {
-  InvalidSkillSet,
+  InvalidTaskType,
   InvalidSkillSource,
   mergeSkillArchives,
-  NO_SKILL_SET,
+  NO_TASK_TYPE,
   packSkill,
   SkillFetchFailed,
   skillArchiveKey,
@@ -13,7 +13,7 @@ import {
   SkillNotFound,
   updateStatusOf,
   type Skill,
-  type SkillSet,
+  type TaskType,
 } from "../../domain/index.ts";
 import {
   AssetStore,
@@ -29,16 +29,16 @@ const cleanName = (name: string) =>
   Effect.gen(function* () {
     const trimmed = name.trim();
     if (trimmed === "" || trimmed.length > 60) {
-      return yield* new InvalidSkillSet({ message: "A set's name is 1 to 60 characters." });
+      return yield* new InvalidTaskType({ message: "A set's name is 1 to 60 characters." });
     }
-    if (trimmed.toLowerCase() === NO_SKILL_SET) {
-      return yield* new InvalidSkillSet({ message: `"${NO_SKILL_SET}" is reserved.` });
+    if (trimmed.toLowerCase() === NO_TASK_TYPE) {
+      return yield* new InvalidTaskType({ message: `"${NO_TASK_TYPE}" is reserved.` });
     }
     return trimmed;
   });
 
 /** Every set with its skills, by name. */
-export const listSkillSets = Effect.gen(function* () {
+export const listTaskTypes = Effect.gen(function* () {
   const repo = yield* SkillRepository;
   const sets = [...(yield* repo.listSets)].sort((a, b) => a.name.localeCompare(b.name));
   return {
@@ -48,40 +48,46 @@ export const listSkillSets = Effect.gen(function* () {
   };
 });
 
-export const getSkillSet = (id: string) =>
+export const getTaskType = (id: string) =>
   Effect.gen(function* () {
     const repo = yield* SkillRepository;
     const set = yield* repo.getSet(id);
     return { set, skills: yield* repo.listSkills(id) };
   });
 
-export const createSkillSet = (input: { readonly name: string; readonly description: string }) =>
+export const createTaskType = (input: {
+  readonly name: string;
+  readonly description: string;
+  readonly instructions?: string;
+}) =>
   Effect.gen(function* () {
     const at = yield* nowIso;
-    const set: SkillSet = {
+    const set: TaskType = {
       id: yield* (yield* IdGenerator).next,
       name: yield* cleanName(input.name),
       description: input.description.trim(),
+      instructions: (input.instructions ?? "").trim(),
       createdAt: at,
       updatedAt: at,
     };
     return yield* (yield* SkillRepository).insertSet(set);
   });
 
-export const updateSkillSet = (
+export const updateTaskType = (
   id: string,
-  patch: { readonly name?: string; readonly description?: string },
+  patch: { readonly name?: string; readonly description?: string; readonly instructions?: string },
 ) =>
   Effect.gen(function* () {
     const at = yield* nowIso;
     return yield* (yield* SkillRepository).updateSet(id, {
       ...(patch.name !== undefined && { name: yield* cleanName(patch.name) }),
       ...(patch.description !== undefined && { description: patch.description.trim() }),
+      ...(patch.instructions !== undefined && { instructions: patch.instructions.trim() }),
       updatedAt: at,
     });
   });
 
-export const deleteSkillSet = (id: string) =>
+export const deleteTaskType = (id: string) =>
   Effect.flatMap(SkillRepository, (repo) => repo.deleteSet(id));
 
 export const removeSkillFromSet = (skillId: string) =>
@@ -151,7 +157,7 @@ const download = (
     const { sha, files } = yield* upstream.fetch(candidate.source, candidate.path);
     const meta = parseSkillFrontmatter(files.find((f) => f.path === "SKILL.md")?.contents ?? "");
     const id = existing?.id ?? (yield* (yield* IdGenerator).next);
-    const archiveKey = skillArchiveKey({ skillSetId: setId, id, sha });
+    const archiveKey = skillArchiveKey({ taskTypeId: setId, id, sha });
     const zip = packSkill(candidate.slug, files);
     yield* (yield* AssetStore)
       .put({
@@ -169,7 +175,7 @@ const download = (
     return yield* repo.upsertSkill({
       id,
       archiveKey,
-      skillSetId: setId,
+      taskTypeId: setId,
       source: candidate.source,
       slug: candidate.slug,
       name: meta.name || candidate.slug,
@@ -227,7 +233,7 @@ export const updateSkillsInSet = (input: {
 
 /**
  * The skills a Worker is given before it starts its ticket: one zip of the pinned skills of the
- * ticket's skill set, entries `<slug>/<path>`. Only the ticket's own worker may read it. A ticket
+ * ticket's task type, entries `<slug>/<path>`. Only the ticket's own worker may read it. A ticket
  * with no set (or whose set was deleted or has no skills) gets `archive: null`.
  */
 export const skillArchiveForTicket = (ticketId: string, caller: McpCaller) =>
@@ -235,8 +241,8 @@ export const skillArchiveForTicket = (ticketId: string, caller: McpCaller) =>
     yield* guardTicketAccess(ticketId, caller);
     const ticket = yield* (yield* TicketRepository).get(ticketId);
     const repo = yield* SkillRepository;
-    const set = ticket.skillSetId
-      ? yield* repo.getSet(ticket.skillSetId).pipe(Effect.orElseSucceed(() => undefined))
+    const set = ticket.taskTypeId
+      ? yield* repo.getSet(ticket.taskTypeId).pipe(Effect.orElseSucceed(() => undefined))
       : undefined;
     const skills = set ? yield* repo.listSkills(set.id) : [];
     if (!set || skills.length === 0) return { set: null, archive: null };
@@ -258,7 +264,7 @@ export const skillArchiveForTicket = (ticketId: string, caller: McpCaller) =>
   });
 
 /** The sets Jev may route a new request to: those with at least one skill. */
-export const skillSetChoices = Effect.gen(function* () {
+export const taskTypeChoices = Effect.gen(function* () {
   const repo = yield* SkillRepository;
   const sets = yield* repo.listSets;
   const withSkills = yield* Effect.filter(sets, (set) =>
@@ -266,3 +272,29 @@ export const skillSetChoices = Effect.gen(function* () {
   );
   return withSkills.map(({ id, name, description }) => ({ id, name, description }));
 });
+
+export const taskTypeOf = (taskTypeId: string | null | undefined) =>
+  taskTypeId
+    ? Effect.flatMap(SkillRepository, (repo) =>
+        repo.getSet(taskTypeId).pipe(Effect.orElseSucceed(() => undefined)),
+      )
+    : Effect.succeed(undefined);
+
+/** A ticket detail plus the name of the task type it was routed to; null when none, or deleted since. */
+export const withTaskType = <T extends { readonly ticket: Ticket }>(detail: T) =>
+  Effect.map(taskTypeOf(detail.ticket.taskTypeId), (type) => ({
+    ...detail,
+    taskType: type ? { id: type.id, name: type.name } : null,
+  }));
+
+/**
+ * The task type a Worker's session runs under, with the instructions that go into its system
+ * prompt. Only the ticket's own worker may read it; null when the ticket has no task type.
+ */
+export const taskTypeForTicket = (ticketId: string, caller: McpCaller) =>
+  Effect.gen(function* () {
+    yield* guardTicketAccess(ticketId, caller);
+    const ticket = yield* (yield* TicketRepository).get(ticketId);
+    const type = yield* taskTypeOf(ticket.taskTypeId);
+    return type ? { id: type.id, name: type.name, instructions: type.instructions } : null;
+  });

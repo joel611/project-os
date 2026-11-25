@@ -4,6 +4,7 @@ import { workerStatus, type Ticket } from "../../domain/index.ts";
 import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
 import { notifyTicket } from "./on-ticket-completed.ts";
 import { placeOrQueue } from "./placement.ts";
+import { DEFAULT_RUN_RETENTION_MS, pruneRuns } from "./runs.ts";
 import {
   auditTicket,
   auditWorker,
@@ -26,6 +27,8 @@ export interface HealthThresholds {
   readonly sharedWorkerMaxTickets?: number;
   /** Audit entries older than this are deleted. Default 90 days. */
   readonly auditRetentionMs?: number;
+  /** Run transcripts older than this are deleted (their summaries stay). Default 30 days. */
+  readonly runLogRetentionMs?: number;
 }
 
 export type HealthAction =
@@ -64,6 +67,10 @@ export const healthSweep = (thresholds: HealthThresholds) =>
     const at = now.toISOString();
 
     yield* pruneAudit(thresholds.auditRetentionMs ?? DEFAULT_AUDIT_RETENTION_MS);
+    yield* pruneRuns(thresholds.runLogRetentionMs ?? DEFAULT_RUN_RETENTION_MS).pipe(
+      // Storage trouble must not stop the sweep; the next one tries again.
+      Effect.catchCause(() => Effect.void),
+    );
 
     const silent = (yield* workers.list).filter(
       (w) => workerStatus(w, now, thresholds.workerStaleMs) === "offline",

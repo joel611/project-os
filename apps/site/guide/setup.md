@@ -509,6 +509,18 @@ Turns project channel chatter into Project Memory. Whether a project is digested
 | `CHANNEL_DIGEST_MAX_MESSAGES`   | No       | `200`           | Most messages one digest reads; the rest wait for the next run           |
 | `CHANNEL_DIGEST_RETRY_MIN`      | No       | `10`            | After a failed digest, wait this long before trying that project again   |
 
+### Email Digest
+
+Reads each person's Gmail inbox, read-only, into Project Memory. Off unless `EMAIL_DIGEST=true`, because it changes what Google link asks for: the Gmail read scope (`https://www.googleapis.com/auth/gmail.readonly`) is added to Drive's. Also enable the **Gmail API** in the Google Cloud project (step [2.1](#_2-1-create-a-google-cloud-project-and-enable-drive)) and add the scope to the consent screen. People who linked Google before need to `/connect provider:Google` again. Nobody's mailbox is read until they turn it on themselves on the dashboard's **Email** page.
+
+Each new inbox email (promotions, social, spam and sent mail are skipped) is redacted first: quoted replies are dropped, and secrets, one-time codes, card and phone numbers, link query strings and the address part of email addresses are masked. The classifier then matches it to a project. At 90% or more it is filed: the decisions and facts in it go to Project Memory, with the sender, subject and a redacted quote, and the email body is deleted. Below 90% it waits on the Email page for the person to pick a project (or dismiss it). Filing one by hand teaches the classifier: that sender and subject are shown as examples under the project from then on. Waiting emails are dropped after 30 days. It never sends, labels or changes mail.
+
+| Variable       | Required | Default | Description                                                                          |
+| -------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
+| `EMAIL_DIGEST` | No       | `false` | Let people turn on their own mailbox. Runs on the same per-minute tick as the health sweep |
+
+The classifier is the `DECISION_MODEL`, and the summary uses the Channel Digest's model (`CHANNEL_DIGEST_MODEL`, else `DEFAULT_MODEL`).
+
 ### Sign-in and account linking
 
 Steps [2](#2-google-drive-oauth-client), [3](#3-github-app), [3b](#3b-clickup-app-optional) and [4](#4-turn-on-account-linking). `/connect` for a provider is off until its client id and secret are both set. Callbacks are served at `PUBLIC_URL`.
@@ -535,6 +547,7 @@ The sweep runs on a timer in host runs and on a per-minute Cron on Cloudflare.
 | `HEALTH_FOLLOW_UP_MIN`       | No       | `15`    | An `in_progress` ticket quiet this long gets a "Status?" follow-up |
 | `HEALTH_INACTIVITY_FAIL_MIN` | No       | `30`    | An `in_progress` ticket quiet this long is failed                  |
 | `AUDIT_RETENTION_DAYS`       | No       | `90`    | Audit log entries older than this are deleted                      |
+| `RUN_LOG_RETENTION_DAYS`     | No       | `30`    | Run transcripts older than this are deleted (their summaries stay) |
 
 ### Registered workers
 
@@ -574,12 +587,13 @@ Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentia
 
 ### Skills
 
-Build skill sets on the dashboard's **Skill sets** page. The Coordinator uses a connected shared GitHub account first, then `SKILLS_GITHUB_TOKEN`, then anonymous access. With multiple shared accounts, it uses the oldest account whose token it can retrieve or refresh. Account ID breaks ties. Personal accounts are not used. Anonymous access has a limit of 60 requests an hour.
+Build task types on the dashboard's **Task types** page. The Coordinator uses a connected shared GitHub account first, then `SKILLS_GITHUB_TOKEN`, then anonymous access. With multiple shared accounts, it uses the oldest account whose token it can retrieve or refresh. Account ID breaks ties. Personal accounts are not used. Anonymous access has a limit of 60 requests an hour.
 
 | Variable             | Required | Default | Description                                                                                       |
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
 | `SKILLS_GITHUB_TOKEN` | No       |         | Fallback token when no shared GitHub credential is available. A token with no scopes reads public repos. Not sent to Workers |
-| `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's skill set before a session starts       |
+| `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's task type before a session starts       |
+| `WATCHER_RUN_LOG`    | No       | on      | On a Watcher computer, `0` (or `--no-run-log`) keeps session transcripts local instead of sending them to the Coordinator |
 
 #### Daytona (paused)
 

@@ -1,24 +1,25 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export const skillSets = sqliteTable(
-  "skill_sets",
+export const taskTypes = sqliteTable(
+  "task_types",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     description: text("description").notNull(),
+    instructions: text("instructions").notNull().default(""),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [uniqueIndex("skill_sets_name_uq").on(t.name)],
+  (t) => [uniqueIndex("task_types_name_uq").on(t.name)],
 );
 
 export const skills = sqliteTable(
   "skills",
   {
     id: text("id").primaryKey(),
-    skillSetId: text("skill_set_id")
+    taskTypeId: text("task_type_id")
       .notNull()
-      .references(() => skillSets.id),
+      .references(() => taskTypes.id),
     source: text("source").notNull(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
@@ -33,7 +34,7 @@ export const skills = sqliteTable(
     fetchedBy: text("fetched_by"),
   },
   (t) => [
-    uniqueIndex("skills_set_source_slug_uq").on(t.skillSetId, t.source, t.slug),
-    index("skills_set_idx").on(t.skillSetId),
+    uniqueIndex("skills_task_type_source_slug_uq").on(t.taskTypeId, t.source, t.slug),
+    index("skills_task_type_idx").on(t.taskTypeId),
   ],
 );

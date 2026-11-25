@@ -2,7 +2,7 @@ import { strFromU8, unzipSync } from "fflate";
 import {
   addSkillsToSet,
   SkillRepository,
-  createSkillSet,
+  createTaskType,
   issueSandboxToken,
   ProjectRepository,
   TicketRepository,
@@ -29,7 +29,7 @@ const source = makeSkillSourceFake({
 let runtime: ManagedRuntime.ManagedRuntime<any, never>;
 afterEach(() => runtime.dispose());
 
-const ticket = (id: string, workerId: string, skillSetId: string | null): Ticket => ({
+const ticket = (id: string, workerId: string, taskTypeId: string | null): Ticket => ({
   id,
   projectId: "p1",
   status: "assigned",
@@ -39,7 +39,7 @@ const ticket = (id: string, workerId: string, skillSetId: string | null): Ticket
   priority: null,
   workerType: "daytona_pi",
   workerId,
-  skillSetId,
+  taskTypeId,
   requester: null,
   result: null,
   error: null,
@@ -69,7 +69,11 @@ const seed = async () => {
         createdAt: T0,
         updatedAt: T0,
       });
-      const set = yield* createSkillSet({ name: "dev", description: "code" });
+      const set = yield* createTaskType({
+        name: "dev",
+        description: "code",
+        instructions: "Use tdd first.",
+      });
       yield* addSkillsToSet({ setId: set.id, source: "acme/skills", slugs: ["tdd"], by: null });
       const tickets = yield* TicketRepository;
       yield* tickets.insert(ticket("t1", "daytona-t1", set.id));
@@ -95,7 +99,7 @@ describe("GET /tickets/:id/skills", () => {
     const res = await get("/tickets/t1/skills", token);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/zip");
-    expect(decodeURIComponent(res.headers.get("x-skill-set")!)).toBe("dev");
+    expect(decodeURIComponent(res.headers.get("x-task-type")!)).toBe("dev");
     void set;
     const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
     expect(Object.keys(files)).toEqual(["tdd/SKILL.md"]);
@@ -139,5 +143,34 @@ describe("GET /tickets/:id/skills", () => {
     expect(((await other.json()) as { error: string }).error).toBe("WorkerUnauthorized");
     const missing = await get("/tickets/nope/skills", token);
     expect(missing.status).toBe(404);
+  });
+});
+
+describe("GET /tickets/:id/task-type", () => {
+  it("gives a session its ticket's task type with the instructions for its prompt", async () => {
+    const { set, token } = await seed();
+    const res = await get("/tickets/t1/task-type", token);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      id: set.id,
+      name: "dev",
+      instructions: "Use tdd first.",
+    });
+  });
+
+  it("says there is nothing for a ticket with no task type", async () => {
+    await seed();
+    const own = await runtime.runPromise(issueSandboxToken("daytona-t2", 600));
+    expect((await get("/tickets/t2/task-type", own)).status).toBe(204);
+  });
+
+  it("refuses a caller with no valid token, or another worker's ticket", async () => {
+    const { token } = await seed();
+    expect((await get("/tickets/t1/task-type")).status).toBe(401);
+    expect((await get("/tickets/t1/task-type", "nope")).status).toBe(401);
+    const other = await get("/tickets/t2/task-type", token);
+    expect(other.status).toBe(403);
+    expect(((await other.json()) as { error: string }).error).toBe("WorkerUnauthorized");
+    expect((await get("/tickets/nope/task-type", token)).status).toBe(404);
   });
 });

@@ -54,6 +54,26 @@ describe("makeApi", () => {
     expect(mine.calls).toEqual(["/api/me/tickets"]);
   });
 
+  it("reads and changes the signed-in person's mailbox", async () => {
+    const mailbox = {
+      available: true,
+      enabled: true,
+      needsReconnect: false,
+      lastSyncAt: null,
+      projects: [{ id: "p1", name: "Acme" }],
+      unassigned: [],
+    };
+    const read = respond(200, mailbox);
+    expect(await read.api.myEmail()).toEqual(mailbox);
+    expect(read.calls).toEqual(["/api/me/email"]);
+    const toggled = respond(200, mailbox);
+    expect(await toggled.api.setEmailEnabled(true)).toEqual(mailbox);
+    expect(toggled.calls).toEqual(["/api/me/email/enabled"]);
+    const assigned = respond(200, { saved: 2 });
+    expect(await assigned.api.assignEmail("e 1", "p1")).toEqual({ saved: 2 });
+    expect(assigned.calls).toEqual(["/api/me/email/e%201/assign"]);
+  });
+
   it("picks the API base from the Coordinator URL, else /api", () => {
     expect(apiBase(undefined)).toBe("/api");
     expect(apiBase("")).toBe("/api");
@@ -93,6 +113,8 @@ describe("makeApi", () => {
       api.members(),
       api.ticket("t 1"),
       api.ticketAttachments("t 1"),
+      api.ticketRuns("t 1"),
+      api.ticketRun("t 1", "r/1"),
       api.workers(),
       api.worker("w/1"),
       api.workerAudit("w/1"),
@@ -110,6 +132,8 @@ describe("makeApi", () => {
       "/api/members",
       "/api/tickets/t%201",
       "/api/tickets/t%201/attachments",
+      "/api/tickets/t%201/runs",
+      "/api/tickets/t%201/runs/r%2F1",
       "/api/workers",
       "/api/workers/w%2F1",
       "/api/workers/w%2F1/audit",
@@ -354,8 +378,8 @@ describe("describeError", () => {
     [new ApiError(404, "TicketNotFound"), "Not found."],
     [new ApiError(501, "x"), "The Coordinator isn't set up for that yet."],
     [new ApiError(409, "SourceAlreadyLinked"), "That source is already linked to a project."],
-    [new ApiError(409, "SkillSetNameTaken"), "A skill set with that name already exists."],
-    [new ApiError(400, "InvalidSkillSet"), 'Use a name of 1 to 60 characters, other than "none".'],
+    [new ApiError(409, "TaskTypeNameTaken"), "A task type with that name already exists."],
+    [new ApiError(400, "InvalidTaskType"), 'Use a name of 1 to 60 characters, other than "none".'],
     [
       new ApiError(400, "InvalidSkillSource"),
       "Use owner/repo, or a skills.sh or github.com link to a repo.",
@@ -377,12 +401,19 @@ describe("describeError", () => {
   });
 });
 
-describe("skill set calls", () => {
+describe("task type calls", () => {
   const T = "2026-11-04T00:00:00.000Z";
-  const set = { id: "s1", name: "dev", description: "", createdAt: T, updatedAt: T };
+  const set = {
+    id: "s1",
+    name: "dev",
+    description: "",
+    instructions: "",
+    createdAt: T,
+    updatedAt: T,
+  };
   const skill = {
     id: "k1",
-    skillSetId: "s1",
+    taskTypeId: "s1",
     source: "acme/skills",
     slug: "tdd",
     name: "tdd",
@@ -399,17 +430,17 @@ describe("skill set calls", () => {
   it("calls each route with its method and body", async () => {
     const seen: Array<{ url: string; method?: string; body?: unknown }> = [];
     const answers: Record<string, unknown> = {
-      "GET /api/skill-sets": { sets: [{ set, skills: [skill] }] },
-      "POST /api/skill-sets": set,
-      "PATCH /api/skill-sets/s1": set,
-      "DELETE /api/skill-sets/s1": { deleted: true },
-      "POST /api/skill-sets/browse": { source: "acme/skills", skills: [] },
-      "POST /api/skill-sets/s1/skills": { skills: [skill] },
-      "DELETE /api/skill-sets/s1/skills/k1": { deleted: true },
-      "GET /api/skill-sets/s1/updates": {
+      "GET /api/task-types": { sets: [{ set, skills: [skill] }] },
+      "POST /api/task-types": set,
+      "PATCH /api/task-types/s1": set,
+      "DELETE /api/task-types/s1": { deleted: true },
+      "POST /api/task-types/browse": { source: "acme/skills", skills: [] },
+      "POST /api/task-types/s1/skills": { skills: [skill] },
+      "DELETE /api/task-types/s1/skills/k1": { deleted: true },
+      "GET /api/task-types/s1/updates": {
         statuses: [{ skillId: "k1", state: "current", latestSha: "t1" }],
       },
-      "POST /api/skill-sets/s1/update": { skills: [] },
+      "POST /api/task-types/s1/update": { skills: [] },
     };
     const fetchFn = (async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
@@ -417,10 +448,10 @@ describe("skill set calls", () => {
       return Response.json(answers[`${method} ${url}`]);
     }) as typeof fetch;
     const api = makeApi(fetchFn);
-    expect((await api.skillSets()).sets).toHaveLength(1);
-    await api.createSkillSet({ name: "dev", description: "" });
-    await api.updateSkillSet("s1", { name: "dev" });
-    expect(await api.deleteSkillSet("s1")).toEqual({ deleted: true });
+    expect((await api.taskTypes()).sets).toHaveLength(1);
+    await api.createTaskType({ name: "dev", description: "" });
+    await api.updateTaskType("s1", { name: "dev" });
+    expect(await api.deleteTaskType("s1")).toEqual({ deleted: true });
     await api.browseSkills("acme/skills");
     await api.addSkills("s1", { source: "acme/skills", slugs: ["tdd"] });
     await api.removeSkill("s1", "k1");

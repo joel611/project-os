@@ -11,3 +11,5 @@ export * from "./channel-message.ts";
 export * from "./audit-log.ts";
 export * from "./shared-account.ts";
 export * from "./skill.ts";
+export * from "./ticket-run.ts";
+export * from "./email.ts";

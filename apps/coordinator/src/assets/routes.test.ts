@@ -35,6 +35,7 @@ const appWith = (
             uploadLink: () => Effect.undefined,
             verifyUpload: () => Effect.succeed(true),
             put: () => Effect.void,
+            remove: () => Effect.void,
             ...store,
           }),
           Effect.provideService(ChannelGateway, {} as typeof ChannelGateway.Service),

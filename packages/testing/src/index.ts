@@ -8,6 +8,7 @@ import {
   WorkerLauncher,
 } from "@project-os/core";
 import { Effect, Layer } from "effect";
+import { EmailRepositoryInMemory, makeEmailClassifierFake, makeEmailSourceFake } from "./email.ts";
 import {
   AgentRuntimeEcho,
   ChannelMessageRepositoryInMemory,
@@ -21,6 +22,7 @@ import {
   makeSkillSourceFake,
   makeUserConnectionsInMemory,
   AuditLogRepositoryInMemory,
+  RunRepositoryInMemory,
   MemoryRepositoryInMemory,
   ProjectRepositoryInMemory,
   ProjectSourceRepositoryInMemory,
@@ -31,6 +33,7 @@ import {
 } from "./in-memory.ts";
 
 export * from "./in-memory.ts";
+export * from "./email.ts";
 
 /** Fixed clock for deterministic tests. */
 export const fixedClock = (date: Date) => Layer.succeed(Clock, { now: Effect.succeed(date) });
@@ -68,7 +71,16 @@ export const makeTestLayer = (options?: {
   readonly skillSource?: ReturnType<typeof makeSkillSourceFake>;
   /** The launcher's sandbox pool. Default: empty (no sandbox provider configured). */
   readonly sandboxPool?: ReadonlyArray<SandboxPoolEntry>;
+  /** Confidence the fake email classifier reports for a match. Default 0.95. */
+  readonly emailConfidence?: number;
+  /** Make every email classification fail with this message. */
+  readonly failEmailClassify?: string;
 }) => {
+  const emailSource = makeEmailSourceFake();
+  const emailClassifier = makeEmailClassifierFake({
+    ...(options?.emailConfidence === undefined ? {} : { confidence: options.emailConfidence }),
+    ...(options?.failEmailClassify === undefined ? {} : { fail: options.failEmailClassify }),
+  });
   const launched: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
   const launchAttempts: Array<Parameters<typeof WorkerLauncher.Service.launch>[0]> = [];
   let launchFailure = options?.failLaunch;
@@ -96,7 +108,11 @@ export const makeTestLayer = (options?: {
     ProjectSourceRepositoryInMemory,
     MemoryRepositoryInMemory,
     AuditLogRepositoryInMemory,
+    RunRepositoryInMemory,
     ChannelMessageRepositoryInMemory,
+    EmailRepositoryInMemory,
+    emailSource.layer,
+    emailClassifier.layer,
     WorkerRepositoryInMemory,
     SkillRepositoryInMemory,
     (options?.skillSource ?? makeSkillSourceFake()).layer,
@@ -129,6 +145,10 @@ export const makeTestLayer = (options?: {
     storedAssets: assets.stored,
     /** Calls the Channel Digest made to its model. */
     digestCalls: digester.calls,
+    /** The mailbox: queue mail with `deliver`, break it with `fail`. */
+    emailSource,
+    /** Emails the classifier was asked about. */
+    emailClassifyCalls: emailClassifier.calls,
     /** Turns the Sidekick took. */
     sidekickCalls: sidekick.calls,
     sent: gateway.sent,

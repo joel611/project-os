@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { formatModelRef, modelConfig, parseModelRef } from "./models.ts";
 
@@ -74,5 +75,16 @@ describe("parseModelRef", () => {
 describe("formatModelRef", () => {
   it("joins provider and model", () => {
     expect(formatModelRef(sonnet)).toBe("openrouter/anthropic/claude-sonnet-4.5");
+  });
+
+  it("is undone by parseModelRef for any provider and slash-separated model id", () => {
+    const part = fc.stringMatching(/^[a-z0-9][a-z0-9.-]{0,10}$/);
+    const modelId = fc.array(part, { minLength: 1, maxLength: 3 }).map((p) => p.join("/"));
+    fc.assert(
+      fc.property(part, modelId, (provider, id) => {
+        const ref = { provider, modelId: id };
+        expect(parseModelRef("K", formatModelRef(ref))).toEqual(ref);
+      }),
+    );
   });
 });

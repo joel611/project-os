@@ -1,6 +1,7 @@
 import { healthConfig } from "@project-os/config";
 import type { SetRoleResult, SharedAccounts } from "@project-os/auth";
 import {
+  AssignEmail,
   AssignSharedAccount,
   CreateSharedAccount,
   InboundMessage,
@@ -16,25 +17,32 @@ import {
   ROLE_GRANTS,
   type Role,
   SetMemberRole,
+  SetMyEmailEnabled,
   type Viewer,
 } from "@project-os/contracts";
 import {
   addSkillsToSet,
   answerScopePrompt,
+  assignEmail,
+  getMyEmail,
+  setMailboxEnabled,
   audit,
   browseSkillSource,
   checkSkillUpdates,
-  createSkillSet,
-  deleteSkillSet,
-  getSkillSet,
-  listSkillSets,
+  createTaskType,
+  deleteTaskType,
+  getTaskType,
+  listTaskTypes,
   removeSkillFromSet,
-  updateSkillSet,
+  updateTaskType,
+  withTaskType,
   updateSkillsInSet,
   getMyTicket,
   getTicket,
   listMyTicketAttachments,
   listMyTickets,
+  listTicketRuns,
+  readTicketRun,
   handleInbound,
   readAudit,
   readProjectAudit,
@@ -49,7 +57,9 @@ import {
   type AssetStore,
   type ChannelGateway,
   type Person,
+  type ChannelDigester,
   type ChannelMessageRepository,
+  type EmailRepository,
   type Clock,
   type HandleInboundConfig,
   type IdGenerator,
@@ -60,6 +70,7 @@ import {
   type PromptAnswerConfig,
   type ProjectRepository,
   type ProjectSourceRepository,
+  type RunRepository,
   type Sidekick,
   type SkillRepository,
   type SkillSource,
@@ -75,8 +86,8 @@ import {
   AddSkillsBody,
   AssignBody,
   BrowseSkillsBody,
-  CreateSkillSetBody,
-  UpdateSkillSetBody,
+  CreateTaskTypeBody,
+  UpdateTaskTypeBody,
   UpdateSkillsBody,
   changeStatusAndNotify,
   CreateProjectBody,
@@ -135,8 +146,10 @@ export type HttpEnv =
   | AgentRuntime
   | AssetStore
   | ChannelGateway
+  | ChannelDigester
   | ChannelMessageRepository
   | Clock
+  | EmailRepository
   | IdGenerator
   | IntentClassifier
   | KeyValueStore
@@ -144,6 +157,7 @@ export type HttpEnv =
   | AuditLogRepository
   | ProjectRepository
   | ProjectSourceRepository
+  | RunRepository
   | Sidekick
   | SkillRepository
   | SkillSource
@@ -167,6 +181,8 @@ export interface HttpDeps {
   readonly setRole?: (userId: string, role: Role) => Promise<SetRoleResult>;
   /** Shared connector accounts admins link and assign (`/shared-accounts`). Omitted: 501. */
   readonly sharedAccounts?: SharedAccounts;
+  /** The Email Digest is on (`EMAIL_DIGEST`): people may switch their mailbox on. */
+  readonly emailDigest?: boolean;
 }
 
 export const httpRoutes = ({
@@ -178,6 +194,7 @@ export const httpRoutes = ({
   members,
   setRole,
   sharedAccounts,
+  emailDigest = false,
   access,
 }: HttpDeps & {
   /** Who is calling: members get only their own Tickets on the routes they may use. */
@@ -205,6 +222,23 @@ export const httpRoutes = ({
     if (role && can(role, "ticket", "read")) return {};
     const person = await access.personOf(caller);
     return person ? { person } : { none: true };
+  };
+
+  /**
+   * Runs a ticket route for the caller's scope: everything for an Operator, their own Tickets for
+   * a member, and a plain 404 for someone with no Tickets of their own.
+   */
+  const forTicket = async (
+    request: Request,
+    set: { status?: number | string },
+    make: (person: Person | undefined) => Effect.Effect<HttpResult, never, HttpEnv>,
+  ) => {
+    const scope = await ticketScope(request);
+    if (scope.none) {
+      set.status = 404;
+      return { error: "TicketNotFound" };
+    }
+    return reply(set, make(scope.person));
   };
 
   /** The admin calling, as an audit actor: `shared-accounts` routes admit only Operators. */
@@ -240,6 +274,39 @@ export const httpRoutes = ({
       const person = await access.personOf(await access.caller(request));
       if (!person) return { tickets: [], projects: [] };
       return reply(set, toResult(listMyTickets(person)));
+    })
+    .get("/me/email", async ({ request }) => {
+      const person = await access.personOf(await access.caller(request));
+      // An Operator with no channel identity has no mailbox of their own.
+      if (!person) return run(getMyEmail({ channelType: "discord", id: "" }, false));
+      return run(getMyEmail(person, emailDigest));
+    })
+    .post("/me/email/enabled", async ({ request, body, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      const parsed = decodeBody(SetMyEmailEnabled, body);
+      if (!emailDigest || !person || !parsed) {
+        set.status = !emailDigest ? 501 : !person ? 403 : 400;
+        return {
+          error: !emailDigest
+            ? "Email is not turned on here"
+            : !person
+              ? "Link your Discord account to read your mail"
+              : "enabled must be true or false",
+        };
+      }
+      await run(setMailboxEnabled(person, parsed.enabled));
+      return run(getMyEmail(person, emailDigest));
+    })
+    .post("/me/email/:id/assign", async ({ request, params, body, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      const parsed = decodeBody(AssignEmail, body);
+      if (!person || !parsed) {
+        set.status = !person ? 403 : 400;
+        return {
+          error: !person ? "No mailbox for this account" : "projectId is a project id or null",
+        };
+      }
+      return reply(set, toResult(assignEmail(person, params.id, parsed.projectId)));
     })
     .get("/members", async ({ set }) => {
       if (!members) {
@@ -469,35 +536,39 @@ export const httpRoutes = ({
     .delete("/projects/:id/sources/:sourceId", ({ params, set }) =>
       reply(set, toResult(unlinkSource(params.id, params.sourceId))),
     )
-    .get("/skill-sets", ({ set }) => reply(set, toResult(listSkillSets)))
-    .post("/skill-sets", ({ body, set }) =>
+    .get("/task-types", ({ set }) => reply(set, toResult(listTaskTypes)))
+    .post("/task-types", ({ body, set }) =>
       reply(
         set,
         toResult(
-          decode(CreateSkillSetBody, body).pipe(
-            Effect.flatMap(({ name, description }) =>
-              createSkillSet({ name, description: description ?? "" }),
+          decode(CreateTaskTypeBody, body).pipe(
+            Effect.flatMap(({ name, description, instructions }) =>
+              createTaskType({
+                name,
+                description: description ?? "",
+                ...(instructions !== undefined && { instructions }),
+              }),
             ),
           ),
           201,
         ),
       ),
     )
-    .get("/skill-sets/:id", ({ params, set }) => reply(set, toResult(getSkillSet(params.id))))
-    .patch("/skill-sets/:id", ({ params, body, set }) =>
+    .get("/task-types/:id", ({ params, set }) => reply(set, toResult(getTaskType(params.id))))
+    .patch("/task-types/:id", ({ params, body, set }) =>
       reply(
         set,
         toResult(
-          decode(UpdateSkillSetBody, body).pipe(
-            Effect.flatMap((patch) => updateSkillSet(params.id, patch)),
+          decode(UpdateTaskTypeBody, body).pipe(
+            Effect.flatMap((patch) => updateTaskType(params.id, patch)),
           ),
         ),
       ),
     )
-    .delete("/skill-sets/:id", ({ params, set }) =>
-      reply(set, toResult(deleteSkillSet(params.id).pipe(Effect.as({ deleted: true })))),
+    .delete("/task-types/:id", ({ params, set }) =>
+      reply(set, toResult(deleteTaskType(params.id).pipe(Effect.as({ deleted: true })))),
     )
-    .post("/skill-sets/browse", ({ body, set }) =>
+    .post("/task-types/browse", ({ body, set }) =>
       reply(
         set,
         toResult(
@@ -507,7 +578,7 @@ export const httpRoutes = ({
         ),
       ),
     )
-    .post("/skill-sets/:id/skills", async ({ params, body, request, set }) => {
+    .post("/task-types/:id/skills", async ({ params, body, request, set }) => {
       // The route's `user` policy lets in only an Operator.
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
       return reply(
@@ -523,13 +594,13 @@ export const httpRoutes = ({
         ),
       );
     })
-    .delete("/skill-sets/:id/skills/:skillId", ({ params, set }) =>
+    .delete("/task-types/:id/skills/:skillId", ({ params, set }) =>
       reply(set, toResult(removeSkillFromSet(params.skillId).pipe(Effect.as({ deleted: true })))),
     )
-    .get("/skill-sets/:id/updates", ({ params, set }) =>
+    .get("/task-types/:id/updates", ({ params, set }) =>
       reply(set, toResult(checkSkillUpdates(params.id))),
     )
-    .post("/skill-sets/:id/update", async ({ params, body, request, set }) => {
+    .post("/task-types/:id/update", async ({ params, body, request, set }) => {
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
       return reply(
         set,
@@ -603,30 +674,33 @@ export const httpRoutes = ({
         ),
       );
     })
-    .get("/tickets/:id", async ({ params, request, set }) => {
-      const scope = await ticketScope(request);
-      if (scope.none) {
-        set.status = 404;
-        return { error: "TicketNotFound" };
-      }
-      return reply(
-        set,
+    .get("/tickets/:id", ({ params, request, set }) =>
+      forTicket(request, set, (person) =>
         toResult(
-          scope.person ? getMyTicket(params.id, scope.person) : getTicket({ ticketId: params.id }),
+          (person ? getMyTicket(params.id, person) : getTicket({ ticketId: params.id })).pipe(
+            Effect.flatMap(withTaskType),
+          ),
         ),
-      );
-    })
-    .get("/tickets/:id/attachments", async ({ params, request, set }) => {
-      const scope = await ticketScope(request);
-      if (scope.none) {
-        set.status = 404;
-        return { error: "TicketNotFound" };
-      }
-      const attachments = scope.person
-        ? listMyTicketAttachments(params.id, scope.person)
-        : listTicketAttachments(params.id);
-      return reply(set, toResult(Effect.map(attachments, (list) => ({ attachments: list }))));
-    })
+      ),
+    )
+    .get("/tickets/:id/attachments", ({ params, request, set }) =>
+      forTicket(request, set, (person) =>
+        toResult(
+          Effect.map(
+            person ? listMyTicketAttachments(params.id, person) : listTicketAttachments(params.id),
+            (list) => ({ attachments: list }),
+          ),
+        ),
+      ),
+    )
+    .get("/tickets/:id/runs", ({ params, request, set }) =>
+      forTicket(request, set, (person) =>
+        toResult(listTicketRuns(params.id, person).pipe(Effect.map((runs) => ({ runs })))),
+      ),
+    )
+    .get("/tickets/:id/runs/:runId", ({ params, request, set }) =>
+      forTicket(request, set, (person) => toResult(readTicketRun(params.id, params.runId, person))),
+    )
     .post("/tickets/:id/status", ({ params, body, set }) =>
       reply(
         set,

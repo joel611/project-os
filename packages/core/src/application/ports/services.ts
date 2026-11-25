@@ -5,6 +5,7 @@ import type {
   CreatedChannel,
   CreatedThread,
   CreateThreadInstruction,
+  Requester,
   ReactInstruction,
   ResolveAttachmentsInstruction,
   ResolvedAttachments,
@@ -100,6 +101,8 @@ export class AssetStore extends Context.Service<
     readonly uploadLink: (
       key: string,
     ) => Effect.Effect<{ readonly url: string; readonly expiresInSeconds: number } | undefined>;
+    /** Deletes the file stored under `key`; nothing there is fine. */
+    readonly remove: (key: string) => Effect.Effect<void, AssetStoreFailed>;
     /** Whether `sig` is a valid, unexpired upload signature for `key`. */
     readonly verifyUpload: (key: string, expires: number, sig: string) => Effect.Effect<boolean>;
     /**
@@ -173,8 +176,8 @@ export class AgentRuntimeError extends Data.TaggedError("AgentRuntimeError")<{
   readonly message: string;
 }> {}
 
-/** A skill set the classifier may route a request to. */
-export interface SkillSetChoice {
+/** A task type the classifier may route a request to. */
+export interface TaskTypeChoice {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -196,8 +199,8 @@ export interface IntentResult {
     readonly confidence: number;
     readonly probabilities: Readonly<Record<string, number>>;
   };
-  /** Only when skill sets were offered: the id of the one chosen (`none`: no set fits). */
-  readonly skillSet?: { readonly choice: string; readonly confidence: number };
+  /** Only when task types were offered: the id of the one chosen (`none`: no set fits). */
+  readonly taskType?: { readonly choice: string; readonly confidence: number };
   /** The model that answered, as `provider/model`. */
   readonly model?: string;
   /** Only when `ticketContext` was given: is the message about that ticket? */
@@ -216,8 +219,8 @@ export class IntentClassifier extends Context.Service<
       readonly projectContext: string;
       /** The ticket whose thread the message was said in (see `ticketContext`). */
       readonly ticketContext?: string;
-      /** The skill sets a new request may be routed to; none when no set has skills. */
-      readonly skillSets?: ReadonlyArray<SkillSetChoice>;
+      /** The task types a new request may be routed to; none when no set has skills. */
+      readonly taskTypes?: ReadonlyArray<TaskTypeChoice>;
     }) => Effect.Effect<IntentResult, ClassifierError>;
   }
 >()("@project-os/core/IntentClassifier") {}
@@ -339,6 +342,8 @@ export class WorkerLauncher extends Context.Service<
       readonly workerId: string;
       /** The session's Bearer token for MCP: it acts as `workerId` only, until it expires. */
       readonly mcpToken: string;
+      /** The ticket's task type, whose instructions go into the session's prompt. */
+      readonly taskType?: { readonly name: string; readonly instructions: string };
     }) => Effect.Effect<void, LaunchFailed>;
   }
 >()("@project-os/core/WorkerLauncher") {}
@@ -451,3 +456,69 @@ export class SkillSource extends Context.Service<
     >;
   }
 >()("@project-os/core/SkillSource") {}
+
+/** One message read from a mailbox. */
+export interface MailMessage {
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly fromName: string | null;
+  readonly fromAddress: string;
+  readonly subject: string;
+  /** Plain text, as the mailbox has it: the Email Digest redacts it. */
+  readonly body: string;
+  readonly receivedAt: string;
+}
+
+/** Reading a mailbox failed; `reconnect` when the person has to link Gmail again. */
+export class EmailSourceError extends Data.TaggedError("EmailSourceError")<{
+  readonly message: string;
+  readonly reconnect: boolean;
+}> {}
+
+/**
+ * Reads new mail from a person's mailbox, read-only, with their own Google link. The first sync
+ * (no cursor) reads nothing and starts the cursor at the mailbox's present; later syncs return
+ * the inbox mail that arrived since, at most `limit`, and a cursor that stops after the last one.
+ */
+export class EmailSource extends Context.Service<
+  EmailSource,
+  {
+    readonly sync: (input: {
+      readonly owner: Requester;
+      readonly cursor: string | null;
+      readonly limit: number;
+    }) => Effect.Effect<
+      { readonly messages: ReadonlyArray<MailMessage>; readonly cursor: string },
+      EmailSourceError
+    >;
+  }
+>()("@project-os/core/EmailSource") {}
+
+export class EmailClassifierError extends Data.TaggedError("EmailClassifierError")<{
+  readonly message: string;
+}> {}
+
+/** A project an email may belong to, with what the classifier knows about it. */
+export interface EmailProjectChoice {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  /** Emails people filed here by hand, newest first. */
+  readonly examples: ReadonlyArray<{ readonly from: string; readonly subject: string }>;
+}
+
+/** Picks the project an email belongs to, with how sure it is; null when it fits none. */
+export class EmailClassifier extends Context.Service<
+  EmailClassifier,
+  {
+    readonly classify: (input: {
+      readonly from: string;
+      readonly subject: string;
+      readonly body: string;
+      readonly projects: ReadonlyArray<EmailProjectChoice>;
+    }) => Effect.Effect<
+      { readonly projectId: string | null; readonly confidence: number },
+      EmailClassifierError
+    >;
+  }
+>()("@project-os/core/EmailClassifier") {}

@@ -9,9 +9,10 @@ export type Command =
       readonly agent?: AgentName;
       readonly model?: string;
       readonly verbose: boolean;
+      readonly runLog: boolean;
     }
   | { readonly kind: "uninstall"; readonly yes: boolean }
-  | { readonly kind: "run"; readonly verbose: boolean }
+  | { readonly kind: "run"; readonly verbose: boolean; readonly runLog: boolean }
   | { readonly kind: "help" };
 
 export const USAGE = `Usage:
@@ -20,8 +21,11 @@ export const USAGE = `Usage:
       shared code adds it to the pool for everyone; otherwise it is your personal worker.
       --agent and --model are saved with the registration (default: claude, and the
       agent's own default model).
-  project-os-watcher [--verbose]
-      Run: poll for your tickets and start an agent session for each.
+  project-os-watcher [--verbose] [--no-run-log]
+      Run: poll for your tickets and start an agent session for each. Each session's
+      transcript (messages, tool calls, errors, secrets masked) is sent to the Coordinator
+      so admins and the requester can debug the ticket; --no-run-log (or WATCHER_RUN_LOG=0)
+      keeps it on this computer.
       WATCHER_AGENT and WATCHER_MODEL override the saved choice for this run.
       --verbose (-v, or WATCHER_VERBOSE=1) also logs every poll, request and skill install.
   project-os-watcher uninstall [--yes]
@@ -33,8 +37,11 @@ export const USAGE = `Usage:
 /** Parses argv after the script name. */
 export const parseArgs = (args: ReadonlyArray<string>): Command => {
   const verbose = args.includes("--verbose") || args.includes("-v");
-  const [first, ...rest] = args.filter((arg) => arg !== "--verbose" && arg !== "-v");
-  if (first === undefined) return { kind: "run", verbose };
+  const runLog = !args.includes("--no-run-log");
+  const [first, ...rest] = args.filter(
+    (arg) => arg !== "--verbose" && arg !== "-v" && arg !== "--no-run-log",
+  );
+  if (first === undefined) return { kind: "run", verbose, runLog };
   if (first === "-h" || first === "--help" || first === "help") return { kind: "help" };
   if (first === "uninstall") {
     const unknown = rest.find((arg) => arg !== "--yes" && arg !== "-y");
@@ -65,6 +72,7 @@ export const parseArgs = (args: ReadonlyArray<string>): Command => {
   return {
     kind: "register",
     verbose,
+    runLog,
     token,
     ...(flags.server && { server: flags.server }),
     ...(flags.name && { name: flags.name }),

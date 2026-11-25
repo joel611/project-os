@@ -3,14 +3,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Auth, type AuthApi, type Connections, type SharedAccounts } from "@project-os/auth";
 import {
+  Auth,
+  type AuthApi,
+  type Connections,
+  GOOGLE_SCOPES,
+  type SharedAccounts,
+} from "@project-os/auth";
+import { GMAIL_READ_SCOPE } from "@project-os/contracts";
+import {
+  DEFAULT_EMAIL_DIGEST,
   type ChannelDigestConfig,
   DEFAULT_CHANNEL_DIGEST,
   type DigestRun,
   digestChannels,
   type IntentClassifier,
   issueSandboxToken,
+  recordSandboxRun,
+  type SandboxRun,
   type SkillSource,
   UserConnections,
   type WorkerLauncher,
@@ -20,10 +30,12 @@ import {
   AgentRuntimeEcho,
   type ChannelDigestCall,
   makeChannelDigesterRecording,
+  makeEmailClassifierFake,
   makeSidekickRecording,
   type SidekickCall,
 } from "@project-os/testing";
 import { type Effect, Layer, ManagedRuntime } from "effect";
+import { emailDigestAndLog, gmailEmailSource } from "../../coordinator/src/email/index.ts";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
 import type { CoordinatorTarget } from "../../../packages/channel-discord/src/forward.ts";
@@ -43,6 +55,15 @@ import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 // with `connections`, Google and GitHub (one fake OAuth server), so no test reaches a provider. `fetch` to any non-localhost host throws.
 
 /** A file on a fake Discord message, as the adapter reports it. */
+/** A message in the fake Gmail mailbox. */
+export interface FakeGmailMessage {
+  readonly id: string;
+  readonly from: string;
+  readonly subject: string;
+  readonly body: string;
+  readonly labels?: ReadonlyArray<string>;
+}
+
 export interface MessageFile {
   readonly id: string;
   readonly filename: string;
@@ -121,6 +142,17 @@ export interface Stack {
    * for a quiet channel unless `config` says so.
    */
   readonly runDigest: (config?: Partial<ChannelDigestConfig>) => Promise<ReadonlyArray<DigestRun>>;
+  /**
+   * The Email Digest, when started with `email`: a fake Gmail API on localhost that the real
+   * Gmail reader talks to, and the run the Cron tick makes.
+   */
+  readonly email?: {
+    /** Mail in the fake mailbox; the next sync reads what arrived since the cursor. */
+    readonly deliver: (...messages: FakeGmailMessage[]) => void;
+    readonly gmailCalls: string[];
+    readonly classifyCalls: Array<{ from: string; subject: string; body: string }>;
+    readonly runDigest: () => Promise<void>;
+  };
   /** The SQLite file every component shares. */
   readonly dbPath: string;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
@@ -138,6 +170,8 @@ export interface Stack {
   readonly worker: (token: string) => Promise<Client>;
   /** Mints the MCP token a sandbox session launched as `workerId` would get. */
   readonly sandboxToken: (workerId: string) => Promise<string>;
+  /** Keeps a finished sandbox session's output as a run, as the Coordinator's launcher hook does. */
+  readonly recordSandboxRun: (session: SandboxRun) => Promise<void>;
   /**
    * Adds a shared worker the way an admin does: `/register-worker shared:True` in the admin
    * channel, the Watcher trading the code at POST /workers/register, then a heartbeat so it
@@ -187,6 +221,12 @@ export const startStack = async (options: {
   readonly maxAttachmentBytes?: number;
   /** Make every Channel Digest model call fail with this message. */
   readonly failDigest?: string;
+  /**
+   * Turns the Email Digest on (`EMAIL_DIGEST`): Google linking asks for Gmail read access, mail
+   * is read from a fake Gmail API on localhost, and a fake classifier matches project names.
+   * Needs `connections`.
+   */
+  readonly email?: { readonly confidence?: number };
   /** Mounts the credential proxy (`SANDBOX_CREDENTIAL_PROXY`), forwarding to these origins. */
   readonly credentialProxy?: NonNullable<AppDeps["credentialProxy"]>;
 }): Promise<Stack> => {
@@ -262,6 +302,50 @@ export const startStack = async (options: {
     accessToken: (person, provider) => lazy().service.accessToken(person, provider),
   });
 
+  const gmailMessages: FakeGmailMessage[] = [];
+  const gmailCalls: string[] = [];
+  const gmail = options.email
+    ? Bun.serve({
+        port: 0,
+        fetch: (req) => {
+          const { pathname } = new URL(req.url);
+          gmailCalls.push(`${pathname} ${req.headers.get("authorization")}`);
+          const b64 = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_");
+          if (pathname.endsWith("/profile")) {
+            return Response.json({ historyId: String(gmailMessages.length) });
+          }
+          if (pathname.endsWith("/history")) {
+            const start = Number(new URL(req.url).searchParams.get("startHistoryId"));
+            return Response.json({
+              history: gmailMessages.slice(start).map((m, i) => ({
+                id: String(start + i + 1),
+                messagesAdded: [{ message: { id: m.id } }],
+              })),
+              historyId: String(gmailMessages.length),
+            });
+          }
+          const m = gmailMessages.find((x) => pathname.endsWith(`/messages/${x.id}`))!;
+          return Response.json({
+            id: m.id,
+            threadId: `t-${m.id}`,
+            labelIds: m.labels ?? ["INBOX"],
+            internalDate: String(Date.now()),
+            payload: {
+              mimeType: "text/plain",
+              headers: [
+                { name: "From", value: m.from },
+                { name: "Subject", value: m.subject },
+              ],
+              body: { data: b64(m.body) },
+            },
+          });
+        },
+      })
+    : undefined;
+  if (options.email) oauth!.scope = `openid email profile drive.readonly ${GMAIL_READ_SCOPE}`;
+  const emailClassifier = makeEmailClassifierFake({
+    ...(options.email?.confidence === undefined ? {} : { confidence: options.email.confidence }),
+  });
   const sidekick = makeSidekickRecording({ probe: "github" });
   const digester = makeChannelDigesterRecording(
     options.failDigest === undefined ? {} : { fail: options.failDigest },
@@ -295,6 +379,21 @@ export const startStack = async (options: {
       sidekick.layer,
       digester.layer,
       ...(oauth ? [connectionsLayer] : []),
+    ).pipe((base) =>
+      gmail
+        ? Layer.mergeAll(
+            base,
+            emailClassifier.layer,
+            // The real Gmail reader, pointed at the fake API: the only change is the origin.
+            gmailEmailSource({
+              fetch: (input, init) =>
+                fetch(
+                  input.replace("https://gmail.googleapis.com", `http://localhost:${gmail.port}`),
+                  init,
+                ),
+            }).pipe(Layer.provide(connectionsLayer)),
+          )
+        : base,
     ) as Layer.Layer<any, never>,
   ) as McpRuntime;
 
@@ -335,6 +434,7 @@ export const startStack = async (options: {
         },
       }),
       mcp: runtime,
+      ...(options.email && { emailDigest: true }),
       ...(options.credentialProxy && { credentialProxy: options.credentialProxy }),
       auth: {
         handler: (request: Request) => auth!.handler(request),
@@ -371,7 +471,12 @@ export const startStack = async (options: {
       ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
       ...(web && { webOrigins: [web.url.origin] }),
       ...(oauth && {
-        google: { clientId: "g-client", clientSecret: "g-secret", ...oauth.endpoints("google") },
+        google: {
+          clientId: "g-client",
+          clientSecret: "g-secret",
+          ...oauth.endpoints("google"),
+          ...(options.email && { scopes: [...GOOGLE_SCOPES, GMAIL_READ_SCOPE] }),
+        },
         github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
         clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
       }),
@@ -441,6 +546,17 @@ export const startStack = async (options: {
           any
         >,
       ),
+    ...(gmail && {
+      email: {
+        deliver: (...messages: FakeGmailMessage[]) => void gmailMessages.push(...messages),
+        gmailCalls,
+        classifyCalls: emailClassifier.calls,
+        runDigest: () =>
+          runtime.runPromise(
+            emailDigestAndLog(DEFAULT_EMAIL_DIGEST) as Effect.Effect<void, never, any>,
+          ),
+      },
+    }),
     dbPath,
     ...(oauth && { oauth }),
     ...(web && { webUrl: web.url.origin }),
@@ -459,6 +575,7 @@ export const startStack = async (options: {
       return project.id as string;
     },
     worker,
+    recordSandboxRun: (session) => runtime.runPromise(recordSandboxRun(session) as any),
     sandboxToken: (workerId) =>
       runtime.runPromise(issueSandboxToken(workerId, 600) as Effect.Effect<string, never, any>),
     registerSharedWorker: async (name = "shared-box") => {
@@ -480,6 +597,7 @@ export const startStack = async (options: {
       await adapter.stop();
       oauth?.stop();
       await cdn.stop(true);
+      await gmail?.stop(true);
       await web?.stop(true);
       await authRuntime?.dispose();
       await runtime.dispose();

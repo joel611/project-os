@@ -6,15 +6,18 @@ import {
   type CreateSharedAccount,
   MemberList,
   MemoryEntry,
+  MyEmail,
   MyTickets,
   Project,
   ProjectSource,
+  Run,
+  RunEvent,
   SharedAccountConnect,
   SharedAccountsView,
   Skill,
   SkillCandidates,
-  SkillSet,
-  SkillSetList,
+  TaskType,
+  TaskTypeList,
   SkillUpdateReport,
   Ticket,
   TicketAttachmentsOutput,
@@ -37,8 +40,17 @@ export type WorkerDetail = typeof WorkerDetail.Type;
 const ProjectDetail = Schema.Struct({ project: Project, sources: Schema.Array(ProjectSource) });
 export type ProjectDetail = typeof ProjectDetail.Type;
 
-const TicketDetail = Schema.Struct({ ticket: Ticket, events: Schema.Array(TicketEvent) });
+const TicketDetail = Schema.Struct({
+  ticket: Ticket,
+  events: Schema.Array(TicketEvent),
+  /** The task type the request was routed to; null when none, or deleted since. */
+  taskType: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
+});
 export type TicketDetail = typeof TicketDetail.Type;
+
+const TicketRuns = Schema.Struct({ runs: Schema.Array(Run) });
+const RunTranscriptView = Schema.Struct({ run: Run, events: Schema.Array(RunEvent) });
+export type RunTranscriptView = typeof RunTranscriptView.Type;
 
 export interface SourcePatch {
   readonly alias?: string;
@@ -108,8 +120,8 @@ export const describeError = (error: Error): string => {
   if (error.status === 404) return "Not found.";
   if (error.status === 501) return "The Coordinator isn't set up for that yet.";
   if (error.code === "SourceAlreadyLinked") return "That source is already linked to a project.";
-  if (error.code === "SkillSetNameTaken") return "A skill set with that name already exists.";
-  if (error.code === "InvalidSkillSet")
+  if (error.code === "TaskTypeNameTaken") return "A task type with that name already exists.";
+  if (error.code === "InvalidTaskType")
     return 'Use a name of 1 to 60 characters, other than "none".';
   if (error.code === "InvalidSkillSource")
     return "Use owner/repo, or a skills.sh or github.com link to a repo.";
@@ -166,6 +178,14 @@ export const makeApi = (
   return {
     me: () => get("/me", Viewer),
     myTickets: () => get("/me/tickets", MyTickets),
+    myEmail: () => get("/me/email", MyEmail),
+    setEmailEnabled: (enabled: boolean) =>
+      send("/me/email/enabled", MyEmail, { method: "POST", json: { enabled } }),
+    assignEmail: (emailId: string, projectId: string | null) =>
+      send(`/me/email/${id(emailId)}/assign`, Schema.Struct({ saved: Schema.Number }), {
+        method: "POST",
+        json: { projectId },
+      }),
     members: () => get("/members", MemberList),
     setMemberRole: (key: string, role: Role) =>
       send(`/members/${id(key)}/role`, Schema.Struct({ role: Role }), {
@@ -195,6 +215,9 @@ export const makeApi = (
     projectAudit: (projectId: string, query: Omit<AuditFilter, "projectId"> = {}) =>
       get(`/projects/${id(projectId)}/audit${auditSearch(query)}`, AuditPage),
     ticket: (ticketId: string) => get(`/tickets/${id(ticketId)}`, TicketDetail),
+    ticketRuns: (ticketId: string) => get(`/tickets/${id(ticketId)}/runs`, TicketRuns),
+    ticketRun: (ticketId: string, runId: string) =>
+      get(`/tickets/${id(ticketId)}/runs/${id(runId)}`, RunTranscriptView),
     ticketAttachments: (ticketId: string) =>
       get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),
     workers: () => get("/workers", Schema.Array(WorkerView)),
@@ -203,22 +226,24 @@ export const makeApi = (
       get(`/workers/${id(workerId)}/audit${auditSearch(query)}`, AuditPage),
     assignTicket: (ticketId: string, workerId: string) =>
       send(`/tickets/${id(ticketId)}/assign`, Ticket, { method: "POST", json: { workerId } }),
-    skillSets: () => get("/skill-sets", SkillSetList),
-    createSkillSet: (input: { name: string; description: string }) =>
-      send("/skill-sets", SkillSet, { method: "POST", json: input }),
-    updateSkillSet: (setId: string, patch: { name?: string; description?: string }) =>
-      send(`/skill-sets/${id(setId)}`, SkillSet, { method: "PATCH", json: patch }),
-    deleteSkillSet: (setId: string) =>
-      send(`/skill-sets/${id(setId)}`, Deleted, { method: "DELETE" }),
+    taskTypes: () => get("/task-types", TaskTypeList),
+    createTaskType: (input: { name: string; description: string; instructions?: string }) =>
+      send("/task-types", TaskType, { method: "POST", json: input }),
+    updateTaskType: (
+      setId: string,
+      patch: { name?: string; description?: string; instructions?: string },
+    ) => send(`/task-types/${id(setId)}`, TaskType, { method: "PATCH", json: patch }),
+    deleteTaskType: (setId: string) =>
+      send(`/task-types/${id(setId)}`, Deleted, { method: "DELETE" }),
     browseSkills: (source: string) =>
-      send("/skill-sets/browse", SkillCandidates, { method: "POST", json: { source } }),
+      send("/task-types/browse", SkillCandidates, { method: "POST", json: { source } }),
     addSkills: (setId: string, input: { source: string; slugs: readonly string[] }) =>
-      send(`/skill-sets/${id(setId)}/skills`, AddedSkills, { method: "POST", json: input }),
+      send(`/task-types/${id(setId)}/skills`, AddedSkills, { method: "POST", json: input }),
     removeSkill: (setId: string, skillId: string) =>
-      send(`/skill-sets/${id(setId)}/skills/${id(skillId)}`, Deleted, { method: "DELETE" }),
-    skillUpdates: (setId: string) => get(`/skill-sets/${id(setId)}/updates`, SkillUpdateReport),
+      send(`/task-types/${id(setId)}/skills/${id(skillId)}`, Deleted, { method: "DELETE" }),
+    skillUpdates: (setId: string) => get(`/task-types/${id(setId)}/updates`, SkillUpdateReport),
     updateSkills: (setId: string, skillIds?: readonly string[]) =>
-      send(`/skill-sets/${id(setId)}/update`, AddedSkills, {
+      send(`/task-types/${id(setId)}/update`, AddedSkills, {
         method: "POST",
         json: skillIds ? { skillIds } : {},
       }),

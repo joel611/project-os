@@ -2,19 +2,21 @@ import {
   addSkillsToSet,
   browseSkillSource,
   checkSkillUpdates,
-  createSkillSet,
-  deleteSkillSet,
-  getSkillSet,
+  createTaskType,
+  deleteTaskType,
+  getTaskType,
   handleInbound,
-  listSkillSets,
+  listTaskTypes,
   ProjectRepository,
   ProjectSourceRepository,
   removeSkillFromSet,
   SkillRepository,
   skillArchiveForTicket,
-  skillSetChoices,
+  taskTypeForTicket,
+  withTaskType,
+  taskTypeChoices,
   TicketRepository,
-  updateSkillSet,
+  updateTaskType,
   updateSkillsInSet,
   AssetStore,
   AssetStoreFailed,
@@ -69,19 +71,19 @@ const fails = async (effect: Effect.Effect<any, any, any>, tag: string) => {
   expect(exit).toBe(tag);
 };
 
-describe("skill sets", () => {
+describe("task types", () => {
   it("creates, lists, renames and deletes sets", async () => {
     const out = await run(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "  development ", description: " code " });
-        yield* createSkillSet({ name: "writing", description: "" });
-        const renamed = yield* updateSkillSet(set.id, { name: "dev", description: "more code" });
-        const kept = yield* updateSkillSet(set.id, {});
-        const sameName = yield* updateSkillSet(set.id, { name: "dev" });
-        const listed = yield* listSkillSets;
-        const one = yield* getSkillSet(set.id);
-        yield* deleteSkillSet(set.id);
-        const after = yield* listSkillSets;
+        const set = yield* createTaskType({ name: "  development ", description: " code " });
+        yield* createTaskType({ name: "writing", description: "" });
+        const renamed = yield* updateTaskType(set.id, { name: "dev", description: "more code" });
+        const kept = yield* updateTaskType(set.id, {});
+        const sameName = yield* updateTaskType(set.id, { name: "dev" });
+        const listed = yield* listTaskTypes;
+        const one = yield* getTaskType(set.id);
+        yield* deleteTaskType(set.id);
+        const after = yield* listTaskTypes;
         return { set, renamed, kept, sameName, listed, one, after };
       }),
     );
@@ -97,25 +99,25 @@ describe("skill sets", () => {
   it("refuses duplicate, empty, long and reserved names", async () => {
     await fails(
       Effect.gen(function* () {
-        yield* createSkillSet({ name: "dev", description: "" });
-        yield* createSkillSet({ name: "dev", description: "" });
+        yield* createTaskType({ name: "dev", description: "" });
+        yield* createTaskType({ name: "dev", description: "" });
       }),
-      "SkillSetNameTaken",
+      "TaskTypeNameTaken",
     );
-    await fails(createSkillSet({ name: "  ", description: "" }), "InvalidSkillSet");
-    await fails(createSkillSet({ name: "x".repeat(61), description: "" }), "InvalidSkillSet");
-    await fails(createSkillSet({ name: "None", description: "" }), "InvalidSkillSet");
+    await fails(createTaskType({ name: "  ", description: "" }), "InvalidTaskType");
+    await fails(createTaskType({ name: "x".repeat(61), description: "" }), "InvalidTaskType");
+    await fails(createTaskType({ name: "None", description: "" }), "InvalidTaskType");
     await fails(
       Effect.gen(function* () {
-        yield* createSkillSet({ name: "a", description: "" });
-        const b = yield* createSkillSet({ name: "b", description: "" });
-        yield* updateSkillSet(b.id, { name: "a" });
+        yield* createTaskType({ name: "a", description: "" });
+        const b = yield* createTaskType({ name: "b", description: "" });
+        yield* updateTaskType(b.id, { name: "a" });
       }),
-      "SkillSetNameTaken",
+      "TaskTypeNameTaken",
     );
-    await fails(updateSkillSet("nope", { name: "x" }), "SkillSetNotFound");
-    await fails(deleteSkillSet("nope"), "SkillSetNotFound");
-    await fails(getSkillSet("nope"), "SkillSetNotFound");
+    await fails(updateTaskType("nope", { name: "x" }), "TaskTypeNotFound");
+    await fails(deleteTaskType("nope"), "TaskTypeNotFound");
+    await fails(getTaskType("nope"), "TaskTypeNotFound");
   });
 });
 
@@ -137,7 +139,7 @@ describe("browsing and adding skills", () => {
   it("pins the ticked skills with their files and who added them", async () => {
     const out = await run(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         const added = yield* addSkillsToSet({
           setId: set.id,
           source: "acme/skills",
@@ -146,7 +148,7 @@ describe("browsing and adding skills", () => {
         });
         // Adding the same skill again replaces it rather than duplicating it.
         yield* addSkillsToSet({ setId: set.id, source: "acme/skills", slugs: ["tdd"], by: null });
-        const detail = yield* getSkillSet(set.id);
+        const detail = yield* getTaskType(set.id);
         return { added, detail };
       }),
     );
@@ -171,7 +173,7 @@ describe("browsing and adding skills", () => {
     });
     const added = await run(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         return yield* addSkillsToSet({ setId: set.id, source: "a/b", slugs: ["plain"], by: null });
       }),
       source,
@@ -185,7 +187,7 @@ describe("browsing and adding skills", () => {
     });
     const added = await run(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         return yield* addSkillsToSet({ setId: set.id, source: "a/b", slugs: ["odd"], by: null });
       }),
       source,
@@ -196,18 +198,18 @@ describe("browsing and adding skills", () => {
   it("refuses an unknown set, a bad source and a skill the repo doesn't have", async () => {
     await fails(
       addSkillsToSet({ setId: "nope", source: "acme/skills", slugs: ["tdd"], by: null }),
-      "SkillSetNotFound",
+      "TaskTypeNotFound",
     );
     await fails(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         yield* addSkillsToSet({ setId: set.id, source: "???", slugs: ["tdd"], by: null });
       }),
       "InvalidSkillSource",
     );
     await fails(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         yield* addSkillsToSet({ setId: set.id, source: "acme/skills", slugs: ["nope"], by: null });
       }),
       "InvalidSkillSource",
@@ -217,7 +219,7 @@ describe("browsing and adding skills", () => {
   it("removes a skill from its set", async () => {
     const out = await run(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         const [skill] = yield* addSkillsToSet({
           setId: set.id,
           source: "acme/skills",
@@ -225,7 +227,7 @@ describe("browsing and adding skills", () => {
           by: null,
         });
         yield* removeSkillFromSet(skill!.id);
-        return (yield* getSkillSet(set.id)).skills.map((s) => s.slug);
+        return (yield* getTaskType(set.id)).skills.map((s) => s.slug);
       }),
     );
     expect(out).toEqual(["review"]);
@@ -236,7 +238,7 @@ describe("browsing and adding skills", () => {
 describe("updating pinned skills", () => {
   const setup = (source: ReturnType<typeof upstream>) =>
     Effect.gen(function* () {
-      const set = yield* createSkillSet({ name: "dev", description: "" });
+      const set = yield* createTaskType({ name: "dev", description: "" });
       yield* addSkillsToSet({
         setId: set.id,
         source: "acme/skills",
@@ -251,7 +253,7 @@ describe("updating pinned skills", () => {
     const layer = makeTestLayer({ skillSource: source }).layer;
     const report = await Effect.runPromise(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         yield* addSkillsToSet({
           setId: set.id,
           source: "acme/skills",
@@ -265,7 +267,7 @@ describe("updating pinned skills", () => {
         });
         source.remove("acme/skills", "skills/review");
         const checked = yield* checkSkillUpdates(set.id);
-        const still = yield* getSkillSet(set.id);
+        const still = yield* getTaskType(set.id);
         return { checked, still };
       }).pipe(Effect.provide(layer)),
     );
@@ -277,7 +279,7 @@ describe("updating pinned skills", () => {
     );
     expect(byState).toEqual({ tdd: "update_available", review: "missing" });
     expect(report.still.skills.find((s) => s.slug === "tdd")!.sha).toBe("tree-1");
-    await fails(checkSkillUpdates("nope"), "SkillSetNotFound");
+    await fails(checkSkillUpdates("nope"), "TaskTypeNotFound");
   });
 
   it("fetches only the changed skills, all or the ones named", async () => {
@@ -285,7 +287,7 @@ describe("updating pinned skills", () => {
     const layer = makeTestLayer({ skillSource: source }).layer;
     const out = await Effect.runPromise(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         const [tdd, review] = yield* addSkillsToSet({
           setId: set.id,
           source: "acme/skills",
@@ -309,7 +311,7 @@ describe("updating pinned skills", () => {
           by: "Olga",
         });
         const rest = yield* updateSkillsInSet({ setId: set.id, by: "Olga" });
-        const detail = yield* getSkillSet(set.id);
+        const detail = yield* getTaskType(set.id);
         return { tdd, nothing, named, rest, detail };
       }).pipe(Effect.provide(layer)),
     );
@@ -338,10 +340,10 @@ describe("updating pinned skills", () => {
   });
 
   it("refuses an unknown set or a skill that isn't in it", async () => {
-    await fails(updateSkillsInSet({ setId: "nope", by: null }), "SkillSetNotFound");
+    await fails(updateSkillsInSet({ setId: "nope", by: null }), "TaskTypeNotFound");
     await fails(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         yield* updateSkillsInSet({ setId: set.id, skillIds: ["ghost"], by: null });
       }),
       "SkillNotFound",
@@ -349,14 +351,14 @@ describe("updating pinned skills", () => {
   });
 });
 
-describe("skillSetChoices", () => {
+describe("taskTypeChoices", () => {
   it("offers only sets that have skills", async () => {
     const out = await run(
       Effect.gen(function* () {
-        const empty = yield* createSkillSet({ name: "empty", description: "nothing" });
-        const dev = yield* createSkillSet({ name: "dev", description: "code" });
+        const empty = yield* createTaskType({ name: "empty", description: "nothing" });
+        const dev = yield* createTaskType({ name: "dev", description: "code" });
         yield* addSkillsToSet({ setId: dev.id, source: "acme/skills", slugs: ["tdd"], by: null });
-        return { empty, dev, choices: yield* skillSetChoices };
+        return { empty, dev, choices: yield* taskTypeChoices };
       }),
     );
     expect(out.choices).toEqual([{ id: out.dev.id, name: "dev", description: "code" }]);
@@ -385,10 +387,13 @@ const T = (id: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const updateTaskTypeInstructions = (set: { readonly id: string }) =>
+  updateTaskType(set.id, { instructions: "  Use tdd first.  " });
+
 describe("skillArchiveForTicket", () => {
-  const world = (skillSetId: string | null | "missing") =>
+  const world = (taskTypeId: string | null | "missing") =>
     Effect.gen(function* () {
-      const set = yield* createSkillSet({ name: "dev", description: "" });
+      const set = yield* createTaskType({ name: "dev", description: "" });
       yield* addSkillsToSet({
         setId: set.id,
         source: "acme/skills",
@@ -397,7 +402,7 @@ describe("skillArchiveForTicket", () => {
       });
       yield* (yield* TicketRepository).insert(
         T("t1", {
-          skillSetId: skillSetId === "missing" ? "ghost" : (skillSetId ?? set.id),
+          taskTypeId: taskTypeId === "missing" ? "ghost" : (taskTypeId ?? set.id),
         }) as never,
       );
       return set;
@@ -438,12 +443,55 @@ describe("skillArchiveForTicket", () => {
     expect(gone).toEqual({ set: null, archive: null });
     const empty = await run(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "empty", description: "" });
-        yield* (yield* TicketRepository).insert(T("t3", { skillSetId: set.id }) as never);
+        const set = yield* createTaskType({ name: "empty", description: "" });
+        yield* (yield* TicketRepository).insert(T("t3", { taskTypeId: set.id }) as never);
         return yield* skillArchiveForTicket("t3", caller);
       }),
     );
     expect(empty).toEqual({ set: null, archive: null });
+  });
+
+  it("names the ticket's task type for display, and says null for none or a deleted one", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const set = yield* world(null);
+        const tickets = yield* TicketRepository;
+        const detail = (id: string) => withTaskType({ ticket: T(id) as never, events: [] });
+        yield* tickets.insert(T("t4", { taskTypeId: "ghost" }) as never);
+        return {
+          set,
+          named: yield* withTaskType({ ticket: yield* tickets.get("t1"), events: [] }),
+          none: yield* detail("t9"),
+          deleted: yield* withTaskType({ ticket: yield* tickets.get("t4"), events: [] }),
+        };
+      }),
+    );
+    expect(out.named.taskType).toEqual({ id: out.set.id, name: "dev" });
+    expect(out.none.taskType).toBeNull();
+    expect(out.deleted.taskType).toBeNull();
+  });
+
+  it("gives a worker its ticket's task type with instructions, null when it has none", async () => {
+    const out = await run(
+      Effect.gen(function* () {
+        const set = yield* updateTaskTypeInstructions(yield* world(null));
+        yield* (yield* TicketRepository).insert(T("t5") as never);
+        return {
+          set,
+          mine: yield* taskTypeForTicket("t1", caller),
+          none: yield* taskTypeForTicket("t5", { id: "w1", kind: "device" }),
+        };
+      }),
+    );
+    expect(out.mine).toEqual({ id: out.set.id, name: "dev", instructions: "Use tdd first." });
+    expect(out.none).toBeNull();
+    await fails(
+      Effect.gen(function* () {
+        yield* world(null);
+        yield* taskTypeForTicket("t1", { id: "w2", kind: "device" });
+      }),
+      "WorkerUnauthorized",
+    );
   });
 
   it("refuses any worker but the ticket's own", async () => {
@@ -460,7 +508,7 @@ describe("skillArchiveForTicket", () => {
   it("says so when a stored zip is gone, or storage can't be read", async () => {
     await fails(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         const [skill] = yield* addSkillsToSet({
           setId: set.id,
           source: "acme/skills",
@@ -472,7 +520,7 @@ describe("skillArchiveForTicket", () => {
           ...skill!,
           archiveKey: "skills/missing.zip",
         });
-        yield* (yield* TicketRepository).insert(T("t1", { skillSetId: set.id }) as never);
+        yield* (yield* TicketRepository).insert(T("t1", { taskTypeId: set.id }) as never);
         yield* skillArchiveForTicket("t1", caller);
       }),
       "SkillFetchFailed",
@@ -482,9 +530,9 @@ describe("skillArchiveForTicket", () => {
   it("says so when file storage can't be read", async () => {
     await fails(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         yield* addSkillsToSet({ setId: set.id, source: "acme/skills", slugs: ["tdd"], by: null });
-        yield* (yield* TicketRepository).insert(T("t1", { skillSetId: set.id }) as never);
+        yield* (yield* TicketRepository).insert(T("t1", { taskTypeId: set.id }) as never);
         const real = yield* AssetStore;
         yield* skillArchiveForTicket("t1", caller).pipe(
           Effect.provideService(AssetStore, {
@@ -502,7 +550,7 @@ describe("skillArchiveForTicket", () => {
     const layer = makeTestLayer({ skillSource: source, failAssetStore: "disk full" }).layer;
     const message = await Effect.runPromise(
       Effect.gen(function* () {
-        const set = yield* createSkillSet({ name: "dev", description: "" });
+        const set = yield* createTaskType({ name: "dev", description: "" });
         return yield* addSkillsToSet({
           setId: set.id,
           source: "acme/skills",
@@ -519,7 +567,7 @@ describe("skillArchiveForTicket", () => {
   });
 });
 
-describe("routing a request to a skill set", () => {
+describe("routing a request to a task type", () => {
   const inbound = {
     channelType: "discord" as const,
     channelId: "c1",
@@ -538,11 +586,11 @@ describe("routing a request to a skill set", () => {
     let devId = "";
     const classifier = Layer.succeed(IntentClassifier, {
       classify: (input) => {
-        offered.push(input.skillSets);
+        offered.push(input.taskTypes);
         return Effect.succeed({
           intent: "new_request",
           confidence: 1,
-          ...(answer && { skillSet: answer(devId) }),
+          ...(answer && { taskType: answer(devId) }),
         });
       },
     });
@@ -579,7 +627,7 @@ describe("routing a request to a skill set", () => {
           createdAt: T0,
           updatedAt: T0,
         } as never);
-        const dev = yield* createSkillSet({ name: "dev", description: "code" });
+        const dev = yield* createTaskType({ name: "dev", description: "code" });
         devId = dev.id;
         if (skills) {
           yield* addSkillsToSet({ setId: dev.id, source: "acme/skills", slugs: ["tdd"], by: null });
@@ -589,21 +637,21 @@ describe("routing a request to a skill set", () => {
         return yield* (yield* TicketRepository).get(outcome.ticket.id);
       }).pipe(Effect.provide(layer)) as never,
     );
-    return { ticket: ticket as { skillSetId?: string | null }, offered, devId };
+    return { ticket: ticket as { taskTypeId?: string | null }, offered, devId };
   };
 
   it("offers the sets to Jev and stores the one it picks on the ticket", async () => {
     const out = await route((id) => ({ choice: id, confidence: 0.9 }));
     expect(out.offered).toEqual([[{ id: out.devId, name: "dev", description: "code" }]]);
-    expect(out.ticket.skillSetId).toBe(out.devId);
+    expect(out.ticket.taskTypeId).toBe(out.devId);
   });
 
   it("starts the ticket with no set when Jev says none or is unsure", async () => {
     expect(
-      (await route(() => ({ choice: "none", confidence: 0.99 }))).ticket.skillSetId,
+      (await route(() => ({ choice: "none", confidence: 0.99 }))).ticket.taskTypeId,
     ).toBeNull();
-    expect((await route((id) => ({ choice: id, confidence: 0.4 }))).ticket.skillSetId).toBeNull();
-    expect((await route(undefined)).ticket.skillSetId).toBeNull();
+    expect((await route((id) => ({ choice: id, confidence: 0.4 }))).ticket.taskTypeId).toBeNull();
+    expect((await route(undefined)).ticket.taskTypeId).toBeNull();
   });
 
   it("doesn't ask about skills when no set has any", async () => {

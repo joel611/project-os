@@ -3,9 +3,11 @@ import type {
   AuditEntry,
   AuditKind,
   ChannelType,
+  EmailItem,
   MemoryEntry,
   MemoryEntryType,
   Requester,
+  Run,
 } from "@project-os/contracts";
 import { Context, type Effect } from "effect";
 import type { Project, ProjectNotFound } from "../../domain/project/index.ts";
@@ -28,9 +30,9 @@ import type {
 import type {
   Skill,
   SkillNotFound,
-  SkillSet,
-  SkillSetNameTaken,
-  SkillSetNotFound,
+  TaskType,
+  TaskTypeNameTaken,
+  TaskTypeNotFound,
 } from "../../domain/skill/index.ts";
 import type { Worker, WorkerNotFound, WorkerType } from "../../domain/worker/index.ts";
 
@@ -286,14 +288,14 @@ export class WorkerRepository extends Context.Service<
   }
 >()("@project-os/core/WorkerRepository") {}
 
-/** Skill sets and the skills pinned in them. Skill files are read separately: lists stay small. */
+/** Task types and the skills pinned in them. Skill files are read separately: lists stay small. */
 export class SkillRepository extends Context.Service<
   SkillRepository,
   {
-    readonly listSets: Effect.Effect<ReadonlyArray<SkillSet>>;
-    readonly getSet: (id: string) => Effect.Effect<SkillSet, SkillSetNotFound>;
-    /** Fails `SkillSetNameTaken` when another set has the name. */
-    readonly insertSet: (set: SkillSet) => Effect.Effect<SkillSet, SkillSetNameTaken>;
+    readonly listSets: Effect.Effect<ReadonlyArray<TaskType>>;
+    readonly getSet: (id: string) => Effect.Effect<TaskType, TaskTypeNotFound>;
+    /** Fails `TaskTypeNameTaken` when another set has the name. */
+    readonly insertSet: (set: TaskType) => Effect.Effect<TaskType, TaskTypeNameTaken>;
     readonly updateSet: (
       id: string,
       patch: {
@@ -301,9 +303,9 @@ export class SkillRepository extends Context.Service<
         readonly description?: string;
         readonly updatedAt: string;
       },
-    ) => Effect.Effect<SkillSet, SkillSetNotFound | SkillSetNameTaken>;
+    ) => Effect.Effect<TaskType, TaskTypeNotFound | TaskTypeNameTaken>;
     /** Removes the set and its skills; tickets that used it keep only the dangling id. */
-    readonly deleteSet: (id: string) => Effect.Effect<void, SkillSetNotFound>;
+    readonly deleteSet: (id: string) => Effect.Effect<void, TaskTypeNotFound>;
     readonly listSkills: (setId: string) => Effect.Effect<ReadonlyArray<Skill>>;
     readonly getSkill: (id: string) => Effect.Effect<Skill, SkillNotFound>;
     /**
@@ -314,3 +316,60 @@ export class SkillRepository extends Context.Service<
     readonly removeSkill: (id: string) => Effect.Effect<void, SkillNotFound>;
   }
 >()("@project-os/core/SkillRepository") {}
+
+/** One row per agent session on a Ticket; the transcript lives in file storage. */
+export class RunRepository extends Context.Service<
+  RunRepository,
+  {
+    readonly get: (id: string) => Effect.Effect<Run | undefined>;
+    /** Inserts the run, or replaces the one with the same id. */
+    readonly save: (run: Run) => Effect.Effect<void>;
+    /** A ticket's runs, oldest first. */
+    readonly listByTicket: (ticketId: string) => Effect.Effect<ReadonlyArray<Run>>;
+    /** Runs started before `at` whose transcript is still stored. */
+    readonly listStoredBefore: (at: string) => Effect.Effect<ReadonlyArray<Run>>;
+  }
+>()("@project-os/core/RunRepository") {}
+
+/** A person's mailbox: whether it is read, and where the last sync stopped. */
+export interface Mailbox {
+  readonly owner: Requester;
+  readonly enabled: boolean;
+  /** Gmail history id of the last message seen; null until the first sync. */
+  readonly cursor: string | null;
+  readonly lastSyncAt: string | null;
+  /** The Gmail link is gone or lacks the read scope: the person has to `/connect google` again. */
+  readonly needsReconnect: boolean;
+}
+
+/** Emails held for the Email Digest, and the mailboxes they come from. */
+export class EmailRepository extends Context.Service<
+  EmailRepository,
+  {
+    readonly mailbox: (owner: Requester) => Effect.Effect<Mailbox | null>;
+    readonly saveMailbox: (mailbox: Mailbox) => Effect.Effect<void>;
+    /** Mailboxes that are switched on. */
+    readonly enabledMailboxes: Effect.Effect<ReadonlyArray<Mailbox>>;
+    /** Stores an email; false when the owner already has one with that `messageId`. */
+    readonly insert: (email: EmailItem) => Effect.Effect<boolean>;
+    readonly get: (id: string) => Effect.Effect<EmailItem | null>;
+    readonly update: (
+      id: string,
+      patch: Partial<
+        Pick<
+          EmailItem,
+          "status" | "projectId" | "assignedBy" | "body" | "suggestedProjectId" | "confidence"
+        >
+      >,
+    ) => Effect.Effect<void>;
+    /** The owner's emails still waiting for a project, newest first. */
+    readonly listUnassigned: (owner: Requester) => Effect.Effect<ReadonlyArray<EmailItem>>;
+    /** Emails people filed by hand, newest first: what the classifier learns from. */
+    readonly examples: (limit: number) => Effect.Effect<ReadonlyArray<EmailItem>>;
+    /** Drops waiting and dismissed emails received before `waitingBefore`, filed ones before `filedBefore`. */
+    readonly removeOlder: (input: {
+      readonly waitingBefore: string;
+      readonly filedBefore: string;
+    }) => Effect.Effect<number>;
+  }
+>()("@project-os/core/EmailRepository") {}

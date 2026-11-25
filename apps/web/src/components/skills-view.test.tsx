@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { SkillCandidates, SkillSetDetail } from "@project-os/contracts";
+import type { SkillCandidates, TaskTypeDetail } from "@project-os/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
@@ -11,8 +11,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const set: SkillSetDetail = {
-  set: { id: "set-1", name: "Development", description: "", createdAt: "", updatedAt: "" },
+const set: TaskTypeDetail = {
+  set: {
+    id: "set-1",
+    name: "Development",
+    description: "",
+    instructions: "",
+    createdAt: "",
+    updatedAt: "",
+  },
   skills: [],
 };
 const candidates: SkillCandidates = {

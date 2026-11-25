@@ -64,6 +64,8 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   released: "re-queued",
   reopened: "reopened",
   status_changed: "status",
+  run_started: "run started",
+  run_finished: "run finished",
   shared_account_added: "shared account added",
   shared_account_removed: "shared account removed",
   shared_account_assigned: "shared account assigned",
@@ -89,6 +91,8 @@ export const actionTone = (entry: AuditEntry): Tone => {
       return "success";
     case "released":
       return "warn";
+    case "run_finished":
+      return (entry.payload as { exitCode?: number } | null)?.exitCode === 0 ? "success" : "danger";
     case "removed":
     case "received":
       return "neutral";

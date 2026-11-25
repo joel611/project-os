@@ -19,6 +19,7 @@ const config: WatcherConfig = {
   cwd: "/work",
   secret: "s3cret",
   skills: true,
+  runLog: true,
 };
 const ctx = { config, prompt: "do it", configDir: "/cfg", home: "/home/me" };
 

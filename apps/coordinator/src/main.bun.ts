@@ -15,6 +15,7 @@ import {
 } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
 import { Auth } from "@project-os/auth";
+import { recordSandboxRun } from "@project-os/core";
 import {
   DEFAULT_ORG,
   DrizzleBun,
@@ -31,6 +32,12 @@ import { makeAccess } from "./access.ts";
 import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
 import { coordinatorConfig } from "./config.ts";
 import { channelDigester, startChannelDigest } from "./digest/index.ts";
+import {
+  emailClassifier,
+  emailDigestEnabled,
+  gmailEmailSource,
+  startEmailDigest,
+} from "./email/index.ts";
 import { startHealthSweep } from "./health/start.ts";
 import { makeLifecycleNotifications } from "./lifecycle.ts";
 import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
@@ -90,11 +97,14 @@ const AiLive = Layer.orDie(
       telemetry: otel?.telemetry,
     }),
     digester,
+    emailClassifier(models, modelRefs.decision),
   ),
 );
 
 const workerLauncher = sandboxLauncherFromEnv(process.env, {
   log: console.log,
+  // `runtime` is built below, before any session can end.
+  onSessionEnd: (session) => runtime.runPromise(recordSandboxRun(session)),
 });
 
 const remoteGatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
@@ -134,7 +144,11 @@ const runtime = ManagedRuntime.make(
     }),
     AiLive,
     Auth.connectionsLayer,
-  ).pipe(Layer.provideMerge(authLayer)),
+  ).pipe(
+    // Reads mail with each person's own Google link, so it is built on the connections above.
+    (base) => gmailEmailSource().pipe(Layer.provideMerge(base)),
+    Layer.provideMerge(authLayer),
+  ),
   { memoMap: authRuntime.memoMap },
 );
 
@@ -142,6 +156,11 @@ await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));
 await runtime.runPromise(
   startChannelDigest({ ...digestConfig, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
 );
+
+const emailDigest = emailDigestEnabled(process.env);
+if (emailDigest) {
+  await runtime.runPromise(startEmailDigest(healthConfig().sweepEveryMs).pipe(Effect.asVoid));
+}
 
 createApp(
   {},
@@ -160,6 +179,7 @@ createApp(
     setRole: (userId, role) => auth.setRole(userId, role),
     ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
     ...(connections && { connect: connections }),
+    emailDigest,
   },
 ).listen(port);
 const discordReady = discord?.login().catch((err) => {

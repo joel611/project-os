@@ -9,6 +9,8 @@ export interface BlobBackend {
     meta: { readonly contentType: string; readonly size: number },
   ) => Promise<void>;
   readonly get: (key: string) => Promise<AssetObject | undefined>;
+  /** Deletes `key`; nothing there is fine. */
+  readonly remove: (key: string) => Promise<void>;
 }
 
 export interface AssetLinksConfig {
@@ -124,6 +126,11 @@ export const makeAssetStore = (config: AssetStoreConfig): typeof AssetStore.Serv
         try: () => config.backend.get(key),
         catch: (err) => new AssetStoreFailed({ message: messageOf(err) }),
       }),
+    remove: (key) =>
+      Effect.tryPromise({
+        try: () => config.backend.remove(key),
+        catch: (err) => new AssetStoreFailed({ message: messageOf(err) }),
+      }),
     link: (key) => Effect.map(signedLink(key, "asset"), (link) => link?.url),
     verify: (key, expires, sig) => verifySig(key, expires, sig, "asset"),
     uploadLink: (key) => signedLink(key, "upload"),
@@ -144,5 +151,6 @@ export const AssetStoreUnavailable = Layer.succeed(AssetStore, {
   verify: () => Effect.succeed(false),
   uploadLink: () => Effect.undefined,
   verifyUpload: () => Effect.succeed(false),
+  remove: () => Effect.void,
   put: () => Effect.fail(new AssetStoreFailed({ message: "File storage is not configured." })),
 });
