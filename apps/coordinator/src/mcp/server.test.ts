@@ -127,6 +127,10 @@ describe("coordinator MCP server", () => {
     ]);
     const claim = tools.find((t) => t.name === "ticket_claim")!;
     expect(claim.inputSchema.required).toEqual(["ticketId", "workerId"]);
+    const memory = tools.find((t) => t.name === "project_memory_write")!;
+    expect(memory.description).toContain("one or two sentences with the durable outcome");
+    expect(memory.description).toContain("Link to a PR, issue or document");
+    expect(memory.description).toContain("on the ticket, not in memory");
   });
 
   it("hides user_token from sandbox sessions only while the credential proxy is on", async () => {
