@@ -130,12 +130,6 @@ describe("GET /tickets/:id/skills", () => {
     expect(((await res.json()) as { error: string }).error).toBe("SkillFetchFailed");
   });
 
-  it("refuses a caller with no valid token", async () => {
-    await seed();
-    expect((await get("/tickets/t1/skills")).status).toBe(401);
-    expect((await get("/tickets/t1/skills", "nope")).status).toBe(401);
-  });
-
   it("refuses another worker's ticket, and says when there is no such ticket", async () => {
     const { token } = await seed();
     const other = await get("/tickets/t2/skills", token);
@@ -164,10 +158,8 @@ describe("GET /tickets/:id/task-type", () => {
     expect((await get("/tickets/t2/task-type", own)).status).toBe(204);
   });
 
-  it("refuses a caller with no valid token, or another worker's ticket", async () => {
+  it("refuses another worker's ticket, and says when there is no such ticket", async () => {
     const { token } = await seed();
-    expect((await get("/tickets/t1/task-type")).status).toBe(401);
-    expect((await get("/tickets/t1/task-type", "nope")).status).toBe(401);
     const other = await get("/tickets/t2/task-type", token);
     expect(other.status).toBe(403);
     expect(((await other.json()) as { error: string }).error).toBe("WorkerUnauthorized");

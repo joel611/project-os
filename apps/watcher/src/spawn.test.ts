@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
-import { bunSpawner, skillsUrl, type SkillsIo, type SpawnerIo } from "./spawn.ts";
+import { bunSpawner, type SkillsIo, type SpawnerIo } from "./spawn.ts";
 import { strToU8, zipSync } from "fflate";
 import { collectLogger } from "./logger.ts";
 import type { RunLogIo } from "./run-log.ts";
@@ -160,13 +160,6 @@ describe("skills for a ticket", () => {
     await spawner.spawn(ticketId ?? undefined);
     return cmd;
   };
-
-  it("finds the skills next to the MCP endpoint", () => {
-    expect(skillsUrl("http://coord:8080/mcp", "t 1")).toBe(
-      "http://coord:8080/tickets/t%201/skills",
-    );
-    expect(skillsUrl("http://coord:8080/mcp/", "t1")).toBe("http://coord:8080/tickets/t1/skills");
-  });
 
   it("writes the set under a session folder for the agent, then removes it", async () => {
     const s = skillsIo(async () => bundle);

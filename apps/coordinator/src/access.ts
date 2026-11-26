@@ -31,11 +31,12 @@ const needs = <R extends Resource>(resource: R, action: Action<R>): Permission =
 });
 
 /**
- * Who may call a route. `worker` is /mcp: Watchers and sandbox sessions, whose credentials the
- * MCP route resolves itself. `token` routes carry their own proof (a signed link, a one-time
- * token) that the handler redeems. `member` routes take any signed-in dashboard user or member,
- * and the handler narrows what a caller without `ticket:read` sees to their own Tickets. A
- * `Permission` admits a dashboard user whose role grants it.
+ * Who may call a route. `worker` routes (/mcp and those beside it) take Watchers and sandbox
+ * sessions, who are not dashboard `Caller`s: worker-access.ts admits them. `token` routes carry
+ * their own proof (a signed link, a one-time token) that the handler redeems. `member` routes
+ * take any signed-in dashboard user or member, and the handler narrows what a caller without
+ * `ticket:read` sees to their own Tickets. A `Permission` admits a dashboard user whose role
+ * grants it.
  */
 export type RoutePolicy =
   | "public"
@@ -123,7 +124,8 @@ export const policyFor = (method: string, route: string): RoutePolicy =>
 const ADMITS: Readonly<Record<Exclude<RoutePolicy, Permission>, ReadonlyArray<Caller["kind"]>>> = {
   public: ["anonymous", "user", "outsider", "service"],
   token: ["anonymous", "user", "outsider", "service"],
-  worker: ["anonymous", "user", "outsider", "service"],
+  // No `Caller` is a Worker, so `authorize` refuses all: only worker-access.ts admits one.
+  worker: [],
   // A route nobody listed: dashboard admins only, so a new route is closed until someone decides.
   user: ["user"],
   member: ["user", "member"],
@@ -221,6 +223,6 @@ export const deny = async (
   route: string,
 ): Promise<Denial | undefined> => {
   const policy = policyFor(request.method, route);
-  if (policy === "public" || policy === "token" || policy === "worker") return undefined;
+  if (policy === "public" || policy === "token") return undefined;
   return authorize(policy, await access.caller(request));
 };

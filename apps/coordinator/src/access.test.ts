@@ -128,6 +128,13 @@ describe("authorize", () => {
     expect(authorize("token", { kind: "anonymous" })).toBeUndefined();
   });
 
+  it("admits no dashboard caller to a worker route (worker-access.ts does that)", () => {
+    const admin = { kind: "user", userId: "a", name: "A", role: "admin" } as const;
+    expect(authorize("worker", admin)).toMatchObject({ status: 403 });
+    expect(authorize("worker", { kind: "service" })).toMatchObject({ status: 403 });
+    expect(authorize("worker", { kind: "anonymous" })).toMatchObject({ status: 401 });
+  });
+
   describe("role permissions", () => {
     const admin = { kind: "user", userId: "a", name: "A", role: "admin" } as const;
     const operatorMember = { kind: "user", userId: "o", name: "O", role: "member" } as const;

@@ -6,10 +6,6 @@ import {
 } from "@project-os/contracts";
 import { errorMessage, type Logger, silentLogger } from "./logger.ts";
 
-/** Where a ticket's run log is uploaded: next to the Coordinator's MCP endpoint. */
-export const runsUrl = (mcpUrl: string, ticketId: string): string =>
-  `${mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(ticketId)}/runs`;
-
 /** The Coordinator's answer to an upload. `expected` comes with a 409: the chunk it wants next. */
 export type PostResult =
   | { readonly ok: true; readonly nextSeq: number }
