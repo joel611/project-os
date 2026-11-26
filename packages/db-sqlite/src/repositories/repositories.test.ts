@@ -519,6 +519,7 @@ describe("TicketRepository", () => {
           }),
         );
         return {
+          stale: yield* Effect.flip(repo.reopen("t1", T1, "stopped")),
           completed: yield* repo.reopen("t1", T1),
           failed: yield* repo.reopen("t2", T1),
           blocked: yield* repo.reopen("t4", T1),
@@ -542,6 +543,7 @@ describe("TicketRepository", () => {
         lastActivityAt: T1,
       });
     }
+    expect(out.stale).toMatchObject({ _tag: "InvalidTransition", from: "completed" });
     expect(out.cancelled).toMatchObject({ _tag: "InvalidTransition", from: "cancelled" });
     expect(out.running).toMatchObject({ _tag: "InvalidTransition", from: "open" });
   });

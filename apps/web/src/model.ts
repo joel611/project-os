@@ -38,6 +38,7 @@ export const STATUS: Readonly<Record<TicketStatus, StatusMeta>> = {
   completed: status("Completed", "success", "completed"),
   failed: status("Failed", "danger", "failed"),
   cancelled: status("Cancelled", "neutral", "cancelled"),
+  stopped: status("Stopped", "warn", "stopped"),
 };
 
 export const EVENT: Readonly<
@@ -293,6 +294,7 @@ export const RUN_STATUS: Readonly<
   running: { label: "Running", tone: "progress" },
   succeeded: { label: "Succeeded", tone: "success" },
   failed: { label: "Failed", tone: "danger" },
+  stopped: { label: "Stopped", tone: "warn" },
 };
 
 export const RUN_EVENT: Readonly<

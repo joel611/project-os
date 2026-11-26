@@ -53,6 +53,8 @@ import {
   readActivity,
   reassignTicketTo,
   changeTicketStatus,
+  continueStoppedTicket,
+  forceStopRun,
   redeemWorkerRegistration,
   workerLabel,
   type AgentRuntime,
@@ -720,6 +722,36 @@ export const httpRoutes = ({
     .get("/tickets/:id/runs/:runId", ({ params, request, set }) =>
       forTicket(request, set, (person) => toResult(readTicketRun(params.id, params.runId, person))),
     )
+    .post("/tickets/:id/runs/:runId/stop", async ({ params, request, set }) => {
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
+        set,
+        toResult(
+          forceStopRun(params.id, params.runId, {
+            type: "person",
+            id: caller.userId,
+            name: caller.name,
+          }),
+        ),
+      );
+    })
+    .post("/tickets/:id/continue", async ({ params, request, set }) => {
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
+        set,
+        toResult(
+          continueStoppedTicket(
+            params.id,
+            {
+              type: "person",
+              id: caller.userId,
+              name: caller.name,
+            },
+            inbound,
+          ),
+        ),
+      );
+    })
     .post("/tickets/:id/status", async ({ params, body, request, set }) => {
       // The route's `user` policy lets in only an Operator.
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;

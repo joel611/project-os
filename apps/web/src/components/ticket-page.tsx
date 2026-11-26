@@ -76,7 +76,7 @@ const Main = ({ ticket, events }: TicketDetail) => {
         </section>
       )}
       {hasAttachments(events) && <TicketFiles ticketId={ticket.id} />}
-      <TicketRuns ticketId={ticket.id} live={ticketDetailInterval(ticket) !== false} />
+      <TicketRuns ticket={ticket} interval={ticketDetailInterval(ticket)} />
       <section className="flex flex-col gap-1 rounded-xl border bg-card p-5 shadow-card sm:p-6">
         <h2 className="pb-4 text-sm font-semibold">Activity</h2>
         <ol className="relative flex flex-col gap-5 border-l pl-5">
@@ -183,11 +183,44 @@ const Details = ({ ticket, taskType }: Pick<TicketDetail, "ticket" | "taskType">
   const now = useNow();
   const operator = useCan("ticket", "update");
   const [assigning, setAssigning] = useState(false);
+  const qc = useQueryClient();
+  const resume = useMutation({
+    mutationFn: () => api.continueTicket(ticket.id),
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["ticket", ticket.id] }),
+        qc.invalidateQueries({ queryKey: ["ticket-runs", ticket.id] }),
+      ]),
+  });
   return (
     <aside className="h-fit rounded-xl border bg-card p-5 shadow-card lg:sticky lg:top-0">
       <h2 className="pb-4 text-sm font-semibold">Details</h2>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-1">
-        <Field label="Status">{STATUS[ticket.status].label}</Field>
+        <Field label="Status">
+          {STATUS[ticket.status].label}
+          {ticket.status === "stopped" && (
+            <div className="mt-2 flex flex-col items-start gap-2">
+              <p className="text-xs text-muted-foreground">
+                Waiting for an admin to continue or for a Discord follow-up.
+              </p>
+              {operator && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={resume.isPending}
+                  onClick={() => resume.mutate()}
+                >
+                  {resume.isPending ? "Continuing…" : "Continue ticket"}
+                </Button>
+              )}
+              {resume.error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {describeError(resume.error)}
+                </p>
+              )}
+            </div>
+          )}
+        </Field>
         <Field label="Intent">{ticket.intent}</Field>
         <Field label="Task type">{taskType?.name ?? "—"}</Field>
         <Field label="Worker">

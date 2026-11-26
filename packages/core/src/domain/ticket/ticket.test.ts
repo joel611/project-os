@@ -44,10 +44,12 @@ const legal: ReadonlyArray<readonly [TicketStatus, TicketStatus]> = [
   ["assigned", "in_progress"],
   ["assigned", "failed"],
   ["assigned", "cancelled"],
+  ["assigned", "stopped"],
   ["in_progress", "blocked"],
   ["in_progress", "completed"],
   ["in_progress", "failed"],
   ["in_progress", "cancelled"],
+  ["in_progress", "stopped"],
   ["blocked", "in_progress"],
   ["blocked", "failed"],
   ["blocked", "cancelled"],
@@ -64,7 +66,7 @@ describe("ticket status machine", () => {
   });
 
   it("terminal states have no exits", () => {
-    for (const s of ["completed", "failed", "cancelled"] as const) {
+    for (const s of ["completed", "failed", "cancelled", "stopped"] as const) {
       expect(isTerminal(s)).toBe(true);
       for (const to of TICKET_STATUSES) expect(canTransition(s, to)).toBe(false);
     }

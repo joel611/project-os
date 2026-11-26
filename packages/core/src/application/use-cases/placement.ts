@@ -2,6 +2,7 @@ import type { WorkerType } from "@project-os/contracts";
 import { Effect } from "effect";
 import {
   ACTIVE_STATUSES,
+  InvalidTransition,
   isSharedDevice,
   type Ticket,
   type TicketStatus,
@@ -25,13 +26,16 @@ import {
 } from "./sandbox-credentials.ts";
 import { SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { taskTypeOf } from "./skills.ts";
-import { COORDINATOR } from "./audit.ts";
+import { type AuditActor, COORDINATOR } from "./audit.ts";
+import { nowIso } from "./tickets.ts";
 import {
+  announceReopened,
   assignTicket,
   claimTicketUseCase,
   recordPlacement,
   recordQueued,
   releaseTicket,
+  reopenTicket,
 } from "./ticket-lifecycle.ts";
 
 /** A registered device counts as online if it heartbeat within this window, unless told otherwise. */
@@ -53,7 +57,7 @@ export interface PlaceRequest {
   /** An `open` ticket with no worker. */
   readonly ticketId: string;
   /** Who asked: their own online device comes first. */
-  readonly requester: Person;
+  readonly requester: Person | null;
   /** `sidekick` is answered in process, assigned and claimed at once; default `worker`. */
   readonly executor?: Executor;
   readonly routing: PlacementRouting;
@@ -111,7 +115,7 @@ const pickTarget = (request: PlaceRequest) =>
     const tickets = yield* TicketRepository;
     const staleMs = routing.workerStaleMs ?? DEFAULT_WORKER_STALE_MS;
 
-    const personal = yield* onlinePersonalDevice(requester, staleMs);
+    const personal = requester ? yield* onlinePersonalDevice(requester, staleMs) : undefined;
     if (personal) {
       return {
         workerType: personal.workerType,
@@ -297,4 +301,26 @@ export const placeOrQueue = (request: PlaceRequest) =>
       at,
     });
     return { kind: "placed", ticket: assigned, workerId } satisfies Placement as Placement;
+  });
+
+/** Explicitly releases the admin hold and sends the ticket through normal placement. */
+export const continueStoppedTicket = (
+  ticketId: string,
+  by: AuditActor,
+  routing: PlacementRouting,
+) =>
+  Effect.gen(function* () {
+    const tickets = yield* TicketRepository;
+    const ticket = yield* tickets.get(ticketId);
+    const at = yield* nowIso;
+    const reopened =
+      ticket.status === "stopped"
+        ? yield* reopenTicket({ ticket, by, at, operator: true })
+        : undefined;
+    if (!reopened) {
+      return yield* new InvalidTransition({ ticketId, from: ticket.status, to: "open" });
+    }
+    const placement = yield* placeOrQueue({ ticketId, requester: ticket.requester, routing, at });
+    yield* announceReopened({ ticketId, from: "stopped", queued: placement.kind === "queued" });
+    return placement.ticket;
   });

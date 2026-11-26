@@ -207,58 +207,97 @@ const sendSpooled = () =>
       )
     : undefined;
 
+const killRun = (proc: { pid: number; kill: (signal: "SIGKILL") => void }) => {
+  if (process.platform !== "win32") {
+    try {
+      // The worker is its own POSIX process group, including tools launched by the agent.
+      process.kill(-proc.pid, "SIGKILL");
+      return;
+    } catch {
+      // Also works on Bun builds that do not support detached process groups.
+    }
+  }
+  proc.kill("SIGKILL");
+};
+
 const watcher = createWatcher({
   config,
   client: httpMcpClient(config.mcpUrl, fetch, config.secret, logger),
-  spawner: bunSpawner(config, (cmd, options) => Bun.spawn(cmd, options), {
-    readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
-    writePrivate,
-    spawnAcp: (cmd, options) => {
-      const proc = Bun.spawn(cmd, { ...options, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  spawner: bunSpawner(
+    config,
+    (cmd, options) => {
+      const proc = Bun.spawn(cmd, { ...options, detached: config.runLog });
       return {
         exited: proc.exited,
         stdout: proc.stdout,
         stderr: proc.stderr,
-        stdin: new WritableStream<Uint8Array>({
-          write: (chunk) => void proc.stdin.write(chunk),
-          close: () => void proc.stdin.end(),
-        }),
-        kill: () => proc.kill(),
+        kill: () => killRun(proc),
       };
     },
-    env: process.env,
-    configDir: configDir(),
-    home: homedir(),
-    logger,
-    ...(config.runLog && { runLog }),
-    skills: {
-      fetchArchive: async (url, secret) => {
-        const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
-        logger.debug("skills: archive response", { status: res.status });
-        // 204: the ticket has no skills.
-        return res.status === 200
-          ? {
-              set: decodeURIComponent(res.headers.get(TASK_TYPE_HEADER) ?? ""),
-              zip: new Uint8Array(await res.arrayBuffer()),
-            }
-          : undefined;
+    {
+      readFile: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
+      writePrivate,
+      spawnAcp: (cmd, options) => {
+        const proc = Bun.spawn(cmd, {
+          ...options,
+          detached: config.runLog,
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        return {
+          exited: proc.exited,
+          stdout: proc.stdout,
+          stderr: proc.stderr,
+          stdin: new WritableStream<Uint8Array>({
+            write: (chunk) => void proc.stdin.write(chunk),
+            close: () => void proc.stdin.end(),
+          }),
+          kill: (signal) => (signal === "SIGKILL" ? killRun(proc) : proc.kill()),
+        };
       },
-      fetchTaskType: async (url, secret) => {
-        const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
-        logger.debug("task type: response", { status: res.status });
-        // 204: the ticket has no task type.
-        if (res.status !== 200) return undefined;
-        return decodeWorkerTaskType(await res.json());
+      env: process.env,
+      configDir: configDir(),
+      home: homedir(),
+      logger,
+      ...(config.runLog && { runLog }),
+      fetchStop: async (url, secret, signal) => {
+        const res = await fetch(url, {
+          headers: { authorization: `Bearer ${secret}` },
+          signal,
+          cache: "no-store",
+        });
+        return res.ok && ((await res.json()) as { stop?: unknown }).stop === true;
       },
-      // One private directory per session, removed when it ends.
-      makeDir: () => mkdtempSync(join(tmpdir(), "project-os-skills-")),
-      writeFile: (file, contents) => {
-        mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-        writeFileSync(file, contents, { mode: 0o600 });
+      skills: {
+        fetchArchive: async (url, secret) => {
+          const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+          logger.debug("skills: archive response", { status: res.status });
+          // 204: the ticket has no skills.
+          return res.status === 200
+            ? {
+                set: decodeURIComponent(res.headers.get(TASK_TYPE_HEADER) ?? ""),
+                zip: new Uint8Array(await res.arrayBuffer()),
+              }
+            : undefined;
+        },
+        fetchTaskType: async (url, secret) => {
+          const res = await fetch(url, { headers: { authorization: `Bearer ${secret}` } });
+          logger.debug("task type: response", { status: res.status });
+          // 204: the ticket has no task type.
+          if (res.status !== 200) return undefined;
+          return decodeWorkerTaskType(await res.json());
+        },
+        // One private directory per session, removed when it ends.
+        makeDir: () => mkdtempSync(join(tmpdir(), "project-os-skills-")),
+        writeFile: (file, contents) => {
+          mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+          writeFileSync(file, contents, { mode: 0o600 });
+        },
+        removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
       },
-      removeDir: (dir) => rmSync(dir, { recursive: true, force: true }),
     },
-  }),
+  ),
   logger,
 });
 

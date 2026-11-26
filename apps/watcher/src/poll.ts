@@ -18,7 +18,7 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
   /** Tickets with a session under way, so a slow start isn't launched twice. */
   const inFlight = new Set<string>();
 
-  const start = (ticketId: string) => {
+  const start = (ticketId: string, assignedAt?: string | null) => {
     running++;
     inFlight.add(ticketId);
     const startedAt = Date.now();
@@ -31,7 +31,7 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
       if (failed) logger.warn(message, fields);
       else logger.info(message, fields);
     };
-    spawner.spawn(ticketId).then(
+    spawner.spawn(ticketId, assignedAt).then(
       (code) => done(`code=${code}`, code !== 0),
       (e) => done(`error=${errorMessage(e)}`, true),
     );
@@ -47,7 +47,9 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
       const out = (await client.callTool("ticket_list_assigned", {
         workerId: config.workerId,
         workerType: config.workerType,
-      })) as { tickets: ReadonlyArray<{ readonly id: string }> };
+      })) as {
+        tickets: ReadonlyArray<{ readonly id: string; readonly assignedAt?: string | null }>;
+      };
       const waiting = out.tickets.filter((t) => !inFlight.has(t.id));
       logger.debug(`poll: ${out.tickets.length} assigned, ${waiting.length} waiting`, {
         running,
@@ -55,7 +57,7 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
         ticketIds: out.tickets.map((t) => t.id),
       });
       for (const ticket of waiting.slice(0, Math.max(0, config.maxSessions - running))) {
-        start(ticket.id);
+        start(ticket.id, ticket.assignedAt);
       }
     } catch (e) {
       logger.error(`poll failed: ${errorMessage(e)}`);

@@ -13,7 +13,11 @@ export const ticketListInterval = (tickets: ReadonlyArray<{ status: TicketStatus
 
 /** A finished ticket stops changing, so its detail stops polling. */
 export const ticketDetailInterval = (ticket: { status: TicketStatus } | undefined) =>
-  ticket === undefined || isActive(ticket.status) ? LIVE_MS : false;
+  ticket?.status === "stopped"
+    ? SLOW_MS
+    : ticket === undefined || isActive(ticket.status)
+      ? LIVE_MS
+      : false;
 
 const ACTIVITY_BASE_MS = 2_000;
 const ACTIVITY_MAX_MS = 10_000;
