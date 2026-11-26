@@ -19,6 +19,7 @@
     "@opentelemetry/sdk-trace-base": "^2.12.0",
     "@project-os/agent-runtime": "workspace:*",
     "@project-os/auth": "workspace:*",
+    "@project-os/builtin-skills": "workspace:*",
     "@project-os/channel-discord": "workspace:*",
     "@project-os/channel-email": "workspace:*",
     "@project-os/config": "workspace:*",

@@ -585,6 +585,21 @@ Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentia
 | `SANDBOX_CREDENTIAL_PROXY`        | No       | `false`                          | `true`: sandboxes reach Google, GitHub and ClickUp through `/egress` and never hold the person's token ([proxy](#credential-proxy)) |
 | `SANDBOX_EGRESS_URL`              | No       | `SANDBOX_MCP_URL` with `/egress` | The credential proxy as the sandbox's cloud sees it. Needed when `SANDBOX_MCP_URL` doesn't end in `/mcp`                            |
 
+### Built-in skills over MCP (experimental)
+
+Off unless `EXPERIMENTAL_MCP_SKILLS=true`. When on, the Coordinator's `/mcp` also serves the skills Project OS ships about itself: `project-os-tickets` (the claim, progress, ask, attach and finish loop), `project-os-memory` (what to read and what is worth saving) and `project-os-accounts` (`user_token` and the credential proxy). They are written in the repo and bundled with the Coordinator, so there is nothing to configure, store or sync, and every worker sees the same text. They are separate from the **Task types** skills above, which still install on the Worker before a ticket starts.
+
+They are offered two ways, following the MCP [Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension) (SEP-2640):
+
+- As resources: `skill://<name>/SKILL.md`, listed by `skills/list` and `skills/get` with a SHA-256 digest and size for each file, and read with `resources/read`.
+- As tools: `skill_list` and `skill_read`, for agents that can't read MCP skill resources yet. The Worker prompt tells a Worker that has `skill_list` to read the skills before using the tools they cover.
+
+This is experimental: the names, the URI layout and the flag can change, and no worker agent loads MCP skills natively yet, so the tools are the path that works today.
+
+| Variable                  | Required | Default | Description                                                              |
+| ------------------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `EXPERIMENTAL_MCP_SKILLS` | No       | `false` | `true`: serve the built-in skills over `/mcp` (`skill_*` tools and `skill://` resources) |
+
 ### Skills
 
 Build task types on the dashboard's **Task types** page. The Coordinator uses a connected shared GitHub account first, then `SKILLS_GITHUB_TOKEN`, then anonymous access. With multiple shared accounts, it uses the oldest account whose token it can retrieve or refresh. Account ID breaks ties. Personal accounts are not used. Anonymous access has a limit of 60 requests an hour.

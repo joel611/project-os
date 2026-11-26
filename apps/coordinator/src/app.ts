@@ -28,6 +28,8 @@ export interface AppDeps {
    * `user_token` (`SANDBOX_CREDENTIAL_PROXY`).
    */
   readonly credentialProxy?: Omit<EgressDeps, "runtime">;
+  /** EXPERIMENTAL: serve built-in skills over MCP (`EXPERIMENTAL_MCP_SKILLS`). */
+  readonly experimentalMcpSkills?: boolean;
   /** Account linking (`/connect/*`). Omitted: not mounted. */
   readonly connect?: ConnectDeps;
   /** The Members page's data (`GET /members`), from the auth instance. Omitted: 501. */
@@ -102,7 +104,12 @@ export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps
   if (!deps.mcp) return withAssets;
   const proxy = deps.credentialProxy;
   const withMcp = withAssets
-    .use(mcpRoutes(deps.mcp, { credentialProxy: proxy !== undefined }))
+    .use(
+      mcpRoutes(deps.mcp, {
+        credentialProxy: proxy !== undefined,
+        ...(deps.experimentalMcpSkills && { experimentalSkills: true }),
+      }),
+    )
     .use(skillRoutes({ runtime: deps.mcp }))
     .use(runRoutes({ runtime: deps.mcp }));
   return proxy ? withMcp.use(egressRoutes({ ...proxy, runtime: deps.mcp })) : withMcp;
