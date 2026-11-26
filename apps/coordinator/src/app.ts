@@ -1,6 +1,6 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
-import { type Access, deny } from "./access.ts";
+import { type Access, deny, policyFor } from "./access.ts";
 import { type AssetDeps, assetRoutes } from "./assets/routes.ts";
 import { type AuthDeps, authRoutes } from "./auth/routes.ts";
 import { type ConnectDeps, connectRoutes } from "./connect/routes.ts";
@@ -9,6 +9,7 @@ import { httpRoutes, type HttpDeps } from "./http/routes.ts";
 import { mcpRoutes, type McpRuntime } from "./mcp/server.ts";
 import { runRoutes } from "./runs/routes.ts";
 import { skillRoutes } from "./skills/routes.ts";
+import { refuseNonWorker } from "./worker-access.ts";
 
 export interface AppDeps {
   /** Who is calling; every route but the public ones and /mcp is refused without someone. */
@@ -58,6 +59,9 @@ export const parseOrigins = (raw: string | undefined): ReadonlyArray<string> =>
  */
 export const createApp = (options: ConstructorParameters<typeof Elysia>[0], deps: AppDeps) => {
   const base = new Elysia(options).onBeforeHandle(async ({ request, route, set }) => {
+    if (policyFor(request.method, route) === "worker") {
+      return refuseNonWorker(deps.mcp, { request, route, set });
+    }
     const denied = await deny(deps.access, request, route);
     if (!denied) return;
     set.status = denied.status;
