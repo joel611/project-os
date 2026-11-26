@@ -15,6 +15,8 @@ const config: WatcherConfig = {
   secret: "s3cret",
   skills: true,
   runLog: true,
+  piAcp: false,
+  piAcpCommand: ["pi-acp"],
 };
 
 const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {

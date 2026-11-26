@@ -2,6 +2,7 @@ import { join, normalize, sep } from "node:path";
 import { SAFE_SKILL_SLUG, type WorkerTaskType, workerTicketUrl } from "@project-os/contracts";
 import { strFromU8, unzipSync } from "fflate";
 import { workerSessionStart } from "@project-os/system-prompts";
+import { type AcpProcess, runAcpSession } from "./acp-run.ts";
 import { AGENTS, type Agent, type InstalledSkills } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
 import { errorMessage, type Logger, silentLogger } from "./logger.ts";
@@ -49,7 +50,15 @@ export interface SkillsIo {
   readonly removeDir: (path: string) => void;
 }
 
+/** Starts a program whose stdin and stdout carry ACP; the Watcher's own stdio is not used. */
+export type SpawnAcp = (
+  cmd: string[],
+  options: { cwd: string; env: Record<string, string | undefined> },
+) => AcpProcess;
+
 export interface SpawnerIo {
+  /** Starts Pi's ACP program. Without it `config.piAcp` is ignored and Pi runs as a CLI. */
+  readonly spawnAcp?: SpawnAcp;
   readonly readFile: (path: string) => string | undefined;
   readonly writePrivate: (path: string, contents: string) => void;
   readonly env: Record<string, string | undefined>;
@@ -179,6 +188,43 @@ export const bunSpawner = (
           ...(ticketId && { ticketId }),
           ...(taskType && { taskType }),
         });
+        if (config.piAcp && agent.name === "pi" && io.spawnAcp) {
+          const at = () => (log?.now() ?? new Date()).toISOString();
+          const out = (text: string) => (log ? log.terminal.out(text) : process.stdout.write(text));
+          const err = (text: string) => (log ? log.terminal.err(text) : process.stderr.write(text));
+          const proc = io.spawnAcp([...config.piAcpCommand], {
+            cwd: config.cwd,
+            env: {
+              ...io.env,
+              ...(config.model && { PI_ACP_MODEL: config.model }),
+              ...(skills && {
+                PI_ACP_SKILL_PATHS: skills.slugs
+                  .map((slug) => join(skills.root, "skills", slug))
+                  .join(":"),
+              }),
+            },
+          });
+          const errors = readLines(proc.stderr, (line) => {
+            recorder?.push(outputEvent(line, at(), "stderr"));
+            err(`${line}\n`);
+          });
+          const exitCode = await runAcpSession({
+            process: proc,
+            cwd: config.cwd,
+            prompt,
+            mcpUrl: config.mcpUrl,
+            secret: config.secret,
+            now: at,
+            onEvent: (event) => {
+              recorder?.push(event);
+              const shown = terminalText(event);
+              if (shown !== undefined) out(`${shown}\n`);
+            },
+          });
+          await Promise.allSettled([errors]);
+          await recorder?.finish(exitCode);
+          return exitCode;
+        }
         const launch = agent.launch({
           config,
           prompt,

@@ -20,6 +20,8 @@ const config: WatcherConfig = {
   secret: "s3cret",
   skills: true,
   runLog: true,
+  piAcp: false,
+  piAcpCommand: ["pi-acp"],
 };
 const ctx = { config, prompt: "do it", configDir: "/cfg", home: "/home/me" };
 
