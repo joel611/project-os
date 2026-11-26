@@ -414,6 +414,15 @@ describe("tickets", () => {
     expect(sent[0]?.content).toContain("boom");
   });
 
+  it("audits a status change as the Operator who made it", async () => {
+    const { app } = setup();
+    const id = await createTicket(app);
+    await call(app, "POST", `/tickets/${id}/status`, { status: "cancelled" });
+    const log = await call(app, "GET", "/audit?kind=ticket");
+    const changed = log.body.entries.find((e: any) => e.action === "status_changed");
+    expect(changed).toMatchObject({ actorType: "person", actorId: "u-op", actorName: "Op" });
+  });
+
   it("409s on an invalid transition and 404s on unknown tickets", async () => {
     const { app } = setup();
     const id = await createTicket(app);

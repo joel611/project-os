@@ -2,6 +2,7 @@ import { ticketBlockedSummary, ticketCompletedReply } from "@project-os/system-p
 import { Effect } from "effect";
 import { AgentRuntime, ChannelGateway, TicketRepository } from "../ports/index.ts";
 import type { TicketStatus } from "../../domain/index.ts";
+import type { AuditActor } from "./audit.ts";
 import { actingAs, requesterOf, sharedUseClause } from "./connections.ts";
 import { ticketChannel } from "./prompts.ts";
 import { appendEvent, updateStatus } from "./tickets.ts";
@@ -96,6 +97,8 @@ export const updateStatusAndNotify = (input: {
   readonly error?: string;
   /** For `blocked`: what the Worker needs from the person, posted in the ticket's thread. */
   readonly reason?: string;
+  /** Who changed it, for the audit log. Default: the ticket's worker. */
+  readonly actor?: AuditActor;
 }) =>
   updateStatus(input).pipe(
     Effect.tap((ticket) =>

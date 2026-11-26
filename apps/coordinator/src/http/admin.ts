@@ -1,6 +1,7 @@
 import { ProjectSourceType, TICKET_STATUSES, TicketStatus } from "@project-os/contracts";
 import {
   addSource,
+  type AuditActor,
   updateProject as updateProjectUseCase,
   Clock,
   createProject as createProjectUseCase,
@@ -142,9 +143,14 @@ export const listProjectTickets = (projectId: string) =>
     return all.filter((t) => t.projectId === projectId);
   });
 
-export const changeStatusAndNotify = (ticketId: string, body: typeof UpdateStatusBody.Type) =>
+export const changeStatusAndNotify = (
+  ticketId: string,
+  body: typeof UpdateStatusBody.Type,
+  actor: AuditActor,
+) =>
   updateStatusAndNotify({
     ticketId,
+    actor,
     status: body.status,
     ...(body.error === undefined ? {} : { error: body.error }),
   });
