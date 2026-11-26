@@ -2,17 +2,23 @@
 
 project-os works like a control tower. Channels bring questions in, the Coordinator turns them into Tickets, Workers clear the Tickets, and only the Coordinator talks back. For the story behind it, see [Why project-os](why.md). For every component in depth, see the [technical architecture](reference/architecture.md).
 
-```
- Discord / Email                                         Dev's laptop
- ┌─────────────┐   inbound    ┌───────────────────┐   ┌──────────────┐
- │  Adapters   │ ───────────▶ │    Coordinator    │◀──│   Watcher    │
- │ (thin radar)│ ◀─────────── │   (the Tower)     │   │ polls, then  │
- └─────────────┘   replies    │ Project Memory    │   │ starts       │
-                              │ Tickets + MCP     │   │ Claude Code  │
-                              └───────────────────┘   └──────┬───────┘
-                                        ▲   MCP tools        │
-                                        └────────────────────┘
-                                   claim ticket → work it → write result
+```mermaid
+flowchart TB
+  accTitle: How project-os works
+  accDescr: Channel Adapters pass messages to the Coordinator, and a Watcher starts a Worker that works the ticket over MCP.
+
+  adapters["Channel Adapters<br/>Discord / Email"]
+  coordinator["Coordinator (the Tower)<br/>Project Memory · Tickets · MCP"]
+  subgraph laptop["Dev's laptop"]
+    watcher["Watcher"]
+    worker["Worker<br/>Claude Code"]
+  end
+
+  adapters -->|inbound| coordinator
+  coordinator -->|replies| adapters
+  watcher -->|polls| coordinator
+  watcher -->|starts| worker
+  worker -->|"MCP: claim, work, write result"| coordinator
 ```
 
 | Role                | Real-world analogy      | Responsibility                                               |

@@ -22,6 +22,15 @@ export default defineConfig({
   ignoreDeadLinks: false,
   markdown: {
     config: (md) => {
+      // ```mermaid fences render as diagrams (theme/Mermaid.vue).
+      const fence = md.renderer.rules.fence!;
+      md.renderer.rules.fence = (...args) => {
+        const [tokens, index] = args;
+        const token = tokens[index]!;
+        if (token.info.trim() !== "mermaid") return fence(...args);
+        return `<Mermaid code="${encodeURIComponent(token.content)}" />`;
+      };
+
       // Relative links that leave this folder go to the file on GitHub.
       md.core.ruler.push("repo-links", (state) => {
         const from = path.dirname(state.env.path ?? siteDir);
