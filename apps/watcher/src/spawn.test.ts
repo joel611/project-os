@@ -2,7 +2,7 @@ import { agent, methods, ndJsonStream } from "@agentclientprotocol/sdk";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
-import { bunSpawner, skillsUrl, type SkillsIo, type SpawnAcp, type SpawnerIo } from "./spawn.ts";
+import { bunSpawner, type SkillsIo, type SpawnAcp, type SpawnerIo } from "./spawn.ts";
 import { strToU8, zipSync } from "fflate";
 import { collectLogger } from "./logger.ts";
 import type { RunLogIo } from "./run-log.ts";

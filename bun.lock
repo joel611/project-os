@@ -284,7 +284,7 @@
       "name": "@project-os/pi-acp",
       "version": "0.0.0",
       "bin": {
-        "pi-acp": "./src/main.ts",
+        "pi-acp": "./src/main.bun.ts",
       },
       "dependencies": {
         "@agentclientprotocol/sdk": "2.12.0",
