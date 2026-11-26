@@ -4,6 +4,13 @@ import { Requester } from "./entities.ts";
 /** The Google scope that lets the Email Digest read a mailbox, and nothing more. */
 export const GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
+/** The mailbox choice that reads the whole inbox; any other value is a Gmail label id. */
+export const EMAIL_LABEL_ALL = "all";
+
+/** A Gmail label a person may limit the digest to. */
+export const EmailLabel = Schema.Struct({ id: Schema.String, name: Schema.String });
+export type EmailLabel = typeof EmailLabel.Type;
+
 const Timestamp = Schema.String;
 
 /** Where an email stands: waiting for a project, filed under one, or dropped by the person. */
@@ -55,6 +62,8 @@ export const MyEmail = Schema.Struct({
   /** Email indexing is set up on this Coordinator (Google client with the Gmail scope). */
   available: Schema.Boolean,
   enabled: Schema.Boolean,
+  /** What is read: `all` (the inbox) or one Gmail label id; null until the person has chosen. */
+  label: Schema.NullOr(Schema.String),
   /** The Gmail link is missing or lacks the read scope: `/connect google` again. */
   needsReconnect: Schema.Boolean,
   lastSyncAt: Schema.NullOr(Timestamp),
@@ -75,7 +84,12 @@ export const MyEmail = Schema.Struct({
 });
 export type MyEmail = typeof MyEmail.Type;
 
-export const SetMyEmailEnabled = Schema.Struct({ enabled: Schema.Boolean });
+export const SetMyEmailEnabled = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** Required to switch on: `all`, or a Gmail label id. Sent again, it changes the label. */
+  label: Schema.optionalKey(Schema.NonEmptyString),
+});
+export const EmailLabels = Schema.Array(EmailLabel);
 export const AssignEmail = Schema.Struct({
   /** A project id, or null to dismiss the email. */
   projectId: Schema.NullOr(Schema.NonEmptyString),

@@ -95,16 +95,29 @@ export const parseFrom = (value: string): { name: string | null; address: string
 const header = (payload: Part, name: string): string =>
   payload.headers?.find((h) => h.name.toLowerCase() === name)?.value ?? "";
 
+/** The label choice that reads the whole inbox (any other value is a Gmail label id). */
+export const ALL_MAIL = "all";
+
+export interface GmailLabel {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface GmailReader {
   /**
    * Without a cursor, reads nothing and returns the mailbox's present as the cursor. With one,
-   * returns the inbox mail added since, at most about `limit`, and a cursor just past it.
+   * returns the mail added since, at most about `limit`, and a cursor just past it. `label` is
+   * `all` (the inbox) or one Gmail label id: only mail with that label is read, whether it
+   * arrived with it or got it later.
    */
   readonly sync: (input: {
     readonly token: string;
+    readonly label: string;
     readonly cursor: string | null;
     readonly limit: number;
   }) => Promise<{ readonly messages: ReadonlyArray<GmailMessage>; readonly cursor: string }>;
+  /** The person's own labels, plus Starred and Important, by name. */
+  readonly labels: (token: string) => Promise<ReadonlyArray<GmailLabel>>;
 }
 
 export const createGmailReader = (
@@ -132,8 +145,20 @@ export const createGmailReader = (
   };
 
   return {
-    sync: async ({ token, cursor, limit }) => {
+    labels: async (token) => {
+      const body = await get<{
+        labels?: ReadonlyArray<{ id: string; name: string; type?: string }>;
+      }>(token, "/labels");
+      return (body?.labels ?? [])
+        .filter((l) => l.type === "user" || l.id === "STARRED" || l.id === "IMPORTANT")
+        .map((l) => ({ id: l.id, name: l.type === "user" ? l.name : l.name.toLowerCase() }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    sync: async ({ token, label, cursor, limit }) => {
       if (cursor === null) return { messages: [], cursor: await profile(token) };
+      const all = label === ALL_MAIL;
+      // Mail the person chose by label is read even if Gmail would file it under Promotions.
+      const skipped = new Set([...SKIPPED_LABELS].filter((l) => l !== label));
 
       const ids: string[] = [];
       let next = cursor;
@@ -143,14 +168,20 @@ export const createGmailReader = (
         const query = new URLSearchParams({
           startHistoryId: cursor,
           historyTypes: "messageAdded",
-          labelId: "INBOX",
+          labelId: all ? "INBOX" : label,
           maxResults: "100",
           ...(page ? { pageToken: page } : {}),
         });
+        // A label put on mail after it arrived (a filter, or by hand) is news too.
+        if (!all) query.append("historyTypes", "labelAdded");
         const body = await get<{
           history?: ReadonlyArray<{
             id: string;
             messagesAdded?: ReadonlyArray<{ message: { id: string } }>;
+            labelsAdded?: ReadonlyArray<{
+              message: { id: string };
+              labelIds?: ReadonlyArray<string>;
+            }>;
           }>;
           nextPageToken?: string;
           historyId?: string;
@@ -164,6 +195,11 @@ export const createGmailReader = (
           }
           for (const added of record.messagesAdded ?? []) {
             if (!ids.includes(added.message.id)) ids.push(added.message.id);
+          }
+          for (const added of record.labelsAdded ?? []) {
+            if (added.labelIds?.includes(label) && !ids.includes(added.message.id)) {
+              ids.push(added.message.id);
+            }
           }
           next = record.id;
         }
@@ -179,7 +215,9 @@ export const createGmailReader = (
         const message = await get<FullMessage>(token, `/messages/${id}?format=full`);
         // Deleted since it arrived.
         if (!message?.payload) continue;
-        if (message.labelIds?.some((l) => SKIPPED_LABELS.has(l))) continue;
+        if (message.labelIds?.some((l) => skipped.has(l))) continue;
+        // Labelled mail that has since lost the label is not what the person chose.
+        if (!all && !message.labelIds?.includes(label)) continue;
         const from = parseFrom(header(message.payload, "from"));
         messages.push({
           messageId: message.id,

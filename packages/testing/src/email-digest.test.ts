@@ -7,6 +7,7 @@ import {
   EmailRepository,
   KeyValueStore,
   getMyEmail,
+  listEmailLabels,
   MemoryRepository,
   type MailMessage,
   type Project,
@@ -41,7 +42,9 @@ const project = (over: Partial<Project> = {}): Project => ({
   ...over,
 });
 
-const mail = (over: Partial<MailMessage> = {}): MailMessage => ({
+const mail = (
+  over: Partial<MailMessage> & { readonly labels?: ReadonlyArray<string> } = {},
+): MailMessage & { readonly labels?: ReadonlyArray<string> } => ({
   messageId: "g1",
   threadId: "t1",
   fromName: "Dana",
@@ -71,7 +74,7 @@ describe("syncMailboxes", () => {
     const t = setup();
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         t.emailSource.deliver(ada, mail());
         const first = yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         const second = yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -106,7 +109,7 @@ describe("syncMailboxes", () => {
     const t = setup({ emailConfidence: 0.6 });
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(ada, mail());
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -137,7 +140,7 @@ describe("syncMailboxes", () => {
     const t = setup();
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         // Matches no project name: the classifier is unsure.
         t.emailSource.deliver(
@@ -166,7 +169,7 @@ describe("syncMailboxes", () => {
     const classifierDown = setup({ failEmailClassify: "model down" });
     const a = await classifierDown.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         classifierDown.emailSource.deliver(ada, mail(), mail());
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -179,7 +182,7 @@ describe("syncMailboxes", () => {
     const digestDown = setup({ failDigest: "boom" });
     const b = await digestDown.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         digestDown.emailSource.deliver(ada, mail());
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -196,7 +199,7 @@ describe("syncMailboxes", () => {
     const t = makeTestLayer({ now: NOW });
     const out = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(ada, mail());
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -213,14 +216,14 @@ describe("syncMailboxes", () => {
     const t = setup();
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         t.emailSource.fail({ message: "no gmail scope", reconnect: true });
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         const flagged = yield* getMyEmail(ada, true);
         t.emailSource.fail({ message: "should not be called", reconnect: false });
         const skipped = yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.fail(undefined);
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         const retried = yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         return { flagged, skipped, retried, after: yield* getMyEmail(ada, true) };
       }),
@@ -236,7 +239,7 @@ describe("syncMailboxes", () => {
     const t = setup();
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         t.emailSource.fail({ message: "gmail 503", reconnect: false });
         const run = yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         return { run, mine: yield* getMyEmail(ada, true) };
@@ -250,7 +253,7 @@ describe("syncMailboxes", () => {
     const t = setup({ emailConfidence: 0.5 });
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(
           ada,
@@ -272,7 +275,7 @@ describe("syncMailboxes", () => {
     const t2 = setup({ emailConfidence: 0.5 });
     const gone = await t2.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t2.emailSource.deliver(ada, mail({ receivedAt: ago(40 * 24 * 60) }));
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -289,7 +292,7 @@ describe("syncMailboxes edge cases", () => {
     const t = setup();
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(ada, mail({ fromName: null }));
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -311,7 +314,7 @@ describe("long emails", () => {
     const t = setup({ emailConfidence: 0.5 });
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(
           ada,
@@ -337,7 +340,7 @@ describe("a classifier that names a project that is gone", () => {
     });
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(ada, mail());
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -353,7 +356,7 @@ describe("assignEmail", () => {
     const t = setup({ emailConfidence: 0.5 });
     const out = await t.run(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
         t.emailSource.deliver(ada, mail());
         yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
@@ -375,6 +378,96 @@ describe("assignEmail", () => {
   });
 });
 
+describe("the label a mailbox reads", () => {
+  it("needs a label to switch on, reuses it when switched back on, and can change it", async () => {
+    const t = setup();
+    const out = await t.run(
+      Effect.gen(function* () {
+        const refused = yield* Effect.flip(setMailboxEnabled(ada, true));
+        const off = yield* getMyEmail(ada, true);
+        yield* setMailboxEnabled(ada, true, "Label_1");
+        const on = yield* getMyEmail(ada, true);
+        yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
+        // Turned off and on again without saying: the label it had.
+        yield* setMailboxEnabled(ada, false);
+        yield* setMailboxEnabled(ada, true);
+        const again = yield* getMyEmail(ada, true);
+        // Changing it while on keeps the cursor: nothing is read twice or skipped.
+        const repo = yield* EmailRepository;
+        yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
+        const before = yield* repo.mailbox(ada);
+        yield* setMailboxEnabled(ada, true, "all");
+        const after = yield* repo.mailbox(ada);
+        return {
+          refused,
+          off,
+          on,
+          again,
+          kept: after!.cursor !== null && after!.cursor === before!.cursor,
+          label: after!.label,
+        };
+      }),
+    );
+    expect(out.refused._tag).toBe("EmailLabelRequired");
+    expect(out.off).toMatchObject({ enabled: false, label: null });
+    expect(out.on).toMatchObject({ enabled: true, label: "Label_1" });
+    expect(out.again).toMatchObject({ enabled: true, label: "Label_1" });
+    expect(out.kept).toBe(true);
+    expect(out.label).toBe("all");
+  });
+
+  it("reads only mail with the chosen label, and nothing for a mailbox with no label yet", async () => {
+    const t = setup();
+    const out = await t.run(
+      Effect.gen(function* () {
+        const repo = yield* EmailRepository;
+        // A mailbox switched on before labels existed: on, but no label.
+        yield* repo.saveMailbox({
+          owner: ada,
+          enabled: true,
+          label: null,
+          cursor: "old",
+          lastSyncAt: null,
+          needsReconnect: false,
+        });
+        const skipped = yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
+        // Choosing a label starts from now, not from the old cursor.
+        yield* setMailboxEnabled(ada, true, "Label_1");
+        const restarted = (yield* repo.mailbox(ada))!.cursor;
+        yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
+        t.emailSource.deliver(
+          ada,
+          mail({ messageId: "in", labels: ["INBOX", "Label_1"] }),
+          mail({ messageId: "out", labels: ["INBOX"] }),
+        );
+        yield* syncMailboxes(DEFAULT_EMAIL_DIGEST);
+        return {
+          skipped,
+          restarted,
+          syncs: t.emailSource.syncs,
+          filed: (yield* (yield* MemoryRepository).list("p1")).length,
+          waiting: (yield* getMyEmail(ada, true)).unassigned.length,
+        };
+      }),
+    );
+    expect(out.skipped).toEqual({ mailboxes: 0, emails: 0 });
+    expect(out.restarted).toBeNull();
+    expect(out.syncs.every((s) => s.label === "Label_1")).toBe(true);
+    // Only the labelled one was read; the other never left the mailbox.
+    expect(out.filed + out.waiting).toBe(1);
+  });
+
+  it("lists the labels a person may pick from", async () => {
+    const t = setup();
+    t.emailSource.setLabels([{ id: "Label_1", name: "Clients" }]);
+    const labels = await t.run(listEmailLabels(ada));
+    expect(labels).toEqual([{ id: "Label_1", name: "Clients" }]);
+    t.emailSource.fail({ message: "down", reconnect: false });
+    const failed = await t.run(Effect.flip(listEmailLabels(ada)));
+    expect(failed.message).toBe("down");
+  });
+});
+
 describe("getMyEmail", () => {
   it("shows an off, empty mailbox for someone who never switched it on", async () => {
     const t = setup();
@@ -382,6 +475,7 @@ describe("getMyEmail", () => {
     expect(mine).toEqual({
       available: false,
       enabled: false,
+      label: null,
       needsReconnect: false,
       lastSyncAt: null,
       projects: [
