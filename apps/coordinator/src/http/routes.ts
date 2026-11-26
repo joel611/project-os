@@ -52,6 +52,7 @@ import {
   listTicketAttachments,
   readActivity,
   reassignTicketTo,
+  changeTicketStatus,
   redeemWorkerRegistration,
   workerLabel,
   type AgentRuntime,
@@ -91,7 +92,6 @@ import {
   CreateTaskTypeBody,
   UpdateTaskTypeBody,
   UpdateSkillsBody,
-  changeStatusAndNotify,
   CreateProjectBody,
   createProject,
   CreateSourceBody,
@@ -728,10 +728,10 @@ export const httpRoutes = ({
         toResult(
           decode(UpdateStatusBody, body).pipe(
             Effect.flatMap((update) =>
-              changeStatusAndNotify(params.id, update, {
-                type: "person",
-                id: caller.userId,
-                name: caller.name,
+              changeTicketStatus({
+                ...update,
+                ticketId: params.id,
+                by: { type: "person", id: caller.userId, name: caller.name },
               }),
             ),
           ),

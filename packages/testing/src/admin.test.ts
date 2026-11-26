@@ -7,11 +7,10 @@ import {
   createProject,
   createProjectWithChannel,
   handleInbound,
-  notifyTicket,
   ProjectSourceRepository,
   setDefaultChannel,
   TicketRepository,
-  updateStatusAndNotify,
+  changeTicketStatus,
   type Ticket,
 } from "@project-os/core";
 import type { InboundMessage } from "@project-os/contracts";
@@ -198,7 +197,7 @@ describe("setDefaultChannel", () => {
   });
 });
 
-describe("updateStatusAndNotify", () => {
+describe("changeTicketStatus", () => {
   const ticket = (projectId: string): Ticket => ({
     id: "t1",
     projectId,
@@ -235,7 +234,11 @@ describe("updateStatusAndNotify", () => {
     const r = run(
       Effect.gen(function* () {
         yield* setup;
-        return yield* updateStatusAndNotify({ ticketId: "t1", status: "completed" });
+        return yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "completed",
+        });
       }),
     );
     expect((await r.result).status).toBe("completed");
@@ -246,7 +249,11 @@ describe("updateStatusAndNotify", () => {
     const r = run(
       Effect.gen(function* () {
         yield* setup;
-        return yield* updateStatusAndNotify({ ticketId: "t1", status: "blocked" });
+        return yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "blocked",
+        });
       }),
     );
     expect((await r.result).status).toBe("blocked");
@@ -273,7 +280,11 @@ describe("updateStatusAndNotify", () => {
           body: "also this",
           payload: { sender: { id: "u-bob", name: "Bob" }, channelType: "discord" },
         });
-        yield* updateStatusAndNotify({ ticketId: "t1", status: "blocked" });
+        yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "blocked",
+        });
       }),
     );
     await r.result;
@@ -297,7 +308,14 @@ describe("updateStatusAndNotify", () => {
         });
         yield* (yield* TicketRepository).insert({ ...ticket(project.id), ...ticketOver });
       }).pipe(
-        Effect.andThen(updateStatusAndNotify({ ticketId: "t1", status: "blocked", ...input })),
+        Effect.andThen(
+          changeTicketStatus({
+            by: { type: "worker", id: "w1" },
+            ticketId: "t1",
+            status: "blocked",
+            ...input,
+          }),
+        ),
       );
     const failing = Effect.fail(new AgentRuntimeError({ message: "model down" }));
 
@@ -393,7 +411,12 @@ describe("updateStatusAndNotify", () => {
             actor: "worker",
             body: "not a status",
           });
-          yield* updateStatusAndNotify({ ticketId: "t1", status: "blocked", reason: "   " });
+          yield* changeTicketStatus({
+            by: { type: "worker", id: "w1" },
+            ticketId: "t1",
+            status: "blocked",
+            reason: "   ",
+          });
         }).pipe(summarizing(() => failing)),
       );
       await r.result;
@@ -402,7 +425,7 @@ describe("updateStatusAndNotify", () => {
       );
     });
 
-    it("records the reason with no actor id when the ticket has no worker", async () => {
+    it("records the reason under the actor given, not the ticket's worker", async () => {
       const r = run(
         Effect.gen(function* () {
           yield* block({ reason: "Need help." }, { workerId: null });
@@ -410,7 +433,7 @@ describe("updateStatusAndNotify", () => {
         }).pipe(summarizing(() => failing)),
       );
       const { events } = await r.result;
-      expect(events.at(-1)).toMatchObject({ actor: "worker", actorId: null, body: "Need help." });
+      expect(events.at(-1)).toMatchObject({ actor: "worker", actorId: "w1", body: "Need help." });
     });
   });
 
@@ -418,7 +441,12 @@ describe("updateStatusAndNotify", () => {
     const r = run(
       Effect.gen(function* () {
         yield* setup;
-        return yield* updateStatusAndNotify({ ticketId: "t1", status: "failed", error: "boom" });
+        return yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "failed",
+          error: "boom",
+        });
       }),
     );
     expect((await r.result).status).toBe("failed");
@@ -430,7 +458,11 @@ describe("updateStatusAndNotify", () => {
     const r = run(
       Effect.gen(function* () {
         yield* setup;
-        return yield* updateStatusAndNotify({ ticketId: "t1", status: "failed" });
+        return yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "failed",
+        });
       }),
     );
     expect((await r.result).status).toBe("failed");
@@ -442,16 +474,28 @@ describe("updateStatusAndNotify", () => {
       Effect.gen(function* () {
         const project = yield* createProject({ orgId: "o1", name: "Acme" });
         yield* (yield* TicketRepository).insert(ticket(project.id));
-        return yield* notifyTicket("t1", "hello");
+        return yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "failed",
+        });
       }),
     );
-    expect(await r.result).toBe(false);
+    expect((await r.result).status).toBe("failed");
     expect(r.sent).toHaveLength(0);
   });
 
-  it("swallows a notice for a ticket that does not exist", async () => {
-    const r = run(notifyTicket("missing", "hello"));
-    expect(await r.result).toBe(false);
+  it("sends nothing for a ticket that does not exist", async () => {
+    const r = run(
+      Effect.flip(
+        changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "missing",
+          status: "failed",
+        }),
+      ),
+    );
+    expect((await r.result)._tag).toBe("TicketNotFound");
     expect(r.sent).toHaveLength(0);
   });
 
@@ -459,7 +503,12 @@ describe("updateStatusAndNotify", () => {
     const t = await run(
       Effect.gen(function* () {
         yield* setup;
-        return yield* updateStatusAndNotify({ ticketId: "t1", status: "failed", error: "boom" });
+        return yield* changeTicketStatus({
+          by: { type: "worker", id: "w1" },
+          ticketId: "t1",
+          status: "failed",
+          error: "boom",
+        });
       }),
     ).result;
     expect(t).toMatchObject({ status: "failed", error: "boom" });

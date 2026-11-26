@@ -1,7 +1,6 @@
 import { ProjectSourceType, TICKET_STATUSES, TicketStatus } from "@project-os/contracts";
 import {
   addSource,
-  type AuditActor,
   updateProject as updateProjectUseCase,
   Clock,
   createProject as createProjectUseCase,
@@ -11,7 +10,6 @@ import {
   removeSource,
   TicketRepository,
   updateSource,
-  updateStatusAndNotify,
   WorkerRepository,
   workerStatus,
 } from "@project-os/core";
@@ -141,16 +139,4 @@ export const listProjectTickets = (projectId: string) =>
     yield* (yield* ProjectRepository).get(projectId);
     const all = yield* (yield* TicketRepository).listByStatus(TICKET_STATUSES);
     return all.filter((t) => t.projectId === projectId);
-  });
-
-export const changeStatusAndNotify = (
-  ticketId: string,
-  body: typeof UpdateStatusBody.Type,
-  actor: AuditActor,
-) =>
-  updateStatusAndNotify({
-    ticketId,
-    actor,
-    status: body.status,
-    ...(body.error === undefined ? {} : { error: body.error }),
   });

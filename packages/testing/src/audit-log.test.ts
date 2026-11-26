@@ -20,7 +20,7 @@ import {
   stripMentions,
   unregisterSharedWorker,
   unregisterWorker,
-  updateStatus,
+  changeTicketStatus,
   type Person,
   type Project,
 } from "@project-os/core";
@@ -194,8 +194,13 @@ describe("ticket events", () => {
           {},
         );
         const ticketId = (outcome as any).ticket.id as string;
-        yield* claimTicketUseCase({ ticketId, workerId: (outcome as any).ticket.workerId });
-        yield* updateStatus({ ticketId, status: "completed" });
+        const workerId = (outcome as any).ticket.workerId as string;
+        yield* claimTicketUseCase({ ticketId, workerId });
+        yield* changeTicketStatus({
+          ticketId,
+          status: "completed",
+          by: { type: "worker", id: workerId },
+        });
         return (yield* readAudit({ kind: "ticket" })).entries;
       }),
       { classifier: "new_request", pool: true },
@@ -210,17 +215,27 @@ describe("ticket events", () => {
     expect(out.every((e) => e.projectId === "p1" && e.ticketId !== null)).toBe(true);
   });
 
-  it("logs the Coordinator as the actor of a status change on a ticket with no worker", async () => {
+  it("logs the actor given for a status change, even on a ticket with no worker", async () => {
     const out = await run(
       Effect.gen(function* () {
         const outcome = yield* handleInbound(inbound({ mentionsBot: true }), {});
         const ticketId = (outcome as any).ticket.id as string;
-        yield* updateStatus({ ticketId, status: "cancelled", error: "nope" });
+        yield* changeTicketStatus({
+          ticketId,
+          status: "cancelled",
+          error: "nope",
+          by: { type: "person", id: "u-op", name: "Op" },
+        });
         return (yield* readAudit({ kind: "ticket" })).entries[0]!;
       }),
       { classifier: "new_request" },
     );
-    expect(out).toMatchObject({ actorType: "coordinator", payload: { error: "nope" } });
+    expect(out).toMatchObject({
+      actorType: "person",
+      actorId: "u-op",
+      actorName: "Op",
+      payload: { error: "nope" },
+    });
   });
 });
 

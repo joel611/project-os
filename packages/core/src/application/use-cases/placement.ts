@@ -11,7 +11,6 @@ import {
 import {
   Clock,
   type Executor,
-  IdGenerator,
   type Person,
   TicketRepository,
   WorkerLauncher,
@@ -26,7 +25,14 @@ import {
 } from "./sandbox-credentials.ts";
 import { SIDEKICK_WORKER_ID } from "./sidekick.ts";
 import { taskTypeOf } from "./skills.ts";
-import { auditTicket, COORDINATOR } from "./audit.ts";
+import { COORDINATOR } from "./audit.ts";
+import {
+  assignTicket,
+  claimTicketUseCase,
+  recordPlacement,
+  recordQueued,
+  releaseTicket,
+} from "./ticket-lifecycle.ts";
 
 /** A registered device counts as online if it heartbeat within this window, unless told otherwise. */
 export const DEFAULT_WORKER_STALE_MS = 15 * 60 * 1000;
@@ -42,12 +48,6 @@ export interface PlacementRouting {
    */
   readonly sharedWorkerMaxTickets?: number;
 }
-
-/** Payload `kind` of the system event that marks a ticket as waiting for a worker. */
-export const QUEUED_EVENT_KIND = "queued";
-
-export const QUEUED_MESSAGE =
-  "No worker is free for this right now, so it's queued. It starts as soon as one has room.";
 
 export interface PlaceRequest {
   /** An `open` ticket with no worker. */
@@ -193,36 +193,12 @@ const pickTarget = (request: PlaceRequest) =>
 export const placeOrQueue = (request: PlaceRequest) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
-    const ids = yield* IdGenerator;
     const { ticketId, at } = request;
-
-    const assignedEvent = (body: string, payload: unknown) =>
-      Effect.flatMap(ids.next, (id) =>
-        tickets.appendEvent({
-          id,
-          ticketId,
-          type: "assigned",
-          actor: "coordinator",
-          actorId: null,
-          body,
-          payload,
-          createdAt: at,
-        }),
-      );
 
     const queued = (reason: string) =>
       Effect.gen(function* () {
         if (request.alreadyQueued !== true) {
-          yield* tickets.appendEvent({
-            id: yield* ids.next,
-            ticketId,
-            type: "system",
-            actor: "coordinator",
-            actorId: null,
-            body: `Queued: ${reason}`,
-            payload: { kind: QUEUED_EVENT_KIND },
-            createdAt: at,
-          });
+          yield* recordQueued({ ticketId, reason, at });
         }
         return {
           kind: "queued",
@@ -236,8 +212,7 @@ export const placeOrQueue = (request: PlaceRequest) =>
      */
     const giveBack = (id: string, workerId: string, reason: string) =>
       Effect.logWarning(`ticket ${id} goes back to the queue: ${reason}`).pipe(
-        Effect.andThen(tickets.release(id, workerId, at)),
-        Effect.tap((released) => auditTicket(released, "released", COORDINATOR, { reason, at })),
+        Effect.andThen(releaseTicket({ ticketId: id, workerId, reason, by: COORDINATOR, at })),
         Effect.as(true),
         Effect.catchTag("InvalidTransition", () =>
           Effect.map(tickets.get(id), (current) => current.status === "open"),
@@ -246,19 +221,23 @@ export const placeOrQueue = (request: PlaceRequest) =>
       );
 
     if (request.executor === "sidekick") {
-      const toSidekick = yield* tickets.assign(
+      yield* assignTicket({
         ticketId,
-        { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
-        at,
-      );
-      yield* auditTicket(toSidekick, "assigned", COORDINATOR, { from: "open", at });
-      yield* assignedEvent("Assigned to the Sidekick", {
         workerType: "sidekick",
         workerId: SIDEKICK_WORKER_ID,
+        by: COORDINATOR,
+        at,
+      });
+      yield* recordPlacement({
+        ticketId,
+        body: "Assigned to the Sidekick",
+        payload: { workerType: "sidekick", workerId: SIDEKICK_WORKER_ID },
+        at,
       });
       // Just assigned to this id in this turn, so a conflict is a bug, not a state to report.
-      const claimed = yield* Effect.orDie(tickets.claim(ticketId, SIDEKICK_WORKER_ID, at));
-      yield* auditTicket(claimed, "claimed", { type: "worker", id: SIDEKICK_WORKER_ID }, { at });
+      const claimed = yield* Effect.orDie(
+        claimTicketUseCase({ ticketId, workerId: SIDEKICK_WORKER_ID, at }),
+      );
       return {
         kind: "placed",
         ticket: claimed,
@@ -270,8 +249,7 @@ export const placeOrQueue = (request: PlaceRequest) =>
     if (!target) return yield* queued("no worker is free");
 
     const { workerType, workerId } = target;
-    const assigned = yield* tickets.assign(ticketId, { workerType, workerId }, at);
-    yield* auditTicket(assigned, "assigned", COORDINATOR, { from: "open", at });
+    const assigned = yield* assignTicket({ ticketId, workerType, workerId, by: COORDINATOR, at });
 
     if (target.slot) {
       const { slot } = target;
@@ -312,11 +290,11 @@ export const placeOrQueue = (request: PlaceRequest) =>
       }
     }
 
-    yield* assignedEvent(target.body, {
-      workerType,
-      workerId,
-      personal: target.kind === "personal",
-      kind: target.kind,
+    yield* recordPlacement({
+      ticketId,
+      body: target.body,
+      payload: { workerType, workerId, personal: target.kind === "personal", kind: target.kind },
+      at,
     });
     return { kind: "placed", ticket: assigned, workerId } satisfies Placement as Placement;
   });

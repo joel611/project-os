@@ -13,7 +13,7 @@ import {
   IdGenerator,
   TicketRepository,
 } from "../ports/index.ts";
-import { ticketChannel } from "./prompts.ts";
+import { ticketChannel } from "./channels.ts";
 import { appendEvent } from "./tickets.ts";
 
 /** Where a message with files lives, so its fresh download links can be fetched again later. */

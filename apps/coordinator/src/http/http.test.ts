@@ -383,7 +383,7 @@ describe("tickets", () => {
     return res.body.ticket.id as string;
   };
 
-  it("completing a ticket runs onTicketCompleted and replies in the ticket's thread", async () => {
+  it("completing a ticket composes the reply and posts it in the ticket's thread", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
     sent.length = 0;

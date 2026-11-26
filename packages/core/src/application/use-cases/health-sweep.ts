@@ -1,17 +1,17 @@
 import type { TicketEvent } from "@project-os/contracts";
 import { Effect } from "effect";
 import { workerStatus, type Ticket } from "../../domain/index.ts";
-import { Clock, IdGenerator, TicketRepository, WorkerRepository } from "../ports/index.ts";
-import { notifyTicket } from "./on-ticket-completed.ts";
+import { Clock, TicketRepository, WorkerRepository } from "../ports/index.ts";
+import {
+  askWorkerForStatus,
+  failDeadTicket,
+  flagStalledAssignment,
+  STALLED_EVENT_KIND,
+  STATUS_ASKED_EVENT_KIND,
+} from "./ticket-lifecycle.ts";
 import { placeOrQueue } from "./placement.ts";
 import { DEFAULT_RUN_RETENTION_MS, pruneRuns } from "./runs.ts";
-import {
-  auditTicket,
-  auditWorker,
-  COORDINATOR,
-  DEFAULT_AUDIT_RETENTION_MS,
-  pruneAudit,
-} from "./audit.ts";
+import { auditWorker, COORDINATOR, DEFAULT_AUDIT_RETENTION_MS, pruneAudit } from "./audit.ts";
 
 /** Thresholds in milliseconds (apps/site/reference/architecture.md §5.5). */
 export interface HealthThresholds {
@@ -37,10 +37,8 @@ export type HealthAction =
   | { readonly kind: "follow_up"; readonly ticketId: string }
   | { readonly kind: "failed"; readonly ticketId: string; readonly reason: string };
 
-const KIND_FLAGGED = "health_assignment_flagged";
 /** How far past the stale threshold a silent worker is still logged as going offline. */
 const OUTAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const KIND_FOLLOW_UP = "health_follow_up";
 
 const payloadOf = (event: TicketEvent): { kind?: unknown; idleSince?: string } =>
   typeof event.payload === "object" && event.payload !== null ? event.payload : {};
@@ -62,7 +60,6 @@ export const healthSweep = (thresholds: HealthThresholds) =>
   Effect.gen(function* () {
     const tickets = yield* TicketRepository;
     const workers = yield* WorkerRepository;
-    const ids = yield* IdGenerator;
     const now = yield* Effect.flatMap(Clock, (c) => c.now);
     const at = now.toISOString();
 
@@ -96,25 +93,6 @@ export const healthSweep = (thresholds: HealthThresholds) =>
     const isOffline = (t: Ticket) => t.workerId !== null && offlineWorkers.has(t.workerId);
     const ageMs = (iso: string) => now.getTime() - Date.parse(iso);
 
-    const systemEvent = (
-      ticketId: string,
-      type: "system" | "follow_up",
-      body: string,
-      payload: unknown,
-    ) =>
-      Effect.flatMap(ids.next, (id) =>
-        tickets.appendEvent({
-          id,
-          ticketId,
-          type,
-          actor: "system",
-          actorId: null,
-          body,
-          payload,
-          createdAt: at,
-        }),
-      );
-
     const sweepQueued = (t: Ticket) =>
       Effect.gen(function* () {
         if (t.requester === null) return [];
@@ -135,23 +113,11 @@ export const healthSweep = (thresholds: HealthThresholds) =>
         const offline = isOffline(t);
         if (!offline && ageMs(since) < thresholds.unpickedMs) return [];
         const events = yield* tickets.listEvents(t.id);
-        if (events.some((e) => payloadOf(e).kind === KIND_FLAGGED && e.createdAt >= since)) {
+        if (events.some((e) => payloadOf(e).kind === STALLED_EVENT_KIND && e.createdAt >= since)) {
           return [];
         }
         const reason = offline ? "worker offline" : "not picked up in time";
-        yield* systemEvent(
-          t.id,
-          "system",
-          `Assignment stalled: ${reason}. Needs admin attention.`,
-          {
-            kind: KIND_FLAGGED,
-            reason,
-          },
-        );
-        yield* notifyTicket(
-          t.id,
-          `Ticket "${t.title}" hasn't been picked up yet (${reason}). It is flagged as stalled.`,
-        );
+        yield* flagStalledAssignment({ ticket: t, reason, at });
         return [{ kind: "assignment_flagged", ticketId: t.id, reason } as const];
       });
 
@@ -162,7 +128,7 @@ export const healthSweep = (thresholds: HealthThresholds) =>
         // Our own follow_up bumps lastActivityAt; look through it to the real last activity.
         const idleSince =
           last !== undefined &&
-          payloadOf(last).kind === KIND_FOLLOW_UP &&
+          payloadOf(last).kind === STATUS_ASKED_EVENT_KIND &&
           last.createdAt === t.lastActivityAt
             ? payloadOf(last).idleSince
             : undefined;
@@ -172,18 +138,11 @@ export const healthSweep = (thresholds: HealthThresholds) =>
         const offline = isOffline(t);
         if (offline || idle >= thresholds.inactivityFailMs) {
           const reason = offline ? "worker offline" : "no activity";
-          const error = `Failed by health sweep: ${reason}`;
-          yield* systemEvent(t.id, "system", error, { kind: "health_failed", reason });
-          const failed = yield* tickets.updateStatus(t.id, "failed", at, { error });
-          yield* auditTicket(failed, "status_changed", COORDINATOR, { from: t.status, reason, at });
-          yield* notifyTicket(t.id, `Ticket "${t.title}" failed: ${reason}.`);
+          yield* failDeadTicket({ ticketId: t.id, reason, by: COORDINATOR, at });
           return [{ kind: "failed", ticketId: t.id, reason } as const];
         }
         if (idle >= thresholds.followUpMs && !followedUp) {
-          yield* systemEvent(t.id, "follow_up", "Status?", {
-            kind: KIND_FOLLOW_UP,
-            idleSince: t.lastActivityAt,
-          });
+          yield* askWorkerForStatus({ ticketId: t.id, idleSince: t.lastActivityAt, at });
           return [{ kind: "follow_up", ticketId: t.id } as const];
         }
         return [];
