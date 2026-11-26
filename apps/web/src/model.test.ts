@@ -47,11 +47,12 @@ const ticket = (id: string, status: Ticket["status"], lastActivityAt: string): T
 });
 
 describe("STATUS", () => {
-  it("marks exactly completed, failed, and cancelled as terminal", () => {
+  it("marks completed, failed, cancelled, and stopped as terminal", () => {
     expect(TICKET_STATUSES.filter((s) => STATUS[s].terminal)).toEqual([
       "completed",
       "failed",
       "cancelled",
+      "stopped",
     ]);
   });
 });

@@ -131,8 +131,12 @@ export const makeTicketRepository = (db: SqliteDb): Impl => {
               ),
         ),
       ),
-    reopen: (ticketId, at) =>
+    reopen: (ticketId, at, expected) =>
       find(ticketId).pipe(
+        Effect.filterOrFail(
+          (t) => expected === undefined || t.status === expected,
+          (t) => new InvalidTransition({ ticketId, from: t.status, to: "open" }),
+        ),
         Effect.flatMap((current) =>
           reopenTicket(current, at).pipe(
             Effect.flatMap((next) =>

@@ -492,8 +492,8 @@ export const handleInbound = (
           if (asked) return asked;
         }
       }
-      // A follow-up on a finished or blocked ticket reopens it and places it again; the next
-      // Worker reads the earlier events and the new ask on the ticket. A cancelled one stays closed.
+      // A thread follow-up reopens finished, blocked, or stopped tickets (threads are Discord
+      // only). The next Worker reads the earlier events and the new ask. Cancelled stays closed.
       if (canReopen(threadTicket.status)) {
         const added = yield* addFollowUp(threadTicket.id);
         const reopened = yield* reopenForFollowUp({

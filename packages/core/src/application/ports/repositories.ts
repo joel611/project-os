@@ -69,6 +69,7 @@ export class TicketRepository extends Context.Service<
     readonly reopen: (
       ticketId: string,
       at: string,
+      expected?: TicketStatus,
     ) => Effect.Effect<Ticket, TicketNotFound | InvalidTransition>;
     /**
      * Atomic reassign (see `reassignTicket`): back to `assigned` for `worker`. Applied only if
@@ -322,8 +323,10 @@ export class RunRepository extends Context.Service<
   RunRepository,
   {
     readonly get: (id: string) => Effect.Effect<Run | undefined>;
-    /** Inserts the run, or replaces the one with the same id. */
-    readonly save: (run: Run) => Effect.Effect<void>;
+    /** Inserts the run or updates it without erasing an outstanding stop signal. */
+    readonly save: (run: Run, assignedAt?: string | null) => Effect.Effect<void>;
+    /** Atomically stops a live run and its matching ticket assignment. */
+    readonly requestStop: (ticketId: string, runId: string, at: string) => Effect.Effect<boolean>;
     /** A ticket's runs, oldest first. */
     readonly listByTicket: (ticketId: string) => Effect.Effect<ReadonlyArray<Run>>;
     /** Runs started before `at` whose transcript is still stored. */

@@ -18,7 +18,13 @@ import type {
 } from "@project-os/contracts";
 import { ticketBlockedSummary, ticketCompletedReply } from "@project-os/system-prompts";
 import { Effect } from "effect";
-import { type Ticket, type TicketStatus, WorkerNotFound, workerLabel } from "../../domain/index.ts";
+import {
+  InvalidTransition,
+  type Ticket,
+  type TicketStatus,
+  WorkerNotFound,
+  workerLabel,
+} from "../../domain/index.ts";
 import {
   AgentRuntime,
   ChannelGateway,
@@ -220,10 +226,11 @@ export const reopenTicket = (input: {
   readonly ticket: Ticket;
   readonly by: AuditActor;
   readonly at: string;
+  readonly operator?: boolean;
 }) =>
   Effect.gen(function* () {
     const { ticket, at } = input;
-    const reopened = yield* (yield* TicketRepository).reopen(ticket.id, at).pipe(
+    const reopened = yield* (yield* TicketRepository).reopen(ticket.id, at, ticket.status).pipe(
       Effect.map((t) => t as Ticket | undefined),
       Effect.catchTag("InvalidTransition", () => Effect.undefined),
     );
@@ -233,8 +240,9 @@ export const reopenTicket = (input: {
       ticketId: reopened.id,
       type: "system",
       actor: "coordinator",
-      body:
-        ticket.status === "blocked"
+      body: input.operator
+        ? "Continued by an admin (was stopped)"
+        : ticket.status === "blocked"
           ? "Resumed by a follow-up (was blocked)"
           : `Reopened by a follow-up (was ${ticket.status})`,
       payload: { kind: "reopened", from: ticket.status },
@@ -364,6 +372,24 @@ export const recordQueued = (input: {
 
 // A Worker's, Operator's or Sidekick's moves.
 
+export const recordForceStop = (ticket: Ticket, runId: string, by: AuditActor, at: string) =>
+  Effect.gen(function* () {
+    yield* auditTicket({ ...ticket, status: "stopped" }, "status_changed", by, {
+      from: ticket.status,
+      reason: "Force stop",
+      at,
+    });
+    yield* record({
+      ticketId: ticket.id,
+      type: "system",
+      actor: "coordinator",
+      actorId: by.id,
+      body: "Admin requested a force stop. This ticket will not restart automatically.",
+      payload: { kind: "force_stopped", runId },
+      createdAt: at,
+    });
+  });
+
 /** A worker claimed its assigned ticket. Named `…UseCase` to avoid the domain's `claimTicket`. */
 export const claimTicketUseCase = (input: {
   readonly ticketId: string;
@@ -418,6 +444,14 @@ export const changeTicketStatus = (input: {
   readonly reason?: string;
 }) =>
   Effect.gen(function* () {
+    if (input.status === "stopped") {
+      const ticket = yield* (yield* TicketRepository).get(input.ticketId);
+      return yield* new InvalidTransition({
+        ticketId: ticket.id,
+        from: ticket.status,
+        to: input.status,
+      });
+    }
     const ticket = yield* transition({
       ticketId: input.ticketId,
       status: input.status,

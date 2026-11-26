@@ -234,10 +234,10 @@ The fixed shared Watcher of the original POC (unregistered, polling as `WORKER_I
 - Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local`, poll interval (default 5 min), max concurrent sessions (default 1), working directory.
 - Every 5 minutes: call `ticket_list_assigned` for its `worker_id`.
 - If an unpicked ticket exists and fewer than max sessions are running: start a Claude Code session (e.g. `claude -p "<session-start instruction>"`), with the Coordinator MCP server configured.
-- The Claude Code session claims the ticket itself (`ticket_claim`) and works it. The watcher does not claim, so all ticket state changes happen through the Worker's MCP calls.
+- The Claude Code session claims the ticket itself (`ticket_claim`) and works it. The Watcher does not claim the ticket.
 - One session, one ticket: the session ends at the ticket's terminal status, and the watcher picks up the next ticket on a later poll.
 - If the claim fails (taken already), the session just ends.
-- The watcher has no channel access and no business logic. It only detects work and starts sessions.
+- For recorded Watcher sessions, an admin can **Force stop** a running run in the dashboard. The Coordinator atomically stops the run and holds its ticket; the Watcher polls for that run's stop signal and kills the local agent. Delivery requires the Watcher to be online. Tickets on hold are not eligible for reassignment or automatic retry. **Continue ticket** or a new actionable follow-up in the ticket's Discord thread releases the hold and places the ticket again. Sandbox transcripts are uploaded only after exit, so they do not offer this control.
 
 Daytona Workers don't need a watcher: the Coordinator starts a sandbox when it assigns a `daytona_pi` ticket, and the sandbox runs the same session-start instruction.
 

@@ -223,6 +223,10 @@ export const makeApi = (
     ticketRuns: (ticketId: string) => get(`/tickets/${id(ticketId)}/runs`, TicketRuns),
     ticketRun: (ticketId: string, runId: string) =>
       get(`/tickets/${id(ticketId)}/runs/${id(runId)}`, RunTranscriptView),
+    stopRun: (ticketId: string, runId: string) =>
+      send(`/tickets/${id(ticketId)}/runs/${id(runId)}/stop`, Run, { method: "POST" }),
+    continueTicket: (ticketId: string) =>
+      send(`/tickets/${id(ticketId)}/continue`, Ticket, { method: "POST" }),
     ticketAttachments: (ticketId: string) =>
       get(`/tickets/${id(ticketId)}/attachments`, TicketAttachmentsOutput),
     workers: () => get("/workers", Schema.Array(WorkerView)),

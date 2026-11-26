@@ -11,6 +11,7 @@ import {
   releaseTicket,
   reopenTicket,
   IdGenerator,
+  InvalidTransition,
   involves,
   IntentClassifier,
   AssetStore,
@@ -107,8 +108,12 @@ export const TicketRepositoryInMemory = Layer.sync(TicketRepository, () => {
       ),
     release: (ticketId, workerId, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(releaseTicket(t, workerId, at), put)),
-    reopen: (ticketId, at) =>
-      Effect.flatMap(find(ticketId), (t) => Effect.map(reopenTicket(t, at), put)),
+    reopen: (ticketId, at, expected) =>
+      Effect.flatMap(find(ticketId), (t) =>
+        expected === undefined || t.status === expected
+          ? Effect.map(reopenTicket(t, at), put)
+          : Effect.fail(new InvalidTransition({ ticketId, from: t.status, to: "open" })),
+      ),
     reassign: (ticketId, worker, at) =>
       Effect.flatMap(find(ticketId), (t) => Effect.map(reassignTicket(t, worker, at), put)),
     claim: (ticketId, workerId, at) =>
@@ -862,18 +867,54 @@ export const makeSkillSourceFake = (
   };
 };
 
-export const RunRepositoryInMemory = Layer.sync(RunRepository, () => {
-  const rows = new Map<string, Run>();
-  return {
-    get: (id) => Effect.sync(() => rows.get(id)),
-    save: (run) => Effect.sync(() => void rows.set(run.id, run)),
-    listByTicket: (ticketId) =>
-      Effect.sync(() =>
-        [...rows.values()]
-          .filter((r) => r.ticketId === ticketId)
-          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
-      ),
-    listStoredBefore: (at) =>
-      Effect.sync(() => [...rows.values()].filter((r) => r.startedAt < at && !r.expired)),
-  };
-});
+export const RunRepositoryInMemory = Layer.effect(
+  RunRepository,
+  Effect.gen(function* () {
+    const tickets = yield* TicketRepository;
+    const rows = new Map<string, Run>();
+    const assignments = new Map<string, string>();
+    return RunRepository.of({
+      get: (id) => Effect.sync(() => rows.get(id)),
+      save: (run, assignedAt) =>
+        Effect.sync(() => {
+          const old = rows.get(run.id);
+          if (!old && assignedAt) assignments.set(run.id, assignedAt);
+          rows.set(run.id, {
+            ...run,
+            ...(assignments.has(run.id) && { stoppable: true }),
+            ...(old?.status === "stopped" && {
+              status: "stopped",
+              endedAt: old.endedAt,
+              exitCode: null,
+            }),
+          });
+        }),
+      requestStop: (ticketId, runId, at) =>
+        Effect.gen(function* () {
+          const run = rows.get(runId);
+          const ticket = yield* tickets.get(ticketId);
+          if (
+            !run ||
+            run.ticketId !== ticketId ||
+            run.status !== "running" ||
+            ticket.workerType !== "local" ||
+            (ticket.status !== "assigned" && ticket.status !== "in_progress") ||
+            ticket.workerId !== run.workerId ||
+            ticket.assignedAt !== assignments.get(runId)
+          )
+            return false;
+          yield* tickets.updateStatus(ticketId, "stopped", at);
+          rows.set(runId, { ...run, status: "stopped", endedAt: at });
+          return true;
+        }).pipe(Effect.orElseSucceed(() => false)),
+      listByTicket: (ticketId) =>
+        Effect.sync(() =>
+          [...rows.values()]
+            .filter((r) => r.ticketId === ticketId)
+            .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+        ),
+      listStoredBefore: (at) =>
+        Effect.sync(() => [...rows.values()].filter((r) => r.startedAt < at && !r.expired)),
+    });
+  }),
+);
