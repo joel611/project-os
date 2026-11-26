@@ -247,6 +247,7 @@ describe("task types", () => {
         home: tmpdir(),
         mcp: httpMcpClient(config.mcpUrl, fetch, config.secret),
         workspaces: stack.workspaces(),
+        sessions: stack.sessions(),
         skills: {
           fetchTaskType: async () => undefined,
           fetchArchive: async (url, token) => {
@@ -278,9 +279,8 @@ describe("task types", () => {
       logger: collectLogger(logs),
     });
     await watcher.pollOnce();
-    await new Promise((r) => setTimeout(r, 50));
 
-    expect(logs.at(-1)).toBe("session exit code=0 (0/1)");
+    await expect.poll(() => logs.at(-1)).toBe("session exit code=0 (0/1)");
     expect(seen).toHaveLength(1);
     expect(seen[0]!.skills).toEqual({
       "SKILL.md": md("tdd", "Test first"),

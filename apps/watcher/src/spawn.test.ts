@@ -1,23 +1,33 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { agent, methods, ndJsonStream } from "@agentclientprotocol/sdk";
-import { afterAll, describe, expect, it, vi } from "vite-plus/test";
+import type { RunEvent } from "@project-os/contracts";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
+import { fakeGithub } from "./fake-github.ts";
+import type { Git } from "./git.ts";
 import type { McpClient } from "./poll.ts";
-import { bunSpawner, type SkillsIo, type SpawnAcp, type SpawnerIo } from "./spawn.ts";
+import {
+  bunSpawner,
+  type SessionIo,
+  type SkillsIo,
+  type SpawnAcp,
+  type SpawnerIo,
+} from "./spawn.ts";
 import { strToU8, zipSync } from "fflate";
 import { collectLogger } from "./logger.ts";
 import type { RunLogIo } from "./run-log.ts";
 import type { SpawnProcess } from "./spawn.ts";
-import type { Git } from "./workspace.ts";
+import { createWorkspaces } from "./workspace.ts";
 
 /** Real folders: each test's tickets get their own workspace under here. */
 const ROOT = mkdtempSync(join(tmpdir(), "spawn-test-"));
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 let roots = 0;
 const T1 = { id: "t1", projectId: "p1" };
+const AT = "2026-11-04T00:00:00.000Z";
 
 /** A Coordinator whose project has no sources. */
 const noSources: McpClient = {
@@ -42,10 +52,33 @@ const config: WatcherConfig = {
   runLog: true,
   piAcp: false,
   piAcpCommand: ["pi-acp"],
+  gitTimeoutMs: 600_000,
 };
 
-const fakeIo = (existing: Record<string, string> = {}) => {
+/** Where sessions are shown and logged: the terminal, and each session's log file by name. */
+const fakeSessions = () => {
+  const shown: string[] = [];
+  const files: Record<string, RunEvent[]> = {};
+  const sessions: SessionIo = {
+    newRunId: () => "run-00000001",
+    now: () => new Date(AT),
+    secrets: ["env-secret-value"],
+    terminal: { out: (t) => void shown.push(t), err: (t) => void shown.push(`ERR ${t}`) },
+    openLog: (ticketId, name) => {
+      const events: RunEvent[] = (files[`${ticketId}/${name}`] = []);
+      return {
+        write: (text) => void events.push(JSON.parse(text) as RunEvent),
+        close: () => {},
+      };
+    },
+  };
+  return { sessions, shown, files };
+};
+
+const fakeIo = (existing: Record<string, string> = {}, git: Git = noGit) => {
   const written: Record<string, string> = {};
+  const root = join(ROOT, `ws-${++roots}`);
+  const { sessions, shown, files } = fakeSessions();
   const io: SpawnerIo = {
     readFile: (path) => existing[path],
     writePrivate: (path, contents) => {
@@ -55,9 +88,10 @@ const fakeIo = (existing: Record<string, string> = {}) => {
     configDir: "/cfg",
     home: "/home/me",
     mcp: noSources,
-    workspaces: { root: join(ROOT, `ws-${++roots}`), git: noGit },
+    workspaces: createWorkspaces({ root, git, env: { PATH: process.env.PATH } }),
+    sessions,
   };
-  return { io, written };
+  return { io, written, root, shown, files };
 };
 
 const run = async (cfg: WatcherConfig, io: SpawnerIo) => {
@@ -70,7 +104,7 @@ const run = async (cfg: WatcherConfig, io: SpawnerIo) => {
     },
     io,
   );
-  const code = await spawner.spawn();
+  const code = await spawner.spawn(T1);
   return { code, seen: seen! };
 };
 
@@ -121,7 +155,7 @@ describe("bunSpawner", () => {
       },
       io,
       AGENTS.codex,
-    ).spawn();
+    ).spawn(T1);
     expect(cmd[0]).toBe("codex");
   });
 });
@@ -172,7 +206,7 @@ describe("skills for a ticket", () => {
     };
   };
 
-  const runTicket = async (cfg: WatcherConfig, io: SpawnerIo, ticketId?: string) => {
+  const runTicket = async (cfg: WatcherConfig, io: SpawnerIo, ticketId = "t1") => {
     let cmd: string[] = [];
     const spawner = bunSpawner(
       cfg,
@@ -182,7 +216,7 @@ describe("skills for a ticket", () => {
       },
       io,
     );
-    await spawner.spawn(ticketId === undefined ? undefined : { id: ticketId, projectId: "p1" });
+    await spawner.spawn({ id: ticketId, projectId: "p1" });
     return cmd;
   };
 
@@ -301,14 +335,10 @@ describe("skills for a ticket", () => {
     expect(s.removed).toEqual(["/tmp/sk"]);
   });
 
-  it("skips skills when turned off, when there is no ticket, or the agent can't load them", async () => {
+  it("skips skills when turned off, or the agent can't load them", async () => {
     const off = skillsIo(async () => bundle);
     await runTicket({ ...config, skills: false }, off.io, "t1");
     expect(off.urls).toEqual([]);
-    const none = skillsIo(async () => bundle);
-    const cmd = await runTicket(config, none.io);
-    expect(none.urls).toEqual([]);
-    expect(cmd[2]).not.toContain("This session is for ticket");
     const codex = skillsIo(async () => bundle);
     await runTicket({ ...config, agent: "codex" }, codex.io, "t1");
     expect(codex.urls).toEqual([]);
@@ -342,74 +372,75 @@ describe("a ticket's workspace", () => {
     };
     return { mcp, calls };
   };
-  /** Clones `public` repos without auth, and the rest only with the person's token. */
-  const git = (open: boolean) => {
-    const argv: string[][] = [];
-    const run: Git = async (args, { env }) => {
-      argv.push([...args]);
-      const authed = Object.values(env).some((v) => v?.includes(btoa(`x-access-token:${TOKEN}`)));
-      if (!open && !authed) return { code: 128, stderr: "fatal: Repository not found.\n" };
-      mkdirSync(args.at(-1)!, { recursive: true });
-      writeFileSync(join(args.at(-1)!, "README.md"), "web");
-      return { code: 0, stderr: "" };
-    };
-    return { run, argv };
+  /** GitHub holding `acme/web`; a private one lets only the person's token read it. */
+  const github = async (open: boolean) => {
+    const dir = mkdtempSync(join(ROOT, "github-"));
+    const gh = fakeGithub(dir);
+    await gh.push("acme/web", { "README.md": "web" });
+    if (!open) gh.restrict("acme/web", [TOKEN]);
+    return gh;
   };
-  const launch = async (mcp: McpClient, gitRun: Git) => {
-    const { io } = fakeIo();
+  const launch = async (mcp: McpClient, git: Git, stdout = "") => {
+    const { io, root, files } = fakeIo({}, git);
     let seen: { cmd: string[]; cwd: string } | undefined;
     const spawner = bunSpawner(
       config,
       (cmd, options) => {
         seen = { cmd, cwd: options.cwd };
-        return { exited: Promise.resolve(0) };
+        return { exited: Promise.resolve(0), stdout: new Response(stdout).body };
       },
-      { ...io, mcp, workspaces: { root: io.workspaces.root, git: gitRun } },
+      { ...io, mcp },
     );
     expect(await spawner.spawn(T1)).toBe(0);
-    return { ...seen!, root: io.workspaces.root, prompt: seen!.cmd[2]! };
+    return { ...seen!, root, files, prompt: seen!.cmd[2]! };
   };
 
-  it("starts the agent in the project's only repo, cloned without asking for a token", async () => {
+  it("starts the agent in the worktree of the project's only repo, without asking for a token", async () => {
     const { mcp, calls } = coordinator();
-    const g = git(true);
-    const { cwd, prompt, root } = await launch(mcp, g.run);
-    expect(cwd).toBe(join(root, "t1", "web"));
+    const gh = await github(true);
+    const { cwd, prompt, root } = await launch(mcp, gh.git);
+    const worktree = join(root, "tickets", "t1", "web");
+    expect(cwd).toBe(worktree);
     expect(readFileSync(join(cwd, "README.md"), "utf8")).toBe("web");
     expect(calls).toEqual([["project_sources_list", { projectId: "p1" }]]);
-    expect(prompt).toContain(`- \`web\` (\`acme/web\`): \`${join(root, "t1", "web")}\``);
+    expect(prompt).toContain(`- \`web\` (\`acme/web\`): \`${worktree}\` on \`ticket/t1\``);
     expect(prompt).toContain(`this session starts in \`${cwd}\``);
   });
 
-  it("clones a private repo with the person's token, which never reaches argv or the prompt", async () => {
+  it("checks out a private repo with the person's token, kept out of argv, the prompt and the log", async () => {
     const { mcp, calls } = coordinator();
-    const g = git(false);
-    const { cwd, prompt, root } = await launch(mcp, g.run);
-    expect(cwd).toBe(join(root, "t1", "web"));
+    const gh = await github(false);
+    // The agent prints the token it fetched itself.
+    const said = JSON.stringify({ type: "assistant", message: { content: `token ${TOKEN}` } });
+    const { cwd, prompt, root, files } = await launch(mcp, gh.git, `${said}\n`);
+    expect(cwd).toBe(join(root, "tickets", "t1", "web"));
     expect(calls.map(([name]) => name)).toEqual(["project_sources_list", "user_token"]);
     expect(calls[1]![1]).toEqual({ ticketId: "t1", provider: "github" });
-    expect(g.argv).toHaveLength(2);
-    expect(g.argv.flat().join(" ")).not.toContain(TOKEN);
+    expect(gh.calls.filter((c) => c.args[0] === "clone")).toHaveLength(2);
+    expect(gh.calls.flatMap((c) => c.args).join(" ")).not.toContain(TOKEN);
     expect(prompt).not.toContain(TOKEN);
+    const log = JSON.stringify(Object.values(files));
+    expect(log).toContain("token [REDACTED]");
+    expect(log).not.toContain(TOKEN);
   });
 
-  it("still starts the session, in the ticket's folder, when the repo can't be cloned", async () => {
+  it("still starts the session, in the ticket's folder, when the repo can't be checked out", async () => {
     const { mcp } = coordinator({
       token: () => {
         throw new Error('MCP user_token: {"_tag":"NotConnected"}');
       },
     });
-    const { cwd, prompt, root } = await launch(mcp, git(false).run);
-    expect(cwd).toBe(join(root, "t1"));
+    const { cwd, prompt, root } = await launch(mcp, (await github(false)).git);
+    expect(cwd).toBe(join(root, "tickets", "t1"));
     expect(prompt).toContain("could not be checked out");
-    expect(prompt).toMatch(/- `web` \(`acme\/web`\): .*Repository not found.*NotConnected/);
+    expect(prompt).toMatch(/- `web` \(`acme\/web`\): .*not found.*NotConnected/);
   });
 
   it("reports a user_token answer that holds no token", async () => {
     const { mcp } = coordinator({ token: () => ({}) });
-    const g = git(false);
-    const { prompt } = await launch(mcp, g.run);
-    expect(g.argv).toHaveLength(1);
+    const gh = await github(false);
+    const { prompt } = await launch(mcp, gh.git);
+    expect(gh.calls.filter((c) => c.args[0] === "clone")).toHaveLength(1);
     expect(prompt).toContain("user_token returned no token");
   });
 
@@ -420,7 +451,7 @@ describe("a ticket's workspace", () => {
       },
     });
     const { cwd, prompt, root } = await launch(mcp, noGit);
-    expect(cwd).toBe(join(root, "t1"));
+    expect(cwd).toBe(join(root, "tickets", "t1"));
     expect(prompt).toContain("could not be listed (MCP project_sources_list: HTTP 500)");
   });
 });
@@ -432,7 +463,6 @@ describe("recording a session", () => {
     model?: string;
     finished?: unknown;
   }> = [];
-  const shown: string[] = [];
   const runLog: RunLogIo = {
     post: async (url, _secret, upload) => {
       posted.push({
@@ -444,32 +474,22 @@ describe("recording a session", () => {
       return { ok: true, nextSeq: upload.seq + 1 };
     },
     spool: { write: () => {}, list: () => [], remove: () => {} },
-    newRunId: () => "run-00000001",
-    now: () => new Date("2026-11-04T00:00:00.000Z"),
-    secrets: [],
     flushEveryMs: 3_600_000,
     sleep: async () => {},
-    terminal: { out: (t) => void shown.push(t), err: (t) => void shown.push(`ERR ${t}`) },
   };
-  const record = async (
-    cfg: WatcherConfig,
-    proc: (cmd: string[]) => ReturnType<SpawnProcess>,
-    ticketId: string | null = "t1",
-  ) => {
+  const record = async (cfg: WatcherConfig, proc: (cmd: string[]) => ReturnType<SpawnProcess>) => {
     posted.length = 0;
-    shown.length = 0;
-    const { io } = fakeIo();
+    const { io, shown, files } = fakeIo();
     const seen: string[][] = [];
     const spawner = bunSpawner(cfg, (cmd) => (seen.push(cmd), proc(cmd)), { ...io, runLog });
-    const code = await spawner.spawn(
-      ticketId === null ? undefined : { id: ticketId, projectId: "p1" },
-    );
-    return { code, seen: seen[0]! };
+    const code = await spawner.spawn(T1);
+    return { code, seen: seen[0]!, shown, files };
   };
   const text = (value: string) => new Response(value).body!;
+  const LOG = `t1/2026-11-04T00-00-00.000Z-run-00000001.log`;
 
   it("pipes a plain-text agent's lines, with the model, and shows them as they came", async () => {
-    const { code, seen } = await record({ ...config, agent: "pi", model: "m1" }, () => ({
+    const { code, seen, shown } = await record({ ...config, agent: "pi", model: "m1" }, () => ({
       exited: Promise.resolve(0),
       stdout: text("first\nlast without newline"),
       stderr: text("warn\n"),
@@ -493,11 +513,41 @@ describe("recording a session", () => {
     expect(posted[0]!.finished).toEqual({ exitCode: 3 });
   });
 
-  it("does not record without a ticket, or when the device turned it off", async () => {
-    await record(config, () => ({ exited: Promise.resolve(0) }), null);
+  it("writes the same masked events to the session's own log as it uploads", async () => {
+    const { files } = await record(config, () => ({
+      exited: Promise.resolve(0),
+      stdout: text("plain env-secret-value\n"),
+    }));
+    expect(Object.keys(files)).toEqual([LOG]);
+    expect(files[LOG]).toEqual(posted[0]!.events);
+    expect(files[LOG]![0]).toMatchObject({ text: "plain [REDACTED]" });
+  });
+
+  it("still logs, parses and shows the session when the device keeps run logs local", async () => {
+    const said = JSON.stringify({ type: "assistant", message: { content: "on it" } });
+    const { seen, shown, files } = await record({ ...config, runLog: false }, () => ({
+      exited: Promise.resolve(0),
+      stdout: text(`${said}\n`),
+    }));
     expect(posted).toEqual([]);
-    await record({ ...config, runLog: false }, () => ({ exited: Promise.resolve(0) }));
-    expect(posted).toEqual([]);
+    expect(seen).toContain("stream-json");
+    expect(shown).toEqual(["on it\n"]);
+    expect(files[LOG]!.map((e) => e.text)).toEqual(["on it", "claude exited with code 0."]);
+  });
+
+  it("logs why the agent could not start", async () => {
+    const { io, files } = fakeIo();
+    const spawner = bunSpawner(
+      { ...config, runLog: false },
+      () => {
+        throw new Error("no such binary");
+      },
+      io,
+    );
+    await expect(spawner.spawn(T1)).rejects.toThrow("no such binary");
+    expect(files[LOG]).toEqual([
+      { at: AT, type: "error", text: "claude could not start: no such binary" },
+    ]);
   });
 });
 
@@ -541,52 +591,44 @@ describe("Pi over ACP", () => {
     return { spawnAcp, started, sessionCwds };
   };
 
-  it("starts the ACP program with the model and the session's skills, and prints to the terminal", async () => {
+  it("starts the ACP program with the model and the session's skills, and shows and logs it", async () => {
     const { spawnAcp, started, sessionCwds } = fakeAcp();
-    const { io } = fakeIo();
-    const out: string[] = [];
-    const write = vi.spyOn(process.stdout, "write").mockImplementation((text) => {
-      out.push(String(text));
-      return true;
+    const { io, root, shown, files } = fakeIo();
+    const spawner = bunSpawner(
+      { ...acpConfig, runLog: false },
+      () => {
+        throw new Error("must not run Pi as a CLI");
+      },
+      {
+        ...io,
+        spawnAcp,
+        skills: {
+          fetchArchive: async () => ({
+            set: "dev",
+            zip: zipSync({ "tdd/SKILL.md": strToU8("# tdd") }),
+          }),
+          fetchTaskType: async () => undefined,
+          makeDir: () => "/tmp/sk",
+          writeFile: () => {},
+          removeDir: () => {},
+        },
+      },
+    );
+    expect(await spawner.spawn(T1)).toBe(0);
+    expect(started[0]!.cmd).toEqual(["bun", "pi-acp.ts"]);
+    // The program and its session both start in the ticket's folder.
+    expect(started[0]!.cwd).toBe(join(root, "tickets", "t1"));
+    expect(sessionCwds).toEqual([join(root, "tickets", "t1")]);
+    expect(started[0]!.env).toMatchObject({
+      PATH: "/bin",
+      PI_ACP_MODEL: "openrouter/m",
+      PI_ACP_SKILL_PATHS: "/tmp/sk/skills/tdd",
     });
-    const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    try {
-      const spawner = bunSpawner(
-        acpConfig,
-        () => {
-          throw new Error("must not run Pi as a CLI");
-        },
-        {
-          ...io,
-          spawnAcp,
-          skills: {
-            fetchArchive: async () => ({
-              set: "dev",
-              zip: zipSync({ "tdd/SKILL.md": strToU8("# tdd") }),
-            }),
-            fetchTaskType: async () => undefined,
-            makeDir: () => "/tmp/sk",
-            writeFile: () => {},
-            removeDir: () => {},
-          },
-        },
-      );
-      expect(await spawner.spawn(T1)).toBe(0);
-      expect(started[0]!.cmd).toEqual(["bun", "pi-acp.ts"]);
-      // The program and its session both start in the ticket's folder.
-      expect(started[0]!.cwd).toBe(join(io.workspaces.root, "t1"));
-      expect(sessionCwds).toEqual([join(io.workspaces.root, "t1")]);
-      expect(started[0]!.env).toMatchObject({
-        PATH: "/bin",
-        PI_ACP_MODEL: "openrouter/m",
-        PI_ACP_SKILL_PATHS: "/tmp/sk/skills/tdd",
-      });
-      expect(out.join("")).toContain("Session finished (end_turn).");
-      expect(err).toHaveBeenCalledWith("pi warning\n");
-    } finally {
-      write.mockRestore();
-      err.mockRestore();
-    }
+    expect(shown).toContain("Session finished (end_turn).\n");
+    expect(shown).toContain("ERR pi warning\n");
+    const logged = Object.values(files)[0]!.map((e) => e.text);
+    expect(logged).toContain("Session finished (end_turn).");
+    expect(logged).toContain("pi warning");
   });
 
   it("runs Pi as a CLI when the device cannot start ACP programs", async () => {

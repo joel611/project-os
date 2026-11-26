@@ -128,12 +128,8 @@ describe("Pi over ACP", () => {
         list: () => [...spool].map(([name, contents]) => ({ name, contents })),
         remove: (name) => void spool.delete(name),
       },
-      newRunId: () => crypto.randomUUID(),
-      now: () => new Date(),
-      secrets: [],
       flushEveryMs: 60_000,
       sleep: async () => {},
-      terminal: { out: () => {}, err: () => {} },
     };
     const spawner = bunSpawner(
       { ...config, piAcp: true, piAcpCommand: ["pi-acp"] },
@@ -151,6 +147,7 @@ describe("Pi over ACP", () => {
         home: "/home/me",
         mcp: httpMcpClient(config.mcpUrl, fetch, config.secret),
         workspaces: stack.workspaces(),
+        sessions: stack.sessions(),
         runLog,
         logger: silentLogger,
       },

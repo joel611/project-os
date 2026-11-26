@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand, fakeInbound } from "../../../packages/channel-discord/src/fake.ts";
 import { forwardInbound } from "../../../packages/channel-discord/src/forward.ts";
-import { pullRequestLinks } from "../../coordinator/src/pull-requests.ts";
 import { browse } from "./browse.ts";
 import { type Stack, startStack } from "./stack.ts";
 
@@ -60,14 +59,6 @@ const finish = async (body = `Implemented: ${PR}. Also ${PR}/files`) => {
 };
 
 describe("PR merge notices", () => {
-  it("only accepts canonical GitHub PR links and deduplicates URL fragments", () => {
-    expect(
-      pullRequestLinks(
-        `${PR} ${PR}#issuecomment-1 ${PR}?x=1 ${PR}/files https://github.com.evil/acme/web/pull/1 https://evil.test/acme/web/pull/1`,
-      ),
-    ).toEqual([PR]);
-  });
-
   it("polls open PRs, posts merged PRs in the original thread, and persists a receipt", async () => {
     await connect();
     await finish();

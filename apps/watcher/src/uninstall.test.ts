@@ -90,7 +90,7 @@ describe("uninstallWatcher", () => {
     await uninstallWatcher(io, { yes: true });
     expect(events.filter((e) => /workspaces|logs/.test(e))).toEqual([]);
     expect(logs.join("\n")).toContain(
-      `It keeps ${CONFIG}/workspaces and ${CONFIG}/logs: ticket workspaces may hold uncommitted work.`,
+      `It keeps ${CONFIG}/workspaces and ${CONFIG}/logs: ticket workspaces may hold uncommitted or unpushed work, and logs/sessions holds each session's log.`,
     );
   });
 

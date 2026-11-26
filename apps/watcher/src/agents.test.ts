@@ -21,6 +21,7 @@ const config: WatcherConfig = {
   runLog: true,
   piAcp: false,
   piAcpCommand: ["pi-acp"],
+  gitTimeoutMs: 600_000,
 };
 const ctx = { config, prompt: "do it", configDir: "/cfg", home: "/home/me" };
 

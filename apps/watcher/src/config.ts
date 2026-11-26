@@ -25,6 +25,8 @@ export interface WatcherConfig {
   readonly piAcp: boolean;
   /** Program that speaks ACP for Pi (`WATCHER_PI_ACP_COMMAND`, a space-separated command line). */
   readonly piAcpCommand: readonly string[];
+  /** How long a git clone or fetch may run before it is killed (`WATCHER_GIT_TIMEOUT_MS`). */
+  readonly gitTimeoutMs: number;
 }
 
 const loadAgent = (
@@ -69,5 +71,6 @@ export const loadConfig = (
     runLog: !["0", "false", "off"].includes((process.env.WATCHER_RUN_LOG ?? "").toLowerCase()),
     piAcp: ["1", "true", "on"].includes((process.env.WATCHER_PI_ACP ?? "").toLowerCase()),
     piAcpCommand: (process.env.WATCHER_PI_ACP_COMMAND || "pi-acp").split(/\s+/).filter(Boolean),
+    gitTimeoutMs: envNumber("WATCHER_GIT_TIMEOUT_MS", 10 * 60 * 1000),
   };
 };

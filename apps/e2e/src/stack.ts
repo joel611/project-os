@@ -33,7 +33,10 @@ import type { CoordinatorTarget } from "../../../packages/channel-discord/src/fo
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
-import type { Git } from "../../watcher/src/workspace.ts";
+import type { Git } from "../../watcher/src/git.ts";
+import { sessionLogFiles } from "../../watcher/src/session-log.ts";
+import type { SessionIo } from "../../watcher/src/spawn.ts";
+import { createWorkspaces, type Workspaces } from "../../watcher/src/workspace.ts";
 import { assembleCoordinator, type CoordinatorAdapters } from "../../coordinator/src/assembly.ts";
 import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 
@@ -162,10 +165,15 @@ export interface Stack {
    */
   readonly worker: (token: string) => Promise<Client>;
   /**
-   * A Watcher's workspaces folder (removed on `stop`) and the git it clones with. The default
-   * git fails every clone, since no test may reach GitHub.
+   * A Watcher's workspaces (their folder is removed on `stop`), checked out with `git`. The
+   * default git fails every clone and fetch, since no test may reach GitHub.
    */
-  readonly workspaces: (git?: Git) => { readonly root: string; readonly git: Git };
+  readonly workspaces: (git?: Git) => Workspaces & { readonly root: string };
+  /**
+   * How a Watcher records its sessions: each session's log goes under `dir` (removed on `stop`),
+   * and what it shows goes to `terminal`.
+   */
+  readonly sessions: (terminal?: SessionIo["terminal"]) => SessionIo & { readonly dir: string };
   /** Mints the MCP token a sandbox session launched as `workerId` would get. */
   readonly sandboxToken: (workerId: string) => Promise<string>;
   /** Keeps a finished sandbox session's output as a run, as the Coordinator's launcher hook does. */
@@ -516,11 +524,29 @@ export const startStack = async (options: {
       return project.id as string;
     },
     worker,
-    workspaces: (git) => ({
-      root: mkdtempSync(join(dir, "workspaces-")),
-      git:
-        git ?? (async () => ({ code: 128, stderr: "fatal: no network in the integration stack" })),
-    }),
+    workspaces: (git) => {
+      const root = mkdtempSync(join(dir, "workspaces-"));
+      const offline: Git = async () => ({
+        code: 128,
+        stdout: "",
+        stderr: "fatal: no network in the integration stack",
+      });
+      return {
+        root,
+        ...createWorkspaces({ root, git: git ?? offline, env: { PATH: process.env.PATH } }),
+      };
+    },
+    sessions: (terminal = { out: () => {}, err: () => {} }) => {
+      const logs = mkdtempSync(join(dir, "sessions-"));
+      return {
+        dir: logs,
+        newRunId: () => crypto.randomUUID(),
+        now: () => new Date(),
+        secrets: [],
+        terminal,
+        openLog: sessionLogFiles(logs),
+      };
+    },
     recordSandboxRun: (session) => runtime.runPromise(recordSandboxRun(session) as any),
     sandboxToken: (workerId) =>
       runtime.runPromise(issueSandboxToken(workerId, 600) as Effect.Effect<string, never, any>),

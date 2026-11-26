@@ -243,18 +243,20 @@ describe("worker prompt task type", () => {
 });
 
 describe("worker prompt workspace", () => {
-  it("says where the session starts, what is checked out, and what failed", () => {
+  it("says where the session starts, what is checked out on which branch, and what failed", () => {
     const prompt = workerSessionStart("w1", {
       ticketId: "t-7",
       workspace: {
-        cwd: "/ws/t-7/web",
-        checkouts: [{ alias: "web", repo: "acme/web", path: "/ws/t-7/web" }],
+        cwd: "/ws/tickets/t-7/web",
+        checkouts: [
+          { alias: "web", repo: "acme/web", path: "/ws/tickets/t-7/web", branch: "ticket/t-7" },
+        ],
         failed: [{ alias: "api", repo: "acme/api", reason: "git clone exited with 128: denied" }],
       },
     });
     const section = prompt.slice(prompt.indexOf("\n\nWorkspace:"));
     expect(section).toMatchSnapshot();
-    expect(section).toContain("`web` (`acme/web`): `/ws/t-7/web`");
+    expect(section).toContain("`web` (`acme/web`): `/ws/tickets/t-7/web` on `ticket/t-7`");
     expect(section).toContain("`api` (`acme/api`): git clone exited with 128: denied");
   });
 

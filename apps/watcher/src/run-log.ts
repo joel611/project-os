@@ -26,18 +26,9 @@ export interface RunLogIo {
     readonly list: () => ReadonlyArray<{ readonly name: string; readonly contents: string }>;
     readonly remove: (name: string) => void;
   };
-  readonly newRunId: () => string;
-  readonly now: () => Date;
-  /** Values to mask exactly, besides the device secret (the environment's tokens and keys). */
-  readonly secrets: ReadonlyArray<string>;
   /** How often events are sent while a session runs. */
   readonly flushEveryMs: number;
   readonly sleep: (ms: number) => Promise<void>;
-  /** Where the agent's output is shown while the session runs. */
-  readonly terminal: {
-    readonly out: (text: string) => void;
-    readonly err: (text: string) => void;
-  };
 }
 
 /** Events held back from one flush at most; a bigger backlog goes out chunk by chunk. */
@@ -50,35 +41,56 @@ const FINAL_ATTEMPTS = 3;
 /** The Coordinator will never take this upload: unknown ticket, not ours, or malformed. */
 const permanent = (status: number) => status === 400 || status === 403 || status === 404;
 
-export interface RunRecorder {
-  readonly runId: string;
-  /** Adds an event; it goes out with the next flush. */
+/** Where a session's events go. Each one gets every event, already masked. */
+export interface RunSink {
   readonly push: (event: RunEvent) => void;
-  /** Sends everything recorded so far, then the exit code. Never throws. */
+  /** Writes out everything pushed so far, then the exit code. Never throws. */
   readonly finish: (exitCode: number) => Promise<void>;
 }
 
+export interface RunRecorder extends RunSink {
+  readonly runId: string;
+}
+
 /**
- * Records one agent session and ships it to the Coordinator in the background: events are masked
- * (`sanitizeRunEvent`), batched, and uploaded as numbered chunks every few seconds. A failed
- * upload keeps its chunk and is tried again with the next flush, so a short outage loses nothing;
- * what is still undelivered when the session ends goes to the spool for the next poll to retry.
- * Run logging never makes the session fail.
+ * One agent session's event stream. Each event is masked once (`sanitizeRunEvent`, with
+ * `secrets`), then handed to every sink, so the session's own log file and the upload hold the
+ * same events.
  */
 export const createRunRecorder = (options: {
+  readonly runId: string;
+  readonly secrets: readonly string[];
+  readonly sinks: readonly RunSink[];
+}): RunRecorder => ({
+  runId: options.runId,
+  push: (event) => {
+    const masked = sanitizeRunEvent(event, options.secrets);
+    for (const sink of options.sinks) sink.push(masked);
+  },
+  finish: async (exitCode) => {
+    await Promise.all(options.sinks.map((sink) => sink.finish(exitCode)));
+  },
+});
+
+/**
+ * Ships a session's events to the Coordinator in the background: batched, and uploaded as
+ * numbered chunks every few seconds. A failed upload keeps its chunk and is tried again with the
+ * next flush, so a short outage loses nothing; what is still undelivered when the session ends
+ * goes to the spool for the next poll to retry. Run logging never makes the session fail.
+ */
+export const runUploadSink = (options: {
   readonly io: RunLogIo;
+  readonly runId: string;
+  readonly startedAt: string;
   readonly url: string;
   readonly secret: string;
   readonly agent: string;
   readonly model?: string;
   readonly assignedAt?: string;
   readonly logger?: Logger;
-}): RunRecorder => {
-  const { io } = options;
+}): RunSink => {
+  const { io, runId, startedAt } = options;
   const logger = options.logger ?? silentLogger;
-  const runId = io.newRunId();
-  const startedAt = io.now().toISOString();
-  const secrets = [options.secret, ...io.secrets];
 
   let buffer: RunEvent[] = [];
   /** The chunk being sent, kept as it was so a retry sends the same events under the same seq. */
@@ -183,10 +195,9 @@ export const createRunRecorder = (options: {
   };
 
   return {
-    runId,
     push: (event) => {
       if (gaveUp) return;
-      buffer.push(sanitizeRunEvent(event, secrets));
+      buffer.push(event);
       if (buffer.length >= FLUSH_AT) void flush();
     },
     finish: async (exitCode) => {

@@ -7,6 +7,7 @@ const KEYS = [
   "WATCHER_AGENT",
   "WATCHER_MODEL",
   "WATCHER_SKILLS",
+  "WATCHER_GIT_TIMEOUT_MS",
 ];
 const credentials = { server: "https://c", workerId: "local-9", name: "mbp", secret: "s" };
 const installed =
@@ -35,6 +36,7 @@ describe("loadConfig", () => {
       runLog: true,
       piAcp: false,
       piAcpCommand: ["pi-acp"],
+      gitTimeoutMs: 600_000,
     });
   });
 
@@ -46,9 +48,11 @@ describe("loadConfig", () => {
   it("reads overrides from env", () => {
     process.env.POLL_INTERVAL_MS = "1000";
     process.env.MAX_SESSIONS = "3";
+    process.env.WATCHER_GIT_TIMEOUT_MS = "5000";
     expect(loadConfig(credentials, installed())).toMatchObject({
       intervalMs: 1000,
       maxSessions: 3,
+      gitTimeoutMs: 5000,
     });
   });
 

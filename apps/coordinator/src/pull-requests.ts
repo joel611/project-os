@@ -5,21 +5,8 @@ import {
   UserConnections,
   requesterOf,
 } from "@project-os/core";
+import { pullRequestSettled, ticketPullRequests } from "@project-os/contracts";
 import { Effect } from "effect";
-
-/** Only public GitHub PR URLs, never arbitrary worker-supplied hosts or API paths. */
-export const pullRequestLinks = (text: string): string[] => [
-  ...new Set(
-    Array.from(
-      text.matchAll(
-        /https:\/\/github\.com\/([a-zA-Z0-9][a-zA-Z0-9-]*)\/([a-zA-Z0-9_][a-zA-Z0-9_.-]*)\/pull\/([1-9]\d*)(?=$|[^\w])/g,
-      ),
-      (match) => `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`,
-    ),
-  ),
-];
-
-const SETTLED = "pull_request_settled";
 
 /**
  * Poll completed workers' results using the latest human requester's GitHub access.
@@ -39,21 +26,8 @@ export const checkPullRequests = (options: { readonly fetch: typeof fetch }) =>
         const thread = yield* tickets.findThread(ticket.id);
         if (!thread) return;
         const events = yield* tickets.listEvents(ticket.id);
-        const links = pullRequestLinks(
-          events
-            .filter((event) => event.type === "result" && event.actor === "worker")
-            .map((event) => event.body)
-            .join("\n"),
-        );
-        const settled = new Set(
-          events.flatMap((event) => {
-            const payload = event.payload as { kind?: string; url?: string } | null;
-            return event.actor === "coordinator" && payload?.kind === SETTLED && payload.url
-              ? [payload.url]
-              : [];
-          }),
-        );
-        const pending = links.filter((url) => !settled.has(url));
+        const { links, merged } = ticketPullRequests(events);
+        const pending = links.filter((url) => !merged.has(url));
         if (!pending.length) return;
         const person = requesterOf(events);
         if (!person) return;
@@ -93,7 +67,7 @@ export const checkPullRequests = (options: { readonly fetch: typeof fetch }) =>
               actor: "coordinator",
               actorId: null,
               body,
-              payload: { kind: SETTLED, url, merged: true },
+              payload: pullRequestSettled(url),
               createdAt: new Date().toISOString(),
             });
           }).pipe(Effect.ignoreCause);

@@ -72,6 +72,8 @@ export interface SessionWorkspace {
     readonly alias: string;
     readonly repo: string;
     readonly path: string;
+    /** The ticket's own branch, made from the repo's default branch. */
+    readonly branch: string;
   }>;
   readonly failed: ReadonlyArray<{
     readonly alias: string;
@@ -86,12 +88,14 @@ export interface SessionWorkspace {
 const workspaceSection = (workspace: SessionWorkspace | undefined) => {
   if (!workspace) return "";
   const lines = [
-    `\n\nWorkspace: this session starts in \`${workspace.cwd}\`. This computer keeps the ticket's workspace between sessions, so a reopened ticket finds its earlier work there. Keep the ticket's files in it.`,
+    `\n\nWorkspace: this session starts in \`${workspace.cwd}\`. This computer keeps the ticket's workspace between sessions, so a reopened ticket finds its earlier work there, until the pull requests in its result are merged. Keep the ticket's files in it.`,
   ];
   if (workspace.checkouts.length > 0) {
     lines.push(
-      "These project repos are checked out (alias, repo, path):",
-      ...workspace.checkouts.map((c) => `- \`${c.alias}\` (\`${c.repo}\`): \`${c.path}\``),
+      "These project repos are checked out as git worktrees, each on the ticket's own branch made from the repo's default branch (alias, repo, path, branch). Commit there and push that branch for a pull request:",
+      ...workspace.checkouts.map(
+        (c) => `- \`${c.alias}\` (\`${c.repo}\`): \`${c.path}\` on \`${c.branch}\``,
+      ),
     );
   }
   if (workspace.failed.length > 0) {
