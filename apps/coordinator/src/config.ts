@@ -38,7 +38,7 @@ export const credentialProxyEnabled = (env: Env): boolean =>
 export const coordinatorConfig = (
   input: CoordinatorConfigInput,
 ): Required<Pick<AppDeps, "http" | "assets" | "corsOrigins">> &
-  Pick<AppDeps, "credentialProxy"> => {
+  Pick<AppDeps, "credentialProxy" | "experimentalMcpSkills"> => {
   const { env, run, publicUrl, admin } = input;
   const health = healthConfig(env);
   const adminChannelId = env.ADMIN_CHANNEL_ID;
@@ -72,5 +72,6 @@ export const coordinatorConfig = (
     assets: { run },
     corsOrigins: parseOrigins(env.WEB_ORIGIN),
     ...(credentialProxyEnabled(env) && { credentialProxy: {} }),
+    ...(envBool("EXPERIMENTAL_MCP_SKILLS", false, env) && { experimentalMcpSkills: true }),
   };
 };
