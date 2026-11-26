@@ -795,8 +795,10 @@ project-os/
 │  │  │  ├─ http/                      # Elysia routes: /inbound, Web UI API (§6)
 │  │  │  ├─ mcp/                       # MCP server, tools → use cases
 │  │  │  ├─ app.ts                     # builds the Elysia app from a provider Layer
-│  │  │  ├─ main.cloudflare.ts         # Elysia + CloudflareAdapter, .compile(); scheduled handler, DO export
-│  │  │  └─ main.bun.ts                # Bun.serve + setInterval sweep
+│  │  │  ├─ assembly.ts                # adapters → app + recurring jobs; all shared wiring
+│  │  │  ├─ deploy-env.ts              # settings the Cloudflare deploy binds (tested for parity)
+│  │  │  ├─ main.cloudflare.ts         # picks Worker adapters; fetch + scheduled handlers, DO export
+│  │  │  └─ main.bun.ts                # picks host adapters; listen, startJobs, shutdown
 │  │  └─ Dockerfile                    # local target (oven/bun)
 │  ├─ discord-gateway/                 # runs channel-discord alone (split deployment)
 │  ├─ watcher/                         # host-run Bun CLI

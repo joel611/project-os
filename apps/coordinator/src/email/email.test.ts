@@ -4,7 +4,6 @@ import {
   EmailSource,
   getMyEmail,
   NotConnected,
-  Scheduler,
   setMailboxEnabled,
   type UserAccessToken,
   UserConnections,
@@ -17,7 +16,6 @@ import {
   emailDigestAndLog,
   emailDigestEnabled,
   gmailEmailSource,
-  startEmailDigest,
 } from "./index.ts";
 
 const ada = { channelType: "discord", id: "u1" } as const;
@@ -187,7 +185,7 @@ describe("emailClassifier", () => {
   });
 });
 
-describe("emailDigestAndLog and startEmailDigest", () => {
+describe("emailDigestAndLog", () => {
   it("logs a run that read mail, and survives one that cannot run", async () => {
     const t = makeTestLayer({ now: new Date("2026-11-24T12:00:00.000Z") });
     await Effect.runPromise(
@@ -212,22 +210,5 @@ describe("emailDigestAndLog and startEmailDigest", () => {
     await expect(
       Effect.runPromise(emailDigestAndLog() as Effect.Effect<void>),
     ).resolves.toBeUndefined();
-  });
-
-  it("registers a recurring run with the Scheduler", async () => {
-    const t = makeTestLayer();
-    const registered: Array<{ name: string; everyMs: number }> = [];
-    const layer = Layer.mergeAll(
-      t.layer,
-      Layer.succeed(Scheduler, {
-        every: (name, everyMs) => {
-          registered.push({ name, everyMs });
-          return Effect.succeed(Effect.void);
-        },
-      }),
-    );
-    const stop = await Effect.runPromise(startEmailDigest(60_000).pipe(Effect.provide(layer)));
-    expect(stop).toBeDefined();
-    expect(registered).toEqual([{ name: "email-digest", everyMs: 60_000 }]);
   });
 });
