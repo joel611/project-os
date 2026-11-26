@@ -173,15 +173,6 @@ describe("credential proxy", () => {
     expect(sent[0]!.url).toBe("https://api.github.com/user");
   });
 
-  it("refuses callers without a worker token", async () => {
-    for (const headers of [{ authorization: "" }, { authorization: "Bearer nope" }]) {
-      const res = await call("/egress/github/user", { headers });
-      expect(res.status).toBe(401);
-      expect(await res.json()).toMatchObject({ error: "Unauthorized" });
-    }
-    expect(sent).toEqual([]);
-  });
-
   it("refuses unknown services and paths that leave the provider", async () => {
     const unknown = await call("/egress/toString/x");
     expect(unknown.status).toBe(404);

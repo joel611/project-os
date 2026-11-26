@@ -1,9 +1,8 @@
 import type { ConnectionProvider } from "@project-os/contracts";
-import { authenticateCaller, egressAccessToken } from "@project-os/core";
-import { Effect } from "effect";
+import { egressAccessToken } from "@project-os/core";
 import { Elysia } from "elysia";
-import { bearerToken } from "../access.ts";
 import type { McpRuntime } from "../mcp/server.ts";
+import { asWorker, runForWorker, type WorkerRequest } from "../worker-access.ts";
 
 /** Where the credential proxy forwards, and how the person's token goes on the request. */
 export interface EgressUpstream {
@@ -59,6 +58,8 @@ const DROP_RESPONSE = new Set([
   "set-cookie",
 ]);
 
+type EgressRequest = WorkerRequest & { readonly params: { readonly service: string } };
+
 const refuse = (status: number, error: string, message: string) =>
   Response.json({ error, message }, { status });
 
@@ -74,11 +75,7 @@ export const egressRoutes = (deps: EgressDeps) => {
   const send = deps.fetch ?? fetch;
   return new Elysia({ name: "egress" }).all(
     "/egress/:service/*",
-    async ({ request, params }) => {
-      const token = bearerToken(request);
-      const caller = token ? await deps.runtime.runPromise(authenticateCaller(token)) : undefined;
-      if (!caller) return refuse(401, "Unauthorized", "Send your MCP token as a Bearer token.");
-
+    asWorker(deps.runtime, async ({ request, params }: EgressRequest, caller) => {
       const service = params.service as EgressService;
       const upstream = Object.hasOwn(EGRESS_UPSTREAMS, service)
         ? EGRESS_UPSTREAMS[service]
@@ -101,28 +98,22 @@ export const egressRoutes = (deps: EgressDeps) => {
       }
 
       const ticketId = request.headers.get(EGRESS_TICKET_HEADER) ?? undefined;
-      const outcome = await deps.runtime.runPromise(
+      const outcome = await runForWorker(
+        deps.runtime,
         egressAccessToken({
           caller,
           provider: upstream.provider,
           ...(ticketId && { ticketId }),
-        }).pipe(
-          Effect.map((accessToken) => ({ ok: true as const, accessToken })),
-          Effect.catch((e: { _tag: string; message?: string }) =>
-            Effect.succeed({ ok: false as const, tag: e._tag, message: e.message || e._tag }),
-          ),
-        ),
+        }),
       );
-      if (!outcome.ok) {
-        // NotConnected: the person has already been asked to /connect, as with user_token.
-        return refuse(outcome.tag === "TicketNotFound" ? 404 : 403, outcome.tag, outcome.message);
-      }
+      // NotConnected: the person has already been asked to /connect, as with user_token.
+      if (!outcome.ok) return Response.json(outcome.body, { status: outcome.status });
 
       const headers = new Headers();
       request.headers.forEach((value, key) => {
         if (!DROP_REQUEST.has(key)) headers.set(key, value);
       });
-      headers.set("authorization", authorization(upstream, outcome.accessToken));
+      headers.set("authorization", authorization(upstream, outcome.value));
       const hasBody = request.method !== "GET" && request.method !== "HEAD";
       const response = await send(target, {
         method: request.method,
@@ -148,7 +139,7 @@ export const egressRoutes = (deps: EgressDeps) => {
         statusText: response.statusText,
         headers: out,
       });
-    },
+    }),
     { parse: "none" },
   );
 };

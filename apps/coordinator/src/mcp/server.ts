@@ -1,10 +1,9 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { authenticateCaller } from "@project-os/core";
 import { Effect, Schema, type ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
-import { bearerToken } from "../access.ts";
+import { asWorker } from "../worker-access.ts";
 import { makeTools, type McpServices, type McpTool } from "./tools.ts";
 
 export type McpRuntime = ManagedRuntime.ManagedRuntime<McpServices, never>;
@@ -75,12 +74,7 @@ export const mcpRoutes = (
 ) =>
   new Elysia({ name: "mcp" }).all(
     "/mcp",
-    async ({ request }) => {
-      const token = bearerToken(request);
-      const caller = token ? await runtime.runPromise(authenticateCaller(token)) : undefined;
-      if (!caller) {
-        return Response.json({ error: "Unauthorized" }, { status: 401 });
-      }
+    asWorker(runtime, async ({ request }, caller) => {
       // Omitting sessionIdGenerator selects stateless mode.
       const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
       const userToken = !(options.credentialProxy && caller.kind === "sandbox");
@@ -93,6 +87,6 @@ export const mcpRoutes = (
         // here cuts nothing off.
         await server.close();
       }
-    },
+    }),
     { parse: "none" },
   );

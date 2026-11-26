@@ -1,4 +1,4 @@
-import { SANDBOX_PROVIDER_OF } from "@project-os/contracts";
+import { SANDBOX_PROVIDER_OF, workerTicketUrl } from "@project-os/contracts";
 import { workerSessionStart } from "@project-os/system-prompts";
 import {
   DEFAULT_SANDBOX_SESSION_SECONDS,
@@ -132,7 +132,7 @@ export const sessionEnv = (
 ): Record<string, string> => ({
   OPENROUTER_API_KEY: config.openrouterApiKey,
   // Where the session fetches its ticket's skills, with its own token (never in the command line).
-  PROJECT_OS_SKILLS_URL: `${config.mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(session.ticketId)}/skills`,
+  PROJECT_OS_SKILLS_URL: workerTicketUrl(config.mcpUrl, "skills", session.ticketId),
   PROJECT_OS_SKILLS_TOKEN: session.mcpToken,
   PROJECT_OS_MCP_JSON: piMcpJson(config.mcpUrl, session.mcpToken),
   PROJECT_OS_MODEL: config.model,
