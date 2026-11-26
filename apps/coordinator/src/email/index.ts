@@ -2,7 +2,7 @@ import type { ClassifierApi, ClassifierModel } from "@earendil-works/pi-ai";
 import { type ClassifyClient, makeEmailClassifier } from "@project-os/agent-runtime/classifier";
 import { createGmailReader, GmailError } from "@project-os/channel-email";
 import { envBool, formatModelRef, type ModelRef } from "@project-os/config";
-import { GMAIL_READ_SCOPE } from "@project-os/contracts";
+import { GMAIL_READ_SCOPE, type Requester } from "@project-os/contracts";
 import {
   DEFAULT_EMAIL_DIGEST,
   type EmailDigestConfig,
@@ -48,33 +48,42 @@ export const gmailEmailSource = (options?: {
     Effect.gen(function* () {
       const connections = yield* UserConnections;
       const reader = createGmailReader(options);
-      return {
-        sync: ({ owner, cursor, limit }) =>
-          Effect.gen(function* () {
-            const token = yield* connections.accessToken(owner, "google").pipe(
-              Effect.mapError(
-                (e) =>
-                  new EmailSourceError({
-                    message: e.message,
-                    reconnect: e._tag === "NotConnected",
-                  }),
-              ),
-            );
-            if (!token.scopes.includes(GMAIL_READ_SCOPE)) {
-              return yield* new EmailSourceError({
-                message: "The Google link has no Gmail read access",
-                reconnect: true,
-              });
-            }
-            return yield* Effect.tryPromise({
-              try: () => reader.sync({ token: token.accessToken, cursor, limit }),
-              catch: (e) =>
+      /** The person's token, or the reason mail can't be read with it. */
+      const tokenFor = (owner: Requester) =>
+        Effect.gen(function* () {
+          const token = yield* connections.accessToken(owner, "google").pipe(
+            Effect.mapError(
+              (e) =>
                 new EmailSourceError({
-                  message: e instanceof Error ? e.message : String(e),
-                  reconnect: e instanceof GmailError && e.reconnect,
+                  message: e.message,
+                  reconnect: e._tag === "NotConnected",
                 }),
+            ),
+          );
+          if (!token.scopes.includes(GMAIL_READ_SCOPE)) {
+            return yield* new EmailSourceError({
+              message: "The Google link has no Gmail read access",
+              reconnect: true,
             });
-          }),
+          }
+          return token.accessToken;
+        });
+      const call = <A>(f: () => Promise<A>) =>
+        Effect.tryPromise({
+          try: f,
+          catch: (e) =>
+            new EmailSourceError({
+              message: e instanceof Error ? e.message : String(e),
+              reconnect: e instanceof GmailError && e.reconnect,
+            }),
+        });
+      return {
+        sync: ({ owner, label, cursor, limit }) =>
+          Effect.flatMap(tokenFor(owner), (token) =>
+            call(() => reader.sync({ token, label, cursor, limit })),
+          ),
+        labels: (owner) =>
+          Effect.flatMap(tokenFor(owner), (token) => call(() => reader.labels(token))),
       };
     }),
   );

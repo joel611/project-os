@@ -1,0 +1,1 @@
+ALTER TABLE `email_mailboxes` ADD `label` text;

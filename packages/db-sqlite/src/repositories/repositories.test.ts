@@ -1331,12 +1331,13 @@ describe("EmailRepository", () => {
       Effect.gen(function* () {
         const repo = yield* EmailRepository;
         const none = yield* repo.mailbox(ada);
-        const base = { cursor: null, lastSyncAt: null, needsReconnect: false };
+        const base = { label: null, cursor: null, lastSyncAt: null, needsReconnect: false };
         yield* repo.saveMailbox({ owner: ada, enabled: true, ...base });
         yield* repo.saveMailbox({ owner: bob, enabled: false, ...base });
         yield* repo.saveMailbox({
           owner: ada,
           enabled: true,
+          label: "Label_1",
           cursor: "h9",
           lastSyncAt: T1,
           needsReconnect: true,
@@ -1352,6 +1353,7 @@ describe("EmailRepository", () => {
     expect(out.ada).toEqual({
       owner: ada,
       enabled: true,
+      label: "Label_1",
       cursor: "h9",
       lastSyncAt: T1,
       needsReconnect: true,

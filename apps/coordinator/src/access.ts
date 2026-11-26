@@ -106,6 +106,7 @@ export const ROUTE_POLICY: Readonly<Record<string, RoutePolicy>> = {
   "GET /me": "member",
   "GET /me/tickets": "member",
   "GET /me/email": "member",
+  "GET /me/email/labels": "member",
   "POST /me/email/enabled": "member",
   "POST /me/email/:id/assign": "member",
   "GET /tickets/:id": "member",

@@ -25,6 +25,7 @@ import {
   answerScopePrompt,
   assignEmail,
   getMyEmail,
+  listEmailLabels,
   setMailboxEnabled,
   audit,
   browseSkillSource,
@@ -58,6 +59,7 @@ import {
   type ChannelGateway,
   type Person,
   type ChannelDigester,
+  type EmailSource,
   type ChannelMessageRepository,
   type EmailRepository,
   type Clock,
@@ -150,6 +152,7 @@ export type HttpEnv =
   | ChannelMessageRepository
   | Clock
   | EmailRepository
+  | EmailSource
   | IdGenerator
   | IntentClassifier
   | KeyValueStore
@@ -294,8 +297,24 @@ export const httpRoutes = ({
               : "enabled must be true or false",
         };
       }
-      await run(setMailboxEnabled(person, parsed.enabled));
-      return run(getMyEmail(person, emailDigest));
+      return reply(
+        set,
+        toResult(
+          setMailboxEnabled(person, parsed.enabled, parsed.label).pipe(
+            Effect.andThen(getMyEmail(person, emailDigest)),
+          ),
+        ),
+      );
+    })
+    .get("/me/email/labels", async ({ request, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      if (!emailDigest || !person) {
+        set.status = !emailDigest ? 501 : 403;
+        return {
+          error: !emailDigest ? "Email is not turned on here" : "No mailbox for this account",
+        };
+      }
+      return reply(set, toResult(listEmailLabels(person)));
     })
     .post("/me/email/:id/assign", async ({ request, params, body, set }) => {
       const person = await access.personOf(await access.caller(request));

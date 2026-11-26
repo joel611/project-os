@@ -58,6 +58,7 @@ describe("makeApi", () => {
     const mailbox = {
       available: true,
       enabled: true,
+      label: "all",
       needsReconnect: false,
       lastSyncAt: null,
       projects: [{ id: "p1", name: "Acme" }],
@@ -69,6 +70,12 @@ describe("makeApi", () => {
     const toggled = respond(200, mailbox);
     expect(await toggled.api.setEmailEnabled(true)).toEqual(mailbox);
     expect(toggled.calls).toEqual(["/api/me/email/enabled"]);
+    const labelled = respond(200, mailbox);
+    await labelled.api.setEmailEnabled(true, "Label_1");
+    expect(labelled.calls).toEqual(["/api/me/email/enabled"]);
+    const labels = respond(200, [{ id: "Label_1", name: "Clients" }]);
+    expect(await labels.api.myEmailLabels()).toEqual([{ id: "Label_1", name: "Clients" }]);
+    expect(labels.calls).toEqual(["/api/me/email/labels"]);
     const assigned = respond(200, { saved: 2 });
     expect(await assigned.api.assignEmail("e 1", "p1")).toEqual({ saved: 2 });
     expect(assigned.calls).toEqual(["/api/me/email/e%201/assign"]);
