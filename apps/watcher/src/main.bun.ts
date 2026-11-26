@@ -135,9 +135,28 @@ const config = command.runLog ? loaded : { ...loaded, runLog: false };
 if (credentials!.agent && config.agent !== credentials!.agent && !process.env.WATCHER_AGENT) {
   logger.warn(`saved agent ${credentials!.agent} isn't installed; using ${config.agent} instead`);
 }
-logger.info(
-  `watcher ${config.workerId} (${config.agent}) → ${config.mcpUrl} (every ${config.intervalMs / 1000}s)`,
-);
+const banner = String.raw`
+  ____            _           _      ___  ____
+ |  _ \ _ __ ___ (_) ___  ___| |_   / _ \/ ___|
+ | |_) | '__/ _ \| |/ _ \/ __| __| | | | \___ \
+ |  __/| | | (_) | |  __/ (__| |_  | |_| |___) |
+ |_|   |_|  \___// |\___|\___|\__|  \___/|____/
+               |__/`;
+const server = URL.parse(credentials!.server);
+// Log the base URL without any user info, query parameters, or fragment.
+const coordinator =
+  server && (server.protocol === "https:" || server.protocol === "http:")
+    ? `${server.origin}${server.pathname}`
+    : "(invalid URL)";
+const acp = config.agent === "pi" && config.piAcp;
+logger.info(banner, {
+  coordinator,
+  workerId: config.workerId,
+  agent: config.agent,
+  acp: acp ? "on" : "off",
+  model: config.model || (acp && process.env.PI_ACP_MODEL) || "agent default",
+  intervalMs: config.intervalMs,
+});
 logger.debug("config", {
   agent: config.agent,
   model: config.model,
