@@ -61,6 +61,7 @@ export interface FakeGmailMessage {
   readonly from: string;
   readonly subject: string;
   readonly body: string;
+  /** Default `INBOX`. */
   readonly labels?: ReadonlyArray<string>;
 }
 
@@ -308,20 +309,32 @@ export const startStack = async (options: {
     ? Bun.serve({
         port: 0,
         fetch: (req) => {
-          const { pathname } = new URL(req.url);
-          gmailCalls.push(`${pathname} ${req.headers.get("authorization")}`);
+          const { pathname, search } = new URL(req.url);
+          gmailCalls.push(`${pathname}${search} ${req.headers.get("authorization")}`);
           const b64 = (text: string) => btoa(text).replace(/\+/g, "-").replace(/\//g, "_");
           if (pathname.endsWith("/profile")) {
             return Response.json({ historyId: String(gmailMessages.length) });
           }
           if (pathname.endsWith("/history")) {
-            const start = Number(new URL(req.url).searchParams.get("startHistoryId"));
+            const params = new URL(req.url).searchParams;
+            const start = Number(params.get("startHistoryId"));
+            const labelId = params.get("labelId");
             return Response.json({
-              history: gmailMessages.slice(start).map((m, i) => ({
-                id: String(start + i + 1),
-                messagesAdded: [{ message: { id: m.id } }],
-              })),
+              history: gmailMessages
+                .slice(start)
+                .map((m, i) => ({ m, id: String(start + i + 1) }))
+                // Gmail only reports changes to mail that has the label asked for.
+                .filter(({ m }) => (m.labels ?? ["INBOX"]).includes(labelId!))
+                .map(({ m, id }) => ({ id, messagesAdded: [{ message: { id: m.id } }] })),
               historyId: String(gmailMessages.length),
+            });
+          }
+          if (pathname.endsWith("/labels")) {
+            return Response.json({
+              labels: [
+                { id: "INBOX", name: "INBOX", type: "system" },
+                { id: "Label_1", name: "Clients", type: "user" },
+              ],
             });
           }
           const m = gmailMessages.find((x) => pathname.endsWith(`/messages/${x.id}`))!;

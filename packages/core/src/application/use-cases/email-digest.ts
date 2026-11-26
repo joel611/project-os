@@ -71,24 +71,44 @@ const clip = (text: string, max: number) =>
 const emptyMailbox = (owner: Requester): Mailbox => ({
   owner,
   enabled: false,
+  label: null,
   cursor: null,
   lastSyncAt: null,
   needsReconnect: false,
 });
 
-/** Switches a person's mailbox on or off. Turning it on starts reading from now. */
-export const setMailboxEnabled = (owner: Requester, enabled: boolean) =>
+/** Switching a mailbox on needs a choice of what to read: `all` or one Gmail label. */
+export class EmailLabelRequired extends Data.TaggedError("EmailLabelRequired")<{
+  readonly message: string;
+}> {}
+
+/**
+ * Switches a person's mailbox on or off. Turning it on needs a `label` (`all`, or one Gmail label
+ * id), and starts reading from now. Sent again while on, a label changes what is read.
+ */
+export const setMailboxEnabled = (owner: Requester, enabled: boolean, label?: string) =>
   Effect.gen(function* () {
     const repo = yield* EmailRepository;
     const mailbox = (yield* repo.mailbox(owner)) ?? emptyMailbox(owner);
+    const chosen = label ?? mailbox.label;
+    if (enabled && chosen === null) {
+      return yield* new EmailLabelRequired({
+        message: "Choose which Gmail label to read: all mail, or one label",
+      });
+    }
     yield* repo.saveMailbox({
       ...mailbox,
       enabled,
+      label: chosen,
       // A fresh start: mail from before it was switched on is not read.
       ...(enabled ? { needsReconnect: false } : {}),
-      ...(enabled && !mailbox.enabled ? { cursor: null } : {}),
+      ...(enabled && (!mailbox.enabled || mailbox.label === null) ? { cursor: null } : {}),
     });
   });
+
+/** The Gmail labels a person may pick from. */
+export const listEmailLabels = (owner: Requester) =>
+  Effect.flatMap(EmailSource, (source) => source.labels(owner));
 
 /** `GET /me/email`: the person's mailbox state and the emails waiting for a project. */
 export const getMyEmail = (owner: Requester, available: boolean) =>
@@ -100,6 +120,7 @@ export const getMyEmail = (owner: Requester, available: boolean) =>
     const result: MyEmail = {
       available,
       enabled: mailbox?.enabled ?? false,
+      label: mailbox?.label ?? null,
       needsReconnect: mailbox?.needsReconnect ?? false,
       lastSyncAt: mailbox?.lastSyncAt ?? null,
       projects: projects
@@ -212,7 +233,12 @@ const syncMailbox = (mailbox: Mailbox, config: EmailDigestConfig) =>
     const repo = yield* EmailRepository;
     const now = (yield* Effect.flatMap(Clock, (c) => c.now)).toISOString();
     const read = yield* (yield* EmailSource)
-      .sync({ owner: mailbox.owner, cursor: mailbox.cursor, limit: config.maxPerSync })
+      .sync({
+        owner: mailbox.owner,
+        label: mailbox.label!,
+        cursor: mailbox.cursor,
+        limit: config.maxPerSync,
+      })
       .pipe(
         Effect.catchTag("EmailSourceError", (e) =>
           Effect.gen(function* () {
@@ -312,8 +338,9 @@ export const syncMailboxes = (config: EmailDigestConfig) =>
     let mailboxes = 0;
     let emails = 0;
     for (const mailbox of yield* repo.enabledMailboxes) {
-      // A mailbox the person has to relink is skipped until they switch it on again.
-      if (mailbox.needsReconnect) continue;
+      // Skipped: one the person has to relink (until they switch it on again), and one with
+      // no label chosen yet (nothing is read before they say what).
+      if (mailbox.needsReconnect || mailbox.label === null) continue;
       const lock = `email:lock:${keyOf(mailbox.owner)}`;
       if (!(yield* kv.setIfAbsent(lock, "1", { ttlSeconds: 300 }))) continue;
       mailboxes++;

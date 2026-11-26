@@ -39,17 +39,22 @@ describe("LocalLive", () => {
         const read = yield* Effect.flip(
           (yield* EmailSource).sync({
             owner: { channelType: "discord", id: "u1" },
+            label: "all",
             cursor: null,
             limit: 1,
           }),
         );
+        const labels = yield* Effect.flip(
+          (yield* EmailSource).labels({ channelType: "discord", id: "u1" }),
+        );
         const classify = yield* Effect.flip(
           (yield* EmailClassifier).classify({ from: "a", subject: "b", body: "c", projects: [] }),
         );
-        return { read, classify };
+        return { read, labels, classify };
       }).pipe(Effect.provide(live())),
     );
     expect(out.read).toMatchObject({ reconnect: false, message: "Email is not configured." });
+    expect(out.labels.message).toBe("Email is not configured.");
     expect(out.classify.message).toBe("Email is not configured.");
   });
 

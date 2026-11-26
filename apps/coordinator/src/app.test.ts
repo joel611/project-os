@@ -133,7 +133,7 @@ describe("coordinator app", () => {
       const refused = await call(off, "/me/email/enabled", {
         method: "POST",
         token: "ada",
-        body: { enabled: true },
+        body: { enabled: true, label: "all" },
       });
       expect(refused.status).toBe(501);
 
@@ -144,13 +144,24 @@ describe("coordinator app", () => {
         body: { enabled: "yes" },
       });
       expect(bad.status).toBe(400);
-      const on = await call(app, "/me/email/enabled", {
+      // Switching on needs a label: all mail, or one.
+      const noLabel = await call(app, "/me/email/enabled", {
         method: "POST",
         token: "ada",
         body: { enabled: true },
       });
+      expect(noLabel.status).toBe(400);
+      const on = await call(app, "/me/email/enabled", {
+        method: "POST",
+        token: "ada",
+        body: { enabled: true, label: "all" },
+      });
       expect(on.status).toBe(200);
       expect(await on.json()).toMatchObject({ available: true, enabled: true });
+
+      expect((await call(app, "/me/email/labels", { token: "ada" })).status).toBe(200);
+      expect((await call(off, "/me/email/labels", { token: "ada" })).status).toBe(501);
+      expect((await call(app, "/me/email/labels", { token: "op" })).status).toBe(403);
 
       const assign = (token: string, body: unknown) =>
         call(app, "/me/email/e1/assign", { method: "POST", token, body });
@@ -163,7 +174,7 @@ describe("coordinator app", () => {
       const noPerson = await call(app, "/me/email/enabled", {
         method: "POST",
         token: "op",
-        body: { enabled: true },
+        body: { enabled: true, label: "all" },
       });
       expect(noPerson.status).toBe(403);
       expect((await assign("op", { projectId: null })).status).toBe(403);

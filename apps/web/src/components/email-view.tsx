@@ -1,5 +1,6 @@
 import type { MyEmail } from "@project-os/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { api, describeError } from "@/api";
 import { Empty, QueryError } from "@/components/states";
 import { Button } from "@/components/ui/button";
@@ -92,16 +93,31 @@ const Row = ({ email, projects }: { email: Waiting; projects: MyEmail["projects"
   );
 };
 
+const ALL_MAIL = "all";
+
 const Mailbox = () => {
   const qc = useQueryClient();
   const mail = useQuery({ queryKey: QUERY_KEY, queryFn: api.myEmail, refetchInterval: 60_000 });
+  const available = mail.data?.available === true;
+  const labels = useQuery({
+    queryKey: ["my-email-labels"],
+    queryFn: api.myEmailLabels,
+    enabled: available,
+    retry: false,
+  });
+  // What the person picked in the list, not yet saved; until then, what is saved.
+  const [picked, setPicked] = useState<string | null>(null);
   const toggle = useMutation({
-    mutationFn: (enabled: boolean) => api.setEmailEnabled(enabled),
-    onSuccess: (data) => qc.setQueryData(QUERY_KEY, data),
+    mutationFn: (input: { enabled: boolean; label?: string }) =>
+      api.setEmailEnabled(input.enabled, input.label),
+    onSuccess: (data) => {
+      setPicked(null);
+      qc.setQueryData(QUERY_KEY, data);
+    },
   });
   if (mail.isPending) return <Skeleton className="h-40" />;
   if (mail.isError) return <QueryError error={mail.error} />;
-  const { available, enabled, needsReconnect, unassigned, projects, lastSyncAt } = mail.data;
+  const { enabled, needsReconnect, unassigned, projects, lastSyncAt } = mail.data;
   if (!available) {
     return (
       <Empty
@@ -110,37 +126,87 @@ const Mailbox = () => {
       />
     );
   }
+  const options = [
+    { value: ALL_MAIL, label: "All mail (inbox)" },
+    ...(labels.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+  ];
+  const label = picked ?? mail.data.label;
+  // Switched on before labels existed: on, but nothing is read until a label is chosen.
+  const needsLabel = enabled && mail.data.label === null;
+  const labelName = options.find((o) => o.value === mail.data.label)?.label;
+  const changed = picked !== null && picked !== mail.data.label;
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-card sm:px-6">
-        <div className="flex flex-col gap-0.5">
-          <p className="text-sm font-medium">
-            {enabled ? "Reading your Gmail inbox" : "Not reading your mail"}
-          </p>
-          <p className="text-[13px] text-muted-foreground">
-            {enabled
-              ? lastSyncAt
-                ? "Read-only. New inbox mail only, from the moment you turned this on."
-                : "Waiting for the first check, within a minute."
-              : "Turn it on to save what your email says to Project Memory. Read-only: it never sends or changes mail."}
-          </p>
+      <div className="flex flex-col gap-4 rounded-xl border bg-card px-4 py-3.5 shadow-card sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-medium">
+              {enabled && !needsLabel
+                ? `Reading ${labelName ?? "your chosen label"}`
+                : "Not reading your mail"}
+            </p>
+            <p className="text-[13px] text-muted-foreground">
+              {enabled && !needsLabel
+                ? lastSyncAt
+                  ? "Read-only. New mail only, from the moment you turned this on."
+                  : "Waiting for the first check, within a minute."
+                : "Choose what to read, then turn it on. Read-only: it never sends or changes mail."}
+            </p>
+          </div>
+          {enabled && !needsLabel && (
+            <Button
+              variant="outline"
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ enabled: false })}
+            >
+              Turn off
+            </Button>
+          )}
         </div>
-        <Button
-          variant={enabled ? "outline" : "default"}
-          disabled={toggle.isPending}
-          onClick={() => toggle.mutate(!enabled)}
-        >
-          {enabled ? "Turn off" : "Turn on"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            items={options}
+            value={label}
+            disabled={toggle.isPending}
+            onValueChange={(value) => setPicked(value)}
+          >
+            <SelectTrigger
+              aria-label="Gmail label to read"
+              className="h-[34px] min-w-56 border-border bg-card text-xs font-medium shadow-card"
+            >
+              <SelectValue placeholder="Choose a label…" />
+            </SelectTrigger>
+            <SelectContent align="start" alignItemWithTrigger={false}>
+              {options.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-xs">
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(!enabled || needsLabel || changed) && (
+            <Button
+              disabled={toggle.isPending || label === null}
+              onClick={() => label && toggle.mutate({ enabled: true, label })}
+            >
+              {enabled && !needsLabel ? "Change label" : "Turn on"}
+            </Button>
+          )}
+          {labels.isError && (
+            <span className="text-[13px] text-destructive">
+              Couldn't load your Gmail labels. {describeError(labels.error)}
+            </span>
+          )}
+        </div>
       </div>
       {toggle.isError && <QueryError error={toggle.error} />}
       {enabled && needsReconnect && (
         <p className="px-2 text-sm text-destructive">
           Your Google link can't read mail. Run <code className="text-xs">/connect google</code> in
-          Discord, then press Turn off and Turn on to check again.
+          Discord, then turn it off and on again to check.
         </p>
       )}
-      {enabled && !needsReconnect && unassigned.length === 0 ? (
+      {enabled && !needsLabel && !needsReconnect && unassigned.length === 0 ? (
         <Empty
           title="Nothing waiting"
           hint="Emails the Coordinator is not sure about wait here for you to pick a project."
@@ -172,9 +238,9 @@ export const EmailView = () => {
       <header className="flex flex-col gap-2">
         <h1 className="text-[28px] leading-tight font-semibold tracking-tight">Email</h1>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Your Gmail, read into Project Memory. Emails the Coordinator is at least 90% sure about
-          are filed under their project; the rest wait here for you. Filing one by hand teaches it
-          for next time.
+          Your Gmail, read into Project Memory: all mail, or just one label you choose. Emails the
+          Coordinator is at least 90% sure about are filed under their project; the rest wait here
+          for you. Filing one by hand teaches it for next time.
         </p>
       </header>
       {viewer.isPending ? (

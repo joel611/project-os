@@ -15,6 +15,8 @@ export const emailMailboxes = sqliteTable(
     ownerChannelType: text("owner_channel_type", { enum: ["discord", "email", "chat"] }).notNull(),
     ownerId: text("owner_id").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    /** `all` or a Gmail label id; null until the person has chosen. */
+    label: text("label"),
     cursor: text("cursor"),
     lastSyncAt: text("last_sync_at"),
     needsReconnect: integer("needs_reconnect", { mode: "boolean" }).notNull(),

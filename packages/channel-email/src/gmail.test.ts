@@ -40,7 +40,7 @@ const gmail = (routes: Record<string, () => Response>) => {
 describe("createGmailReader", () => {
   it("starts at the mailbox's present without reading mail", async () => {
     const g = gmail({ "/profile": () => json({ historyId: "100" }) });
-    expect(await g.reader.sync({ token: "tok", cursor: null, limit: 10 })).toEqual({
+    expect(await g.reader.sync({ token: "tok", label: "all", cursor: null, limit: 10 })).toEqual({
       messages: [],
       cursor: "100",
     });
@@ -79,7 +79,7 @@ describe("createGmailReader", () => {
       "/messages/promo": () =>
         json(message("promo", { labelIds: ["INBOX", "CATEGORY_PROMOTIONS"] })),
     });
-    const out = await g.reader.sync({ token: "t", cursor: "100", limit: 10 });
+    const out = await g.reader.sync({ token: "t", label: "all", cursor: "100", limit: 10 });
     expect(out.cursor).toBe("110");
     expect(out.messages.map((m) => m.messageId)).toEqual(["a", "b"]);
     expect(out.messages[0]).toEqual({
@@ -110,7 +110,7 @@ describe("createGmailReader", () => {
       "/messages/a": () => json(message("a")),
       "/messages/b": () => json(message("b")),
     });
-    const out = await g.reader.sync({ token: "t", cursor: "100", limit: 2 });
+    const out = await g.reader.sync({ token: "t", label: "all", cursor: "100", limit: 2 });
     expect(out.messages.map((m) => m.messageId)).toEqual(["a", "b"]);
     expect(out.cursor).toBe("102");
   });
@@ -129,7 +129,7 @@ describe("createGmailReader", () => {
       },
       "/messages/a": () => json(message("a")),
     });
-    const out = await g.reader.sync({ token: "t", cursor: "100", limit: 10 });
+    const out = await g.reader.sync({ token: "t", label: "all", cursor: "100", limit: 10 });
     expect(out.messages).toHaveLength(1);
     expect(out.cursor).toBe("101");
     expect(g.calls.some((c) => c.includes("pageToken=n"))).toBe(true);
@@ -140,7 +140,7 @@ describe("createGmailReader", () => {
       "/history": () => new Response("", { status: 404 }),
       "/profile": () => json({ historyId: "900" }),
     });
-    expect(await g.reader.sync({ token: "t", cursor: "1", limit: 10 })).toEqual({
+    expect(await g.reader.sync({ token: "t", label: "all", cursor: "1", limit: 10 })).toEqual({
       messages: [],
       cursor: "900",
     });
@@ -148,17 +148,21 @@ describe("createGmailReader", () => {
 
   it("tells a refused token (reconnect) from a Gmail outage", async () => {
     const refused = gmail({ "/profile": () => new Response("", { status: 403 }) });
-    const err = await refused.reader.sync({ token: "t", cursor: null, limit: 1 }).catch((e) => e);
+    const err = await refused.reader
+      .sync({ token: "t", label: "all", cursor: null, limit: 1 })
+      .catch((e) => e);
     expect(err).toBeInstanceOf(GmailError);
     expect(err.reconnect).toBe(true);
 
     const down = gmail({ "/profile": () => new Response("", { status: 503 }) });
-    const outage = await down.reader.sync({ token: "t", cursor: null, limit: 1 }).catch((e) => e);
+    const outage = await down.reader
+      .sync({ token: "t", label: "all", cursor: null, limit: 1 })
+      .catch((e) => e);
     expect(outage.reconnect).toBe(false);
 
     const missing = gmail({ "/profile": () => new Response("", { status: 404 }) });
     const noProfile = await missing.reader
-      .sync({ token: "t", cursor: null, limit: 1 })
+      .sync({ token: "t", label: "all", cursor: null, limit: 1 })
       .catch((e) => e);
     expect(noProfile.reconnect).toBe(false);
   });
@@ -167,7 +171,9 @@ describe("createGmailReader", () => {
     const real = globalThis.fetch;
     globalThis.fetch = (async () => json({ historyId: "7" })) as unknown as typeof fetch;
     try {
-      expect(await createGmailReader().sync({ token: "t", cursor: null, limit: 1 })).toEqual({
+      expect(
+        await createGmailReader().sync({ token: "t", label: "all", cursor: null, limit: 1 }),
+      ).toEqual({
         messages: [],
         cursor: "7",
       });
@@ -183,7 +189,7 @@ describe("createGmailReader", () => {
         json({ history: [{ id: "101", messagesAdded: [{ message: { id: "a" } }] }] }),
       "/messages/a": () => json({ id: "a", threadId: "t", payload: { mimeType: "text/plain" } }),
     });
-    const out = await g.reader.sync({ token: "t", cursor: "100", limit: 10 });
+    const out = await g.reader.sync({ token: "t", label: "all", cursor: "100", limit: 10 });
     expect(out.cursor).toBe("101");
     expect(out.messages[0]).toMatchObject({
       fromName: null,
@@ -192,6 +198,111 @@ describe("createGmailReader", () => {
       body: "",
     });
     expect(Date.parse(out.messages[0]!.receivedAt)).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe("reading one label", () => {
+  const history = () =>
+    json({
+      history: [
+        { id: "101", messagesAdded: [{ message: { id: "a" } }] },
+        { id: "102", labelsAdded: [{ message: { id: "b" }, labelIds: ["Label_1"] }] },
+        { id: "103", labelsAdded: [{ message: { id: "c" }, labelIds: ["Label_2"] }] },
+        { id: "104", labelsAdded: [{ message: { id: "b" }, labelIds: ["Label_1"] }] },
+        { id: "105", labelsAdded: [{ message: { id: "gone" } }] },
+        { id: "106", messagesAdded: [{ message: { id: "spam" } }] },
+      ],
+      historyId: "110",
+    });
+
+  it("asks Gmail for that label, and reads mail that arrived with it or got it later", async () => {
+    const g = gmail({
+      "/history": history,
+      "/messages/a": () => json(message("a", { labelIds: ["INBOX", "Label_1"] })),
+      "/messages/b": () => json(message("b", { labelIds: ["Label_1"] })),
+      "/messages/gone": () => json(message("gone", { labelIds: ["Label_1"] })),
+      // Labelled, but the label was taken off again since.
+      "/messages/c": () => json(message("c", { labelIds: ["INBOX"] })),
+      "/messages/spam": () => json(message("spam", { labelIds: ["Label_1", "SPAM"] })),
+    });
+    const out = await g.reader.sync({ token: "t", label: "Label_1", cursor: "100", limit: 10 });
+    expect(out.messages.map((m) => m.messageId)).toEqual(["a", "b"]);
+    const url = new URL(g.calls[0]!.split(" ")[0]!);
+    expect(url.searchParams.get("labelId")).toBe("Label_1");
+    expect(url.searchParams.getAll("historyTypes")).toEqual(["messageAdded", "labelAdded"]);
+  });
+
+  it("reads Promotions when that is exactly the label chosen, and not under all", async () => {
+    const routes = {
+      "/history": () =>
+        json({ history: [{ id: "101", messagesAdded: [{ message: { id: "p" } }] }] }),
+      "/messages/p": () => json(message("p", { labelIds: ["INBOX", "CATEGORY_PROMOTIONS"] })),
+    };
+    const chosen = await gmail(routes).reader.sync({
+      token: "t",
+      label: "CATEGORY_PROMOTIONS",
+      cursor: "100",
+      limit: 10,
+    });
+    expect(chosen.messages.map((m) => m.messageId)).toEqual(["p"]);
+    const everything = await gmail(routes).reader.sync({
+      token: "t",
+      label: "all",
+      cursor: "100",
+      limit: 10,
+    });
+    expect(everything.messages).toEqual([]);
+  });
+
+  it("skips mail Gmail reports with no labels at all", async () => {
+    const g = gmail({
+      "/history": () =>
+        json({ history: [{ id: "101", messagesAdded: [{ message: { id: "a" } }] }] }),
+      "/messages/a": () => json(message("a", { labelIds: undefined })),
+    });
+    const out = await g.reader.sync({ token: "t", label: "Label_1", cursor: "100", limit: 10 });
+    expect(out.messages).toEqual([]);
+  });
+
+  it("reads the inbox with label all, adding messages only", async () => {
+    const g = gmail({ "/history": () => json({}) });
+    await g.reader.sync({ token: "t", label: "all", cursor: "100", limit: 10 });
+    const url = new URL(g.calls[0]!.split(" ")[0]!);
+    expect(url.searchParams.get("labelId")).toBe("INBOX");
+    expect(url.searchParams.getAll("historyTypes")).toEqual(["messageAdded"]);
+  });
+});
+
+describe("labels", () => {
+  it("lists the person's labels, Starred and Important, by name", async () => {
+    const g = gmail({
+      "/labels": () =>
+        json({
+          labels: [
+            { id: "INBOX", name: "INBOX", type: "system" },
+            { id: "IMPORTANT", name: "IMPORTANT", type: "system" },
+            { id: "Label_2", name: "Zed", type: "user" },
+            { id: "Label_1", name: "Clients", type: "user" },
+            { id: "STARRED", name: "STARRED", type: "system" },
+          ],
+        }),
+    });
+    expect(await g.reader.labels("t")).toEqual([
+      { id: "Label_1", name: "Clients" },
+      { id: "IMPORTANT", name: "important" },
+      { id: "STARRED", name: "starred" },
+      { id: "Label_2", name: "Zed" },
+    ]);
+  });
+
+  it("is empty when Gmail has none, and refuses a bad token", async () => {
+    expect(await gmail({ "/labels": () => json({}) }).reader.labels("t")).toEqual([]);
+    expect(
+      await gmail({ "/labels": () => new Response("", { status: 404 }) }).reader.labels("t"),
+    ).toEqual([]);
+    await expect(
+      gmail({ "/labels": () => new Response("", { status: 401 }) }).reader.labels("t"),
+    ).rejects.toThrow("refused");
   });
 });
 

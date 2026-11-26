@@ -80,7 +80,7 @@ describe("email digest", () => {
     await email.runDigest();
     expect(email.gmailCalls).toEqual([]);
 
-    const on = await call(token, "POST", "/me/email/enabled", { enabled: true });
+    const on = await call(token, "POST", "/me/email/enabled", { enabled: true, label: "all" });
     expect(on.body).toMatchObject({ enabled: true, needsReconnect: false });
 
     // The first run only notes where the mailbox is: mail from before it was switched on is not read.
@@ -170,10 +170,70 @@ describe("email digest", () => {
     ]);
   });
 
+  it("reads nothing until a label is chosen, then only mail with that label", async () => {
+    const { acme } = await start();
+    const token = await signInAsAda();
+    const email = stack.email!;
+
+    // The labels come from the person's own Gmail, with their own token.
+    const labels = await call(token, "GET", "/me/email/labels");
+    expect(labels.body).toEqual([{ id: "Label_1", name: "Clients" }]);
+    expect(email.gmailCalls.every((c) => c.includes("Bearer at-google-"))).toBe(true);
+
+    // Switching on says what to read: no label, no mailbox.
+    const refused = await call(token, "POST", "/me/email/enabled", { enabled: true });
+    expect(refused.status).toBe(400);
+    expect((await call(token, "GET", "/me/email")).body).toMatchObject({
+      enabled: false,
+      label: null,
+    });
+    await email.runDigest();
+    expect(email.gmailCalls.filter((c) => c.includes("/history"))).toEqual([]);
+
+    const on = await call(token, "POST", "/me/email/enabled", { enabled: true, label: "Label_1" });
+    expect(on.body).toMatchObject({ enabled: true, label: "Label_1" });
+    await email.runDigest();
+    email.deliver(
+      {
+        id: "m1",
+        from: "dana@acme.test",
+        subject: "Acme launch",
+        body: "We decided to ship Acme.",
+        labels: ["INBOX", "Label_1"],
+      },
+      {
+        id: "m2",
+        from: "dana@acme.test",
+        subject: "Acme lunch",
+        body: "We decided on Acme pizza.",
+        labels: ["INBOX"],
+      },
+    );
+    await email.runDigest();
+
+    // Gmail was asked about that label only, and the unlabelled mail was never read.
+    expect(email.gmailCalls.some((c) => c.includes("labelId=Label_1"))).toBe(true);
+    expect(email.gmailCalls.some((c) => c.includes("/messages/m2"))).toBe(false);
+    const filed = await memory(acme);
+    expect(filed).toHaveLength(1);
+    expect(filed[0]!.sourceMetadata).toMatchObject({ subject: "Acme launch" });
+
+    // Changing to all mail reads the inbox from then on.
+    await call(token, "POST", "/me/email/enabled", { enabled: true, label: "all" });
+    email.deliver({
+      id: "m3",
+      from: "dana@acme.test",
+      subject: "Acme plan",
+      body: "We decided on Acme next steps.",
+    });
+    await email.runDigest();
+    expect(await memory(acme)).toHaveLength(2);
+  });
+
   it("holds a match below 90% for the member, with the suggestion", async () => {
     const { acme } = await start({ confidence: 0.7 });
     const token = await signInAsAda();
-    await call(token, "POST", "/me/email/enabled", { enabled: true });
+    await call(token, "POST", "/me/email/enabled", { enabled: true, label: "all" });
     await stack.email!.runDigest();
     stack.email!.deliver({
       id: "m1",
@@ -199,7 +259,7 @@ describe("email digest", () => {
     // A link made before the Gmail scope was asked for.
     stack.oauth!.scope = "openid email profile drive.readonly";
     const token = await signInAsAda();
-    await call(token, "POST", "/me/email/enabled", { enabled: true });
+    await call(token, "POST", "/me/email/enabled", { enabled: true, label: "all" });
     await stack.email!.runDigest();
     expect((await call(token, "GET", "/me/email")).body).toMatchObject({
       enabled: true,

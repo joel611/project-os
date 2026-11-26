@@ -46,6 +46,7 @@ export const makeEmailRepository = (db: SqliteDb): Impl => ({
           ? {
               owner,
               enabled: r.enabled,
+              label: r.label,
               cursor: r.cursor,
               lastSyncAt: r.lastSyncAt,
               needsReconnect: r.needsReconnect,
@@ -61,6 +62,7 @@ export const makeEmailRepository = (db: SqliteDb): Impl => ({
           ownerChannelType: m.owner.channelType,
           ownerId: m.owner.id,
           enabled: m.enabled,
+          label: m.label,
           cursor: m.cursor,
           lastSyncAt: m.lastSyncAt,
           needsReconnect: m.needsReconnect,
@@ -69,6 +71,7 @@ export const makeEmailRepository = (db: SqliteDb): Impl => ({
           target: [emailMailboxes.ownerChannelType, emailMailboxes.ownerId],
           set: {
             enabled: m.enabled,
+            label: m.label,
             cursor: m.cursor,
             lastSyncAt: m.lastSyncAt,
             needsReconnect: m.needsReconnect,
@@ -82,6 +85,7 @@ export const makeEmailRepository = (db: SqliteDb): Impl => ({
       rows.map((r) => ({
         owner: { channelType: r.ownerChannelType, id: r.ownerId },
         enabled: r.enabled,
+        label: r.label,
         cursor: r.cursor,
         lastSyncAt: r.lastSyncAt,
         needsReconnect: r.needsReconnect,
