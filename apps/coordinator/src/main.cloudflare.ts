@@ -1,39 +1,16 @@
-import { makeIntentClassifier, newModels } from "@project-os/agent-runtime/classifier";
-import { Auth } from "@project-os/auth";
-import {
-  channelDigestConfig,
-  envBool,
-  formatModelRef,
-  healthConfig,
-  modelConfig,
-} from "@project-os/config";
 import {
   CloudflareLive,
   DEFAULT_ORG,
+  discordGatewayRoute,
   DrizzleD1,
   ensureOrg,
-  makeGithubSkillSource,
-  serviceFetch,
 } from "@project-os/infra-cloudflare";
-import { type Effect, Layer, ManagedRuntime } from "effect";
+import { Layer } from "effect";
 import { env as workerEnv, waitUntil } from "cloudflare:workers";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
-import { healthSweep, recordSandboxRun } from "@project-os/core";
-import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
-import { createApp, parseOrigins } from "./app.ts";
-import { makeAccess } from "./access.ts";
-import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
-import { coordinatorConfig } from "./config.ts";
-import { channelDigester, digestAndLog } from "./digest/index.ts";
-import {
-  emailClassifier,
-  emailDigestAndLog,
-  emailDigestEnabled,
-  gmailEmailSource,
-} from "./email/index.ts";
-import { heldOpen } from "./held-open.ts";
+import { assembleCoordinator } from "./assembly.ts";
+import { piAi } from "./pi-ai.ts";
 import { durableAgentRuntime, type PiAgent } from "./pi-agent.ts";
-import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 
 export { PiAgent } from "./pi-agent.ts";
 
@@ -48,140 +25,52 @@ interface Bindings {
 }
 
 /**
- * Builds the app from the Worker's bindings. This must run at module load: Elysia's
+ * Builds the Coordinator from the Worker's bindings. This must run at module load: Elysia's
  * `.compile()` uses `new Function`, which workerd allows only during startup.
  */
-const buildApp = (bindings: Bindings) => {
-  const models = newModels();
-  // The chat model runs in the PiAgent Durable Object; checking it here fails the Worker fast.
-  const modelRefs = modelConfig();
-  if (!models.getModel(modelRefs.default.provider, modelRefs.default.modelId)) {
-    throw new Error(`Unknown DEFAULT_MODEL ${formatModelRef(modelRefs.default)}`);
-  }
-  const { decision } = modelRefs;
-  const jev = models.getModelOfType("classifier", decision.provider, decision.modelId);
-  if (!jev) throw new Error(`Unknown DECISION_MODEL ${formatModelRef(decision)}`);
-
+const buildCoordinator = (bindings: Bindings) => {
   const publicUrl = process.env.PUBLIC_URL;
-  const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
-  const authLayer = Auth.layer(
-    authConfigFromEnv(process.env, { ...(publicUrl && { baseURL: publicUrl }), webOrigins }),
-  ).pipe(Layer.provide(DrizzleD1(bindings.DB)));
-  // One instance for the app and the runtime: both runtimes share this memo map.
-  const authRuntime = ManagedRuntime.make(authLayer);
-  const auth = authRuntime.runSync(Auth);
-  const connections = auth.connections;
-  const serviceToken = serviceTokenFromEnv(process.env);
-
-  const workerLauncher = sandboxLauncherFromEnv(process.env, {
-    log: console.log,
-    // `runtime` is built below, before any session can end. Held open so the write finishes.
-    onSessionEnd: (session) => {
-      const kept = runtime.runPromise(recordSandboxRun(session));
-      waitUntil(kept.catch(() => undefined));
-      return kept;
-    },
-    runners: Object.fromEntries(
-      Object.entries(configuredRunners(process.env)).map(([provider, runner]) => [
-        provider,
-        heldOpen(runner, waitUntil),
-      ]),
-    ),
-  });
-
-  const emailDigest = emailDigestEnabled(process.env);
-  const gatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
-  const digestConfig = channelDigestConfig();
-  const digester = channelDigester(models, modelRefs.channelDigest);
-  const runtime = ManagedRuntime.make(
-    Layer.mergeAll(
-      CloudflareLive({
-        db: bindings.DB,
-        kv: bindings.KV,
-        adapterUrls: gatewayUrl ? { discord: gatewayUrl } : {},
-        ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
-        agent: durableAgentRuntime(bindings.PI_AGENT),
-        ...(workerLauncher && { workerLauncher }),
-        skillSource: makeGithubSkillSource({
-          ...(process.env.SKILLS_GITHUB_TOKEN && { token: process.env.SKILLS_GITHUB_TOKEN }),
-          getToken: async () => (await auth.sharedAccounts?.accessToken("github"))?.accessToken,
-          fetch: (input, init) => fetch(input, init),
-        }),
-        ...(bindings.ASSETS &&
-          publicUrl && {
-            assets: {
-              bucket: bindings.ASSETS,
-              publicUrl,
-              secret: process.env.BETTER_AUTH_SECRET!,
-            },
-          }),
-      }),
-      makeIntentClassifier({ classifier: models, model: jev }),
-      digester,
-      emailClassifier(models, modelRefs.decision),
-      Layer.effectDiscard(ensureOrg(bindings.DB)),
-      Auth.connectionsLayer,
-    ).pipe(
-      // Reads mail with each person's own Google link, so it is built on the connections above.
-      // workerd throws "Illegal invocation" when the global `fetch` is called detached.
-      (base) =>
-        gmailEmailSource({ fetch: (input, init) => fetch(input, init) }).pipe(
-          Layer.provideMerge(base),
-        ),
-      Layer.provideMerge(authLayer),
-    ),
-    { memoMap: authRuntime.memoMap },
-  );
-
-  const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
-    runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
-  const adminActions = makeAdminActions({
-    run: runAdmin,
+  const coordinator = assembleCoordinator({
+    env: process.env,
+    publicUrl,
     orgId: DEFAULT_ORG.id,
-    autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
+    database: DrizzleD1(bindings.DB),
+    platform: ({ skillSource, workerLauncher, assetSecret }) =>
+      Layer.merge(
+        CloudflareLive({
+          db: bindings.DB,
+          kv: bindings.KV,
+          ...discordGatewayRoute(process.env.DISCORD_SPLIT_GATEWAY_URL, bindings.DISCORD_GATEWAY),
+          ...(workerLauncher && { workerLauncher }),
+          skillSource,
+          ...(bindings.ASSETS &&
+            publicUrl && {
+              assets: { bucket: bindings.ASSETS, publicUrl, secret: assetSecret },
+            }),
+        }),
+        Layer.effectDiscard(ensureOrg(bindings.DB)),
+      ),
+    // The chat model and its sessions live in the PiAgent Durable Object.
+    ai: piAi(process.env, () => durableAgentRuntime(bindings.PI_AGENT)),
+    waitUntil,
+    server: { adapter: CloudflareAdapter },
   });
-
-  const app = createApp(
-    { adapter: CloudflareAdapter },
-    {
-      ...coordinatorConfig({
-        env: process.env,
-        run: (effect) => runtime.runPromise(effect),
-        publicUrl: () => publicUrl ?? "",
-        admin: adminActions,
-        inbound: { channelDigest: true },
-      }),
-      access: makeAccess({ serviceToken, auth }),
-      mcp: runtime,
-      auth,
-      members: () => auth.members(),
-      setRole: (userId, role) => auth.setRole(userId, role),
-      ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
-      ...(connections && { connect: connections }),
-      emailDigest,
-    },
-  ).compile();
-
-  const sweep = () => runtime.runPromise(healthSweep(healthConfig()));
-  // Same Cron tick as the sweep (ADR 0001); a project is digested only once its chat is quiet.
-  const digestRun = () => runtime.runPromise(digestAndLog(digestConfig));
-  const emailRun = () =>
-    emailDigest ? runtime.runPromise(emailDigestAndLog()) : Promise.resolve();
-  return { app, sweep, digest: digestRun, email: emailRun };
+  return { app: coordinator.app.compile(), jobs: coordinator.jobs };
 };
 
-const built = buildApp(workerEnv as unknown as Bindings);
+const built = buildCoordinator(workerEnv as unknown as Bindings);
 
 export default {
   fetch: (request: Request, ...rest: unknown[]) =>
     (built.app.fetch as (...args: unknown[]) => Promise<Response>)(request, ...rest),
+  // The Cron Trigger (ADR 0001): one run of each job.
   scheduled: (
     _controller: unknown,
     _env: unknown,
     ctx: { waitUntil(p: Promise<unknown>): void },
   ) => {
-    ctx.waitUntil(built.sweep().catch((e) => console.error("health sweep failed", e)));
-    ctx.waitUntil(built.digest().catch((e) => console.error("channel digest failed", e)));
-    ctx.waitUntil(built.email().catch((e) => console.error("email digest failed", e)));
+    for (const { name, run } of built.jobs) {
+      ctx.waitUntil(run().catch((e) => console.error(`${name.replace("-", " ")} failed`, e)));
+    }
   },
 };

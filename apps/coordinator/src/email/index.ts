@@ -8,7 +8,6 @@ import {
   type EmailDigestConfig,
   EmailSource,
   EmailSourceError,
-  Scheduler,
   syncMailboxes,
   UserConnections,
 } from "@project-os/core";
@@ -88,8 +87,6 @@ export const gmailEmailSource = (options?: {
     }),
   );
 
-type Sync = ReturnType<typeof syncMailboxes>;
-
 /** One Email Digest run, logged. A failure is logged and never stops the Cron tick or timer. */
 export const emailDigestAndLog = (config: EmailDigestConfig = DEFAULT_EMAIL_DIGEST) =>
   syncMailboxes(config).pipe(
@@ -103,15 +100,3 @@ export const emailDigestAndLog = (config: EmailDigestConfig = DEFAULT_EMAIL_DIGE
     Effect.catchCause((cause) => Effect.logError("email digest failed", cause)),
     Effect.asVoid,
   );
-
-/** Runs the Email Digest every `everyMs` via the `Scheduler` port (Bun). Returns the stop effect. */
-export const startEmailDigest = (everyMs: number, config?: EmailDigestConfig) =>
-  Effect.gen(function* () {
-    const scheduler = yield* Scheduler;
-    const context = yield* Effect.context<Effect.Services<Sync>>();
-    return yield* scheduler.every(
-      "email-digest",
-      everyMs,
-      emailDigestAndLog(config).pipe(Effect.provideContext(context)),
-    );
-  });

@@ -3,7 +3,7 @@ import { coordinatorConfig, parseAdminUserIds } from "./config.ts";
 
 const base = {
   run: (() => Promise.resolve()) as never,
-  publicUrl: () => "https://coordinator.test",
+  publicUrl: "https://coordinator.test",
   admin: {} as never,
 };
 
@@ -62,16 +62,12 @@ describe("coordinatorConfig", () => {
     expect(config.corsOrigins).toEqual(["https://a.test", "https://b.test"]);
   });
 
-  it("lets a caller replace inbound settings, and reads the public URL late", () => {
-    let url = "";
+  it("lets a caller replace inbound settings", () => {
     const config = coordinatorConfig({
       ...base,
-      publicUrl: () => url,
       env: {},
       inbound: { sharedWorkerMaxTickets: 100 },
     });
-    url = "http://localhost:1";
     expect(config.http.inbound?.sharedWorkerMaxTickets).toBe(100);
-    expect(config.http.commands?.workers?.publicUrl).toBe("http://localhost:1");
   });
 });

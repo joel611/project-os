@@ -57,6 +57,15 @@ export const serviceFetch =
   (input: string, init?: RequestInit): Promise<Response> =>
     service.fetch(input, init);
 
+/**
+ * How a Worker reaches the Discord adapter: `DISCORD_SPLIT_GATEWAY_URL`, through the
+ * `DISCORD_GATEWAY` service binding when the gateway is on the same account.
+ */
+export const discordGatewayRoute = (url: string | undefined, binding: Fetcher | undefined) => ({
+  adapterUrls: url ? { discord: url } : {},
+  ...(binding && { adapterFetch: serviceFetch(binding) }),
+});
+
 export interface CloudflareConfig {
   /** D1 binding. Alchemy applies the migrations on deploy, so this never migrates. */
   readonly db: D1Database;

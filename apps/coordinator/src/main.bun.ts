@@ -1,111 +1,24 @@
-import {
-  makeAgentRuntime,
-  makeIntentClassifier,
-  newModels,
-  openLocalStorage,
-} from "@project-os/agent-runtime";
-import {
-  channelDigestConfig,
-  env,
-  envBool,
-  envNumber,
-  formatModelRef,
-  healthConfig,
-  modelConfig,
-} from "@project-os/config";
+import { makeAgentRuntime, openLocalStorage } from "@project-os/agent-runtime";
+import { env, envNumber } from "@project-os/config";
 import { dataPath } from "@project-os/config/data";
-import { Auth } from "@project-os/auth";
-import { recordSandboxRun } from "@project-os/core";
-import {
-  DEFAULT_ORG,
-  DrizzleBun,
-  ensureOrg,
-  LocalLive,
-  makeGithubSkillSource,
-} from "@project-os/infra-local";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { DEFAULT_ORG, DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
 import { createDiscord } from "@project-os/channel-discord";
-import { type AdminEnv, makeAdminActions } from "./admin/actions.ts";
-import { createApp, parseOrigins } from "./app.ts";
+import { assembleCoordinator } from "./assembly.ts";
 import { assetBaseUrl } from "./assets/base-url.ts";
-import { makeAccess } from "./access.ts";
-import { authConfigFromEnv, serviceTokenFromEnv } from "./auth-env.ts";
-import { coordinatorConfig } from "./config.ts";
-import { channelDigester, startChannelDigest } from "./digest/index.ts";
-import {
-  emailClassifier,
-  emailDigestEnabled,
-  gmailEmailSource,
-  startEmailDigest,
-} from "./email/index.ts";
-import { startHealthSweep } from "./health/start.ts";
+import { serviceTokenFromEnv } from "./auth-env.ts";
 import { makeLifecycleNotifications } from "./lifecycle.ts";
-import { sandboxLauncherFromEnv } from "./sandbox-pool.ts";
+import { piAi } from "./pi-ai.ts";
 import { setupTelemetry } from "./telemetry.ts";
 
 const port = envNumber("PORT", 8080);
 const dbPath = dataPath("project-os.sqlite", process.env.DATABASE_PATH ?? process.env.DB_PATH);
-
 const orgId = ensureOrg(dbPath, DEFAULT_ORG);
-
 const publicUrl = env("PUBLIC_URL", `http://localhost:${port}`);
-const webOrigins = parseOrigins(process.env.WEB_ORIGIN);
-
-const authLayer = Auth.layer(
-  authConfigFromEnv(process.env, { baseURL: publicUrl, webOrigins }),
-).pipe(Layer.provide(DrizzleBun(dbPath)));
-// One instance for the app and the runtime: both runtimes share this memo map.
-const authRuntime = ManagedRuntime.make(authLayer);
-const auth = authRuntime.runSync(Auth);
-await auth.ready();
-const connections = auth.connections;
-const serviceToken = serviceTokenFromEnv(process.env);
-
-const models = newModels();
-const modelRefs = modelConfig();
-if (!models.getModel(modelRefs.default.provider, modelRefs.default.modelId)) {
-  throw new Error(`Unknown DEFAULT_MODEL ${formatModelRef(modelRefs.default)}`);
-}
-const jev = models.getModelOfType(
-  "classifier",
-  modelRefs.decision.provider,
-  modelRefs.decision.modelId,
-);
-if (!jev) throw new Error(`Unknown DECISION_MODEL ${formatModelRef(modelRefs.decision)}`);
-
-const runAdmin = <A>(effect: Effect.Effect<A, unknown, AdminEnv>): Promise<A> =>
-  runtime.runPromise(effect as Effect.Effect<A, never, AdminEnv>);
-
-const adminActions = makeAdminActions({
-  run: runAdmin,
-  orgId,
-  autoCreateChannel: envBool("DISCORD_PROJECT_CHANNEL_AUTO_CREATE", true),
-});
 
 const otel = setupTelemetry(process.env);
-const digestConfig = channelDigestConfig();
-const digester = channelDigester(models, modelRefs.channelDigest);
-
-const AiLive = Layer.orDie(
-  Layer.mergeAll(
-    makeIntentClassifier({ classifier: models, model: jev }),
-    makeAgentRuntime({
-      storage: await openLocalStorage(dataPath("pi-durable.sqlite", process.env.PI_STORAGE_PATH)),
-      models,
-      model: modelRefs.default,
-      adminActions,
-      telemetry: otel?.telemetry,
-    }),
-    digester,
-    emailClassifier(models, modelRefs.decision),
-  ),
+const piStorage = await openLocalStorage(
+  dataPath("pi-durable.sqlite", process.env.PI_STORAGE_PATH),
 );
-
-const workerLauncher = sandboxLauncherFromEnv(process.env, {
-  log: console.log,
-  // `runtime` is built below, before any session can end.
-  onSessionEnd: (session) => runtime.runPromise(recordSandboxRun(session)),
-});
 
 const remoteGatewayUrl = process.env.DISCORD_SPLIT_GATEWAY_URL;
 const discordToken = process.env.DISCORD_BOT_TOKEN;
@@ -113,7 +26,10 @@ const discord =
   discordToken && !remoteGatewayUrl
     ? createDiscord({
         token: discordToken,
-        coordinator: { url: `http://localhost:${port}`, token: serviceToken },
+        coordinator: {
+          url: `http://localhost:${port}`,
+          token: serviceTokenFromEnv(process.env),
+        },
         replyPort: 0,
         replyHost: "127.0.0.1",
       })
@@ -126,62 +42,30 @@ if (discordToken && remoteGatewayUrl) {
   console.log("Discord off: set DISCORD_BOT_TOKEN and restart the Coordinator to enable it");
 }
 
-const runtime = ManagedRuntime.make(
-  Layer.mergeAll(
+const coordinator = assembleCoordinator({
+  env: process.env,
+  publicUrl,
+  orgId,
+  database: DrizzleBun(dbPath),
+  platform: ({ skillSource, workerLauncher, assetSecret }) =>
     LocalLive({
       dbPath,
       adapterUrls: { discord: discord?.replyUrl ?? remoteGatewayUrl ?? "http://localhost:8081" },
       ...(workerLauncher && { workerLauncher }),
-      skillSource: makeGithubSkillSource({
-        ...(process.env.SKILLS_GITHUB_TOKEN && { token: process.env.SKILLS_GITHUB_TOKEN }),
-        getToken: async () => (await auth.sharedAccounts?.accessToken("github"))?.accessToken,
-      }),
+      skillSource,
       assets: {
         dir: dataPath("assets", process.env.ASSET_DIR),
         publicUrl: assetBaseUrl(process.env, publicUrl),
-        secret: process.env.BETTER_AUTH_SECRET!,
+        secret: assetSecret,
       },
     }),
-    AiLive,
-    Auth.connectionsLayer,
-  ).pipe(
-    // Reads mail with each person's own Google link, so it is built on the connections above.
-    (base) => gmailEmailSource().pipe(Layer.provideMerge(base)),
-    Layer.provideMerge(authLayer),
+  ai: piAi(process.env, (input) =>
+    makeAgentRuntime({ ...input, storage: piStorage, telemetry: otel?.telemetry }),
   ),
-  { memoMap: authRuntime.memoMap },
-);
-
-await runtime.runPromise(startHealthSweep(healthConfig()).pipe(Effect.asVoid));
-await runtime.runPromise(
-  startChannelDigest({ ...digestConfig, everyMs: healthConfig().sweepEveryMs }).pipe(Effect.asVoid),
-);
-
-const emailDigest = emailDigestEnabled(process.env);
-if (emailDigest) {
-  await runtime.runPromise(startEmailDigest(healthConfig().sweepEveryMs).pipe(Effect.asVoid));
-}
-
-createApp(
-  {},
-  {
-    ...coordinatorConfig({
-      env: process.env,
-      run: (effect) => runtime.runPromise(effect),
-      publicUrl: () => publicUrl,
-      admin: adminActions,
-      inbound: { channelDigest: true },
-    }),
-    access: makeAccess({ serviceToken, auth }),
-    mcp: runtime,
-    auth,
-    members: () => auth.members(),
-    setRole: (userId, role) => auth.setRole(userId, role),
-    ...(auth.sharedAccounts && { sharedAccounts: auth.sharedAccounts }),
-    ...(connections && { connect: connections }),
-    emailDigest,
-  },
-).listen(port);
+});
+await coordinator.auth.ready();
+await coordinator.startJobs();
+coordinator.app.listen(port);
 const discordReady = discord?.login().catch((err) => {
   console.error("Discord login failed; the Coordinator keeps running without Discord", err);
   throw err;
@@ -189,7 +73,7 @@ const discordReady = discord?.login().catch((err) => {
 void discordReady?.catch(() => {});
 const lifecycle = makeLifecycleNotifications({
   channelId: process.env.ADMIN_CHANNEL_ID,
-  run: (effect) => runtime.runPromise(effect),
+  run: (effect) => coordinator.runtime.runPromise(effect),
   ready: discordReady,
   retryStartup: Boolean(remoteGatewayUrl),
 });
@@ -216,4 +100,5 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   });
 }
 console.log(`coordinator listening on :${port} (MCP at /mcp)`);
-if (!connections) console.log("account linking off: set an OAuth client (GOOGLE_* / GITHUB_*)");
+if (!coordinator.auth.connections)
+  console.log("account linking off: set an OAuth client (GOOGLE_* / GITHUB_*)");

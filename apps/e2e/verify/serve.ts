@@ -1,6 +1,7 @@
-// Verification scaffold: boots the real Coordinator (HTTP + MCP + SQLite) with the two AI ports
-// faked (classifier always `new_request`, agent runtime echo) and a recording Discord reply
-// endpoint, all on fixed localhost ports. Mirrors apps/e2e/src/stack.ts, but long-running.
+// Verification scaffold: boots the real Coordinator (`assembleCoordinator` over SQLite) with the
+// AI ports faked (classifier always `new_request`, agent runtime echo) and a recording Discord
+// reply endpoint, all on fixed localhost ports. Like apps/e2e/src/stack.ts, but long-running.
+// The recurring jobs are not started.
 // Usage: DATA_DIR=<dir> bun serve.ts   (env: COORD_PORT=18080, ADAPTER_PORT=18081)
 // Registers a shared worker "verify-box" (as an admin's `/register-worker shared:True` would) and
 // saves its credentials to $DATA_DIR/worker.json for drive.ts. Signs the operator in and saves
@@ -9,14 +10,18 @@
 // default Discord channel `verify-chan` exist.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Auth } from "@project-os/auth";
 import { issueWorkerRegistration, redeemWorkerRegistration } from "@project-os/core";
 import { DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
-import { AgentRuntimeEcho, classifierReturning, makeSidekickRecording } from "@project-os/testing";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import {
+  AgentRuntimeEcho,
+  classifierReturning,
+  makeChannelDigesterRecording,
+  makeEmailClassifierFake,
+  makeSidekickRecording,
+} from "@project-os/testing";
+import { Effect, Layer } from "effect";
 import { createReplyApp } from "../../../packages/channel-discord/src/reply.ts";
-import { makeAccess } from "../../coordinator/src/access.ts";
-import { createApp } from "../../coordinator/src/app.ts";
+import { assembleCoordinator } from "../../coordinator/src/assembly.ts";
 import { browse } from "../src/browse.ts";
 import { startFakeOAuth } from "../src/fake-oauth.ts";
 
@@ -44,23 +49,6 @@ createReplyApp(async (target, content) =>
   .get("/cdn/:name", ({ params }) => Bun.file(join(cdnDir, params.name)))
   .listen(adapterPort);
 
-const runtime = ManagedRuntime.make(
-  Layer.mergeAll(
-    LocalLive({
-      dbPath,
-      adapterUrls: { discord: `http://localhost:${adapterPort}` },
-      assets: {
-        dir: join(dataDir, "assets"),
-        publicUrl: `http://localhost:${coordPort}`,
-        secret: "verify-secret-verify-secret-verify",
-      },
-    }),
-    classifierReturning("new_request"),
-    AgentRuntimeEcho,
-    makeSidekickRecording().layer,
-  ) as Layer.Layer<any, never>,
-);
-
 const url = `http://localhost:${coordPort}`;
 // "Continue with Google" signs in as ada@example.com through a fake Google on localhost, and
 // lands back on the dashboard at WEB_PORT.
@@ -68,35 +56,51 @@ const google = startFakeOAuth();
 // VERIFY_GOOGLE_EMAIL=someone@else: the fake Google account isn't on the allowlist, so "Continue
 // with Google" signs in as the Discord member it is linked to (u1 "Ada", below), not an operator.
 if (process.env.VERIFY_GOOGLE_EMAIL) google.email = process.env.VERIFY_GOOGLE_EMAIL;
-const auth = ManagedRuntime.make(
-  Auth.layer({
-    baseURL: url,
-    secret: "verify-secret-verify-secret-verify",
-    admin: OPERATOR,
-    allowedEmails: ["ada@example.com"],
-    webOrigins: [`http://localhost:${process.env.WEB_PORT ?? 15173}`],
-    google: { clientId: "verify", clientSecret: "verify", ...google.endpoints("google") },
-    github: { clientId: "verify", clientSecret: "verify", ...google.endpoints("github") },
-  }).pipe(Layer.provide(DrizzleBun(dbPath))),
-).runSync(Auth);
-await auth.ready();
 
-createApp(
-  {},
-  {
-    access: makeAccess({ serviceToken: SERVICE_TOKEN, auth }),
-    auth,
-    members: () => auth.members(),
-    sharedAccounts: auth.sharedAccounts!,
-    connect: auth.connections!,
-    http: {
-      run: (e) => runtime.runPromise(e as any),
-      inbound: { attachments: { hosts: ["localhost"] } },
-    },
-    mcp: runtime as any,
-    assets: { run: (e) => runtime.runPromise(e as any) },
+// Settings come from here, so a developer's .env doesn't change what is verified.
+const coordinator = assembleCoordinator({
+  env: {
+    COORDINATOR_SERVICE_TOKEN: SERVICE_TOKEN,
+    BETTER_AUTH_SECRET: "verify-secret-verify-secret-verify",
+    ADMIN_EMAIL: OPERATOR.email,
+    ADMIN_PASSWORD: OPERATOR.password,
+    ADMIN_EMAILS: "ada@example.com",
+    WEB_ORIGIN: `http://localhost:${process.env.WEB_PORT ?? 15173}`,
+    GOOGLE_CLIENT_ID: "verify",
+    GOOGLE_CLIENT_SECRET: "verify",
+    GITHUB_CLIENT_ID: "verify",
+    GITHUB_CLIENT_SECRET: "verify",
   },
-).listen(coordPort);
+  publicUrl: url,
+  orgId,
+  database: DrizzleBun(dbPath),
+  platform: ({ skillSource, assetSecret }) =>
+    LocalLive({
+      dbPath,
+      adapterUrls: { discord: `http://localhost:${adapterPort}` },
+      skillSource,
+      assets: { dir: join(dataDir, "assets"), publicUrl: url, secret: assetSecret },
+    }),
+  ai: () =>
+    Layer.mergeAll(
+      classifierReturning("new_request"),
+      AgentRuntimeEcho,
+      makeSidekickRecording().layer,
+      makeChannelDigesterRecording().layer,
+      makeEmailClassifierFake().layer,
+    ),
+  providers: {
+    auth: (settings) => ({
+      ...settings,
+      google: { ...settings.google!, ...google.endpoints("google") },
+      github: { ...settings.github!, ...google.endpoints("github") },
+    }),
+    attachments: { hosts: ["localhost"] },
+  },
+});
+const { auth, runtime } = coordinator;
+await auth.ready();
+coordinator.app.listen(coordPort);
 
 const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
   method: "POST",
@@ -131,7 +135,7 @@ const register = (shared: boolean, userId: string, name: string) =>
         { shared },
       );
       return yield* Effect.orDie(redeemWorkerRegistration({ token, name }));
-    }) as Effect.Effect<{ readonly worker: { readonly id: string }; readonly secret: string }>,
+    }),
   );
 const shared = await register(true, "verify-admin", "verify-box");
 writeFileSync(

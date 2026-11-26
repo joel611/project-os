@@ -3,16 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import {
-  Auth,
-  type AuthApi,
-  type Connections,
-  GOOGLE_SCOPES,
-  type SharedAccounts,
-} from "@project-os/auth";
+import type { AuthApi } from "@project-os/auth";
 import { GMAIL_READ_SCOPE } from "@project-os/contracts";
 import {
-  DEFAULT_EMAIL_DIGEST,
   type ChannelDigestConfig,
   DEFAULT_CHANNEL_DIGEST,
   type DigestRun,
@@ -22,10 +15,9 @@ import {
   recordSandboxRun,
   type SandboxRun,
   type SkillSource,
-  UserConnections,
   type WorkerLauncher,
 } from "@project-os/core";
-import { DrizzleBun, ensureOrg, LocalLive, makeGithubSkillSource } from "@project-os/infra-local";
+import { DrizzleBun, ensureOrg, LocalLive } from "@project-os/infra-local";
 import {
   AgentRuntimeEcho,
   type ChannelDigestCall,
@@ -34,25 +26,22 @@ import {
   makeSidekickRecording,
   type SidekickCall,
 } from "@project-os/testing";
-import { type Effect, Layer, ManagedRuntime } from "effect";
-import { emailDigestAndLog, gmailEmailSource } from "../../coordinator/src/email/index.ts";
+import { type Effect, Layer } from "effect";
 import { forwardCommand } from "../../../packages/channel-discord/src/commands.ts";
 import { fakeCommand } from "../../../packages/channel-discord/src/fake.ts";
 import type { CoordinatorTarget } from "../../../packages/channel-discord/src/forward.ts";
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
-import { makeAccess } from "../../coordinator/src/access.ts";
-import { type AppDeps, createApp } from "../../coordinator/src/app.ts";
-import { coordinatorConfig } from "../../coordinator/src/config.ts";
-import { makeAdminActions } from "../../coordinator/src/admin/actions.ts";
-import type { McpRuntime } from "../../coordinator/src/mcp/server.ts";
+import { assembleCoordinator, type CoordinatorAdapters } from "../../coordinator/src/assembly.ts";
 import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 
-// Every component wired as in main.bun.ts (config from the same `coordinatorConfig`), each on its own localhost port.
+// Every component on its own localhost port. The Coordinator is the one the entry files build
+// (`assembleCoordinator`), on the local platform with settings from this file's `env`.
 // Real: SQLite, Coordinator HTTP + MCP, HTTP channel gateway, Discord adapter /reply.
-// Faked: discord.js (a recording `post`), both AI ports (classifier, agent runtime), and,
-// with `connections`, Google and GitHub (one fake OAuth server), so no test reaches a provider. `fetch` to any non-localhost host throws.
+// Faked: discord.js (a recording `post`), the AI ports, and, with `connections`, Google, GitHub
+// and ClickUp (one fake OAuth server), so no test reaches a provider. `fetch` to any
+// non-localhost host throws.
 
 /** A file on a fake Discord message, as the adapter reports it. */
 /** A message in the fake Gmail mailbox. */
@@ -131,7 +120,7 @@ export interface Stack {
   /** Calls the dashboard API as the signed-in operator; resolves to the JSON body. */
   readonly json: (method: string, path: string, body?: unknown) => Promise<any>;
   /** The admin dialogue's Coordinator actions, run against this stack (real gateway + adapter). */
-  readonly admin: ReturnType<typeof makeAdminActions>;
+  readonly admin: ReturnType<typeof assembleCoordinator>["admin"];
   /** Creates a project and links `channelId` as its default response channel. */
   readonly linkChannel: (channelId: string) => Promise<string>;
   /** Turns the faked Sidekick took, with the requester's GitHub token as a tool would see it. */
@@ -229,7 +218,7 @@ export const startStack = async (options: {
    */
   readonly email?: { readonly confidence?: number };
   /** Mounts the credential proxy (`SANDBOX_CREDENTIAL_PROXY`), forwarding to these origins. */
-  readonly credentialProxy?: NonNullable<AppDeps["credentialProxy"]>;
+  readonly credentialProxy?: NonNullable<CoordinatorAdapters["providers"]>["egress"];
 }): Promise<Stack> => {
   if (options.skillSource && options.githubSkills) {
     throw new Error("skillSource and githubSkills are mutually exclusive");
@@ -288,20 +277,9 @@ export const startStack = async (options: {
     },
   ).listen(0);
 
-  // Better Auth needs the Coordinator's URL, known only once it listens: the Layer and the
-  // routes delegate to `auth`, built right after `listen(0)`.
   const oauth = options.connections ? startFakeOAuth() : undefined;
   // Stands where the dashboard is served, so Google sign-in has somewhere to return to.
   const web = oauth ? Bun.serve({ port: 0, fetch: () => new Response("dashboard") }) : undefined;
-  let auth: AuthApi | undefined;
-  let authRuntime: ManagedRuntime.ManagedRuntime<Auth, never> | undefined;
-  const lazy = (): Connections => auth!.connections!;
-  const connectionsLayer = Layer.succeed(UserConnections, {
-    connectUrl: (person, provider) => lazy().service.connectUrl(person, provider),
-    list: (person) => lazy().service.list(person),
-    disconnect: (person, provider) => lazy().service.disconnect(person, provider),
-    accessToken: (person, provider) => lazy().service.accessToken(person, provider),
-  });
 
   const gmailMessages: FakeGmailMessage[] = [];
   const gmailCalls: string[] = [];
@@ -364,138 +342,85 @@ export const startStack = async (options: {
     options.failDigest === undefined ? {} : { fail: options.failDigest },
   );
 
-  // Later layers win: the fakes replace LocalLive's AgentRuntime and Sidekick placeholders.
-  const runtime = ManagedRuntime.make(
-    Layer.mergeAll(
-      LocalLive({
+  // Better Auth and the signed links need the Coordinator's URL when it is assembled, so the
+  // port is taken first and hands requests to the app built for it.
+  let handle: (request: Request) => Response | Promise<Response>;
+  const server = Bun.serve({ port: 0, fetch: (request) => handle(request) });
+  const url = `http://localhost:${server.port}`;
+  const oauthClient = (prefix: string, id: string) => ({
+    [`${prefix}_CLIENT_ID`]: `${id}-client`,
+    [`${prefix}_CLIENT_SECRET`]: `${id}-secret`,
+  });
+
+  const coordinator = assembleCoordinator({
+    env: {
+      COORDINATOR_SERVICE_TOKEN: SERVICE_TOKEN,
+      BETTER_AUTH_SECRET: "integration-secret-integration-secret",
+      ADMIN_EMAIL: OPERATOR.email,
+      ADMIN_PASSWORD: OPERATOR.password,
+      ADMIN_EMAILS: options.allowedEmails?.join(","),
+      GOOGLE_ALLOWED_DOMAINS: options.allowedDomains?.join(","),
+      ADMIN_CHANNEL_ID: ADMIN_CHANNEL,
+      ADMIN_USER_IDS: ADMIN_USER,
+      SHARED_WORKER_MAX_TICKETS: String(options.sharedWorkerMaxTickets ?? 100),
+      WEB_ORIGIN: web?.url.origin,
+      ...(oauth && {
+        ...oauthClient("GOOGLE", "g"),
+        ...oauthClient("GITHUB", "h"),
+        ...oauthClient("CLICKUP", "c"),
+      }),
+      ...(options.email && { EMAIL_DIGEST: "true" }),
+      ...(options.credentialProxy && { SANDBOX_CREDENTIAL_PROXY: "true" }),
+      SKILLS_GITHUB_TOKEN: options.githubSkills?.token,
+    },
+    publicUrl: url,
+    orgId: ORG_ID,
+    database: DrizzleBun(dbPath),
+    platform: ({ skillSource, workerLauncher, assetSecret }) => {
+      const launcher = options.workerLauncher ?? workerLauncher;
+      return LocalLive({
         dbPath,
         adapterUrls: { discord: `http://localhost:${adapter.server!.port}` },
-        ...(options.workerLauncher && { workerLauncher: options.workerLauncher }),
-        ...(options.skillSource && { skillSource: options.skillSource }),
-        ...(options.githubSkills && {
-          skillSource: makeGithubSkillSource({
-            ...options.githubSkills,
-            getToken: async () => (await auth?.sharedAccounts?.accessToken("github"))?.accessToken,
-          }),
-        }),
-        assets: {
-          dir: join(dir, "assets"),
-          // Known once the Coordinator listens; read only when a link is made.
-          get publicUrl(): string {
-            return url;
-          },
-          secret: "asset-secret-asset-secret-asset-secret",
-        },
-      }),
-      options.classifier,
-      AgentRuntimeEcho,
-      sidekick.layer,
-      digester.layer,
-      ...(oauth ? [connectionsLayer] : []),
-    ).pipe((base) =>
-      gmail
-        ? Layer.mergeAll(
-            base,
-            emailClassifier.layer,
-            // The real Gmail reader, pointed at the fake API: the only change is the origin.
-            gmailEmailSource({
-              fetch: (input, init) =>
-                fetch(
-                  input.replace("https://gmail.googleapis.com", `http://localhost:${gmail.port}`),
-                  init,
-                ),
-            }).pipe(Layer.provide(connectionsLayer)),
-          )
-        : base,
-    ) as Layer.Layer<any, never>,
-  ) as McpRuntime;
-
-  const admin = makeAdminActions({
-    run: (effect) => runtime.runPromise(effect as any),
-    orgId: ORG_ID,
-  });
-  const coordinator = createApp(
-    {},
-    {
-      access: makeAccess({
-        serviceToken: SERVICE_TOKEN,
-        auth: {
-          sessionUser: (token) => auth!.sessionUser(token),
-          isAllowed: (email) => auth!.isAllowed(email),
-          memberPerson: (user) => auth!.memberPerson(user),
-          linkedPerson: (userId) => auth!.linkedPerson(userId),
-        },
-      }),
-      ...coordinatorConfig({
-        env: {
-          ADMIN_CHANNEL_ID: ADMIN_CHANNEL,
-          ADMIN_USER_IDS: ADMIN_USER,
-          ...(web && { WEB_ORIGIN: web.url.origin }),
-        },
-        run: (effect) => runtime.runPromise(effect as any),
-        // Known once the Coordinator listens; read only when a command runs.
-        publicUrl: () => url,
-        admin,
-        inbound: {
-          attachments: {
-            hosts: ["localhost"],
-            ...(options.maxAttachmentBytes && { maxBytes: options.maxAttachmentBytes }),
-          },
-          sharedWorkerMaxTickets: options.sharedWorkerMaxTickets ?? 100,
-          // As when the entry file found a digest model.
-          channelDigest: true,
-        },
-      }),
-      mcp: runtime,
-      ...(options.email && { emailDigest: true }),
-      ...(options.credentialProxy && { credentialProxy: options.credentialProxy }),
-      auth: {
-        handler: (request: Request) => auth!.handler(request),
-        ...(oauth && {
-          googleSignIn: {
-            get domains() {
-              return auth!.googleSignIn!.domains;
-            },
-            start: () => auth!.googleSignIn!.start(),
-            handoff: (request: Request) => auth!.googleSignIn!.handoff(request),
-          },
-        }),
-      },
-      members: () => auth!.members(),
-      setRole: (userId, role) => auth!.setRole(userId, role),
-      // The auth instance is built after the app, so each call looks it up when it is made.
-      ...(oauth && {
-        sharedAccounts: new Proxy({} as SharedAccounts, {
-          get: (_, name) => (auth!.sharedAccounts as Record<string | symbol, unknown>)[name],
-        }),
-      }),
-      ...(oauth && {
-        connect: { startLink: (token: string) => lazy().startLink(token) },
-      }),
+        ...(launcher && { workerLauncher: launcher }),
+        skillSource: options.skillSource ?? skillSource,
+        assets: { dir: join(dir, "assets"), publicUrl: url, secret: assetSecret },
+      });
     },
-  ).listen(0);
-  const url: string = `http://localhost:${coordinator.server!.port}`;
-  authRuntime = ManagedRuntime.make(
-    Auth.layer({
-      baseURL: url,
-      secret: "integration-secret-integration-secret",
-      admin: OPERATOR,
-      ...(options.allowedEmails && { allowedEmails: options.allowedEmails }),
-      ...(options.allowedDomains && { allowedDomains: options.allowedDomains }),
-      ...(web && { webOrigins: [web.url.origin] }),
-      ...(oauth && {
-        google: {
-          clientId: "g-client",
-          clientSecret: "g-secret",
-          ...oauth.endpoints("google"),
-          ...(options.email && { scopes: [...GOOGLE_SCOPES, GMAIL_READ_SCOPE] }),
-        },
-        github: { clientId: "h-client", clientSecret: "h-secret", ...oauth.endpoints("github") },
-        clickup: { clientId: "c-client", clientSecret: "c-secret", ...oauth.endpoints("clickup") },
+    ai: () =>
+      Layer.mergeAll(
+        options.classifier,
+        AgentRuntimeEcho,
+        sidekick.layer,
+        digester.layer,
+        emailClassifier.layer,
+      ),
+    providers: {
+      auth: (settings) => ({
+        ...settings,
+        ...(settings.google && { google: { ...settings.google, ...oauth!.endpoints("google") } }),
+        ...(settings.github && { github: { ...settings.github, ...oauth!.endpoints("github") } }),
+        ...(settings.clickup && {
+          clickup: { ...settings.clickup, ...oauth!.endpoints("clickup") },
+        }),
       }),
-    }).pipe(Layer.provide(DrizzleBun(dbPath))),
-  );
-  auth = authRuntime.runSync(Auth);
+      ...(options.githubSkills && { githubFetch: options.githubSkills.fetch }),
+      // The real Gmail reader, pointed at the fake API: the only change is the origin.
+      ...(gmail && {
+        gmailFetch: (input: string, init?: RequestInit) =>
+          fetch(
+            input.replace("https://gmail.googleapis.com", `http://localhost:${gmail.port}`),
+            init,
+          ),
+      }),
+      attachments: {
+        hosts: ["localhost"],
+        ...(options.maxAttachmentBytes && { maxBytes: options.maxAttachmentBytes }),
+      },
+      ...(options.credentialProxy && { egress: options.credentialProxy }),
+    },
+  });
+  handle = (request) => coordinator.app.fetch(request);
+  const { auth, runtime, admin } = coordinator;
   await auth.ready();
   const signIn = await fetch(`${url}/api/auth/sign-in/email`, {
     method: "POST",
@@ -534,7 +459,7 @@ export const startStack = async (options: {
     coordinator: target,
     operatorToken,
     setRole: async (email, role) => {
-      const ctx = await auth!.auth.$context;
+      const ctx = await auth.auth.$context;
       const user = await ctx.internalAdapter.findUserByEmail(email.toLowerCase());
       await ctx.internalAdapter.updateUser(user!.user.id, { role });
     },
@@ -552,22 +477,13 @@ export const startStack = async (options: {
     sidekickCalls: sidekick.calls,
     digestCalls: digester.calls,
     runDigest: (config) =>
-      runtime.runPromise(
-        digestChannels({ ...DEFAULT_CHANNEL_DIGEST, quietMs: 0, ...config }) as Effect.Effect<
-          ReadonlyArray<DigestRun>,
-          never,
-          any
-        >,
-      ),
+      runtime.runPromise(digestChannels({ ...DEFAULT_CHANNEL_DIGEST, quietMs: 0, ...config })),
     ...(gmail && {
       email: {
         deliver: (...messages: FakeGmailMessage[]) => void gmailMessages.push(...messages),
         gmailCalls,
         classifyCalls: emailClassifier.calls,
-        runDigest: () =>
-          runtime.runPromise(
-            emailDigestAndLog(DEFAULT_EMAIL_DIGEST) as Effect.Effect<void, never, any>,
-          ),
+        runDigest: () => coordinator.jobs.find((job) => job.name === "email-digest")!.run(),
       },
     }),
     dbPath,
@@ -606,14 +522,13 @@ export const startStack = async (options: {
     },
     stop: async () => {
       await Promise.all(clients.map((c) => c.close()));
-      await coordinator.stop();
+      await server.stop();
       await adapter.stop();
       oauth?.stop();
       await cdn.stop(true);
       await gmail?.stop(true);
       await web?.stop(true);
-      await authRuntime?.dispose();
-      await runtime.dispose();
+      await coordinator.dispose();
       globalThis.fetch = realFetch;
       rmSync(dir, { recursive: true, force: true });
     },

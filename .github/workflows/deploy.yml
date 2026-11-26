@@ -42,6 +42,18 @@ jobs:
           COORDINATOR_URL: ${{ vars.COORDINATOR_URL }}
           DEFAULT_MODEL: ${{ vars.DEFAULT_MODEL }}
           CHANNEL_DIGEST_MODEL: ${{ vars.CHANNEL_DIGEST_MODEL }}
+          CHANNEL_DIGEST_QUIET_MIN: ${{ vars.CHANNEL_DIGEST_QUIET_MIN }}
+          CHANNEL_DIGEST_MAX_WAIT_MIN: ${{ vars.CHANNEL_DIGEST_MAX_WAIT_MIN }}
+          CHANNEL_DIGEST_RETENTION_DAYS: ${{ vars.CHANNEL_DIGEST_RETENTION_DAYS }}
+          CHANNEL_DIGEST_MAX_MESSAGES: ${{ vars.CHANNEL_DIGEST_MAX_MESSAGES }}
+          CHANNEL_DIGEST_RETRY_MIN: ${{ vars.CHANNEL_DIGEST_RETRY_MIN }}
+          EMAIL_DIGEST: ${{ vars.EMAIL_DIGEST }}
+          HEALTH_WORKER_STALE_MIN: ${{ vars.HEALTH_WORKER_STALE_MIN }}
+          HEALTH_UNPICKED_MIN: ${{ vars.HEALTH_UNPICKED_MIN }}
+          HEALTH_FOLLOW_UP_MIN: ${{ vars.HEALTH_FOLLOW_UP_MIN }}
+          HEALTH_INACTIVITY_FAIL_MIN: ${{ vars.HEALTH_INACTIVITY_FAIL_MIN }}
+          AUDIT_RETENTION_DAYS: ${{ vars.AUDIT_RETENTION_DAYS }}
+          RUN_LOG_RETENTION_DAYS: ${{ vars.RUN_LOG_RETENTION_DAYS }}
           DECISION_MODEL: ${{ vars.DECISION_MODEL }}
           # Renamed model vars: forwarded only so alchemy.run.ts fails the deploy and names the new var.
           CHAT_MODEL_ID: ${{ vars.CHAT_MODEL_ID }}
@@ -58,6 +70,7 @@ jobs:
           DISCORD_MEMBER_ROLE_IDS: ${{ vars.DISCORD_MEMBER_ROLE_IDS }}
           DISCORD_REQUIRE_MENTION: ${{ vars.DISCORD_REQUIRE_MENTION }}
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          GOOGLE_ALLOWED_DOMAINS: ${{ vars.GOOGLE_ALLOWED_DOMAINS }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GITHUB_CLIENT_ID: ${{ vars.GH_CLIENT_ID }}
           CLICKUP_CLIENT_ID: ${{ vars.CLICKUP_CLIENT_ID }}
@@ -84,6 +97,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           COORDINATOR_SERVICE_TOKEN: ${{ secrets.COORDINATOR_SERVICE_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SKILLS_GITHUB_TOKEN: ${{ secrets.SKILLS_GITHUB_TOKEN }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}

@@ -17,6 +17,12 @@ import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
+import {
+  optionalSecrets,
+  optionalVars,
+  requiredSecrets,
+  vars,
+} from "./apps/coordinator/src/deploy-env.ts";
 import { assertNoRenamedModelVars } from "./libs/config/src/models.ts";
 
 const COMPATIBILITY_DATE = "2026-10-01";
@@ -71,78 +77,6 @@ const reachableFromContainer = (url: string) => {
   }
   return parsed.origin;
 };
-
-/** Plain vars with the same defaults as `.env.example`; set to "" counts as unset. */
-const vars = {
-  DEFAULT_MODEL: "openrouter/anthropic/claude-sonnet-4.5",
-  DECISION_MODEL: "openrouter/typesafe/jev-1.14",
-  INTENT_CONFIDENCE_THRESHOLD: "0.5",
-  DISCORD_PROJECT_CHANNEL_AUTO_CREATE: "true",
-} as const;
-
-/**
- * Plain vars with no default: bound only when set. Host-only keys (PORT, DATABASE_PATH,
- * MCP_URL, WORKER_CWD, ...) and DISCORD_BOT_TOKEN (read apart, bound only to the gateway) are left out.
- */
-const optionalVars = [
-  // Where the Coordinator POSTs replies. Set it to run the gateway off-platform; otherwise a
-  // DISCORD_BOT_TOKEN deploys it as a Container and the stack sets this itself.
-  "DISCORD_SPLIT_GATEWAY_URL",
-  "DISCORD_GUILD_ID",
-  "DISCORD_PROJECT_CATEGORY_ID",
-  "DISCORD_MEMBER_ROLE_IDS",
-  "DISCORD_REQUIRE_MENTION",
-  "CHANNEL_DIGEST_QUIET_MIN",
-  "CHANNEL_DIGEST_MAX_WAIT_MIN",
-  "CHANNEL_DIGEST_RETENTION_DAYS",
-  "CHANNEL_DIGEST_MODEL",
-  "AUDIT_RETENTION_DAYS",
-  "RUN_LOG_RETENTION_DAYS",
-  "ADMIN_CHANNEL_ID",
-  "ADMIN_USER_IDS",
-  "OTEL_EXPORTER_OTLP_ENDPOINT",
-  // Better Auth: OAuth callbacks and connect links, and more dashboard operators.
-  "PUBLIC_URL",
-  "ADMIN_EMAILS",
-  "GOOGLE_ALLOWED_DOMAINS",
-  "GOOGLE_CLIENT_ID",
-  "GITHUB_CLIENT_ID",
-  "CLICKUP_CLIENT_ID",
-  // Registered workers and the cloud sandbox pool.
-  "SHARED_WORKER_MAX_TICKETS",
-  "WATCHER_INSTALL_COMMAND",
-  "WORKER_PROVIDERS",
-  "SANDBOX_MCP_URL",
-  "SANDBOX_PI_MODEL",
-  "SANDBOX_SESSION_TIMEOUT_SECONDS",
-  "SANDBOX_CREDENTIAL_PROXY",
-  "SANDBOX_EGRESS_URL",
-  "DAYTONA_API_URL",
-  "DAYTONA_SNAPSHOT",
-  "DAYTONA_MAX_CONCURRENT",
-  "BOAT_API_URL",
-  "BOAT_SANDBOX_SIZE",
-  "BOAT_MAX_CONCURRENT",
-  "CLOUDFLARE_SANDBOX_URL",
-  "CLOUDFLARE_SANDBOX_MAX_CONCURRENT",
-] as const;
-
-/** Secrets the Coordinator refuses to start without: the deploy fails when one is unset. */
-const requiredSecrets = ["BETTER_AUTH_SECRET", "COORDINATOR_SERVICE_TOKEN"] as const;
-
-/** Secrets: bound as `secret_text` only when set. */
-const optionalSecrets = [
-  "OPENROUTER_API_KEY",
-  "ADMIN_EMAIL",
-  "ADMIN_PASSWORD",
-  "GOOGLE_CLIENT_SECRET",
-  "GITHUB_CLIENT_SECRET",
-  "CLICKUP_CLIENT_SECRET",
-  "DAYTONA_API_KEY",
-  "BOAT_API_KEY",
-  "CLOUDFLARE_SANDBOX_TOKEN",
-  "SKILLS_GITHUB_TOKEN",
-] as const;
 
 const readVars = Effect.gen(function* () {
   // An old model var (CHAT_MODEL_ID, JEV_MODEL_ID, ...) fails the deploy, naming its new name.
