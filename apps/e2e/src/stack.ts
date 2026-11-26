@@ -145,6 +145,8 @@ export interface Stack {
   };
   /** The SQLite file every component shares. */
   readonly dbPath: string;
+  /** One GitHub merge check, as the scheduler/cron runs it. */
+  readonly checkPullRequests: () => Promise<void>;
   /** The fake Google/GitHub OAuth server, when started with `connections`. */
   readonly oauth?: FakeOAuth;
   /** The stand-in dashboard's origin Google sign-in returns to, when started with `connections`. */
@@ -202,6 +204,7 @@ export const startStack = async (options: {
   /** Where skills come from. Default: GitHub, which this stack's fetch guard refuses. */
   readonly skillSource?: typeof SkillSource.Service;
   readonly githubSkills?: { readonly fetch: typeof fetch; readonly token?: string };
+  readonly githubFetch?: typeof fetch;
   /**
    * Tickets one shared device may hold. Default here 100, so suites that open several
    * tickets on one shared worker don't queue them; production defaults to 1.
@@ -403,7 +406,9 @@ export const startStack = async (options: {
           clickup: { ...settings.clickup, ...oauth!.endpoints("clickup") },
         }),
       }),
-      ...(options.githubSkills && { githubFetch: options.githubSkills.fetch }),
+      ...((options.githubFetch ?? options.githubSkills?.fetch) && {
+        githubFetch: options.githubFetch ?? options.githubSkills!.fetch,
+      }),
       // The real Gmail reader, pointed at the fake API: the only change is the origin.
       ...(gmail && {
         gmailFetch: (input: string, init?: RequestInit) =>
@@ -487,6 +492,7 @@ export const startStack = async (options: {
       },
     }),
     dbPath,
+    checkPullRequests: () => coordinator.jobs.find((job) => job.name === "pull-requests")!.run(),
     ...(oauth && { oauth }),
     ...(web && { webUrl: web.url.origin }),
     auth,

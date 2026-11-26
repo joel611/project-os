@@ -25,6 +25,7 @@ import { coordinatorConfig } from "./config.ts";
 import { digestAndLog } from "./digest/index.ts";
 import { emailDigestAndLog, emailDigestEnabled, gmailEmailSource } from "./email/index.ts";
 import { heldOpen } from "./held-open.ts";
+import { checkPullRequests } from "./pull-requests.ts";
 import { configuredRunners, sandboxLauncherFromEnv } from "./sandbox-pool.ts";
 
 /** The core ports a platform provides: all but the AI ones, which `ai` provides or replaces. */
@@ -181,15 +182,28 @@ export const assembleCoordinator = (adapters: CoordinatorAdapters) => {
 
   type Services = ManagedRuntime.ManagedRuntime.Services<typeof runtime>;
   const job = <E>(
-    name: "health-sweep" | "channel-digest" | "email-digest",
+    name: "health-sweep" | "channel-digest" | "email-digest" | "pull-requests",
     effect: Effect.Effect<unknown, E, Services>,
   ) => ({ name, effect: Effect.asVoid(effect) });
   const health = healthConfig(env);
+  let checkingPullRequests = false;
+  const pullRequests = Effect.suspend(() => {
+    if (checkingPullRequests) return Effect.void;
+    checkingPullRequests = true;
+    return checkPullRequests({ fetch: providers?.githubFetch ?? detached }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          checkingPullRequests = false;
+        }),
+      ),
+    );
+  });
   const scheduled = [
     job("health-sweep", healthSweep(health)),
     // A project is digested only once its chat is quiet.
     job("channel-digest", digestAndLog(channelDigestConfig(env))),
     ...(emailDigest ? [job("email-digest", emailDigestAndLog())] : []),
+    job("pull-requests", pullRequests),
   ];
 
   return {
