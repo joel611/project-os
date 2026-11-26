@@ -227,7 +227,7 @@ export const assembleCoordinator = (adapters: CoordinatorAdapters) => {
               ),
             ),
           );
-          return () => Effect.runPromise(Effect.all(stops, { discard: true }));
+          return () => runtime.runPromise(Effect.all(stops, { discard: true }));
         }),
       ),
     /** Releases what the runtimes hold, such as database handles. */
