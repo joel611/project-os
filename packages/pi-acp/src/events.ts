@@ -11,6 +11,10 @@ export type PiEvent =
       result: unknown;
       isError: boolean;
     }
+  | {
+      type: "message_end";
+      message: { role: string; stopReason?: string; errorMessage?: string };
+    }
   | { type: string };
 
 const KINDS: Record<string, ToolKind> = {

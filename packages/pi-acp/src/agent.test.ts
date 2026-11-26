@@ -122,6 +122,35 @@ describe("createPiAcpAgent", () => {
     await expect(drive(pi, [])).rejects.toThrow("model unavailable");
   });
 
+  // Pi does not throw when a model call fails: `prompt` resolves and the message says why.
+  const failedMessage = (errorMessage?: string): PiEvent => ({
+    type: "message_end",
+    message: { role: "assistant", stopReason: "error", ...(errorMessage && { errorMessage }) },
+  });
+
+  it("fails the prompt when Pi's last assistant message is an error", async () => {
+    const pi = fakePi(async (emit) => {
+      emit(failedMessage("401: invalid api key"));
+      // Only assistant messages decide the outcome.
+      emit({ type: "message_end", message: { role: "user" } });
+    });
+    await expect(drive(pi, [])).rejects.toThrow("401: invalid api key");
+  });
+
+  it("fails the prompt even when Pi gives no error message", async () => {
+    const pi = fakePi(async (emit) => emit(failedMessage()));
+    await expect(drive(pi, [])).rejects.toThrow("Pi's model call failed");
+  });
+
+  it("ends the turn normally when Pi's retry works", async () => {
+    const pi = fakePi(async (emit) => {
+      emit(failedMessage("500: upstream exploded"));
+      emit({ type: "message_end", message: { role: "assistant", stopReason: "stop" } });
+    });
+    const { stop } = await drive(pi, []);
+    expect(stop.stopReason).toBe("end_turn");
+  });
+
   it("fails session/new with the reason Pi could not start", async () => {
     let attempt = 0;
     const app = createPiAcpAgent({
@@ -169,7 +198,11 @@ describe("createPiAcpAgent", () => {
 
   it("aborts Pi on cancel and ends the turn as cancelled", async () => {
     let release: () => void = () => {};
-    const pi = fakePi(() => new Promise<void>((resolve) => (release = resolve)));
+    const pi = fakePi(async (emit) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      // A cancelled turn stays cancelled, whatever Pi's last message says.
+      emit({ type: "message_end", message: { role: "assistant", stopReason: "error" } });
+    });
     const app = createPiAcpAgent({ createSession: pi.createSession });
     const stop = await client({ name: "test" }).connectWith(app, async (cx) => {
       await init(cx);
