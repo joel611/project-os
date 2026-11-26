@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { IntentClassifier } from "@project-os/core";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -128,6 +129,38 @@ describe("PR merge notices", () => {
     status = 200;
     await stack.checkPullRequests();
     expect(stack.posted).toHaveLength(1);
+  });
+
+  it("does not fall back to the project channel when a legacy ticket has no thread", async () => {
+    await connect();
+    await finish();
+    const db = new Database(stack.dbPath);
+    try {
+      db.run("DELETE FROM ticket_threads WHERE ticket_id = ?", [ticketId]);
+    } finally {
+      db.close();
+    }
+    state.merged = true;
+    await stack.checkPullRequests();
+    expect(calls).toEqual([]);
+    expect(stack.posted).toEqual([]);
+  });
+
+  it("does not choose credentials when a legacy ticket has no human requester", async () => {
+    await connect();
+    await finish();
+    const db = new Database(stack.dbPath);
+    try {
+      db.run("UPDATE ticket_events SET payload = NULL WHERE ticket_id = ? AND type = 'created'", [
+        ticketId,
+      ]);
+    } finally {
+      db.close();
+    }
+    state.merged = true;
+    await stack.checkPullRequests();
+    expect(calls).toEqual([]);
+    expect(stack.posted).toEqual([]);
   });
 
   it("waits for completion and GitHub connection without nagging or changing ticket state", async () => {
