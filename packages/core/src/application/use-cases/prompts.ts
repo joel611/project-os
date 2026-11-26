@@ -1,5 +1,4 @@
 import {
-  type ChannelType,
   Prompt,
   type PromptAnswer,
   type PromptAnswerReply,
@@ -13,14 +12,9 @@ import {
   promptContent,
   promptOptions,
 } from "../../domain/index.ts";
-import {
-  ChannelGateway,
-  IdGenerator,
-  KeyValueStore,
-  ProjectSourceRepository,
-  TicketRepository,
-} from "../ports/index.ts";
-import { channelTypeFor } from "./channels.ts";
+import { ChannelGateway, IdGenerator, KeyValueStore } from "../ports/index.ts";
+import { type PromptTarget, ticketChannel } from "./channels.ts";
+import { recordQuestionAnswered, recordQuestionAsked } from "./ticket-lifecycle.ts";
 import { nowIso } from "./tickets.ts";
 
 /** Unanswered prompts are forgotten after this; a later click says the question expired. */
@@ -33,12 +27,6 @@ export const NOT_AN_ADMIN_MESSAGE = "Not authorized: you are not on the admin li
 const promptKey = (id: string) => `prompt:${id}`;
 const answerKey = (id: string) => `prompt-answer:${id}`;
 const decodePrompt = Schema.decodeUnknownOption(Schema.fromJsonString(Prompt));
-
-export interface PromptTarget {
-  readonly channelType: ChannelType;
-  readonly channelId: string;
-  readonly threadId?: string;
-}
 
 export interface PromptAnswerConfig {
   /** Prompts posted in this Discord channel can only be answered by `adminUserIds`. */
@@ -59,32 +47,6 @@ const savePrompt = (prompt: Prompt) =>
   Effect.flatMap(KeyValueStore, (kv) =>
     kv.set(promptKey(prompt.id), JSON.stringify(prompt), { ttlSeconds: PROMPT_TTL_SECONDS }),
   );
-
-/**
- * Where a ticket's conversation happens: its own thread, else the project's default response
- * source. `undefined` when it has neither.
- */
-export const ticketChannel = (ticketId: string) =>
-  Effect.gen(function* () {
-    const tickets = yield* TicketRepository;
-    const sources = yield* ProjectSourceRepository;
-    const ticket = yield* tickets.get(ticketId);
-    const thread = yield* tickets.findThread(ticket.id);
-    if (thread) {
-      return {
-        channelType: thread.channelType,
-        channelId: thread.channelId,
-        threadId: thread.threadId,
-      } satisfies PromptTarget as PromptTarget;
-    }
-    const source = (yield* sources.listByProject(ticket.projectId)).find(
-      (s) => s.isDefaultResponse && s.status === "active",
-    );
-    const channelType = source && channelTypeFor(source.type);
-    return source && channelType
-      ? ({ channelType, channelId: source.externalId } satisfies PromptTarget as PromptTarget)
-      : undefined;
-  });
 
 /**
  * Posts a question people answer with a click (Approve / Deny, or one of `options`) and
@@ -154,17 +116,7 @@ export const askOnTicket = (input: {
       });
     }
     const prompt = yield* askPrompt({ ...input, target });
-    const tickets = yield* TicketRepository;
-    yield* tickets.appendEvent({
-      id: yield* Effect.flatMap(IdGenerator, (g) => g.next),
-      ticketId: input.ticketId,
-      type: "comment",
-      actor: "worker",
-      actorId: null,
-      body: `Asked: ${prompt.question} (${prompt.options.join(" / ")})`,
-      payload: { promptId: prompt.id, kind: prompt.kind, options: prompt.options },
-      createdAt: prompt.createdAt,
-    });
+    yield* recordQuestionAsked(input.ticketId, prompt);
     return prompt;
   });
 
@@ -224,31 +176,17 @@ export const answerPrompt = (answer: PromptAnswer, config: PromptAnswerConfig = 
     yield* savePrompt(answered);
 
     if (prompt.ticketId !== null) {
-      const tickets = yield* TicketRepository;
-      const ids = yield* IdGenerator;
-      yield* tickets
-        .appendEvent({
-          id: yield* ids.next,
-          ticketId: prompt.ticketId,
-          type: "follow_up",
-          actor: "coordinator",
-          actorId: answer.sender.id,
-          body: `Answer to "${prompt.question}": ${label}`,
-          payload: {
-            promptId: prompt.id,
-            kind: prompt.kind,
-            choice: answer.choice,
-            label,
-            sender: answer.sender,
-            channelType: answer.channelType,
-          },
-          createdAt: at,
-        })
-        .pipe(
-          Effect.catchTag("TicketNotFound", () =>
-            Effect.logWarning(`prompt ${prompt.id} answered for a missing ticket`),
-          ),
-        );
+      yield* recordQuestionAnswered({
+        ticketId: prompt.ticketId,
+        prompt,
+        answer,
+        label,
+        at,
+      }).pipe(
+        Effect.catchTag("TicketNotFound", () =>
+          Effect.logWarning(`prompt ${prompt.id} answered for a missing ticket`),
+        ),
+      );
     }
     return { accepted: true, content: answeredContent(answered) } satisfies PromptAnswerReply;
   });

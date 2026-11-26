@@ -46,6 +46,9 @@ _Avoid_: private worker, device worker.
 **Shared Worker**: a computer an admin registered with `/register-worker shared:True` in the admin channel, running the Watcher. It has no owner and takes anyone's Tickets, up to `SHARED_WORKER_MAX_TICKETS` at a time, before the Sandbox Pool is tried. Authenticates to MCP with a Bearer secret, like a Personal Worker.
 _Avoid_: host Watcher, hosted worker (the old fixed `WORKER_ID` Watcher no longer exists).
 
+**Ticket lifecycle**: the one Coordinator module (`ticket-lifecycle.ts`) that is told what happened to a Ticket, and by which actor, and owns what follows: the status change, the TicketEvent history, the audit row and the thread notice or reply. Callers never write those themselves, and the actor is always given, never guessed from the Ticket. A completed Ticket gets a composed reply; a Ticket the Sidekick finishes gets the Sidekick's own words. A Worker's own TicketEvents (`ticket_append_event`) are plain history and carry no consequences.
+_Avoid_: ticket service, state machine (the transition rules are the Ticket domain module's).
+
 **Placement**: the Coordinator's decision of where a new Ticket runs: a Personal Worker, a Shared Worker, a Sandbox Pool provider, the Sidekick, or nowhere yet (a Queued Ticket). Inbound messages and the health sweep both place Tickets through the one Placement module. It takes the requester as input and stores it on the Ticket, and it keeps capacity honest: it assigns, recounts the load, and if the device or provider is now over its cap this Ticket, the last to take the slot, goes back to the queue (the health sweep then places Queued Tickets oldest first). A launch that fails at kickoff releases its slot and the Ticket goes back to the queue.
 _Avoid_: assignment (that is the `assigned` status), scheduling, routing.
 

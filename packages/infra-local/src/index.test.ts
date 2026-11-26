@@ -12,7 +12,7 @@ import {
   ProjectRepository,
   Scheduler,
   TicketRepository,
-  updateStatus,
+  changeTicketStatus,
   WorkerLauncher,
 } from "@project-os/core";
 import { schema } from "@project-os/db-sqlite";
@@ -134,7 +134,11 @@ describe("LocalLive", () => {
       });
       yield* tickets.assign("t1", { workerType: "local", workerId: "w1" }, T0);
       const claimed = yield* claimTicketUseCase({ ticketId: "t1", workerId: "w1" });
-      const done = yield* updateStatus({ ticketId: "t1", status: "completed" });
+      const done = yield* changeTicketStatus({
+        ticketId: "t1",
+        status: "completed",
+        by: { type: "worker", id: "w1" },
+      });
       return { claimed: claimed.status, done: done.status };
     });
 

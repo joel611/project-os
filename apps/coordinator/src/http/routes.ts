@@ -52,6 +52,7 @@ import {
   listTicketAttachments,
   readActivity,
   reassignTicketTo,
+  changeTicketStatus,
   redeemWorkerRegistration,
   workerLabel,
   type AgentRuntime,
@@ -91,7 +92,6 @@ import {
   CreateTaskTypeBody,
   UpdateTaskTypeBody,
   UpdateSkillsBody,
-  changeStatusAndNotify,
   CreateProjectBody,
   createProject,
   CreateSourceBody,
@@ -720,16 +720,24 @@ export const httpRoutes = ({
     .get("/tickets/:id/runs/:runId", ({ params, request, set }) =>
       forTicket(request, set, (person) => toResult(readTicketRun(params.id, params.runId, person))),
     )
-    .post("/tickets/:id/status", ({ params, body, set }) =>
-      reply(
+    .post("/tickets/:id/status", async ({ params, body, request, set }) => {
+      // The route's `user` policy lets in only an Operator.
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
         set,
         toResult(
           decode(UpdateStatusBody, body).pipe(
-            Effect.flatMap((update) => changeStatusAndNotify(params.id, update)),
+            Effect.flatMap((update) =>
+              changeTicketStatus({
+                ...update,
+                ticketId: params.id,
+                by: { type: "person", id: caller.userId, name: caller.name },
+              }),
+            ),
           ),
         ),
-      ),
-    )
+      );
+    })
     .post("/tickets/:id/assign", async ({ params, body, request, set }) => {
       // The route's `user` policy lets in only an Operator.
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
