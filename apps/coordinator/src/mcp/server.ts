@@ -39,7 +39,7 @@ export const makeMcpServer = (
   options: {
     /** EXPERIMENTAL: also serve the built-in skills as `skill://` resources (SEP-2640). */
     readonly experimentalSkills?: boolean;
-  } = {},
+  },
 ) => {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const server = new Server(

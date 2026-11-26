@@ -32,8 +32,8 @@ export const listSkillEntries = () => Promise.all(BUILTIN_SKILLS.map(skillEntry)
 /** The text of one skill file by URI, or undefined when there is no such file. */
 export const readSkillFile = (uri: string): string | undefined => {
   const parsed = parseSkillUri(uri);
-  const skill = parsed && findSkill(parsed.name);
-  return skill?.files[parsed?.path === "" ? "SKILL.md" : (parsed?.path ?? "")];
+  if (!parsed) return undefined;
+  return findSkill(parsed.name)?.files[parsed.path === "" ? "SKILL.md" : parsed.path];
 };
 
 const SkillListOutput = Schema.Struct({

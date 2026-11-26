@@ -66,6 +66,11 @@ describe("coordinator app", () => {
     expect(await res.json()).toEqual({ status: "ok", service: "coordinator" });
   });
 
+  it("mounts /mcp with the experimental skills flag on and still refuses no token", async () => {
+    const res = await call(fullApp({ experimentalMcpSkills: true }), "/mcp", { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
   describe("access", () => {
     it("names a policy for every route it mounts", () => {
       const routes = fullApp().routes.map((r: { method: string; path: string }) => {
