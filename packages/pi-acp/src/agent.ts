@@ -8,7 +8,7 @@ import {
   type ContentBlock,
   type SessionUpdate,
 } from "@agentclientprotocol/sdk";
-import { toSessionUpdates } from "./events.ts";
+import { type PiEvent, toSessionUpdates } from "./events.ts";
 import { convertMcpServers } from "./mcp.ts";
 import type { PiRun, PiSessionFactory } from "./session.ts";
 
@@ -77,7 +77,19 @@ export const createPiAcpAgent = (options: PiAcpOptions): AgentApp => {
           client.notify(CLIENT_METHODS.session_update, { sessionId: params.sessionId, update }),
         );
       };
+      // `prompt` resolves even when the model call failed. The last assistant message decides,
+      // so a retry that works replaces the failed one.
+      let failure: string | undefined;
       const unsubscribe = live.run.subscribe((event) => {
+        if (event.type === "message_end") {
+          const { message } = event as Extract<PiEvent, { type: "message_end" }>;
+          if (message.role === "assistant") {
+            failure =
+              message.stopReason === "error"
+                ? (message.errorMessage ?? "Pi's model call failed")
+                : undefined;
+          }
+        }
         for (const update of toSessionUpdates(event)) send(update);
       });
       try {
@@ -87,6 +99,9 @@ export const createPiAcpAgent = (options: PiAcpOptions): AgentApp => {
       } finally {
         unsubscribe();
         await Promise.allSettled([sent]);
+      }
+      if (failure !== undefined && !live.cancelled) {
+        throw RequestError.internalError(undefined, failure);
       }
       return { stopReason: live.cancelled ? "cancelled" : "end_turn" };
     })
