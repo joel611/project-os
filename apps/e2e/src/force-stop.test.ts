@@ -74,6 +74,8 @@ it.each(["admin", "Discord"])(
         env: process.env,
         configDir: "/unused",
         home: "/unused",
+        mcp: client,
+        workspaces: stack.workspaces(),
         logger: silentLogger,
         fetchStop: async (url, secret, signal) => {
           const res = await fetch(url, { headers: auth(secret), signal });

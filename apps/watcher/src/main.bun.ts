@@ -94,10 +94,12 @@ if (command.kind === "uninstall") {
   process.exit(exit);
 }
 
+const logFile = join(configDir(), "logs", "watcher.log");
 const logger = createLogger({
   verbose:
     command.verbose ||
     ["1", "true", "on"].includes((process.env.WATCHER_VERBOSE ?? "").toLowerCase()),
+  file: logFile,
 });
 const path = credentialsPath();
 if (command.kind === "register") {
@@ -149,6 +151,7 @@ const coordinator =
     ? `${server.origin}${server.pathname}`
     : "(invalid URL)";
 const acp = config.agent === "pi" && config.piAcp;
+const workspaces = join(configDir(), "workspaces");
 logger.info(banner, {
   coordinator,
   workerId: config.workerId,
@@ -156,13 +159,14 @@ logger.info(banner, {
   acp: acp ? "on" : "off",
   model: config.model || (acp && process.env.PI_ACP_MODEL) || "agent default",
   intervalMs: config.intervalMs,
+  workspaces,
+  logFile,
 });
 logger.debug("config", {
   agent: config.agent,
   model: config.model,
   maxSessions: config.maxSessions,
   intervalMs: config.intervalMs,
-  cwd: config.cwd,
   skills: config.skills,
   runLog: config.runLog,
   credentials: path,
@@ -239,9 +243,10 @@ const killRun = (proc: { pid: number; kill: (signal: "SIGKILL") => void }) => {
   proc.kill("SIGKILL");
 };
 
+const client = httpMcpClient(config.mcpUrl, fetch, config.secret, logger);
 const watcher = createWatcher({
   config,
-  client: httpMcpClient(config.mcpUrl, fetch, config.secret, logger),
+  client,
   spawner: bunSpawner(
     config,
     (cmd, options) => {
@@ -278,6 +283,27 @@ const watcher = createWatcher({
       env: process.env,
       configDir: configDir(),
       home: homedir(),
+      mcp: client,
+      workspaces: {
+        root: workspaces,
+        git: async (args, options) => {
+          try {
+            const proc = Bun.spawn(["git", ...args], {
+              ...options,
+              stdin: "ignore",
+              stdout: "ignore",
+              stderr: "pipe",
+            });
+            const [code, stderr] = await Promise.all([
+              proc.exited,
+              new Response(proc.stderr).text(),
+            ]);
+            return { code, stderr };
+          } catch (e) {
+            return { code: 127, stderr: errorMessage(e) };
+          }
+        },
+      },
       logger,
       ...(config.runLog && { runLog }),
       fetchStop: async (url, secret, signal) => {

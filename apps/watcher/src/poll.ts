@@ -1,6 +1,6 @@
 import type { WatcherConfig } from "./config.ts";
 import { errorMessage, type Logger } from "./logger.ts";
-import type { Spawner } from "./spawn.ts";
+import type { SessionTicket, Spawner } from "./spawn.ts";
 
 export interface McpClient {
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
@@ -18,7 +18,8 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
   /** Tickets with a session under way, so a slow start isn't launched twice. */
   const inFlight = new Set<string>();
 
-  const start = (ticketId: string, assignedAt?: string | null) => {
+  const start = (ticket: SessionTicket) => {
+    const ticketId = ticket.id;
     running++;
     inFlight.add(ticketId);
     const startedAt = Date.now();
@@ -31,7 +32,7 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
       if (failed) logger.warn(message, fields);
       else logger.info(message, fields);
     };
-    spawner.spawn(ticketId, assignedAt).then(
+    spawner.spawn(ticket).then(
       (code) => done(`code=${code}`, code !== 0),
       (e) => done(`error=${errorMessage(e)}`, true),
     );
@@ -47,9 +48,7 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
       const out = (await client.callTool("ticket_list_assigned", {
         workerId: config.workerId,
         workerType: config.workerType,
-      })) as {
-        tickets: ReadonlyArray<{ readonly id: string; readonly assignedAt?: string | null }>;
-      };
+      })) as { tickets: ReadonlyArray<SessionTicket> };
       const waiting = out.tickets.filter((t) => !inFlight.has(t.id));
       logger.debug(`poll: ${out.tickets.length} assigned, ${waiting.length} waiting`, {
         running,
@@ -57,7 +56,7 @@ export const createWatcher = ({ config, client, spawner, logger }: WatcherDeps) 
         ticketIds: out.tickets.map((t) => t.id),
       });
       for (const ticket of waiting.slice(0, Math.max(0, config.maxSessions - running))) {
-        start(ticket.id, ticket.assignedAt);
+        start(ticket);
       }
     } catch (e) {
       logger.error(`poll failed: ${errorMessage(e)}`);

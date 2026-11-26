@@ -28,9 +28,13 @@ export const USAGE = `Usage:
       keeps it on this computer.
       WATCHER_AGENT and WATCHER_MODEL override the saved choice for this run.
       --verbose (-v, or WATCHER_VERBOSE=1) also logs every poll, request and skill install.
+      Each ticket's session starts in its own folder under workspaces/ in the config
+      directory, with the project's GitHub repos cloned there. The log is also appended
+      to logs/watcher.log in the config directory.
   project-os-watcher uninstall [--yes]
       Remove what the installer added: stop the Watcher, uninstall the package, delete the
       saved registration and the Coordinator entry in Pi's MCP config. Asks first unless --yes.
+      Keeps workspaces/ and logs/, which may hold uncommitted work.
   project-os-watcher --help
       Show this help.`;
 

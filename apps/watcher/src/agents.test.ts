@@ -16,7 +16,6 @@ const config: WatcherConfig = {
   agent: "claude",
   intervalMs: 1000,
   maxSessions: 1,
-  cwd: "/work",
   secret: "s3cret",
   skills: true,
   runLog: true,

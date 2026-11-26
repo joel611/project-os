@@ -1,18 +1,27 @@
 import { join, normalize, sep } from "node:path";
 import { SAFE_SKILL_SLUG, type WorkerTaskType, workerTicketUrl } from "@project-os/contracts";
 import { strFromU8, unzipSync } from "fflate";
-import { workerSessionStart } from "@project-os/system-prompts";
+import { type SessionWorkspace, workerSessionStart } from "@project-os/system-prompts";
 import { type AcpProcess, runAcpSession } from "./acp-run.ts";
 import { AGENTS, type Agent, type InstalledSkills } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
 import { errorMessage, type Logger, silentLogger } from "./logger.ts";
+import type { McpClient } from "./poll.ts";
 import { outputEvent, terminalText } from "./run-events.ts";
 import { createRunRecorder, type RunLogIo } from "./run-log.ts";
 import { type FetchRunStop, watchRunStop } from "./run-stop.ts";
+import { type Git, prepareWorkspace, type RepoSource } from "./workspace.ts";
+
+/** An assigned ticket, as `ticket_list_assigned` lists it. */
+export interface SessionTicket {
+  readonly id: string;
+  readonly projectId: string;
+  readonly assignedAt?: string | null;
+}
 
 export interface Spawner {
-  /** Runs one agent session for `ticketId` when given; resolves with its exit code. */
-  spawn(ticketId?: string, assignedAt?: string | null): Promise<number>;
+  /** Runs one agent session for `ticket` when given; resolves with its exit code. */
+  spawn(ticket?: SessionTicket): Promise<number>;
 }
 
 export type SpawnProcess = (
@@ -66,6 +75,10 @@ export interface SpawnerIo {
   readonly env: Record<string, string | undefined>;
   readonly configDir: string;
   readonly home: string;
+  /** The Coordinator's MCP, for the ticket's repos and the person's GitHub token. */
+  readonly mcp: McpClient;
+  /** `root` holds one folder per ticket (`<configDir>/workspaces`); `git` clones into it. */
+  readonly workspaces: { readonly root: string; readonly git: Git };
   readonly skills?: SkillsIo;
   /** Where run logs go. Without it (or with `config.runLog` off) a session is not recorded. */
   readonly runLog?: RunLogIo;
@@ -154,6 +167,61 @@ const installSkills = async (
   return { root, slugs: [...slugs], set: archive.set };
 };
 
+/**
+ * The ticket's folder with the project's GitHub repos checked out in it. Sources that can't be
+ * listed or repos that can't be cloned don't stop the session: the prompt says what is missing.
+ */
+const openWorkspace = async (io: SpawnerIo, ticket: SessionTicket): Promise<SessionWorkspace> => {
+  const logger = io.logger ?? silentLogger;
+  const fields = { ticketId: ticket.id };
+  let repos: RepoSource[] = [];
+  let sourcesError: string | undefined;
+  try {
+    const out = (await io.mcp.callTool("project_sources_list", {
+      projectId: ticket.projectId,
+    })) as {
+      readonly sources: ReadonlyArray<{
+        readonly type?: unknown;
+        readonly alias?: unknown;
+        readonly externalId?: unknown;
+      }>;
+    };
+    repos = out.sources.flatMap((s) =>
+      s.type === "github_repo" && typeof s.alias === "string" && typeof s.externalId === "string"
+        ? [{ alias: s.alias, repo: s.externalId }]
+        : [],
+    );
+  } catch (e) {
+    sourcesError = errorMessage(e).slice(0, 200);
+    logger.warn(`workspace: could not list the project's sources: ${sourcesError}`, fields);
+  }
+  const workspace = await prepareWorkspace(
+    { ...io.workspaces, env: io.env },
+    {
+      ticketId: ticket.id,
+      repos,
+      githubToken: async () => {
+        const out = (await io.mcp.callTool("user_token", {
+          ticketId: ticket.id,
+          provider: "github",
+        })) as { readonly accessToken?: unknown };
+        if (typeof out.accessToken !== "string" || out.accessToken === "") {
+          throw new Error("user_token returned no token");
+        }
+        return out.accessToken;
+      },
+    },
+  );
+  for (const repo of workspace.failed) {
+    logger.warn(`workspace: ${repo.alias} (${repo.repo}) not checked out: ${repo.reason}`, fields);
+  }
+  logger.info(`workspace: ${workspace.checkouts.length} repo(s) checked out for ${ticket.id}`, {
+    ...fields,
+    cwd: workspace.cwd,
+  });
+  return { ...workspace, ...(sourcesError !== undefined && { sourcesError }) };
+};
+
 export const bunSpawner = (
   config: WatcherConfig,
   spawnProcess: SpawnProcess,
@@ -162,7 +230,11 @@ export const bunSpawner = (
 ): Spawner => {
   const logger = io.logger ?? silentLogger;
   return {
-    spawn: async (ticketId, assignedAt) => {
+    spawn: async (ticket) => {
+      const ticketId = ticket?.id;
+      const assignedAt = ticket?.assignedAt;
+      const workspace = ticket ? await openWorkspace(io, ticket) : undefined;
+      const cwd = workspace?.cwd ?? io.workspaces.root;
       const skills = ticketId ? await installSkills(config, io, agent, ticketId) : undefined;
       const taskType =
         ticketId && config.skills && io.skills
@@ -214,13 +286,14 @@ export const bunSpawner = (
         const prompt = workerSessionStart(config.workerId, {
           ...(ticketId && { ticketId }),
           ...(taskType && { taskType }),
+          ...(workspace && { workspace }),
         });
         if (config.piAcp && agent.name === "pi" && io.spawnAcp) {
           const at = () => (log?.now() ?? new Date()).toISOString();
           const out = (text: string) => (log ? log.terminal.out(text) : process.stdout.write(text));
           const err = (text: string) => (log ? log.terminal.err(text) : process.stderr.write(text));
           const proc = io.spawnAcp([...config.piAcpCommand], {
-            cwd: config.cwd,
+            cwd,
             env: {
               ...io.env,
               ...(config.model && { PI_ACP_MODEL: config.model }),
@@ -238,7 +311,7 @@ export const bunSpawner = (
           });
           const exitCode = await runAcpSession({
             process: proc,
-            cwd: config.cwd,
+            cwd,
             prompt,
             mcpUrl: config.mcpUrl,
             secret: config.secret,
@@ -268,13 +341,13 @@ export const bunSpawner = (
           ticketId,
           command: launch.cmd[0],
           argCount: launch.cmd.length - 1,
-          cwd: config.cwd,
+          cwd,
           model: config.model,
           skills: skills?.slugs.length ?? 0,
           files: launch.files.map((file) => file.path),
         });
         const proc = spawnProcess([...launch.cmd], {
-          cwd: config.cwd,
+          cwd,
           env: { ...io.env, ...launch.env },
           stdout: recorder ? "pipe" : "inherit",
           stderr: recorder ? "pipe" : "inherit",

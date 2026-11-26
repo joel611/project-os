@@ -11,6 +11,7 @@ import {
 } from "../../../packages/pi-acp/src/index.ts";
 import { loadConfig } from "../../watcher/src/config.ts";
 import { silentLogger } from "../../watcher/src/logger.ts";
+import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import type { RunLogIo } from "../../watcher/src/run-log.ts";
 import { bunSpawner, type SpawnAcp } from "../../watcher/src/spawn.ts";
 import { type Stack, startStack } from "./stack.ts";
@@ -40,6 +41,7 @@ describe("Pi over ACP", () => {
     const [project] = await stack.json("GET", "/projects");
     const [ticket] = (await stack.json("GET", `/projects/${project.id}/tickets`)) as Array<{
       id: string;
+      projectId: string;
     }>;
 
     const opened: PiSessionOptions[] = [];
@@ -147,12 +149,14 @@ describe("Pi over ACP", () => {
         env: {},
         configDir: "/cfg",
         home: "/home/me",
+        mcp: httpMcpClient(config.mcpUrl, fetch, config.secret),
+        workspaces: stack.workspaces(),
         runLog,
         logger: silentLogger,
       },
     );
 
-    expect(await spawner.spawn(ticket!.id)).toBe(0);
+    expect(await spawner.spawn(ticket!)).toBe(0);
 
     // The Coordinator reached Pi in session/new, with the device's Bearer.
     expect(opened).toHaveLength(1);

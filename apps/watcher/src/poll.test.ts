@@ -11,7 +11,6 @@ const config: WatcherConfig = {
   agent: "claude",
   intervalMs: 1000,
   maxSessions: 1,
-  cwd: "/tmp",
   secret: "s3cret",
   skills: true,
   runLog: true,
@@ -30,8 +29,8 @@ const setup = (assigned: unknown[], cfg: Partial<WatcherConfig> = {}) => {
   const exits: Array<(code: number) => void> = [];
   const spawned: string[] = [];
   const spawner: Spawner = {
-    spawn: (ticketId) => {
-      spawned.push(ticketId ?? "?");
+    spawn: (ticket) => {
+      spawned.push(ticket?.id ?? "?");
       return new Promise<number>((r) => exits.push(r));
     },
   };

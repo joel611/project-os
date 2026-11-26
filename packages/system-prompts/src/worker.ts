@@ -55,13 +55,58 @@ export const workerSessionStart = (
     readonly ticketId?: string;
     /** The ticket's task type: its instructions say how to use its skills for this kind of work. */
     readonly taskType?: { readonly name: string; readonly instructions: string };
+    /** The ticket's folder on a Watcher device, and the project's repos it checked out there. */
+    readonly workspace?: SessionWorkspace;
   } = {},
 ): string =>
   `${options.credentialProxy ? WORKER_SESSION_START_PROXIED : WORKER_SESSION_START}\n\nYour worker_id is \`${workerId}\`.${
     options.ticketId === undefined
       ? ""
       : `\nThis session is for ticket \`${options.ticketId}\`: claim that one in step 3, not the oldest, and don't take any other.`
-  }${taskTypeSection(options.taskType)}`;
+  }${workspaceSection(options.workspace)}${taskTypeSection(options.taskType)}`;
+
+export interface SessionWorkspace {
+  /** Where the session starts. */
+  readonly cwd: string;
+  readonly checkouts: ReadonlyArray<{
+    readonly alias: string;
+    readonly repo: string;
+    readonly path: string;
+  }>;
+  readonly failed: ReadonlyArray<{
+    readonly alias: string;
+    readonly repo: string;
+    readonly reason: string;
+  }>;
+  /** Set when the project's sources couldn't be listed, so no repo was checked out. */
+  readonly sourcesError?: string;
+}
+
+/** Where the session starts and what is checked out there; empty without a workspace. */
+const workspaceSection = (workspace: SessionWorkspace | undefined) => {
+  if (!workspace) return "";
+  const lines = [
+    `\n\nWorkspace: this session starts in \`${workspace.cwd}\`. This computer keeps the ticket's workspace between sessions, so a reopened ticket finds its earlier work there. Keep the ticket's files in it.`,
+  ];
+  if (workspace.checkouts.length > 0) {
+    lines.push(
+      "These project repos are checked out (alias, repo, path):",
+      ...workspace.checkouts.map((c) => `- \`${c.alias}\` (\`${c.repo}\`): \`${c.path}\``),
+    );
+  }
+  if (workspace.failed.length > 0) {
+    lines.push(
+      "These project repos could not be checked out. If the ticket needs one, clone it into the workspace yourself with the person's token (step 5); if that fails with `NotConnected`, set the ticket to `blocked`:",
+      ...workspace.failed.map((f) => `- \`${f.alias}\` (\`${f.repo}\`): ${f.reason}`),
+    );
+  }
+  if (workspace.sourcesError !== undefined) {
+    lines.push(
+      `The project's sources could not be listed (${workspace.sourcesError}), so no repo is checked out: find them with \`project_sources_list\`.`,
+    );
+  }
+  return lines.join("\n");
+};
 
 /** The operator's instructions for a task type, as a prompt section; empty when it has none. */
 const taskTypeSection = (

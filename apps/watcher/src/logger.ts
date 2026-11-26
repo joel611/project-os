@@ -1,3 +1,5 @@
+import { fchmodSync, mkdirSync, openSync } from "node:fs";
+import { dirname } from "node:path";
 import pino from "pino";
 import pinoPretty from "pino-pretty";
 
@@ -27,27 +29,38 @@ export const errorMessage = (e: unknown): string => (e instanceof Error ? e.mess
 
 /**
  * Timestamped logger on stdout. A terminal gets colored one-line output; anything else
- * (Docker, a pipe) gets JSON lines with an ISO `time`. `verbose` adds the debug level.
+ * (Docker, a pipe) gets JSON lines with an ISO `time`. `verbose` adds the debug level. With
+ * `file`, the same entries are also appended to it as JSON lines, readable by this user only.
  */
 export const createLogger = (options: {
   readonly verbose: boolean;
   readonly pretty?: boolean;
+  readonly file?: string;
 }): Logger => {
   const pretty = options.pretty ?? Boolean(process.stdout.isTTY);
+  const level = options.verbose ? "debug" : "info";
+  const stdout = pretty
+    ? pinoPretty({
+        colorize: true,
+        translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+        ignore: "pid,hostname",
+        destination: process.stdout,
+      })
+    : process.stdout;
+  const appendTo = (file: string) => {
+    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+    const fd = openSync(file, "a", 0o600);
+    fchmodSync(fd, 0o600);
+    return pino.destination({ fd, sync: true });
+  };
   const base = pino(
-    {
-      level: options.verbose ? "debug" : "info",
-      base: null,
-      timestamp: pino.stdTimeFunctions.isoTime,
-    },
-    pretty
-      ? pinoPretty({
-          colorize: true,
-          translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
-          ignore: "pid,hostname",
-          destination: process.stdout,
-        })
-      : process.stdout,
+    { level, base: null, timestamp: pino.stdTimeFunctions.isoTime },
+    options.file
+      ? pino.multistream([
+          { level, stream: stdout },
+          { level, stream: appendTo(options.file) },
+        ])
+      : stdout,
   );
   const at =
     (level: "debug" | "info" | "warn" | "error") => (message: string, fields?: LogFields) =>

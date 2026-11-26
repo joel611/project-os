@@ -133,8 +133,7 @@ Read by `apps/watcher` on the computer that works tickets, from its shell.
 | `WATCHER_MODEL`           | No       | the agent's own default        | Passed to the agent as `--model`. Overrides the saved model                 |
 | `POLL_INTERVAL_MS`        | No       | `300000`                       | How often it polls for tickets                                              |
 | `MAX_SESSIONS`            | No       | `1`                            | Agent sessions it runs at once                                              |
-| `WORKER_CWD`              | No       | current directory              | Directory agent sessions start in                                           |
-| `PROJECT_OS_WATCHER_HOME` | No       | `$XDG_CONFIG_HOME/project-os`  | Where its registration is saved (`XDG_CONFIG_HOME` defaults to `~/.config`) |
+| `PROJECT_OS_WATCHER_HOME` | No       | `$XDG_CONFIG_HOME/project-os`  | Where its registration, workspaces and logs live (`XDG_CONFIG_HOME` defaults to `~/.config`) |
 
 ## Cloud sandbox pool
 

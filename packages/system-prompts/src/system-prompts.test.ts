@@ -242,6 +242,32 @@ describe("worker prompt task type", () => {
   });
 });
 
+describe("worker prompt workspace", () => {
+  it("says where the session starts, what is checked out, and what failed", () => {
+    const prompt = workerSessionStart("w1", {
+      ticketId: "t-7",
+      workspace: {
+        cwd: "/ws/t-7/web",
+        checkouts: [{ alias: "web", repo: "acme/web", path: "/ws/t-7/web" }],
+        failed: [{ alias: "api", repo: "acme/api", reason: "git clone exited with 128: denied" }],
+      },
+    });
+    const section = prompt.slice(prompt.indexOf("\n\nWorkspace:"));
+    expect(section).toMatchSnapshot();
+    expect(section).toContain("`web` (`acme/web`): `/ws/t-7/web`");
+    expect(section).toContain("`api` (`acme/api`): git clone exited with 128: denied");
+  });
+
+  it("tells the agent to find the repos itself when the sources couldn't be listed", () => {
+    const prompt = workerSessionStart("w1", {
+      workspace: { cwd: "/ws/t-7", checkouts: [], failed: [], sourcesError: "HTTP 500" },
+    });
+    expect(prompt).toContain("starts in `/ws/t-7`");
+    expect(prompt).toContain("could not be listed (HTTP 500)");
+    expect(prompt).not.toContain("checked out (alias");
+  });
+});
+
 describe("email classification prompts", () => {
   it("describes a project with its instructions and clips long ones", () => {
     expect(emailProjectCriteria({ name: "Acme", description: "", examples: [] })).toBe(

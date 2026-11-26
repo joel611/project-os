@@ -27,8 +27,8 @@ COPY --from=deps /repo ./
 COPY . .
 RUN chmod +x apps/watcher/src/main.bun.ts \
  && ln -s /repo/apps/watcher/src/main.bun.ts /usr/local/bin/project-os-watcher \
- && mkdir -p /work /home/bun/.config && chown bun:bun /work /home/bun/.config
+ && mkdir -p /home/bun/.config && chown bun:bun /home/bun/.config
 USER bun
-WORKDIR /work
-ENV WORKER_CWD=/work
+# Registration, ticket workspaces and logs all live in ~/.config/project-os (a volume in Compose).
+WORKDIR /home/bun
 CMD ["sleep", "infinity"]

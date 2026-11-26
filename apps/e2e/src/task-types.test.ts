@@ -245,6 +245,8 @@ describe("task types", () => {
         env: {},
         configDir: tmpdir(),
         home: tmpdir(),
+        mcp: httpMcpClient(config.mcpUrl, fetch, config.secret),
+        workspaces: stack.workspaces(),
         skills: {
           fetchTaskType: async () => undefined,
           fetchArchive: async (url, token) => {

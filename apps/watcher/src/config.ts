@@ -1,4 +1,4 @@
-import { envNumber, env } from "@project-os/config";
+import { envNumber } from "@project-os/config";
 import { AGENT_NAMES, type AgentName, isAgentName } from "./agents.ts";
 import type { WatcherCredentials } from "./credentials.ts";
 
@@ -12,7 +12,6 @@ export interface WatcherConfig {
   readonly model?: string;
   readonly intervalMs: number;
   readonly maxSessions: number;
-  readonly cwd: string;
   /** Bearer secret this device got at registration; every MCP call sends it. */
   readonly secret: string;
   /** Install the ticket's task type before a session starts (`WATCHER_SKILLS=0` turns it off). */
@@ -65,7 +64,6 @@ export const loadConfig = (
     ...(model && { model }),
     intervalMs: envNumber("POLL_INTERVAL_MS", 5 * 60 * 1000),
     maxSessions: envNumber("MAX_SESSIONS", 1),
-    cwd: env("WORKER_CWD", process.cwd()),
     secret: credentials.secret,
     skills: !["0", "false", "off"].includes((process.env.WATCHER_SKILLS ?? "").toLowerCase()),
     runLog: !["0", "false", "off"].includes((process.env.WATCHER_RUN_LOG ?? "").toLowerCase()),

@@ -33,6 +33,7 @@ import type { CoordinatorTarget } from "../../../packages/channel-discord/src/fo
 import type { ActionRow } from "../../../packages/channel-discord/src/prompts.ts";
 import { createReplyApp, type ReplyTarget } from "../../../packages/channel-discord/src/reply.ts";
 import { registerDevice } from "../../watcher/src/register.ts";
+import type { Git } from "../../watcher/src/workspace.ts";
 import { assembleCoordinator, type CoordinatorAdapters } from "../../coordinator/src/assembly.ts";
 import { type FakeOAuth, startFakeOAuth } from "./fake-oauth.ts";
 
@@ -160,6 +161,11 @@ export interface Stack {
    * device's secret, as the Watcher puts in Claude Code's MCP config, or a sandbox session's.
    */
   readonly worker: (token: string) => Promise<Client>;
+  /**
+   * A Watcher's workspaces folder (removed on `stop`) and the git it clones with. The default
+   * git fails every clone, since no test may reach GitHub.
+   */
+  readonly workspaces: (git?: Git) => { readonly root: string; readonly git: Git };
   /** Mints the MCP token a sandbox session launched as `workerId` would get. */
   readonly sandboxToken: (workerId: string) => Promise<string>;
   /** Keeps a finished sandbox session's output as a run, as the Coordinator's launcher hook does. */
@@ -510,6 +516,11 @@ export const startStack = async (options: {
       return project.id as string;
     },
     worker,
+    workspaces: (git) => ({
+      root: mkdtempSync(join(dir, "workspaces-")),
+      git:
+        git ?? (async () => ({ code: 128, stderr: "fatal: no network in the integration stack" })),
+    }),
     recordSandboxRun: (session) => runtime.runPromise(recordSandboxRun(session) as any),
     sandboxToken: (workerId) =>
       runtime.runPromise(issueSandboxToken(workerId, 600) as Effect.Effect<string, never, any>),

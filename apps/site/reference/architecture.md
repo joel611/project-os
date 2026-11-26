@@ -231,8 +231,9 @@ A small program that runs on a registered computer. It polls for work and launch
 
 The fixed shared Watcher of the original POC (unregistered, polling as `WORKER_ID`) is gone: an unregistered Watcher refuses to start.
 
-- Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local`, poll interval (default 5 min), max concurrent sessions (default 1), working directory.
+- Config: Coordinator MCP endpoint, `worker_id` (e.g. `joel-local-claude`), `worker_type = local`, poll interval (default 5 min), max concurrent sessions (default 1).
 - Every 5 minutes: call `ticket_list_assigned` for its `worker_id`.
+- Before a session, it prepares the ticket's workspace, `~/.config/project-os/workspaces/<ticket id>/`, cloning each `github_repo` source of the project (`project_sources_list`) into `<alias>/`: anonymously first, then with the requester's `user_token` (GitHub), never the computer's own git credentials. An existing checkout is reused untouched. The session starts in the only repo's checkout, else in the ticket's folder, and its prompt lists what was checked out and what failed.
 - If an unpicked ticket exists and fewer than max sessions are running: start a Claude Code session (e.g. `claude -p "<session-start instruction>"`), with the Coordinator MCP server configured.
 - The Claude Code session claims the ticket itself (`ticket_claim`) and works it. The Watcher does not claim the ticket.
 - One session, one ticket: the session ends at the ticket's terminal status, and the watcher picks up the next ticket on a later poll.

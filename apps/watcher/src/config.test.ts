@@ -4,7 +4,6 @@ import { loadConfig } from "./config.ts";
 const KEYS = [
   "POLL_INTERVAL_MS",
   "MAX_SESSIONS",
-  "WORKER_CWD",
   "WATCHER_AGENT",
   "WATCHER_MODEL",
   "WATCHER_SKILLS",
@@ -31,7 +30,6 @@ describe("loadConfig", () => {
       agent: "claude",
       intervalMs: 300_000,
       maxSessions: 1,
-      cwd: process.cwd(),
       secret: "s",
       skills: true,
       runLog: true,
@@ -48,11 +46,9 @@ describe("loadConfig", () => {
   it("reads overrides from env", () => {
     process.env.POLL_INTERVAL_MS = "1000";
     process.env.MAX_SESSIONS = "3";
-    process.env.WORKER_CWD = "/work";
     expect(loadConfig(credentials, installed())).toMatchObject({
       intervalMs: 1000,
       maxSessions: 3,
-      cwd: "/work",
     });
   });
 
