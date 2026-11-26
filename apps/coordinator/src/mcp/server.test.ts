@@ -14,6 +14,7 @@ import {
 } from "@project-os/core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { mcpRoutes } from "./server.ts";
 import { toFailure } from "./tools.ts";
@@ -246,5 +247,65 @@ describe("coordinator MCP server", () => {
     const unknown = await call("channel_send", {});
     expect(unknown.isError).toBe(true);
     expect(unknown.content[0]!.text).toContain("UnknownTool");
+  });
+});
+
+describe("experimental built-in skills over MCP", () => {
+  const withSkills = async () => {
+    app = new Elysia().use(mcpRoutes(runtime, { experimentalSkills: true }));
+    return await connect(await mint("w1"));
+  };
+
+  it("serves nothing skill-related unless the flag is on", async () => {
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).not.toContain("skill_list");
+    expect(client.getServerCapabilities()?.resources).toBeUndefined();
+  });
+
+  it("offers skill_list and skill_read tools", async () => {
+    const c = await withSkills();
+    const listed = (await c.callTool({ name: "skill_list", arguments: {} })) as any;
+    expect(listed.structuredContent.skills.map((s: any) => s.name)).toEqual([
+      "project-os-tickets",
+      "project-os-memory",
+      "project-os-accounts",
+    ]);
+    const read = (await c.callTool({
+      name: "skill_read",
+      arguments: { name: "project-os-tickets" },
+    })) as any;
+    expect(read.structuredContent.content).toContain("ticket_claim");
+    const missing = (await c.callTool({
+      name: "skill_read",
+      arguments: { name: "project-os-tickets", path: "nope.md" },
+    })) as any;
+    expect(missing.isError).toBe(true);
+    expect(JSON.parse(missing.content[0].text)._tag).toBe("SkillNotFound");
+  });
+
+  it("serves skill:// resources and the SEP-2640 skills/list and skills/get methods", async () => {
+    const c = await withSkills();
+    expect(c.getServerCapabilities()?.resources).toBeDefined();
+    const { resources } = await c.listResources();
+    expect(resources.map((r) => r.uri)).toContain("skill://project-os-memory/SKILL.md");
+    const read = await c.readResource({ uri: "skill://project-os-memory/SKILL.md" });
+    const text = (read.contents[0] as { text: string }).text;
+    expect(text).toContain("name: project-os-memory");
+
+    const raw = (method: string, params: object) =>
+      c.request({ method, params } as never, z.object({}).passthrough()) as Promise<any>;
+    const list = await raw("skills/list", {});
+    const entry = list.skills.find((e: any) => e.uri === "skill://project-os-memory/SKILL.md");
+    expect(entry.frontmatter.name).toBe("project-os-memory");
+    const bytes = new TextEncoder().encode(text);
+    expect(entry.resources[0].size).toBe(bytes.length);
+    const hash = await crypto.subtle.digest("SHA-256", bytes);
+    expect(entry.resources[0].digest).toBe(
+      `sha256:${[...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("")}`,
+    );
+    const got = await raw("skills/get", { uri: "skill://project-os-memory/SKILL.md" });
+    expect(got.uri).toBe(entry.uri);
+    await expect(raw("skills/get", { uri: "skill://nope/SKILL.md" })).rejects.toThrow();
+    await expect(c.readResource({ uri: "skill://nope/SKILL.md" })).rejects.toThrow();
   });
 });

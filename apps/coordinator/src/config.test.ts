@@ -32,6 +32,12 @@ describe("coordinatorConfig", () => {
     expect(off).not.toHaveProperty("credentialProxy");
   });
 
+  it("serves built-in skills over MCP only when EXPERIMENTAL_MCP_SKILLS opts in", () => {
+    expect(coordinatorConfig({ ...base, env: {} })).not.toHaveProperty("experimentalMcpSkills");
+    const on = coordinatorConfig({ ...base, env: { EXPERIMENTAL_MCP_SKILLS: "true" } });
+    expect(on.experimentalMcpSkills).toBe(true);
+  });
+
   it("gives inbound and commands the same admin channel and parsed user ids", () => {
     const config = coordinatorConfig({
       ...base,

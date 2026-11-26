@@ -1,9 +1,25 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ReadResourceRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { skillEntry, findSkill, parseSkillUri } from "@project-os/builtin-skills";
 import { Effect, Schema, type ManagedRuntime } from "effect";
 import { Elysia } from "elysia";
 import { asWorker } from "../worker-access.ts";
+import {
+  listSkillEntries,
+  makeSkillTools,
+  readSkillFile,
+  SKILLS_EXTENSION_ID,
+  SkillsGetRequest,
+  SkillsListRequest,
+} from "./skills.ts";
 import { makeTools, type McpServices, type McpTool } from "./tools.ts";
 
 export type McpRuntime = ManagedRuntime.ManagedRuntime<McpServices, never>;
@@ -17,11 +33,26 @@ const jsonSchema = (schema: Schema.Constraint) => {
  * Builds an MCP `Server` exposing `tools`, each run on `runtime`.
  * Typed failures are returned as `isError` tool results so the model can react to them.
  */
-export const makeMcpServer = (runtime: McpRuntime, tools: readonly McpTool<McpServices>[]) => {
+export const makeMcpServer = (
+  runtime: McpRuntime,
+  tools: readonly McpTool<McpServices>[],
+  options: {
+    /** EXPERIMENTAL: also serve the built-in skills as `skill://` resources (SEP-2640). */
+    readonly experimentalSkills?: boolean;
+  },
+) => {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const server = new Server(
     { name: "project-os-coordinator", version: "0.0.0" },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: {
+        tools: {},
+        ...(options.experimentalSkills && {
+          resources: {},
+          extensions: { [SKILLS_EXTENSION_ID]: {} },
+        }),
+      } as never,
+    },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
@@ -57,6 +88,31 @@ export const makeMcpServer = (runtime: McpRuntime, tools: readonly McpTool<McpSe
     };
   });
 
+  if (options.experimentalSkills) {
+    // Resources: every file of every built-in skill, read lazily by URI.
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+      resources: (await listSkillEntries()).flatMap((e) =>
+        e.resources.map((r) => ({ uri: r.uri, name: r.uri.slice("skill://".length) })),
+      ),
+    }));
+    server.setRequestHandler(ReadResourceRequestSchema, (request) => {
+      const text = readSkillFile(request.params.uri);
+      if (text === undefined) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown resource: ${request.params.uri}`);
+      }
+      return { contents: [{ uri: request.params.uri, mimeType: "text/markdown", text }] };
+    });
+    server.setRequestHandler(SkillsListRequest as never, async () => ({
+      skills: await listSkillEntries(),
+    }));
+    server.setRequestHandler(SkillsGetRequest as never, async (request: any) => {
+      const parsed = parseSkillUri(request.params.uri);
+      const skill = parsed && findSkill(parsed.name);
+      if (!skill) throw new McpError(ErrorCode.InvalidParams, "Unknown skill");
+      return await skillEntry(skill);
+    });
+  }
+
   return server;
 };
 
@@ -70,6 +126,8 @@ export const mcpRoutes = (
   options: {
     /** The credential proxy is on: sandbox sessions get no `user_token`. */
     readonly credentialProxy?: boolean;
+    /** EXPERIMENTAL: serve the built-in skills (`skill_*` tools and `skill://` resources). */
+    readonly experimentalSkills?: boolean;
   } = {},
 ) =>
   new Elysia({ name: "mcp" }).all(
@@ -78,7 +136,12 @@ export const mcpRoutes = (
       // Omitting sessionIdGenerator selects stateless mode.
       const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
       const userToken = !(options.credentialProxy && caller.kind === "sandbox");
-      const server = makeMcpServer(runtime, makeTools(caller, { userToken }));
+      const tools = makeTools(caller, { userToken });
+      const server = makeMcpServer(
+        runtime,
+        options.experimentalSkills ? [...tools, ...makeSkillTools()] : tools,
+        { ...(options.experimentalSkills && { experimentalSkills: true }) },
+      );
       await server.connect(transport);
       try {
         return await transport.handleRequest(request);
