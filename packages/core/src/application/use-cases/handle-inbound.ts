@@ -1,4 +1,4 @@
-import { InboundMessage, type PromptAnswer, type ReplyInstruction } from "@project-os/contracts";
+import { InboundMessage, type PromptAnswer } from "@project-os/contracts";
 import { statusQuestion, ticketContext } from "@project-os/system-prompts";
 import { Cause, Effect, Exit, Schema } from "effect";
 import {
@@ -7,7 +7,6 @@ import {
   chosenTaskType,
   isTerminal,
   type Ticket,
-  type TicketStatus,
 } from "../../domain/index.ts";
 import {
   AgentRuntime,
@@ -23,18 +22,27 @@ import {
   TicketRepository,
   type TicketScope,
 } from "../ports/index.ts";
+import type { AttachmentStorageConfig } from "./attachments.ts";
 import {
-  type AttachmentStorageConfig,
-  attachmentsPayload,
-  storeAttachments,
-} from "./attachments.ts";
-import { sourceTypeFor, supportsReactions, supportsThreads } from "./channels.ts";
+  type PromptTarget,
+  sourceTypeFor,
+  supportsReactions,
+  supportsThreads,
+} from "./channels.ts";
 import { recordChannelMessage } from "./channel-digest.ts";
-import { auditClassification, auditInbound, auditTicket, type ClassifiedOutcome } from "./audit.ts";
+import { auditClassification, auditInbound, type ClassifiedOutcome } from "./audit.ts";
 import { writeMemory } from "./memory.ts";
 import { taskTypeChoices } from "./skills.ts";
-import { placeOrQueue, QUEUED_MESSAGE } from "./placement.ts";
-import { notifyTicket } from "./on-ticket-completed.ts";
+import { placeOrQueue } from "./placement.ts";
+import {
+  announceReopened,
+  finishSidekickTicket,
+  openTicket,
+  QUEUED_MESSAGE,
+  receiveFollowUp,
+  reopenTicket,
+  sidekickFailedMessage,
+} from "./ticket-lifecycle.ts";
 import {
   answerPrompt,
   askPrompt,
@@ -43,7 +51,7 @@ import {
   type PromptAnswerConfig,
 } from "./prompts.ts";
 import { askSidekick, SIDEKICK_WORKER_ID } from "./sidekick.ts";
-import { nowIso, updateStatus } from "./tickets.ts";
+import { nowIso } from "./tickets.ts";
 
 export interface HandleInboundConfig {
   /** Discord channel id of the dedicated admin channel. */
@@ -104,56 +112,40 @@ export const THREAD_OPENED_MESSAGE =
   "I opened a ticket for this. Keep the conversation for it in this thread.";
 export const TICKET_CLOSED_MESSAGE =
   "This ticket was cancelled. Post in the channel to start something new.";
-export const TICKET_REOPENED_MESSAGE = "I reopened this ticket. A worker will pick it up again.";
-export const TICKET_RESUMED_MESSAGE = "Picking this back up. A worker will carry on with it.";
-
-/** What the thread is told when a follow-up reopens a ticket (or resumes a blocked one). */
-export const reopenedMessage = (from: TicketStatus, queued: boolean) => {
-  const lead = from === "blocked" ? "Picking this back up." : "I reopened this ticket.";
-  if (queued) return `${lead} ${QUEUED_MESSAGE}`;
-  return from === "blocked" ? TICKET_RESUMED_MESSAGE : TICKET_REOPENED_MESSAGE;
-};
 
 /**
- * Reopens `ticket` for a follow-up from `by` and places it again (`reopenTicket`). A blocked
- * ticket's Worker ended its session waiting for this, so it is resumed the same way. Undefined
- * when it can't be reopened, e.g. another follow-up got there first.
+ * Reopens `ticket` for a follow-up from `by`, places it again and tells the thread (at
+ * `replyTo`, else wherever the ticket's conversation is). A blocked ticket's Worker ended its
+ * session waiting for this, so it is resumed the same way. Undefined when it can't be reopened.
  */
-const reopenForFollowUp = (ticket: Ticket, by: Person, routing: HandleInboundConfig, at: string) =>
+const reopenForFollowUp = (input: {
+  readonly ticket: Ticket;
+  readonly by: Person & { readonly name?: string | null | undefined };
+  readonly routing: HandleInboundConfig;
+  readonly at: string;
+  readonly replyTo?: PromptTarget;
+}) =>
   Effect.gen(function* () {
-    const tickets = yield* TicketRepository;
-    const ids = yield* IdGenerator;
-    const reopened = yield* tickets.reopen(ticket.id, at).pipe(
-      Effect.map((t) => t as Ticket | undefined),
-      Effect.catchTag("InvalidTransition", () => Effect.undefined),
-    );
-    if (!reopened) return undefined;
-    yield* auditTicket(
-      reopened,
-      "reopened",
-      { type: "person", id: by.id, name: by.name ?? null },
-      { from: ticket.status, at },
-    );
-    yield* tickets.appendEvent({
-      id: yield* ids.next,
-      ticketId: reopened.id,
-      type: "system",
-      actor: "coordinator",
-      actorId: null,
-      body:
-        ticket.status === "blocked"
-          ? "Resumed by a follow-up (was blocked)"
-          : `Reopened by a follow-up (was ${ticket.status})`,
-      payload: { kind: "reopened", from: ticket.status },
-      createdAt: at,
+    const { ticket, by, at } = input;
+    const reopened = yield* reopenTicket({
+      ticket,
+      by: { type: "person", id: by.id, name: by.name ?? null },
+      at,
     });
+    if (!reopened) return undefined;
     const placement = yield* placeOrQueue({
       ticketId: reopened.id,
       requester: reopened.requester ?? { channelType: by.channelType, id: by.id },
-      routing,
+      routing: input.routing,
       at,
     });
-    return { ticket: placement.ticket, queued: placement.kind === "queued" };
+    yield* announceReopened({
+      ticketId: reopened.id,
+      from: ticket.status,
+      queued: placement.kind === "queued",
+      replyTo: input.replyTo,
+    });
+    return placement.ticket;
   });
 
 /** Asked when a message in a ticket's thread looks like different work. */
@@ -192,9 +184,6 @@ const decodeScopeAsk = Schema.decodeUnknownOption(ScopeAsk);
 
 export const MEMORY_SAVED_MESSAGE = "Noted. I saved that to the project memory.";
 
-export const sidekickFailedMessage = (reason: string) =>
-  `Sorry, I couldn't look that up: ${reason}`;
-
 /** What the classifier said about this message, kept for its `classified` audit row. */
 interface Classification {
   readonly projectId: string | null;
@@ -223,15 +212,16 @@ export const handleInbound = (
     const gateway = yield* ChannelGateway;
     const ids = yield* IdGenerator;
 
-    const reply = (content: string): Effect.Effect<void> => {
-      const instruction: ReplyInstruction = {
-        channelType: message.channelType,
-        channelId: message.channelId,
-        ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
-        content,
-      };
-      return gateway.send(instruction);
+    /** Where the message was said. */
+    const origin: PromptTarget = {
+      channelType: message.channelType,
+      channelId: message.channelId,
+      ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
     };
+    const reply = (content: string): Effect.Effect<void> => gateway.send({ ...origin, content });
+    /** A new ticket's thread, else where the message was said. */
+    const inThread = (threadId: string | undefined): PromptTarget =>
+      threadId === undefined ? origin : { ...origin, threadId };
     const clarify = (): Effect.Effect<InboundOutcome> =>
       Effect.as(reply("Sorry, I didn't catch that. Could you tell me what you need?"), {
         kind: "clarification_sent",
@@ -306,16 +296,6 @@ export const handleInbound = (
               ),
             )
         : Effect.void;
-
-    const replyIn = (threadId: string | undefined, content: string) =>
-      threadId === undefined
-        ? reply(content)
-        : gateway.send({
-            channelType: message.channelType,
-            channelId: message.channelId,
-            threadId,
-            content,
-          });
 
     // A replay was taken in, logged and acknowledged the first time round.
     const replay = override !== undefined;
@@ -416,24 +396,10 @@ export const handleInbound = (
       );
 
     const addFollowUp = (ticketId: string) =>
-      Effect.gen(function* () {
-        const stored = yield* storeAttachments(ticketId, message, config.attachments);
-        yield* tickets.appendEvent({
-          id: yield* ids.next,
-          ticketId,
-          type: "follow_up",
-          actor: "coordinator",
-          actorId: message.sender.id,
-          body: message.content,
-          payload: {
-            sender: message.sender,
-            channelType: message.channelType,
-            ...attachmentsPayload(message, stored),
-          },
-          createdAt: at,
-        });
-        return { kind: "follow_up_added", ticketId } as InboundOutcome;
-      });
+      Effect.as(receiveFollowUp({ ticketId, message, attachments: config.attachments, at }), {
+        kind: "follow_up_added",
+        ticketId,
+      } as InboundOutcome);
 
     /** The ticket as the classifier sees it: what was asked, where it is, its last result. */
     const describeTicket = (ticket: Ticket) =>
@@ -530,15 +496,15 @@ export const handleInbound = (
       // Worker reads the earlier events and the new ask on the ticket. A cancelled one stays closed.
       if (canReopen(threadTicket.status)) {
         const added = yield* addFollowUp(threadTicket.id);
-        const reopened = yield* reopenForFollowUp(
-          threadTicket,
-          { channelType: message.channelType, ...message.sender },
-          config,
+        const reopened = yield* reopenForFollowUp({
+          ticket: threadTicket,
+          by: { channelType: message.channelType, ...message.sender },
+          routing: config,
           at,
-        );
+          replyTo: origin,
+        });
         if (!reopened) return added;
-        yield* reply(reopenedMessage(threadTicket.status, reopened.queued));
-        return { kind: "ticket_reopened", ticket: reopened.ticket } as InboundOutcome;
+        return { kind: "ticket_reopened", ticket: reopened } as InboundOutcome;
       }
       if (isTerminal(threadTicket.status)) {
         yield* reply(TICKET_CLOSED_MESSAGE);
@@ -560,7 +526,7 @@ export const handleInbound = (
       case "new_request": {
         const ticketId = yield* ids.next;
         const requester = { channelType: message.channelType, id: message.sender.id };
-        const created = yield* tickets.insert({
+        const newTicket: Ticket = {
           id: ticketId,
           projectId: project.id,
           status: "open",
@@ -580,30 +546,14 @@ export const handleInbound = (
           lastActivityAt: at,
           completedAt: null,
           updatedAt: at,
-        });
-        yield* auditTicket(created, "created", {
-          type: "person",
-          id: message.sender.id,
-          name: message.sender.name ?? null,
-        });
-        // A tool-only Sidekick ticket never opens its files, so they are not copied.
-        const stored =
-          result.executor === "sidekick"
-            ? (new Set() as ReadonlySet<string>)
-            : yield* storeAttachments(ticketId, message, config.attachments);
-        yield* tickets.appendEvent({
-          id: yield* ids.next,
-          ticketId,
-          type: "created",
-          actor: "coordinator",
-          actorId: null,
-          body: message.content,
-          payload: {
-            sender: message.sender,
-            channelType: message.channelType,
-            ...attachmentsPayload(message, stored),
-          },
-          createdAt: at,
+        };
+        yield* openTicket({
+          ticket: newTicket,
+          message,
+          // A tool-only Sidekick ticket never opens its files, so they are not copied.
+          copyFiles: result.executor !== "sidekick",
+          attachments: config.attachments,
+          by: { type: "person", id: message.sender.id, name: message.sender.name ?? null },
         });
         if (result.executor === "sidekick") {
           // Tool-only: placed at once under the Sidekick's own id, answered in the ticket's
@@ -611,38 +561,20 @@ export const handleInbound = (
           yield* placeOrQueue({ ticketId, requester, executor: "sidekick", routing: config, at });
           const threadId = yield* openTicketThread(ticketId, at);
           const answered = yield* sidekickAnswer(ticketId, message.content);
-          if (answered.ok) {
-            yield* tickets.appendEvent({
-              id: yield* ids.next,
-              ticketId,
-              type: "result",
-              actor: "worker",
-              actorId: SIDEKICK_WORKER_ID,
-              body: answered.text,
-              payload: null,
-              createdAt: at,
-            });
-            yield* updateStatus({ ticketId, status: "completed" });
-            yield* replyIn(threadId, answered.text);
-          } else {
-            yield* tickets.appendEvent({
-              id: yield* ids.next,
-              ticketId,
-              type: "error",
-              actor: "worker",
-              actorId: SIDEKICK_WORKER_ID,
-              body: answered.text,
-              payload: null,
-              createdAt: at,
-            });
-            yield* updateStatus({ ticketId, status: "failed", error: answered.text });
-            yield* replyIn(threadId, sidekickFailedMessage(answered.text));
-          }
+          yield* finishSidekickTicket({
+            ticketId,
+            answer: answered,
+            replyTo: inThread(threadId),
+            by: { type: "worker", id: SIDEKICK_WORKER_ID },
+            at,
+          });
           return { kind: "ticket_created", ticket: yield* tickets.get(ticketId) } as InboundOutcome;
         }
         const placement = yield* placeOrQueue({ ticketId, requester, routing: config, at });
         const threadId = yield* openTicketThread(ticketId, at);
-        if (placement.kind === "queued") yield* replyIn(threadId, QUEUED_MESSAGE);
+        if (placement.kind === "queued") {
+          yield* gateway.send({ ...inThread(threadId), content: QUEUED_MESSAGE });
+        }
         return { kind: "ticket_created", ticket: placement.ticket } as InboundOutcome;
       }
       case "follow_up": {
@@ -713,13 +645,12 @@ const resumeAnsweredTicket = (answer: PromptAnswer, inbound: HandleInboundConfig
     const ticket = yield* Effect.flatMap(TicketRepository, (r) => r.get(prompt.ticketId!));
     if (ticket.status !== "blocked") return;
     const at = yield* nowIso;
-    const resumed = yield* reopenForFollowUp(
+    yield* reopenForFollowUp({
       ticket,
-      { channelType: answer.channelType, ...answer.sender },
-      inbound,
+      by: { channelType: answer.channelType, ...answer.sender },
+      routing: inbound,
       at,
-    );
-    if (resumed) yield* notifyTicket(ticket.id, reopenedMessage(ticket.status, resumed.queued));
+    });
   }).pipe(
     Effect.catch((err) =>
       Effect.logWarning(`could not resume the ticket of prompt ${answer.promptId}`, err.message),

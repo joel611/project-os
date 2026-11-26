@@ -11,7 +11,7 @@ import {
   listProjectSources,
   MEMORY_SAVED_MESSAGE,
   MemoryRepository,
-  onTicketCompleted,
+  changeTicketStatus,
   ProjectRepository,
   ProjectSourceRepository,
   readMemory,
@@ -20,7 +20,6 @@ import {
   updateProject,
   updateSource,
   QUEUED_MESSAGE,
-  updateStatus,
   WorkerRepository,
   writeMemory,
   type Project,
@@ -830,14 +829,18 @@ describe("handleInbound Sidekick", () => {
 });
 
 describe("ticket use cases", () => {
-  it("listAssigned, claimTicket, appendEvent, updateStatus, getTicket", async () => {
+  it("listAssigned, claimTicket, appendEvent, changeTicketStatus, getTicket", async () => {
     const { value } = await run(
       Effect.gen(function* () {
         yield* (yield* TicketRepository).insert(ticket());
         const assigned = yield* listAssigned({ workerId: "w1" });
         const claimed = yield* claimTicketUseCase({ ticketId: "t1", workerId: "w1" });
         yield* appendEvent({ ticketId: "t1", type: "comment", actor: "worker", body: "hi" });
-        yield* updateStatus({ ticketId: "t1", status: "completed" });
+        yield* changeTicketStatus({
+          ticketId: "t1",
+          status: "completed",
+          by: { type: "worker", id: "w1" },
+        });
         const got = yield* getTicket({ ticketId: "t1" });
         return { assigned, claimed, got };
       }),
@@ -858,11 +861,17 @@ describe("ticket use cases", () => {
     expect(value._tag).toBe("ClaimConflict");
   });
 
-  it("updateStatus rejects invalid transitions", async () => {
+  it("changeTicketStatus rejects invalid transitions", async () => {
     const { value } = await run(
       Effect.gen(function* () {
         yield* (yield* TicketRepository).insert(ticket());
-        return yield* Effect.flip(updateStatus({ ticketId: "t1", status: "completed" }));
+        return yield* Effect.flip(
+          changeTicketStatus({
+            ticketId: "t1",
+            status: "completed",
+            by: { type: "worker", id: "w1" },
+          }),
+        );
       }),
     );
     expect(value._tag).toBe("InvalidTransition");
@@ -1109,15 +1118,22 @@ describe("heartbeat", () => {
   });
 });
 
-describe("onTicketCompleted", () => {
+describe("completing a ticket", () => {
+  const running = () => ticket({ status: "in_progress", result: "done" });
+  const complete = changeTicketStatus({
+    ticketId: "t1",
+    status: "completed",
+    by: { type: "worker", id: "w1" },
+  });
+
   it("sends the composed reply to the default response source", async () => {
     const { value, sent } = await run(
       Effect.gen(function* () {
-        yield* (yield* TicketRepository).insert(ticket({ status: "completed", result: "done" }));
-        return yield* onTicketCompleted({ ticketId: "t1" });
+        yield* (yield* TicketRepository).insert(running());
+        return yield* complete;
       }),
     );
-    expect(value).toBe(true);
+    expect(value.status).toBe("completed");
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ channelType: "discord", channelId: "chan-1" });
     expect(sent[0]!.content).toContain("done");
@@ -1127,7 +1143,7 @@ describe("onTicketCompleted", () => {
     const { sent } = await run(
       Effect.gen(function* () {
         const repo = yield* TicketRepository;
-        yield* repo.insert(ticket({ status: "completed", result: "done" }));
+        yield* repo.insert(running());
         yield* repo.linkThread({
           ticketId: "t1",
           channelType: "discord",
@@ -1135,7 +1151,7 @@ describe("onTicketCompleted", () => {
           threadId: "th1",
           createdAt: T0,
         });
-        return yield* onTicketCompleted({ ticketId: "t1" });
+        return yield* complete;
       }),
     );
     expect(sent).toHaveLength(1);
@@ -1150,11 +1166,11 @@ describe("onTicketCompleted", () => {
           source({ id: "s2", type: "github_repo", externalId: "r", isDefaultResponse: false }),
         );
         yield* (yield* ProjectSourceRepository).setDefaultResponse("p1", "s2");
-        yield* (yield* TicketRepository).insert(ticket({ status: "completed" }));
-        return yield* onTicketCompleted({ ticketId: "t1" });
+        yield* (yield* TicketRepository).insert(running());
+        return yield* complete;
       }),
     );
-    expect(value).toBe(false);
+    expect(value.status).toBe("completed");
     expect(sent).toHaveLength(0);
   });
 });

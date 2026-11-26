@@ -10,7 +10,7 @@ import {
   UserConnections,
 } from "../ports/index.ts";
 import { audit, COORDINATOR } from "./audit.ts";
-import { ticketChannel } from "./prompts.ts";
+import { ticketChannel } from "./channels.ts";
 
 export const PROVIDER_LABELS: Record<ConnectionProvider, string> = {
   google: "Google",
