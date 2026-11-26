@@ -31,6 +31,14 @@ Who takes a new Ticket: the requester's online personal worker, else an online s
 - `intent`: `new_request`, `follow_up`, `status_question`, `remember`, `admin_command`, `chit_chat`, `none`. Its confidence feeds the threshold.
 - `executor`: `worker` or `sidekick` (read-only tool lookups). Used only for `new_request`.
 
+## PR merge notices
+
+The `pull-requests` job checks GitHub PR links in worker `result` events on completed tickets. It runs alongside the health sweep (every 60 seconds by default on Bun, every minute via Cloudflare Cron). No GitHub webhook or new secret is needed. Once GitHub reports `merged: true`, the Coordinator posts `PR merged: <link>` to the ticket's original thread and records a durable receipt in its event history. Multiple PRs per ticket are supported; ordinary polls and process restarts do not resend recorded notices.
+
+Checks use the latest human requester's connected GitHub account, including an assigned shared account where applicable. Missing access, API failures and failed channel sends retry on later ticks without reopening the ticket or asking it to reconnect. Closed-but-unmerged PRs do not produce notices and remain eligible if later reopened and merged.
+
+Limits: GitHub.com links only; no notice without a recorded ticket thread. A reopened ticket's checks pause until it completes again. The job scans completed ticket history on each tick, so a large installation may need an indexed watch queue. Delivery is at least once: a crash after sending but before saving the receipt, or simultaneous Cron runs on different instances, can duplicate a notice.
+
 ## Known limits
 
 - `follow_up` attaches to the newest active Ticket of the Project, not matched by content or thread.

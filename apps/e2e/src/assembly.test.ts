@@ -122,11 +122,16 @@ describe("Coordinator assembly: outside providers", () => {
 
 describe("Coordinator assembly: recurring jobs", () => {
   it("lists the sweep and the Channel Digest, and the Email Digest only when it is on", () => {
-    expect(names(assemble().coordinator.jobs)).toEqual(["health-sweep", "channel-digest"]);
+    expect(names(assemble().coordinator.jobs)).toEqual([
+      "health-sweep",
+      "channel-digest",
+      "pull-requests",
+    ]);
     expect(names(assemble({ env: { EMAIL_DIGEST: "true" } }).coordinator.jobs)).toEqual([
       "health-sweep",
       "channel-digest",
       "email-digest",
+      "pull-requests",
     ]);
   });
 
@@ -149,10 +154,11 @@ describe("Coordinator assembly: recurring jobs", () => {
       ["health-sweep", 5000],
       ["channel-digest", 5000],
       ["email-digest", 5000],
+      ["pull-requests", 5000],
     ]);
     for (const { task } of scheduled) await Effect.runPromise(task);
     await stop();
-    expect(stopped).toEqual(["health-sweep", "channel-digest", "email-digest"]);
+    expect(stopped).toEqual(["health-sweep", "channel-digest", "email-digest", "pull-requests"]);
   });
 
   it("logs a failed scheduled run instead of failing the timer", async () => {
