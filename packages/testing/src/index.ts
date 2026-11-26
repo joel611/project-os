@@ -108,7 +108,7 @@ export const makeTestLayer = (options?: {
     ProjectSourceRepositoryInMemory,
     MemoryRepositoryInMemory,
     AuditLogRepositoryInMemory,
-    RunRepositoryInMemory,
+    RunRepositoryInMemory.pipe(Layer.provide(TicketRepositoryInMemory)),
     ChannelMessageRepositoryInMemory,
     EmailRepositoryInMemory,
     emailSource.layer,

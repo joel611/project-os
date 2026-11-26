@@ -1,8 +1,8 @@
-import type { Run, RunEventType } from "@project-os/contracts";
-import { useQuery } from "@tanstack/react-query";
+import type { Run, RunEventType, Ticket } from "@project-os/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Download } from "lucide-react";
 import { useMemo, useState } from "react";
-import { api } from "@/api";
+import { api, describeError } from "@/api";
 import { QueryError } from "@/components/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 import { LIVE_MS } from "@/polling";
 import { ToneDot } from "@/components/tone";
 import { useNow } from "@/use-now";
+import { useCan } from "@/viewer";
 
 const EVENT_TEXT_TONE: Readonly<Record<string, string>> = {
   error: "text-tone-danger",
@@ -144,9 +145,19 @@ const Transcript = ({ run, live }: { run: Run; live: boolean }) => {
   );
 };
 
-const RunRow = ({ run, now }: { run: Run; now: Date }) => {
+const RunRow = ({ run, now, canStop }: { run: Run; now: Date; canStop: boolean }) => {
   const [open, setOpen] = useState(false);
   const status = RUN_STATUS[run.status];
+  const qc = useQueryClient();
+  const stop = useMutation({
+    mutationFn: () => api.stopRun(run.ticketId, run.id),
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["ticket", run.ticketId] }),
+        qc.invalidateQueries({ queryKey: ["ticket-runs", run.ticketId] }),
+        qc.invalidateQueries({ queryKey: ["ticket-run", run.ticketId, run.id] }),
+      ]),
+  });
   return (
     <li className="flex flex-col gap-3 rounded-lg border p-3">
       <button
@@ -171,6 +182,30 @@ const RunRow = ({ run, now }: { run: Run; now: Date }) => {
           {run.bytes > 0 && ` · ${formatBytes(run.bytes)}`}
         </span>
       </button>
+      {canStop && (
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          className="self-start"
+          disabled={stop.isPending}
+          onClick={() => {
+            if (
+              window.confirm(
+                "Force stop this run? The ticket will not restart until an admin continues it or a new follow-up arrives in Discord.",
+              )
+            )
+              stop.mutate();
+          }}
+        >
+          {stop.isPending ? "Stopping…" : "Force stop"}
+        </Button>
+      )}
+      {stop.error && (
+        <p role="alert" className="text-sm text-destructive">
+          {describeError(stop.error)}
+        </p>
+      )}
       {open && <Transcript run={run} live={run.status === "running"} />}
     </li>
   );
@@ -181,12 +216,14 @@ const RunRow = ({ run, now }: { run: Run; now: Date }) => {
  * transcript (messages, tool calls, errors) with search, type filters and a JSONL download.
  * Hidden when the ticket has no recorded session.
  */
-export const TicketRuns = ({ ticketId, live }: { ticketId: string; live: boolean }) => {
+export const TicketRuns = ({ ticket, interval }: { ticket: Ticket; interval: number | false }) => {
+  const { id: ticketId } = ticket;
   const now = useNow();
+  const operator = useCan("ticket", "update");
   const runs = useQuery({
     queryKey: ["ticket-runs", ticketId],
     queryFn: () => api.ticketRuns(ticketId),
-    refetchInterval: live ? LIVE_MS : false,
+    refetchInterval: interval,
   });
   if (runs.isPending) return <Skeleton className="h-16" />;
   if (runs.isError) return <QueryError error={runs.error} />;
@@ -196,7 +233,18 @@ export const TicketRuns = ({ ticketId, live }: { ticketId: string; live: boolean
       <h2 className="text-sm font-semibold">Runs</h2>
       <ul className="flex flex-col gap-2">
         {[...runs.data.runs].reverse().map((run) => (
-          <RunRow key={run.id} run={run} now={now} />
+          <RunRow
+            key={run.id}
+            run={run}
+            now={now}
+            canStop={
+              operator &&
+              (ticket.status === "assigned" || ticket.status === "in_progress") &&
+              ticket.workerId === run.workerId &&
+              run.status === "running" &&
+              run.stoppable === true
+            }
+          />
         ))}
       </ul>
     </section>

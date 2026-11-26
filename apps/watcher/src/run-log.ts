@@ -71,6 +71,7 @@ export const createRunRecorder = (options: {
   readonly secret: string;
   readonly agent: string;
   readonly model?: string;
+  readonly assignedAt?: string;
   readonly logger?: Logger;
 }): RunRecorder => {
   const { io } = options;
@@ -93,6 +94,7 @@ export const createRunRecorder = (options: {
     agent: options.agent,
     ...(options.model === undefined ? {} : { model: options.model }),
     startedAt,
+    ...(options.assignedAt && { assignedAt: options.assignedAt }),
     events,
     ...(finished !== undefined && buffer.length === 0 ? { finished: { exitCode: finished } } : {}),
   });

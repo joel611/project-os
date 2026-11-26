@@ -10,6 +10,7 @@ import {
 } from "@project-os/contracts";
 import { Effect } from "effect";
 import {
+  InvalidTransition,
   RunNotFound,
   RunOutOfOrder,
   RunRejected,
@@ -19,7 +20,8 @@ import {
   WorkerUnauthorized,
 } from "../../domain/index.ts";
 import { AssetStore, Clock, RunRepository, TicketRepository } from "../ports/index.ts";
-import { audit } from "./audit.ts";
+import { audit, type AuditActor } from "./audit.ts";
+import { recordForceStop } from "./ticket-lifecycle.ts";
 import type { McpCaller } from "./personal-workers.ts";
 
 /** Most bytes of transcript kept for one run. Beyond it later events are dropped. */
@@ -179,10 +181,41 @@ const storeChunk = (
         endedAt: now,
       };
     }
-    yield* runs.save(run);
+    const assignedAt =
+      ticket.workerType === "local" &&
+      (ticket.status === "assigned" || ticket.status === "in_progress") &&
+      upload.assignedAt === ticket.assignedAt &&
+      !upload.finished
+        ? ticket.assignedAt
+        : null;
+    yield* runs.save(run, assignedAt);
     if (existing === undefined) yield* auditRun(ticket, run, "run_started", run.startedAt);
     if (finishing) yield* auditRun(ticket, run, "run_finished", now);
     return run;
+  });
+
+export const forceStopRun = (ticketId: string, runId: string, by: AuditActor) =>
+  Effect.gen(function* () {
+    const ticket = yield* (yield* TicketRepository).get(ticketId);
+    const runs = yield* RunRepository;
+    const run = yield* runs.get(runId);
+    if (!run || run.ticketId !== ticketId) return yield* new RunNotFound({ runId });
+    const at = (yield* Effect.flatMap(Clock, (c) => c.now)).toISOString();
+    if (!(yield* runs.requestStop(ticketId, runId, at))) {
+      return yield* new InvalidTransition({ ticketId, from: ticket.status, to: "stopped" });
+    }
+    yield* recordForceStop(ticket, runId, by, at);
+    return { ...run, status: "stopped", endedAt: at } satisfies Run;
+  });
+
+/** The owning Watcher can still read its signal after the ticket is assigned again. */
+export const readRunStopSignal = (ticketId: string, runId: string, workerId: string) =>
+  Effect.gen(function* () {
+    const run = yield* (yield* RunRepository).get(runId);
+    if (!run || run.ticketId !== ticketId || run.workerId !== workerId) {
+      return yield* new RunNotFound({ runId });
+    }
+    return { stop: run.status === "stopped" };
   });
 
 /**

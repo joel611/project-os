@@ -5,6 +5,8 @@ import { Option, Schema } from "effect";
  * sandbox session calls, with the same Bearer token it calls MCP with. Deployed Watchers and
  * sandboxes depend on these paths and shapes. A run upload's shapes are in runs.ts.
  */
+export const WORKER_RUN_SIGNAL_ROUTE = "/tickets/:id/runs/:runId/signal";
+
 export const WORKER_TICKET_ROUTES = {
   /** A zip of the ticket's skills, entries `<slug>/<path>`; 204 when it has none. */
   skills: "/tickets/:id/skills",

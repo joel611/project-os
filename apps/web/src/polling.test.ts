@@ -19,6 +19,7 @@ describe("polling cadence", () => {
     expect(ticketDetailInterval(undefined)).toBe(LIVE_MS);
     expect(ticketDetailInterval({ status: "assigned" })).toBe(LIVE_MS);
     expect(ticketDetailInterval({ status: "cancelled" })).toBe(false);
+    expect(ticketDetailInterval({ status: "stopped" })).toBe(SLOW_MS);
   });
 
   it("backs the map off while quiet and caps it", () => {

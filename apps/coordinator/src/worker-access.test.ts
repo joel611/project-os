@@ -29,6 +29,11 @@ const WORKER_ROUTES: Record<string, { method: string; path: string; body: object
     body: WITH_MESSAGE,
   },
   "POST /tickets/:id/runs": { method: "POST", path: "/tickets/t1/runs", body: WITH_MESSAGE },
+  "GET /tickets/:id/runs/:runId/signal": {
+    method: "GET",
+    path: "/tickets/t1/runs/run-test/signal",
+    body: WITH_MESSAGE,
+  },
 };
 
 let runtime: ManagedRuntime.ManagedRuntime<any, never>;

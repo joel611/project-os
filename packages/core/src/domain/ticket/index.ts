@@ -37,12 +37,13 @@ export const ACTIVE_STATUSES: ReadonlyArray<TicketStatus> = [
 
 const TRANSITIONS: Readonly<Record<TicketStatus, ReadonlyArray<TicketStatus>>> = {
   open: ["assigned", "failed", "cancelled"],
-  assigned: ["in_progress", "failed", "cancelled"],
-  in_progress: ["blocked", "completed", "failed", "cancelled"],
+  assigned: ["in_progress", "failed", "cancelled", "stopped"],
+  in_progress: ["blocked", "completed", "failed", "cancelled", "stopped"],
   blocked: ["in_progress", "failed", "cancelled"],
   completed: [],
   failed: [],
   cancelled: [],
+  stopped: [],
 };
 
 export const isTerminal = (status: TicketStatus): boolean => TERMINAL_STATUSES.includes(status);
@@ -136,7 +137,12 @@ export const reassignTicket = (
  * Statuses a follow-up in the ticket's thread can reopen: finished ones, and `blocked`, whose
  * Worker ended its session waiting for that follow-up. `cancelled` stays closed.
  */
-export const REOPENABLE_STATUSES: ReadonlyArray<TicketStatus> = ["completed", "failed", "blocked"];
+export const REOPENABLE_STATUSES: ReadonlyArray<TicketStatus> = [
+  "completed",
+  "failed",
+  "blocked",
+  "stopped",
+];
 
 export const canReopen = (status: TicketStatus): boolean => REOPENABLE_STATUSES.includes(status);
 

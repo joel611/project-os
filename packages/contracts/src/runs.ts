@@ -51,12 +51,14 @@ export const RunUpload = Schema.Struct({
   agent: Schema.String,
   model: Schema.optionalKey(Schema.String),
   startedAt: Schema.optionalKey(Schema.String),
+  /** The Watcher's assignment timestamp; present only for sessions that poll for stop signals. */
+  assignedAt: Schema.optionalKey(Schema.String),
   events: Schema.Array(RunEvent),
   finished: Schema.optionalKey(RunFinish),
 });
 export type RunUpload = typeof RunUpload.Type;
 
-export const RUN_STATUSES = ["running", "succeeded", "failed"] as const;
+export const RUN_STATUSES = ["running", "succeeded", "failed", "stopped"] as const;
 export const RunStatus = Schema.Literals(RUN_STATUSES);
 export type RunStatus = typeof RunStatus.Type;
 
@@ -68,6 +70,7 @@ export const Run = Schema.Struct({
   agent: Schema.String,
   model: Schema.NullOr(Schema.String),
   status: RunStatus,
+  stoppable: Schema.optionalKey(Schema.Boolean),
   exitCode: Schema.NullOr(Schema.Finite),
   startedAt: Schema.String,
   endedAt: Schema.NullOr(Schema.String),

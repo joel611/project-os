@@ -1,3 +1,4 @@
+import { RUN_STATUSES } from "@project-os/contracts";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { tickets } from "./ticket.ts";
 
@@ -16,7 +17,8 @@ export const ticketRuns = sqliteTable(
     workerId: text("worker_id").notNull(),
     agent: text("agent").notNull(),
     model: text("model"),
-    status: text("status", { enum: ["running", "succeeded", "failed"] }).notNull(),
+    status: text("status", { enum: RUN_STATUSES }).notNull(),
+    assignedAt: text("assigned_at"),
     exitCode: integer("exit_code"),
     startedAt: text("started_at").notNull(),
     endedAt: text("ended_at"),

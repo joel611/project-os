@@ -8,10 +8,11 @@ import type { WatcherConfig } from "./config.ts";
 import { errorMessage, type Logger, silentLogger } from "./logger.ts";
 import { outputEvent, terminalText } from "./run-events.ts";
 import { createRunRecorder, type RunLogIo } from "./run-log.ts";
+import { type FetchRunStop, watchRunStop } from "./run-stop.ts";
 
 export interface Spawner {
   /** Runs one agent session for `ticketId` when given; resolves with its exit code. */
-  spawn(ticketId?: string): Promise<number>;
+  spawn(ticketId?: string, assignedAt?: string | null): Promise<number>;
 }
 
 export type SpawnProcess = (
@@ -25,6 +26,7 @@ export type SpawnProcess = (
   },
 ) => {
   exited: Promise<number>;
+  kill?: (signal: "SIGKILL") => void;
   stdout?: ReadableStream<Uint8Array> | null | undefined;
   stderr?: ReadableStream<Uint8Array> | null | undefined;
 };
@@ -67,6 +69,7 @@ export interface SpawnerIo {
   readonly skills?: SkillsIo;
   /** Where run logs go. Without it (or with `config.runLog` off) a session is not recorded. */
   readonly runLog?: RunLogIo;
+  readonly fetchStop?: FetchRunStop;
   readonly logger?: Logger;
 }
 
@@ -159,7 +162,7 @@ export const bunSpawner = (
 ): Spawner => {
   const logger = io.logger ?? silentLogger;
   return {
-    spawn: async (ticketId) => {
+    spawn: async (ticketId, assignedAt) => {
       const skills = ticketId ? await installSkills(config, io, agent, ticketId) : undefined;
       const taskType =
         ticketId && config.skills && io.skills
@@ -179,10 +182,34 @@ export const bunSpawner = (
               url: workerTicketUrl(config.mcpUrl, "runs", ticketId),
               secret: config.secret,
               agent: config.agent,
+              ...(assignedAt && io.fetchStop && { assignedAt }),
               ...(config.model && { model: config.model }),
               logger,
             })
           : undefined;
+      const monitor = (exited: Promise<number>, kill?: () => void) => {
+        if (!assignedAt || !ticketId || !log || !recorder || !io.fetchStop || !kill) return;
+        recorder.push({
+          at: log.now().toISOString(),
+          type: "lifecycle",
+          text: "Worker process started.",
+        });
+        const close = watchRunStop({
+          mcpUrl: config.mcpUrl,
+          secret: config.secret,
+          ticketId,
+          runId: recorder.runId,
+          fetchStop: io.fetchStop,
+          stop: () => {
+            logger.info("Force stop received; killing the agent process", {
+              ticketId,
+              runId: recorder.runId,
+            });
+            kill();
+          },
+        });
+        void exited.then(close, close);
+      };
       try {
         const prompt = workerSessionStart(config.workerId, {
           ...(ticketId && { ticketId }),
@@ -204,6 +231,7 @@ export const bunSpawner = (
               }),
             },
           });
+          monitor(proc.exited, () => proc.kill("SIGKILL"));
           const errors = readLines(proc.stderr, (line) => {
             recorder?.push(outputEvent(line, at(), "stderr"));
             err(`${line}\n`);
@@ -251,6 +279,7 @@ export const bunSpawner = (
           stdout: recorder ? "pipe" : "inherit",
           stderr: recorder ? "pipe" : "inherit",
         });
+        monitor(proc.exited, proc.kill ? () => proc.kill!("SIGKILL") : undefined);
         if (!recorder || !log) return await proc.exited;
         const parse = agent.parser?.();
         const at = () => log.now().toISOString();

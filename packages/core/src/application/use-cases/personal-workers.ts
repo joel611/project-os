@@ -223,6 +223,9 @@ export const guardTicketAccess = (ticketId: string, caller: Pick<McpCaller, "id"
     const ticket = yield* tickets.get(ticketId).pipe(Effect.option);
     // A missing ticket is the tool's own error to report.
     if (Option.isNone(ticket)) return;
+    if (ticket.value.status === "stopped") {
+      return yield* unauthorized(caller.id, "This ticket was force-stopped.");
+    }
     if (ticket.value.workerId !== caller.id) {
       return yield* unauthorized(caller.id, "This ticket isn't assigned to this worker.");
     }

@@ -10,7 +10,7 @@ export interface AcpProcess {
   readonly stdin: WritableStream<Uint8Array>;
   readonly stdout: ReadableStream<Uint8Array>;
   readonly stderr?: ReadableStream<Uint8Array> | null | undefined;
-  readonly kill: () => void;
+  readonly kill: (signal?: "SIGKILL") => void;
 }
 
 export interface AcpRunOptions {
