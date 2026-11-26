@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vite-plus/test";
+import { agent, methods, ndJsonStream } from "@agentclientprotocol/sdk";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { AGENTS, CODEX_TOKEN_ENV } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
-import { bunSpawner, type SkillsIo, type SpawnerIo } from "./spawn.ts";
+import { bunSpawner, type SkillsIo, type SpawnAcp, type SpawnerIo } from "./spawn.ts";
 import { strToU8, zipSync } from "fflate";
 import { collectLogger } from "./logger.ts";
 import type { RunLogIo } from "./run-log.ts";
@@ -18,6 +19,8 @@ const config: WatcherConfig = {
   secret: "s3cret",
   skills: true,
   runLog: true,
+  piAcp: false,
+  piAcpCommand: ["pi-acp"],
 };
 
 const fakeIo = (existing: Record<string, string> = {}) => {
@@ -364,5 +367,102 @@ describe("recording a session", () => {
     expect(posted).toEqual([]);
     await record({ ...config, runLog: false }, () => ({ exited: Promise.resolve(0) }));
     expect(posted).toEqual([]);
+  });
+});
+
+describe("Pi over ACP", () => {
+  const acpConfig: WatcherConfig = {
+    ...config,
+    agent: "pi",
+    model: "openrouter/m",
+    piAcp: true,
+    piAcpCommand: ["bun", "pi-acp.ts"],
+  };
+
+  /** A fake ACP agent behind the process the spawner starts; it records how it was started. */
+  const fakeAcp = () => {
+    const started: Array<{ cmd: string[]; env: Record<string, string | undefined>; cwd: string }> =
+      [];
+    const spawnAcp: SpawnAcp = (cmd, options) => {
+      started.push({ cmd, env: options.env, cwd: options.cwd });
+      const toAgent = new TransformStream<Uint8Array>();
+      const fromAgent = new TransformStream<Uint8Array>();
+      const connection = agent()
+        .onRequest(methods.agent.initialize, () => ({
+          protocolVersion: 1,
+          agentCapabilities: { mcpCapabilities: { http: true, sse: false } },
+        }))
+        .onRequest(methods.agent.session.new, () => ({ sessionId: "s1" }))
+        .onRequest(methods.agent.session.prompt, () => ({ stopReason: "end_turn" }))
+        .connect(ndJsonStream(fromAgent.writable, toAgent.readable));
+      return {
+        exited: connection.closed.then(() => 0),
+        stdin: toAgent.writable,
+        stdout: fromAgent.readable,
+        stderr: new Response("pi warning\n").body,
+        kill: () => connection.close(),
+      };
+    };
+    return { spawnAcp, started };
+  };
+
+  it("starts the ACP program with the model and the session's skills, and prints to the terminal", async () => {
+    const { spawnAcp, started } = fakeAcp();
+    const { io } = fakeIo();
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((text) => {
+      out.push(String(text));
+      return true;
+    });
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const spawner = bunSpawner(
+        acpConfig,
+        () => {
+          throw new Error("must not run Pi as a CLI");
+        },
+        {
+          ...io,
+          spawnAcp,
+          skills: {
+            fetchArchive: async () => ({
+              set: "dev",
+              zip: zipSync({ "tdd/SKILL.md": strToU8("# tdd") }),
+            }),
+            fetchTaskType: async () => undefined,
+            makeDir: () => "/tmp/sk",
+            writeFile: () => {},
+            removeDir: () => {},
+          },
+        },
+      );
+      expect(await spawner.spawn("t1")).toBe(0);
+      expect(started[0]!.cmd).toEqual(["bun", "pi-acp.ts"]);
+      expect(started[0]!.cwd).toBe("/work");
+      expect(started[0]!.env).toMatchObject({
+        PATH: "/bin",
+        PI_ACP_MODEL: "openrouter/m",
+        PI_ACP_SKILL_PATHS: "/tmp/sk/skills/tdd",
+      });
+      expect(out.join("")).toContain("Session finished (end_turn).");
+      expect(err).toHaveBeenCalledWith("pi warning\n");
+    } finally {
+      write.mockRestore();
+      err.mockRestore();
+    }
+  });
+
+  it("runs Pi as a CLI when the device cannot start ACP programs", async () => {
+    const { io } = fakeIo();
+    const { seen } = await run(acpConfig, io);
+    expect(seen.cmd[0]).toBe("pi");
+  });
+
+  it("runs other agents as usual even with the flag on", async () => {
+    const { spawnAcp, started } = fakeAcp();
+    const { io } = fakeIo();
+    const { seen } = await run({ ...acpConfig, agent: "claude" }, { ...io, spawnAcp });
+    expect(seen.cmd[0]).toBe("claude");
+    expect(started).toEqual([]);
   });
 });

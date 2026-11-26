@@ -35,6 +35,8 @@ describe("loadConfig", () => {
       secret: "s",
       skills: true,
       runLog: true,
+      piAcp: false,
+      piAcpCommand: ["pi-acp"],
     });
   });
 
