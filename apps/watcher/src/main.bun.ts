@@ -12,6 +12,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
+import {
+  decodeWorkerTaskType,
+  type RunUploadAccepted,
+  type RunUploadOutOfOrder,
+  TASK_TYPE_HEADER,
+} from "@project-os/contracts";
 import { parseArgs, USAGE } from "./cli.ts";
 import { loadConfig } from "./config.ts";
 import {
@@ -160,13 +166,13 @@ const runLog: RunLogIo = {
       body: JSON.stringify(upload),
     });
     if (res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { nextSeq?: unknown };
+      const body = (await res.json().catch(() => ({}))) as Partial<RunUploadAccepted>;
       return {
         ok: true,
         nextSeq: typeof body.nextSeq === "number" ? body.nextSeq : upload.seq + 1,
       };
     }
-    const body = (await res.json().catch(() => ({}))) as { expected?: unknown };
+    const body = (await res.json().catch(() => ({}))) as Partial<RunUploadOutOfOrder>;
     return {
       ok: false,
       status: res.status,
@@ -232,7 +238,7 @@ const watcher = createWatcher({
         // 204: the ticket has no skills.
         return res.status === 200
           ? {
-              set: decodeURIComponent(res.headers.get("x-task-type") ?? ""),
+              set: decodeURIComponent(res.headers.get(TASK_TYPE_HEADER) ?? ""),
               zip: new Uint8Array(await res.arrayBuffer()),
             }
           : undefined;
@@ -242,10 +248,7 @@ const watcher = createWatcher({
         logger.debug("task type: response", { status: res.status });
         // 204: the ticket has no task type.
         if (res.status !== 200) return undefined;
-        const body = (await res.json()) as { name?: unknown; instructions?: unknown };
-        return typeof body.name === "string" && typeof body.instructions === "string"
-          ? { name: body.name, instructions: body.instructions }
-          : undefined;
+        return decodeWorkerTaskType(await res.json());
       },
       // One private directory per session, removed when it ends.
       makeDir: () => mkdtempSync(join(tmpdir(), "project-os-skills-")),

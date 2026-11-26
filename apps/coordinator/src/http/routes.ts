@@ -25,6 +25,7 @@ import {
   answerScopePrompt,
   assignEmail,
   getMyEmail,
+  listEmailLabels,
   setMailboxEnabled,
   audit,
   browseSkillSource,
@@ -51,6 +52,7 @@ import {
   listTicketAttachments,
   readActivity,
   reassignTicketTo,
+  changeTicketStatus,
   redeemWorkerRegistration,
   workerLabel,
   type AgentRuntime,
@@ -58,6 +60,7 @@ import {
   type ChannelGateway,
   type Person,
   type ChannelDigester,
+  type EmailSource,
   type ChannelMessageRepository,
   type EmailRepository,
   type Clock,
@@ -89,7 +92,6 @@ import {
   CreateTaskTypeBody,
   UpdateTaskTypeBody,
   UpdateSkillsBody,
-  changeStatusAndNotify,
   CreateProjectBody,
   createProject,
   CreateSourceBody,
@@ -150,6 +152,7 @@ export type HttpEnv =
   | ChannelMessageRepository
   | Clock
   | EmailRepository
+  | EmailSource
   | IdGenerator
   | IntentClassifier
   | KeyValueStore
@@ -294,8 +297,24 @@ export const httpRoutes = ({
               : "enabled must be true or false",
         };
       }
-      await run(setMailboxEnabled(person, parsed.enabled));
-      return run(getMyEmail(person, emailDigest));
+      return reply(
+        set,
+        toResult(
+          setMailboxEnabled(person, parsed.enabled, parsed.label).pipe(
+            Effect.andThen(getMyEmail(person, emailDigest)),
+          ),
+        ),
+      );
+    })
+    .get("/me/email/labels", async ({ request, set }) => {
+      const person = await access.personOf(await access.caller(request));
+      if (!emailDigest || !person) {
+        set.status = !emailDigest ? 501 : 403;
+        return {
+          error: !emailDigest ? "Email is not turned on here" : "No mailbox for this account",
+        };
+      }
+      return reply(set, toResult(listEmailLabels(person)));
     })
     .post("/me/email/:id/assign", async ({ request, params, body, set }) => {
       const person = await access.personOf(await access.caller(request));
@@ -701,16 +720,24 @@ export const httpRoutes = ({
     .get("/tickets/:id/runs/:runId", ({ params, request, set }) =>
       forTicket(request, set, (person) => toResult(readTicketRun(params.id, params.runId, person))),
     )
-    .post("/tickets/:id/status", ({ params, body, set }) =>
-      reply(
+    .post("/tickets/:id/status", async ({ params, body, request, set }) => {
+      // The route's `user` policy lets in only an Operator.
+      const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;
+      return reply(
         set,
         toResult(
           decode(UpdateStatusBody, body).pipe(
-            Effect.flatMap((update) => changeStatusAndNotify(params.id, update)),
+            Effect.flatMap((update) =>
+              changeTicketStatus({
+                ...update,
+                ticketId: params.id,
+                by: { type: "person", id: caller.userId, name: caller.name },
+              }),
+            ),
           ),
         ),
-      ),
-    )
+      );
+    })
     .post("/tickets/:id/assign", async ({ params, body, request, set }) => {
       // The route's `user` policy lets in only an Operator.
       const caller = (await access.caller(request)) as Extract<Caller, { kind: "user" }>;

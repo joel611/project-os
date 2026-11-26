@@ -63,6 +63,8 @@ export const EmailUnavailable = Layer.mergeAll(
   Layer.succeed(EmailSource, {
     sync: () =>
       Effect.fail(new EmailSourceError({ message: "Email is not configured.", reconnect: false })),
+    labels: () =>
+      Effect.fail(new EmailSourceError({ message: "Email is not configured.", reconnect: false })),
   }),
   Layer.succeed(EmailClassifier, {
     classify: () => Effect.fail(new EmailClassifierError({ message: "Email is not configured." })),

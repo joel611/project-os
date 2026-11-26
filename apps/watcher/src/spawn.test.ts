@@ -164,13 +164,6 @@ describe("skills for a ticket", () => {
     return cmd;
   };
 
-  it("finds the skills next to the MCP endpoint", () => {
-    expect(skillsUrl("http://coord:8080/mcp", "t 1")).toBe(
-      "http://coord:8080/tickets/t%201/skills",
-    );
-    expect(skillsUrl("http://coord:8080/mcp/", "t1")).toBe("http://coord:8080/tickets/t1/skills");
-  });
-
   it("writes the set under a session folder for the agent, then removes it", async () => {
     const s = skillsIo(async () => bundle);
     const cmd = await runTicket(config, s.io, "t1");

@@ -8,12 +8,12 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 export interface CoordinatorConfigInput {
   readonly env: Env;
-  /** Runs every effect the routes need against the entry file's runtime. */
+  /** Runs every effect the routes need against the Coordinator's runtime. */
   readonly run: <A>(effect: Effect.Effect<A, never, HttpEnv | McpServices>) => Promise<A>;
-  /** The Coordinator's public URL; read when a command needs it, so it may be known late. */
-  readonly publicUrl: () => string;
+  /** The Coordinator's public URL, which registered workers are told to call. */
+  readonly publicUrl: string;
   readonly admin: NonNullable<HttpDeps["commands"]>["admin"];
-  /** Settings that replace the ones env gives for `inbound` (a test stack, or what the entry file found). */
+  /** Settings that replace or add to the ones env gives for `inbound`. */
   readonly inbound?: NonNullable<HttpDeps["inbound"]>;
 }
 
@@ -32,16 +32,15 @@ export const credentialProxyEnabled = (env: Env): boolean =>
   envBool("SANDBOX_CREDENTIAL_PROXY", false, env);
 
 /**
- * The settings every entry file shares, from env: HTTP ingress and commands, asset routes,
- * CORS and the credential proxy. Entry files add what is theirs (access, MCP runtime, auth,
- * connect) and pick the Layers.
+ * The app settings that come from env: HTTP ingress and commands, asset routes, CORS and the
+ * credential proxy. `assembleCoordinator` adds the rest.
  */
 export const coordinatorConfig = (
   input: CoordinatorConfigInput,
 ): Required<Pick<AppDeps, "http" | "assets" | "corsOrigins">> &
   Pick<AppDeps, "credentialProxy"> => {
   const { env, run, publicUrl, admin } = input;
-  const health = healthConfig();
+  const health = healthConfig(env);
   const adminChannelId = env.ADMIN_CHANNEL_ID;
   const adminUserIds = parseAdminUserIds(env.ADMIN_USER_IDS);
   const [dashboardUrl] = parseOrigins(env.WEB_ORIGIN);
@@ -64,9 +63,7 @@ export const coordinatorConfig = (
         sources: run,
         workers: {
           run,
-          get publicUrl() {
-            return publicUrl();
-          },
+          publicUrl,
           ...(env.WATCHER_INSTALL_COMMAND && { installCommand: env.WATCHER_INSTALL_COMMAND }),
           staleMs: health.workerStaleMs,
         },

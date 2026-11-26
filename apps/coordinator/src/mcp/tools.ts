@@ -24,7 +24,7 @@ import {
   readMemory,
   requestAttachmentUpload,
   TicketRepository,
-  updateStatusAndNotify,
+  changeTicketStatus,
   UserConnections,
   userTokenForTicket,
   WorkerRepository,
@@ -184,7 +184,13 @@ export const makeTools = (
       input: C.TicketUpdateStatusInput,
       output: C.TicketUpdateStatusOutput,
       guard: onTicket,
-      run: (i) => Effect.map(updateStatusAndNotify(i), (ticket) => ({ ticket })),
+      run: (i) =>
+        Effect.map(
+          changeTicketStatus({ ...i, by: { type: "worker", id: caller.id } }),
+          (ticket) => ({
+            ticket,
+          }),
+        ),
     }),
     define({
       name: "ticket_ask",

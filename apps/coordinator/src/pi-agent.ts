@@ -9,7 +9,7 @@ import {
   type SidekickToken,
 } from "@project-os/core";
 import type { ConnectionProvider } from "@project-os/contracts";
-import { CloudflareLive, DEFAULT_ORG, serviceFetch } from "@project-os/infra-cloudflare";
+import { CloudflareLive, DEFAULT_ORG, discordGatewayRoute } from "@project-os/infra-cloudflare";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import { DurableObject } from "cloudflare:workers";
 import { Effect, Layer, ManagedRuntime } from "effect";
@@ -48,10 +48,7 @@ export class PiAgent extends DurableObject<Bindings> {
       CloudflareLive({
         db: bindings.DB,
         kv: bindings.KV,
-        adapterUrls: process.env.DISCORD_SPLIT_GATEWAY_URL
-          ? { discord: process.env.DISCORD_SPLIT_GATEWAY_URL }
-          : {},
-        ...(bindings.DISCORD_GATEWAY && { adapterFetch: serviceFetch(bindings.DISCORD_GATEWAY) }),
+        ...discordGatewayRoute(process.env.DISCORD_SPLIT_GATEWAY_URL, bindings.DISCORD_GATEWAY),
       }),
     );
     const adminActions = makeAdminActions({

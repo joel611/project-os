@@ -383,7 +383,7 @@ describe("tickets", () => {
     return res.body.ticket.id as string;
   };
 
-  it("completing a ticket runs onTicketCompleted and replies in the ticket's thread", async () => {
+  it("completing a ticket composes the reply and posts it in the ticket's thread", async () => {
     const { app, sent } = setup();
     const id = await createTicket(app);
     sent.length = 0;
@@ -412,6 +412,15 @@ describe("tickets", () => {
     expect(res.body).toMatchObject({ status: "failed", error: "boom" });
     expect(sent).toHaveLength(1);
     expect(sent[0]?.content).toContain("boom");
+  });
+
+  it("audits a status change as the Operator who made it", async () => {
+    const { app } = setup();
+    const id = await createTicket(app);
+    await call(app, "POST", `/tickets/${id}/status`, { status: "cancelled" });
+    const log = await call(app, "GET", "/audit?kind=ticket");
+    const changed = log.body.entries.find((e: any) => e.action === "status_changed");
+    expect(changed).toMatchObject({ actorType: "person", actorId: "u-op", actorName: "Op" });
   });
 
   it("409s on an invalid transition and 404s on unknown tickets", async () => {

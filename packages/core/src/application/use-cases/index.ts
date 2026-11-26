@@ -8,7 +8,17 @@ export * from "./health-sweep.ts";
 export * from "./heartbeat.ts";
 export * from "./audit.ts";
 export * from "./memory.ts";
-export * from "./on-ticket-completed.ts";
+export {
+  changeTicketStatus,
+  claimTicketUseCase,
+  QUEUED_EVENT_KIND,
+  QUEUED_MESSAGE,
+  reassignTicketTo,
+  reopenedMessage,
+  sidekickFailedMessage,
+  TICKET_REOPENED_MESSAGE,
+  TICKET_RESUMED_MESSAGE,
+} from "./ticket-lifecycle.ts";
 export * from "./sidekick.ts";
 export * from "./runs.ts";
 export * from "./skills.ts";

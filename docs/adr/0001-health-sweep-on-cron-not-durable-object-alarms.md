@@ -13,7 +13,7 @@ Two options:
 
 ## Decision
 
-Use the Cron Trigger (`crons: ["* * * * *"]` in `alchemy.run.ts`, `scheduled` in `apps/coordinator/src/main.cloudflare.ts`). Event-driven reporting stays the primary path: `ticket_update_status` goes through `updateStatusAndNotify`, which posts completed, failed and blocked to the ticket thread at once. The sweep is the safety net for silence.
+Use the Cron Trigger (`crons: ["* * * * *"]` in `alchemy.run.ts`, `scheduled` in `apps/coordinator/src/main.cloudflare.ts`). Event-driven reporting stays the primary path: `ticket_update_status` goes through `changeTicketStatus`, which posts completed, failed and blocked to the ticket thread at once. The sweep is the safety net for silence.
 
 ## Why not alarms for ticket monitoring
 

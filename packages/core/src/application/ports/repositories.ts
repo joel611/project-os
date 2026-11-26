@@ -335,6 +335,8 @@ export class RunRepository extends Context.Service<
 export interface Mailbox {
   readonly owner: Requester;
   readonly enabled: boolean;
+  /** What is read: `all` or one Gmail label id. Null until chosen; a mailbox without one is not read. */
+  readonly label: string | null;
   /** Gmail history id of the last message seen; null until the first sync. */
   readonly cursor: string | null;
   readonly lastSyncAt: string | null;

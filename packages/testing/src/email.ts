@@ -1,4 +1,4 @@
-import type { EmailItem, Requester } from "@project-os/contracts";
+import type { EmailItem, EmailLabel, Requester } from "@project-os/contracts";
 import {
   EmailClassifier,
   EmailClassifierError,
@@ -70,26 +70,52 @@ export const EmailRepositoryInMemory = Layer.sync(EmailRepository, () => {
  * returns. The first sync (no cursor) reads nothing, like the real one. `fail` makes syncs fail.
  */
 export const makeEmailSourceFake = () => {
-  const queued = new Map<string, MailMessage[]>();
+  const queued = new Map<
+    string,
+    Array<MailMessage & { readonly labels?: ReadonlyArray<string> }>
+  >();
   let failure: { message: string; reconnect: boolean } | undefined;
+  let labels: ReadonlyArray<EmailLabel> = [];
+  const syncs: Array<{ label: string }> = [];
   let counter = 0;
   return {
-    deliver: (owner: Requester, ...messages: MailMessage[]) => {
+    /** Queues mail for an owner. With `labels` on it, a sync for one label reads it only if listed. */
+    deliver: (
+      owner: Requester,
+      ...messages: Array<MailMessage & { readonly labels?: ReadonlyArray<string> }>
+    ) => {
       queued.set(keyOf(owner), [...(queued.get(keyOf(owner)) ?? []), ...messages]);
     },
     fail: (next: { message: string; reconnect: boolean } | undefined) => {
       failure = next;
     },
+    /** The labels `EmailSource.labels` offers. */
+    setLabels: (next: ReadonlyArray<EmailLabel>) => {
+      labels = next;
+    },
+    /** The label each sync asked for. */
+    syncs,
     layer: Layer.succeed(EmailSource, {
-      sync: ({ owner, cursor, limit }) =>
+      sync: ({ owner, label, cursor, limit }) =>
         Effect.suspend(() => {
+          syncs.push({ label });
           if (failure) return Effect.fail(new EmailSourceError(failure));
           if (cursor === null) return Effect.succeed({ messages: [], cursor: `h${++counter}` });
           const all = queued.get(keyOf(owner)) ?? [];
-          const messages = all.slice(0, limit);
-          queued.set(keyOf(owner), all.slice(limit));
+          const wanted = (m: { readonly labels?: ReadonlyArray<string> }) =>
+            label === "all" || (m.labels?.includes(label) ?? false);
+          const messages = all.filter(wanted).slice(0, limit);
+          // Mail with another label stays in the mailbox, unread, as it would in Gmail.
+          queued.set(
+            keyOf(owner),
+            all.filter((m) => !messages.includes(m) && (label === "all" || !wanted(m))),
+          );
           return Effect.succeed({ messages, cursor: `h${++counter}` });
         }),
+      labels: () =>
+        Effect.suspend(() =>
+          failure ? Effect.fail(new EmailSourceError(failure)) : Effect.succeed(labels),
+        ),
     }),
   };
 };

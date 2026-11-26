@@ -1,5 +1,5 @@
 import { join, normalize, sep } from "node:path";
-import { SAFE_SKILL_SLUG } from "@project-os/contracts";
+import { SAFE_SKILL_SLUG, type WorkerTaskType, workerTicketUrl } from "@project-os/contracts";
 import { strFromU8, unzipSync } from "fflate";
 import { workerSessionStart } from "@project-os/system-prompts";
 import { type AcpProcess, runAcpSession } from "./acp-run.ts";
@@ -7,7 +7,7 @@ import { AGENTS, type Agent, type InstalledSkills } from "./agents.ts";
 import type { WatcherConfig } from "./config.ts";
 import { errorMessage, type Logger, silentLogger } from "./logger.ts";
 import { outputEvent, terminalText } from "./run-events.ts";
-import { createRunRecorder, type RunLogIo, runsUrl } from "./run-log.ts";
+import { createRunRecorder, type RunLogIo } from "./run-log.ts";
 
 export interface Spawner {
   /** Runs one agent session for `ticketId` when given; resolves with its exit code. */
@@ -43,10 +43,7 @@ export interface SkillsIo {
    * The ticket's task type, with the instructions that go into the session's prompt; undefined
    * when the ticket has none or it can't be had.
    */
-  readonly fetchTaskType: (
-    url: string,
-    secret: string,
-  ) => Promise<{ readonly name: string; readonly instructions: string } | undefined>;
+  readonly fetchTaskType: (url: string, secret: string) => Promise<WorkerTaskType | undefined>;
   /** A new empty private directory. */
   readonly makeDir: () => string;
   readonly writeFile: (path: string, contents: string) => void;
@@ -91,13 +88,6 @@ const readLines = async (
   if (pending !== "") onLine(pending);
 };
 
-/** Where a ticket's skill bundle is served: next to the Coordinator's MCP endpoint. */
-export const skillsUrl = (mcpUrl: string, ticketId: string): string =>
-  `${mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(ticketId)}/skills`;
-
-/** Where a ticket's task type is served, next to the skill bundle. */
-export const taskTypeUrl = (mcpUrl: string, ticketId: string): string =>
-  `${mcpUrl.replace(/\/mcp\/?$/, "")}/tickets/${encodeURIComponent(ticketId)}/task-type`;
 /** A file path inside `root`, or undefined when `relative` would climb out of it. */
 const inside = (root: string, relative: string): string | undefined => {
   if (relative.startsWith("/") || relative.includes("\\")) return undefined;
@@ -121,7 +111,7 @@ const installSkills = async (
     return undefined;
   }
   const archive = await io.skills
-    .fetchArchive(skillsUrl(config.mcpUrl, ticketId), config.secret)
+    .fetchArchive(workerTicketUrl(config.mcpUrl, "skills", ticketId), config.secret)
     .catch((e: unknown) => {
       logger.warn(`skills: fetch failed: ${errorMessage(e)}`, { ticketId });
       return undefined;
@@ -174,7 +164,7 @@ export const bunSpawner = (
       const taskType =
         ticketId && config.skills && io.skills
           ? await io.skills
-              .fetchTaskType(taskTypeUrl(config.mcpUrl, ticketId), config.secret)
+              .fetchTaskType(workerTicketUrl(config.mcpUrl, "taskType", ticketId), config.secret)
               .catch((e: unknown) => {
                 logger.warn(`task type: fetch failed: ${errorMessage(e)}`, { ticketId });
                 return undefined;
@@ -186,7 +176,7 @@ export const bunSpawner = (
         ticketId && log
           ? createRunRecorder({
               io: log,
-              url: runsUrl(config.mcpUrl, ticketId),
+              url: workerTicketUrl(config.mcpUrl, "runs", ticketId),
               secret: config.secret,
               agent: config.agent,
               ...(config.model && { model: config.model }),

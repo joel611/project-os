@@ -1,12 +1,6 @@
 import type { RunUpload } from "@project-os/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import {
-  createRunRecorder,
-  type PostResult,
-  type RunLogIo,
-  resendSpooled,
-  runsUrl,
-} from "./run-log.ts";
+import { createRunRecorder, type PostResult, type RunLogIo, resendSpooled } from "./run-log.ts";
 
 const AT = "2026-11-04T00:00:00.000Z";
 
@@ -45,12 +39,6 @@ const recorder = (io: RunLogIo, model?: string) =>
   });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const out = (text: string) => ({ at: AT, type: "output" as const, text });
-
-describe("runsUrl", () => {
-  it("sits next to the MCP endpoint", () => {
-    expect(runsUrl("http://c:8080/mcp", "t 1")).toBe("http://c:8080/tickets/t%201/runs");
-  });
-});
 
 describe("createRunRecorder", () => {
   it("masks the device secret and the environment's secrets, then sends events with the exit", async () => {

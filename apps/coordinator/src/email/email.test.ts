@@ -4,7 +4,6 @@ import {
   EmailSource,
   getMyEmail,
   NotConnected,
-  Scheduler,
   setMailboxEnabled,
   type UserAccessToken,
   UserConnections,
@@ -17,7 +16,6 @@ import {
   emailDigestAndLog,
   emailDigestEnabled,
   gmailEmailSource,
-  startEmailDigest,
 } from "./index.ts";
 
 const ada = { channelType: "discord", id: "u1" } as const;
@@ -73,7 +71,9 @@ describe("gmailEmailSource", () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const source = yield* EmailSource;
-        return yield* source.sync({ owner: ada, cursor, limit: 5 }).pipe(Effect.result);
+        return yield* source
+          .sync({ owner: ada, label: "all", cursor, limit: 5 })
+          .pipe(Effect.result);
       }).pipe(
         Effect.provide(gmailEmailSource({ fetch: gmail }).pipe(Layer.provide(connections(token)))),
       ),
@@ -106,7 +106,7 @@ describe("gmailEmailSource", () => {
     const down = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* (yield* EmailSource)
-          .sync({ owner: ada, cursor: null, limit: 1 })
+          .sync({ owner: ada, label: "all", cursor: null, limit: 1 })
           .pipe(Effect.result);
       }).pipe(
         Effect.provide(
@@ -120,7 +120,7 @@ describe("gmailEmailSource", () => {
     const refused = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* (yield* EmailSource)
-          .sync({ owner: ada, cursor: null, limit: 1 })
+          .sync({ owner: ada, label: "all", cursor: null, limit: 1 })
           .pipe(Effect.result);
       }).pipe(
         Effect.provide(
@@ -131,6 +131,41 @@ describe("gmailEmailSource", () => {
       ),
     );
     expect(refused).toMatchObject({ _tag: "Failure", failure: { reconnect: true } });
+  });
+});
+
+describe("gmailEmailSource labels", () => {
+  const scoped: UserAccessToken = {
+    accessToken: "tok",
+    expiresAt: null,
+    scopes: [GMAIL_READ_SCOPE],
+  };
+  const labels = (token: Parameters<typeof connections>[0], status = 200) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* (yield* EmailSource).labels(ada).pipe(Effect.result);
+      }).pipe(
+        Effect.provide(
+          gmailEmailSource({
+            fetch: async () =>
+              status === 200
+                ? Response.json({ labels: [{ id: "Label_1", name: "Clients", type: "user" }] })
+                : new Response("", { status }),
+          }).pipe(Layer.provide(connections(token))),
+        ),
+      ),
+    );
+
+  it("lists the person's labels with their own token", async () => {
+    expect(await labels(scoped)).toMatchObject({
+      _tag: "Success",
+      success: [{ id: "Label_1", name: "Clients" }],
+    });
+  });
+
+  it("asks to reconnect with no Gmail access, and reports Gmail being down", async () => {
+    expect(await labels("not_connected")).toMatchObject({ failure: { reconnect: true } });
+    expect(await labels(scoped, 503)).toMatchObject({ failure: { reconnect: false } });
   });
 });
 
@@ -150,12 +185,12 @@ describe("emailClassifier", () => {
   });
 });
 
-describe("emailDigestAndLog and startEmailDigest", () => {
+describe("emailDigestAndLog", () => {
   it("logs a run that read mail, and survives one that cannot run", async () => {
     const t = makeTestLayer({ now: new Date("2026-11-24T12:00:00.000Z") });
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* setMailboxEnabled(ada, true);
+        yield* setMailboxEnabled(ada, true, "all");
         yield* emailDigestAndLog();
         t.emailSource.deliver(ada, {
           messageId: "g1",
@@ -175,22 +210,5 @@ describe("emailDigestAndLog and startEmailDigest", () => {
     await expect(
       Effect.runPromise(emailDigestAndLog() as Effect.Effect<void>),
     ).resolves.toBeUndefined();
-  });
-
-  it("registers a recurring run with the Scheduler", async () => {
-    const t = makeTestLayer();
-    const registered: Array<{ name: string; everyMs: number }> = [];
-    const layer = Layer.mergeAll(
-      t.layer,
-      Layer.succeed(Scheduler, {
-        every: (name, everyMs) => {
-          registered.push({ name, everyMs });
-          return Effect.succeed(Effect.void);
-        },
-      }),
-    );
-    const stop = await Effect.runPromise(startEmailDigest(60_000).pipe(Effect.provide(layer)));
-    expect(stop).toBeDefined();
-    expect(registered).toEqual([{ name: "email-digest", everyMs: 60_000 }]);
   });
 });

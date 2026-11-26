@@ -10,7 +10,6 @@ import {
   removeSource,
   TicketRepository,
   updateSource,
-  updateStatusAndNotify,
   WorkerRepository,
   workerStatus,
 } from "@project-os/core";
@@ -140,11 +139,4 @@ export const listProjectTickets = (projectId: string) =>
     yield* (yield* ProjectRepository).get(projectId);
     const all = yield* (yield* TicketRepository).listByStatus(TICKET_STATUSES);
     return all.filter((t) => t.projectId === projectId);
-  });
-
-export const changeStatusAndNotify = (ticketId: string, body: typeof UpdateStatusBody.Type) =>
-  updateStatusAndNotify({
-    ticketId,
-    status: body.status,
-    ...(body.error === undefined ? {} : { error: body.error }),
   });

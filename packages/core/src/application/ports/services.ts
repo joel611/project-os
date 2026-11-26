@@ -5,6 +5,7 @@ import type {
   CreatedChannel,
   CreatedThread,
   CreateThreadInstruction,
+  EmailLabel,
   Requester,
   ReactInstruction,
   ResolveAttachmentsInstruction,
@@ -485,12 +486,18 @@ export class EmailSource extends Context.Service<
   {
     readonly sync: (input: {
       readonly owner: Requester;
+      /** `all` (the whole inbox) or one Gmail label id: only mail with it is read. */
+      readonly label: string;
       readonly cursor: string | null;
       readonly limit: number;
     }) => Effect.Effect<
       { readonly messages: ReadonlyArray<MailMessage>; readonly cursor: string },
       EmailSourceError
     >;
+    /** The labels the person may limit the digest to. */
+    readonly labels: (
+      owner: Requester,
+    ) => Effect.Effect<ReadonlyArray<EmailLabel>, EmailSourceError>;
   }
 >()("@project-os/core/EmailSource") {}
 

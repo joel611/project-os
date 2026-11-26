@@ -83,6 +83,20 @@ export const Run = Schema.Struct({
 });
 export type Run = typeof Run.Type;
 
+/** The 200 answer to a `RunUpload`: what the Coordinator has of the run now. */
+export interface RunUploadAccepted {
+  readonly runId: string;
+  readonly nextSeq: Run["nextSeq"];
+  readonly truncated: Run["truncated"];
+  readonly status: RunStatus;
+}
+
+/** The 409 answer to a `RunUpload` that skips ahead: `expected` is the chunk wanted next. */
+export interface RunUploadOutOfOrder {
+  readonly error: "RunOutOfOrder";
+  readonly expected: number;
+}
+
 /** `GET /tickets/:id/runs/:runId`. */
 export interface RunTranscript {
   readonly run: Run;

@@ -2,13 +2,12 @@ import type { ClassifierApi, ClassifierModel } from "@earendil-works/pi-ai";
 import { type ClassifyClient, makeEmailClassifier } from "@project-os/agent-runtime/classifier";
 import { createGmailReader, GmailError } from "@project-os/channel-email";
 import { envBool, formatModelRef, type ModelRef } from "@project-os/config";
-import { GMAIL_READ_SCOPE } from "@project-os/contracts";
+import { GMAIL_READ_SCOPE, type Requester } from "@project-os/contracts";
 import {
   DEFAULT_EMAIL_DIGEST,
   type EmailDigestConfig,
   EmailSource,
   EmailSourceError,
-  Scheduler,
   syncMailboxes,
   UserConnections,
 } from "@project-os/core";
@@ -48,38 +47,45 @@ export const gmailEmailSource = (options?: {
     Effect.gen(function* () {
       const connections = yield* UserConnections;
       const reader = createGmailReader(options);
-      return {
-        sync: ({ owner, cursor, limit }) =>
-          Effect.gen(function* () {
-            const token = yield* connections.accessToken(owner, "google").pipe(
-              Effect.mapError(
-                (e) =>
-                  new EmailSourceError({
-                    message: e.message,
-                    reconnect: e._tag === "NotConnected",
-                  }),
-              ),
-            );
-            if (!token.scopes.includes(GMAIL_READ_SCOPE)) {
-              return yield* new EmailSourceError({
-                message: "The Google link has no Gmail read access",
-                reconnect: true,
-              });
-            }
-            return yield* Effect.tryPromise({
-              try: () => reader.sync({ token: token.accessToken, cursor, limit }),
-              catch: (e) =>
+      /** The person's token, or the reason mail can't be read with it. */
+      const tokenFor = (owner: Requester) =>
+        Effect.gen(function* () {
+          const token = yield* connections.accessToken(owner, "google").pipe(
+            Effect.mapError(
+              (e) =>
                 new EmailSourceError({
-                  message: e instanceof Error ? e.message : String(e),
-                  reconnect: e instanceof GmailError && e.reconnect,
+                  message: e.message,
+                  reconnect: e._tag === "NotConnected",
                 }),
+            ),
+          );
+          if (!token.scopes.includes(GMAIL_READ_SCOPE)) {
+            return yield* new EmailSourceError({
+              message: "The Google link has no Gmail read access",
+              reconnect: true,
             });
-          }),
+          }
+          return token.accessToken;
+        });
+      const call = <A>(f: () => Promise<A>) =>
+        Effect.tryPromise({
+          try: f,
+          catch: (e) =>
+            new EmailSourceError({
+              message: e instanceof Error ? e.message : String(e),
+              reconnect: e instanceof GmailError && e.reconnect,
+            }),
+        });
+      return {
+        sync: ({ owner, label, cursor, limit }) =>
+          Effect.flatMap(tokenFor(owner), (token) =>
+            call(() => reader.sync({ token, label, cursor, limit })),
+          ),
+        labels: (owner) =>
+          Effect.flatMap(tokenFor(owner), (token) => call(() => reader.labels(token))),
       };
     }),
   );
-
-type Sync = ReturnType<typeof syncMailboxes>;
 
 /** One Email Digest run, logged. A failure is logged and never stops the Cron tick or timer. */
 export const emailDigestAndLog = (config: EmailDigestConfig = DEFAULT_EMAIL_DIGEST) =>
@@ -94,15 +100,3 @@ export const emailDigestAndLog = (config: EmailDigestConfig = DEFAULT_EMAIL_DIGE
     Effect.catchCause((cause) => Effect.logError("email digest failed", cause)),
     Effect.asVoid,
   );
-
-/** Runs the Email Digest every `everyMs` via the `Scheduler` port (Bun). Returns the stop effect. */
-export const startEmailDigest = (everyMs: number, config?: EmailDigestConfig) =>
-  Effect.gen(function* () {
-    const scheduler = yield* Scheduler;
-    const context = yield* Effect.context<Effect.Services<Sync>>();
-    return yield* scheduler.every(
-      "email-digest",
-      everyMs,
-      emailDigestAndLog(config).pipe(Effect.provideContext(context)),
-    );
-  });

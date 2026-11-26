@@ -4,6 +4,7 @@ import {
   AuditPage,
   type AuditKind,
   type CreateSharedAccount,
+  EmailLabels,
   MemberList,
   MemoryEntry,
   MyEmail,
@@ -179,8 +180,12 @@ export const makeApi = (
     me: () => get("/me", Viewer),
     myTickets: () => get("/me/tickets", MyTickets),
     myEmail: () => get("/me/email", MyEmail),
-    setEmailEnabled: (enabled: boolean) =>
-      send("/me/email/enabled", MyEmail, { method: "POST", json: { enabled } }),
+    myEmailLabels: () => get("/me/email/labels", EmailLabels),
+    setEmailEnabled: (enabled: boolean, label?: string) =>
+      send("/me/email/enabled", MyEmail, {
+        method: "POST",
+        json: { enabled, ...(label && { label }) },
+      }),
     assignEmail: (emailId: string, projectId: string | null) =>
       send(`/me/email/${id(emailId)}/assign`, Schema.Struct({ saved: Schema.Number }), {
         method: "POST",

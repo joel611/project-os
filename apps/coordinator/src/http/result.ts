@@ -25,6 +25,8 @@ const STATUS = {
   RunNotFound: 404,
   EmailNotFound: 404,
   EmailDigestFailed: 502,
+  EmailLabelRequired: 400,
+  EmailSourceError: 502,
   RunOutOfOrder: 409,
   RunRejected: 400,
   AssetStoreFailed: 503,

@@ -1,10 +1,10 @@
 import { ChannelGateway } from "@project-os/core";
-import { CloudflareLive, serviceFetch } from "@project-os/infra-cloudflare";
+import { CloudflareLive, discordGatewayRoute } from "@project-os/infra-cloudflare";
 import { Effect, ManagedRuntime } from "effect";
 
 // Bundled and run in workerd by discord-gateway.test.ts. It is the Coordinator's side of the
-// seam: the real CloudflareLive, wired as main.cloudflare.ts wires it, with replies leaving
-// through the DISCORD_GATEWAY service binding.
+// seam: the real CloudflareLive and the gateway route main.cloudflare.ts uses, with replies
+// leaving through the DISCORD_GATEWAY service binding. Not the whole assembly.
 
 interface Env {
   readonly DB: D1Database;
@@ -23,8 +23,7 @@ export default {
       CloudflareLive({
         db: env.DB,
         kv: env.KV,
-        adapterUrls: { discord: "http://discord-gateway" },
-        adapterFetch: serviceFetch(env.DISCORD_GATEWAY),
+        ...discordGatewayRoute("http://discord-gateway", env.DISCORD_GATEWAY),
       }),
     );
     const result = await runtime.runPromise(
