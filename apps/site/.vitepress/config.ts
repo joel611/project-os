@@ -53,12 +53,14 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: "Start", link: "/why" },
-      { text: "Channels", link: "/channels/" },
-      { text: "Connectors", link: "/connectors/" },
-      { text: "Workers", link: "/workers/" },
-      { text: "Deployment", link: "/guide/deployment" },
-      { text: "Reference", link: "/reference/environment" },
+      // `activeMatch` keeps one entry highlighted on every page. The Cloudflare infrastructure
+      // page sits under reference/ but belongs to the Deployment docs.
+      {
+        text: "Doc",
+        link: "/why",
+        activeMatch: "^/(why|how-it-works|guide|channels|connectors|workers|reference/infra)",
+      },
+      { text: "Reference", link: "/reference/environment", activeMatch: "^/reference/(?!infra)" },
     ],
     sidebar: [
       {
