@@ -126,6 +126,8 @@ describe("email digest", () => {
       from: "Dana Lee <dana@acme.test>",
       subject: "Acme launch date",
       assignedBy: "classifier",
+      // Opens the thread in Gmail, with nothing that names whose mailbox it was.
+      url: "https://mail.google.com/mail/#all/t-m1",
     });
     // Nothing secret reached memory or the model.
     const everything = JSON.stringify([filed, email.classifyCalls, stack.digestCalls]);

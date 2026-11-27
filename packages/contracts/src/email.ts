@@ -45,6 +45,9 @@ export const EmailItem = Schema.Struct({
 });
 export type EmailItem = typeof EmailItem.Type;
 
+/** Gmail on the web. A link to an email always starts here. */
+export const GMAIL_WEB = "https://mail.google.com/";
+
 /** `sourceMetadata` of a memory entry saved from an email. The body is redacted and cut. */
 export const EmailDigestSource = Schema.Struct({
   source: Schema.Literal("email_digest"),
@@ -53,6 +56,11 @@ export const EmailDigestSource = Schema.Struct({
   receivedAt: Timestamp,
   quote: Schema.String,
   assignedBy: EmailAssignedBy,
+  /**
+   * The email's thread in Gmail; entries saved before links have none. Only Gmail links pass,
+   * since workers can write any `sourceMetadata` and the dashboard renders this as a link.
+   */
+  url: Schema.optionalKey(Schema.String.check(Schema.isStartingWith(GMAIL_WEB))),
 });
 export type EmailDigestSource = typeof EmailDigestSource.Type;
 export const isEmailDigestSource = Schema.is(EmailDigestSource);

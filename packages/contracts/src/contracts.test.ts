@@ -164,3 +164,31 @@ describe("contracts round-trip", () => {
     }
   });
 });
+
+describe("EmailDigestSource", () => {
+  const saved = {
+    source: "email_digest",
+    from: "Dana Lee <dana@acme.test>",
+    subject: "Acme launch date",
+    receivedAt: "2026-11-04T00:00:00.000Z",
+    quote: "We decided the Acme launch is 1 December.",
+    assignedBy: "classifier",
+  };
+
+  it("accepts an entry saved before emails had a link", () => {
+    expect(C.isEmailDigestSource(saved)).toBe(true);
+  });
+
+  it("accepts a link into Gmail", () => {
+    const url = "https://mail.google.com/mail/#all/18c2f0a1b2c3d4e5";
+    expect(C.isEmailDigestSource({ ...saved, url })).toBe(true);
+  });
+
+  // Workers can write any sourceMetadata, and the dashboard renders the url as a link.
+  it.each(["javascript:alert(1)", "https://evil.test/mail/#all/1", "http://mail.google.com/"])(
+    "rejects a link that is not Gmail: %s",
+    (url) => {
+      expect(C.isEmailDigestSource({ ...saved, url })).toBe(false);
+    },
+  );
+});
