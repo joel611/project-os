@@ -15,7 +15,7 @@ const EDGES: Record<string, string> = {
   piTicket: "M304 240 H366",
   ticketMem: "M444 200 V154",
   ticketCf: "M520 240 H552 Q560 240 560 232 V136 Q560 128 568 128 H574",
-  ticketLocal: "M520 262 H548 Q560 262 560 270 V282 Q560 288 568 288 H598",
+  ticketLocal: "M520 262 H548 Q560 262 560 270 V314 Q560 322 568 322 H574",
 };
 
 const scenarios: Scenario[] = [
@@ -142,6 +142,20 @@ const packet = ref<{ x: number; y: number; label: string; tone: string } | null>
 const current = computed(() => flat[index.value]!);
 const scenario = computed(() => scenarios[current.value.si]!);
 const isActive = (node: string) => current.value.step.nodes.includes(node);
+// Worker cards: idle/polling until the ticket is claimed (step 5), then working, then done.
+type WorkerState = { pill: string; progress: number };
+const workerOf = (which: "cloud" | "local"): WorkerState => {
+  const mine = (current.value.si === 0) === (which === "cloud");
+  const idle = which === "local" ? "polling" : "idle";
+  if (!mine) return { pill: idle, progress: 0 };
+  const i = current.value.i;
+  if (i < 4) return { pill: idle, progress: 0 };
+  if (i === 4) return { pill: progress.value < 0.5 ? "claiming" : "in_progress", progress: 0 };
+  if (i === 5) return { pill: "in_progress", progress: Math.min(1, progress.value * 1.2) };
+  return { pill: "done", progress: 1 };
+};
+const cloud = computed(() => workerOf("cloud"));
+const local = computed(() => workerOf("local"));
 const hotEdges = computed(() => new Set(current.value.step.hops.map((h) => h.id)));
 
 const place = () => {
@@ -224,12 +238,19 @@ onBeforeUnmount(() => cancelAnimationFrame(raf));
             <path d="M0 0 L8 4 L0 8 Z" class="sm-head" />
           </marker>
         </defs>
+        <defs>
+          <pattern id="sm-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="1" class="sm-dot" />
+          </pattern>
+        </defs>
         <rect width="760" height="400" rx="8" class="sm-bg" />
+        <rect width="760" height="400" rx="8" fill="url(#sm-dots)" />
         <text x="340" y="28">Project OS</text>
         <text x="664" y="28">Cloud serverless sandbox</text>
         <rect class="sm-zone" x="144" y="40" width="400" height="344" rx="10" />
         <rect class="sm-zone sm-dashed" x="576" y="40" width="176" height="176" rx="10" />
         <rect class="sm-zone sm-dashed" x="576" y="232" width="176" height="152" rx="10" />
+        <text x="664" y="252">Your machine</text>
 
         <path
           v-for="(d, id) in EDGES"
@@ -267,20 +288,50 @@ onBeforeUnmount(() => cancelAnimationFrame(raf));
           <rect x="368" y="200" width="152" height="80" rx="8" />
           <text x="444" y="245">Ticket system</text>
         </g>
-        <g class="sm-node" :class="{ on: isActive('cloudflare') }">
-          <rect x="600" y="64" width="128" height="64" rx="8" />
-          <text x="664" y="92">Cloudflare</text>
-          <text x="664" y="110">sandbox</text>
+        <g class="sm-node worker" :class="{ on: isActive('cloudflare') }">
+          <rect x="588" y="80" width="152" height="100" rx="10" />
+          <rect x="600" y="92" width="30" height="30" rx="8" class="sm-icon-bg" />
+          <g class="sm-icon" transform="translate(606.5 98.5) scale(0.7)">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+          </g>
+          <text x="640" y="111" class="sm-title">Cloud worker</text>
+          <text x="600" y="138" class="sm-sub">Cloudflare / Boat.dev</text>
+          <rect
+            x="600"
+            y="146"
+            width="80"
+            height="18"
+            rx="9"
+            class="sm-pillbg"
+            :class="`st-${cloud.pill}`"
+          />
+          <text x="640" y="159" class="sm-pill" :class="`st-${cloud.pill}`">{{ cloud.pill }}</text>
+          <rect x="600" y="170" width="128" height="4" rx="2" class="sm-track" />
+          <rect x="600" y="170" :width="128 * cloud.progress" height="4" rx="2" class="sm-prog" />
         </g>
-        <g class="sm-node">
-          <rect x="600" y="144" width="128" height="48" rx="8" />
-          <text x="664" y="173">Boat.dev</text>
+        <g class="sm-node worker" :class="{ on: isActive('local') }">
+          <rect x="588" y="272" width="152" height="100" rx="10" />
+          <rect x="600" y="284" width="30" height="30" rx="8" class="sm-icon-bg" />
+          <g class="sm-icon" transform="translate(606.5 290.5) scale(0.7)">
+            <path
+              d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"
+            />
+          </g>
+          <text x="640" y="303" class="sm-title">Local worker</text>
+          <text x="600" y="330" class="sm-sub">Claude / Codex / pi</text>
+          <rect
+            x="600"
+            y="338"
+            width="80"
+            height="18"
+            rx="9"
+            class="sm-pillbg"
+            :class="`st-${local.pill}`"
+          />
+          <text x="640" y="351" class="sm-pill" :class="`st-${local.pill}`">{{ local.pill }}</text>
+          <rect x="600" y="362" width="128" height="4" rx="2" class="sm-track" />
+          <rect x="600" y="362" :width="128 * local.progress" height="4" rx="2" class="sm-prog" />
         </g>
-        <g class="sm-node" :class="{ on: isActive('local') }">
-          <rect x="600" y="264" width="128" height="48" rx="8" />
-          <text x="664" y="293">Local PC</text>
-        </g>
-        <text x="664" y="352">Claude / Codex / pi</text>
 
         <g
           v-if="packet"
@@ -356,6 +407,69 @@ text {
 .sm-bg {
   fill: var(--vp-c-bg-soft);
 }
+.sm-dot {
+  fill: var(--vp-c-divider);
+}
+.sm-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  text-anchor: start;
+}
+.sm-sub {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  fill: var(--vp-c-text-2);
+  text-anchor: start;
+}
+.sm-icon-bg {
+  fill: var(--vp-c-default-soft);
+  stroke: none !important;
+}
+.sm-icon path {
+  fill: none;
+  stroke: var(--vp-c-text-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sm-pillbg {
+  fill: none;
+  stroke-width: 1;
+  stroke: var(--vp-c-text-3) !important;
+}
+.sm-pill {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+  fill: var(--vp-c-text-2);
+}
+.sm-pillbg.st-in_progress,
+.sm-pillbg.st-claiming {
+  stroke: var(--vp-c-warning-1) !important;
+}
+.sm-pill.st-in_progress,
+.sm-pill.st-claiming {
+  fill: var(--vp-c-warning-1);
+}
+.sm-pillbg.st-done {
+  stroke: var(--vp-c-success-1) !important;
+}
+.sm-pill.st-done {
+  fill: var(--vp-c-success-1);
+}
+.sm-track {
+  fill: var(--vp-c-default-soft);
+  stroke: none !important;
+}
+.sm-prog {
+  fill: var(--vp-c-warning-1);
+  stroke: none !important;
+}
+.sm-node.worker .sm-pillbg,
+.sm-node.worker .sm-track,
+.sm-node.worker .sm-prog,
+.sm-node.worker .sm-icon-bg {
+  transition: none;
+}
 .sm-zone {
   fill: none;
   stroke: var(--vp-c-text-2);
@@ -381,16 +495,15 @@ text {
 }
 .sm-node rect {
   fill: var(--vp-c-bg);
-  stroke: var(--vp-c-text-1);
+  stroke: var(--vp-c-divider);
   stroke-width: 1.25;
   transition:
     stroke 0.25s,
     fill 0.25s;
 }
-.sm-node.on rect {
+.sm-node.on rect:first-child {
   stroke: var(--vp-c-brand-1);
-  stroke-width: 2.25;
-  fill: var(--vp-c-brand-soft);
+  stroke-width: 2;
 }
 .sm-packet rect {
   fill: var(--vp-c-brand-1);
