@@ -46,7 +46,7 @@ The same Markdown files are published as the product site at **[joel611.github.i
 
 - [Why project-os](apps/site/why.md): the problem and the design choices
 - [How it works](apps/site/how-it-works.md): the control tower, its roles, and a question's path
-- [Quick start](apps/site/guide/quick-start.md) and [Setup](apps/site/guide/setup.md): run it and connect Discord, Google, and GitHub
+- [Quick start](apps/site/guide/quick-start.md) and [Configuration](apps/site/guide/setup.md): run it, then connect [Discord](apps/site/channels/discord.md#set-up), [Google](apps/site/connectors/google.md#set-up), and [GitHub](apps/site/connectors/github.md#set-up)
 - [Deploy to Cloudflare](apps/site/guide/deployment.md)
 - [Development](apps/site/guide/development.md) and [Testing without Discord](apps/site/guide/testing.md)
 - [Technical architecture](apps/site/reference/architecture.md) and the [glossary](CONTEXT.md)

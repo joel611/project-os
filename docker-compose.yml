@@ -47,7 +47,7 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       CLICKUP_CLIENT_ID: ${CLICKUP_CLIENT_ID:-}
       CLICKUP_CLIENT_SECRET: ${CLICKUP_CLIENT_SECRET:-}
-      # Cloud sandbox workers (Daytona, Cloudflare Sandbox); off unless a provider is set. See apps/site/guide/setup.md §6.
+      # Cloud sandbox workers (Daytona, Cloudflare Sandbox); off unless a provider is set. See apps/site/workers/cloud-sandbox.md.
       WORKER_PROVIDERS: ${WORKER_PROVIDERS:-}
       SHARED_WORKER_MAX_TICKETS: ${SHARED_WORKER_MAX_TICKETS:-1}
       SANDBOX_MCP_URL: ${SANDBOX_MCP_URL:-}

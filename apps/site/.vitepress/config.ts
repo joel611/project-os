@@ -22,6 +22,15 @@ export default defineConfig({
   ignoreDeadLinks: false,
   markdown: {
     config: (md) => {
+      // ```mermaid fences render as diagrams (theme/Mermaid.vue).
+      const fence = md.renderer.rules.fence!;
+      md.renderer.rules.fence = (...args) => {
+        const [tokens, index] = args;
+        const token = tokens[index]!;
+        if (token.info.trim() !== "mermaid") return fence(...args);
+        return `<Mermaid code="${encodeURIComponent(token.content)}" />`;
+      };
+
       // Relative links that leave this folder go to the file on GitHub.
       md.core.ruler.push("repo-links", (state) => {
         const from = path.dirname(state.env.path ?? siteDir);
@@ -44,37 +53,71 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: "Why", link: "/why" },
-      { text: "How it works", link: "/how-it-works" },
-      { text: "Guide", link: "/guide/quick-start" },
-      { text: "Reference", link: "/reference/architecture" },
+      // `activeMatch` keeps one entry highlighted on every page. The Cloudflare infrastructure
+      // page sits under reference/ but belongs to the Deployment docs.
+      {
+        text: "Doc",
+        link: "/why",
+        activeMatch: "^/(why|how-it-works|guide|channels|connectors|workers|reference/infra)",
+      },
+      { text: "Reference", link: "/reference/environment", activeMatch: "^/reference/(?!infra)" },
     ],
     sidebar: [
       {
-        text: "Product",
+        text: "Start",
         items: [
           { text: "Why project-os", link: "/why" },
           { text: "How it works", link: "/how-it-works" },
-          { text: "Product brief", link: "/product-brief" },
+          { text: "Quick start", link: "/guide/quick-start" },
+          { text: "Configuration", link: "/guide/setup" },
         ],
       },
       {
-        text: "Guide",
+        text: "Inbound channels",
         items: [
-          { text: "Quick start", link: "/guide/quick-start" },
-          { text: "Setup", link: "/guide/setup" },
-          { text: "Deploy to Cloudflare", link: "/guide/deployment" },
-          { text: "Testing without Discord", link: "/guide/testing" },
-          { text: "Development", link: "/guide/development" },
+          { text: "Overview", link: "/channels/" },
+          { text: "Discord", link: "/channels/discord" },
+          { text: "Email", link: "/channels/email" },
+        ],
+      },
+      {
+        text: "Connectors",
+        items: [
+          { text: "Overview", link: "/connectors/" },
+          { text: "GitHub", link: "/connectors/github" },
+          { text: "Google Drive", link: "/connectors/google" },
+          { text: "ClickUp", link: "/connectors/clickup" },
+        ],
+      },
+      {
+        text: "Workers",
+        items: [
+          { text: "Overview", link: "/workers/" },
+          { text: "Local computer", link: "/workers/local" },
+          { text: "Cloud sandbox", link: "/workers/cloud-sandbox" },
+        ],
+      },
+      {
+        text: "Deployment",
+        items: [
+          { text: "Cloudflare", link: "/guide/deployment" },
+          { text: "Cloudflare infrastructure", link: "/reference/infra-cloudflare" },
         ],
       },
       {
         text: "Reference",
         items: [
-          { text: "Environment variables", link: "/guide/setup#environment" },
+          { text: "Environment variables", link: "/reference/environment" },
           { text: "Technical architecture", link: "/reference/architecture" },
-          { text: "Cloudflare infrastructure", link: "/reference/infra-cloudflare" },
+          { text: "Troubleshooting", link: "/reference/troubleshooting" },
           { text: "Glossary", link: `${repoUrl}/blob/main/CONTEXT.md` },
+        ],
+      },
+      {
+        text: "Contributing",
+        items: [
+          { text: "Development", link: "/guide/development" },
+          { text: "Testing without Discord", link: "/guide/testing" },
         ],
       },
     ],

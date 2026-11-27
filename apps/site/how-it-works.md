@@ -1,37 +1,26 @@
 # How it works
 
-project-os works like a control tower. Channels bring questions in, the Coordinator turns them into Tickets, Workers clear the Tickets, and only the Coordinator talks back. For the story behind it, see [Why project-os](why.md). For every component in depth, see the [technical architecture](reference/architecture.md).
+Your team's project knowledge is spread across chat, documents, code, and people's heads, so the same questions keep interrupting engineers. project-os lets anyone ask in the project's channel and get a grounded answer back. For the story behind it, see [Why project-os](why.md). For the design in depth, see the [technical architecture](reference/architecture.md).
 
-```
- Discord / Email                                         Dev's laptop
- ┌─────────────┐   inbound    ┌───────────────────┐   ┌──────────────┐
- │  Adapters   │ ───────────▶ │    Coordinator    │◀──│   Watcher    │
- │ (thin radar)│ ◀─────────── │   (the Tower)     │   │ polls, then  │
- └─────────────┘   replies    │ Project Memory    │   │ starts       │
-                              │ Tickets + MCP     │   │ Claude Code  │
-                              └───────────────────┘   └──────┬───────┘
-                                        ▲   MCP tools        │
-                                        └────────────────────┘
-                                   claim ticket → work it → write result
-```
+![How project-os works: Discord and email brokers feed Project OS, whose ticket system sends work to a cloud sandbox; a local PC can run Claude, Codex, or pi.](how-it-works.svg)
 
-| Role                | Real-world analogy      | Responsibility                                               |
-| ------------------- | ----------------------- | ------------------------------------------------------------ |
-| **Coordinator**     | Control Tower           | Owns context, tickets, memory, outbound messages             |
-| **Channel Adapter** | Radar / radio           | Thin translator. No business logic.                          |
-| **Ticket**          | Flight plan / clearance | Single source of truth for status + results                  |
-| **Worker**          | Pilot / aircraft        | Claims one ticket, works it via MCP, never talks to channels |
-| **Watcher**         | Ground crew             | Polls for assigned tickets and launches local Claude Code    |
-| **Project Memory**  | Flight database         | Durable facts the whole team (and future workers) can read   |
+| Part              | What it does                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Brokers**       | Bring in messages. Discord is where your team asks. Email is read only, to add facts to Project Memory.     |
+| **Classifier**    | Works out what each message is about.                                                                       |
+| **Pi Durable**    | Runs the Project OS agent.                                                                                  |
+| **Project Memory** | Keeps the facts and decisions of each project.                                                             |
+| **Ticket system** | Tracks each piece of work from question to answer.                                                          |
+| **Workers**       | Do the research, in a cloud serverless sandbox or on a local PC with Claude, Codex, or pi.                  |
 
-Workers speak **MCP only**. Everything they can do is a tool call: read/append ticket, read/write Project Memory.
+See [inbound channels](channels/index.md) for how messages get in, and [connectors](connectors/index.md) for what project-os can reach.
 
 ## What a question goes through
 
-1. A Channel Adapter turns the message into a standard inbound event.
-2. The Coordinator loads the Project and its Memory, opens a Ticket, and marks it `assigned`.
-3. A Watcher on a developer's machine (or a cloud sandbox) sees the ticket and starts a Worker session.
-4. The Worker claims the ticket, researches with Project Memory and the project's sources, and writes its findings back.
-5. The Coordinator posts a cited answer in the channel.
+1. Someone asks a question in the project's Discord channel.
+2. The classifier works out what they need. If it is not sure, project-os asks them to clarify. A question about the progress of an existing ticket can be answered right away.
+3. For new work, Project OS opens a ticket with the project's context.
+4. A cloud sandbox or a local PC takes the ticket, does the research, and writes back what it found.
+5. Project OS posts the answer in the channel.
 
-The next related question starts with the updated Project Memory.
+What the worker learns can be saved to the project's memory, so the next related question starts with more context.

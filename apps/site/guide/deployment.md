@@ -99,3 +99,7 @@ The Workers free plan ($0) could work, but it caps CPU at 10 ms per request, whi
 LLM usage through OpenRouter is the real variable cost. It grows with message volume and is not included above.
 
 Sources: [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [Containers pricing](https://developers.cloudflare.com/containers/platform/pricing/).
+
+## Secrets and URLs
+
+The values in `.env` become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `COORDINATOR_SERVICE_TOKEN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets). The deploy fails without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and the Discord gateway container gets the service token too. `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`).

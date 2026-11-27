@@ -44,7 +44,7 @@ export const resolvePool = (input: {
     const runner = input.configured[provider];
     if (runner === undefined) {
       throw new Error(
-        `WORKER_PROVIDERS names "${name}" but it isn't configured (see apps/site/guide/setup.md)`,
+        `WORKER_PROVIDERS names "${name}" but it isn't configured (see apps/site/workers/cloud-sandbox.md)`,
       );
     }
     const max = input.maxConcurrent?.[provider];
