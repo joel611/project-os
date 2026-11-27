@@ -28,9 +28,16 @@ export const USAGE = `Usage:
       keeps it on this computer.
       WATCHER_AGENT and WATCHER_MODEL override the saved choice for this run.
       --verbose (-v, or WATCHER_VERBOSE=1) also logs every poll, request and skill install.
+      In the config directory, workspaces/repos/ holds one clone of each project repo, and
+      each ticket's session starts in workspaces/tickets/<ticket>/, with a worktree of each
+      repo on the branch ticket/<ticket>. Once all the PRs a ticket's result names are
+      merged, its clean worktrees are removed. A clone or fetch is killed after
+      WATCHER_GIT_TIMEOUT_MS (default 10 minutes). The log is also appended to
+      logs/watcher.log, and each session's events to its own file in logs/sessions/.
   project-os-watcher uninstall [--yes]
       Remove what the installer added: stop the Watcher, uninstall the package, delete the
       saved registration and the Coordinator entry in Pi's MCP config. Asks first unless --yes.
+      Keeps workspaces/ and logs/, which may hold uncommitted work and session logs.
   project-os-watcher --help
       Show this help.`;
 

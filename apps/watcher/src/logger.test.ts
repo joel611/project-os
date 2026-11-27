@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { collectLogger, createLogger, errorMessage, silentLogger } from "./logger.ts";
 
@@ -48,6 +51,43 @@ describe("createLogger", () => {
     );
     expect(text).toMatch(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\]/);
     expect(text).toContain("hello");
+  });
+
+  it("also appends JSON lines to a private log file, even when stdout is pretty", () => {
+    const dir = mkdtempSync(join(tmpdir(), "watcher-log-"));
+    const file = join(dir, "logs", "watcher.log");
+    try {
+      mkdirSync(join(dir, "logs"));
+      writeFileSync(file, '{"msg":"earlier"}\n', { mode: 0o644 });
+      const stdout = capture(() => {
+        const logger = createLogger({ verbose: false, pretty: true, file });
+        logger.info("hello", { ticketId: "t1" });
+        logger.debug("hidden");
+      });
+      expect(stdout.join("\n")).toContain("hello");
+      const lines = readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l));
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toEqual({ msg: "earlier" });
+      expect(lines[1]).toMatchObject({ msg: "hello", ticketId: "t1", level: 30 });
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates the log folder private", () => {
+    const dir = mkdtempSync(join(tmpdir(), "watcher-log-"));
+    try {
+      capture(() =>
+        createLogger({ verbose: false, pretty: false, file: join(dir, "logs", "w.log") }).info("x"),
+      );
+      expect(statSync(join(dir, "logs")).mode & 0o777).toBe(0o700);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("picks pretty output from whether stdout is a terminal", () => {

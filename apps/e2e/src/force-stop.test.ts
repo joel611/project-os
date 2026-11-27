@@ -74,18 +74,17 @@ it.each(["admin", "Discord"])(
         env: process.env,
         configDir: "/unused",
         home: "/unused",
+        mcp: client,
+        workspaces: stack.workspaces(),
+        sessions: { ...stack.sessions(), newRunId: () => runId },
         logger: silentLogger,
         fetchStop: async (url, secret, signal) => {
           const res = await fetch(url, { headers: auth(secret), signal });
           return res.ok && ((await res.json()) as { stop?: boolean }).stop === true;
         },
         runLog: {
-          newRunId: () => runId,
-          now: () => new Date(),
           flushEveryMs: 20,
-          secrets: [],
           sleep: async () => {},
-          terminal: { out: () => {}, err: () => {} },
           spool: { write: () => {}, list: () => [], remove: () => {} },
           post: async (url, secret, upload) => {
             const res = await fetch(url, {

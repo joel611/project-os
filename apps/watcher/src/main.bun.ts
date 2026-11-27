@@ -27,13 +27,17 @@ import {
   saveCredentials,
   writePrivate,
 } from "./credentials.ts";
+import { gitRunner } from "./git.ts";
 import { createLogger, errorMessage } from "./logger.ts";
 import { httpMcpClient } from "./mcp-client.ts";
 import { createWatcher } from "./poll.ts";
+import { killProcessGroup } from "./process-group.ts";
 import { registerDevice } from "./register.ts";
 import { type RunLogIo, resendSpooled } from "./run-log.ts";
+import { sessionLogFiles } from "./session-log.ts";
 import { bunSpawner } from "./spawn.ts";
 import { uninstallWatcher } from "./uninstall.ts";
+import { createWorkspaces } from "./workspace.ts";
 
 // Runs on the host, not in Compose. `project-os-watcher register <code> --server <url>` saves
 // this computer's credentials first. A code from /register-worker makes it that person's
@@ -94,10 +98,12 @@ if (command.kind === "uninstall") {
   process.exit(exit);
 }
 
+const logFile = join(configDir(), "logs", "watcher.log");
 const logger = createLogger({
   verbose:
     command.verbose ||
     ["1", "true", "on"].includes((process.env.WATCHER_VERBOSE ?? "").toLowerCase()),
+  file: logFile,
 });
 const path = credentialsPath();
 if (command.kind === "register") {
@@ -149,6 +155,8 @@ const coordinator =
     ? `${server.origin}${server.pathname}`
     : "(invalid URL)";
 const acp = config.agent === "pi" && config.piAcp;
+const workspacesDir = join(configDir(), "workspaces");
+const sessionLogsDir = join(configDir(), "logs", "sessions");
 logger.info(banner, {
   coordinator,
   workerId: config.workerId,
@@ -156,15 +164,18 @@ logger.info(banner, {
   acp: acp ? "on" : "off",
   model: config.model || (acp && process.env.PI_ACP_MODEL) || "agent default",
   intervalMs: config.intervalMs,
+  workspaces: workspacesDir,
+  logFile,
+  sessionLogs: sessionLogsDir,
 });
 logger.debug("config", {
   agent: config.agent,
   model: config.model,
   maxSessions: config.maxSessions,
   intervalMs: config.intervalMs,
-  cwd: config.cwd,
   skills: config.skills,
   runLog: config.runLog,
+  gitTimeoutMs: config.gitTimeoutMs,
   credentials: path,
 });
 
@@ -208,15 +219,8 @@ const runLog: RunLogIo = {
         : [],
     remove: (name) => rmSync(join(spoolDir, name), { force: true }),
   },
-  newRunId: () => crypto.randomUUID(),
-  now: () => new Date(),
-  secrets: envSecrets,
   flushEveryMs: 3_000,
   sleep: (ms) => Bun.sleep(ms),
-  terminal: {
-    out: (text) => void process.stdout.write(text),
-    err: (text) => void process.stderr.write(text),
-  },
 };
 const sendSpooled = () =>
   config.runLog
@@ -226,31 +230,40 @@ const sendSpooled = () =>
       )
     : undefined;
 
-const killRun = (proc: { pid: number; kill: (signal: "SIGKILL") => void }) => {
-  if (process.platform !== "win32") {
-    try {
-      // The worker is its own POSIX process group, including tools launched by the agent.
-      process.kill(-proc.pid, "SIGKILL");
-      return;
-    } catch {
-      // Also works on Bun builds that do not support detached process groups.
-    }
-  }
-  proc.kill("SIGKILL");
-};
+const git = gitRunner({ timeoutMs: config.gitTimeoutMs });
+// Each git command leads its own process group, so the terminal's Ctrl-C doesn't reach it.
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+] as const) {
+  process.once(signal, () => {
+    git.stopAll();
+    process.exit(code);
+  });
+}
+const workspaces = createWorkspaces({ root: workspacesDir, git: git.run, env: process.env });
 
+const client = httpMcpClient(config.mcpUrl, fetch, config.secret, logger);
 const watcher = createWatcher({
   config,
-  client: httpMcpClient(config.mcpUrl, fetch, config.secret, logger),
+  client,
+  workspaces,
   spawner: bunSpawner(
     config,
     (cmd, options) => {
-      const proc = Bun.spawn(cmd, { ...options, detached: config.runLog });
+      // Only a session that can be force-stopped (run log on) gets its own process group, so
+      // otherwise Ctrl-C still reaches the agent.
+      const proc = Bun.spawn(cmd, {
+        ...options,
+        stdout: "pipe",
+        stderr: "pipe",
+        detached: config.runLog,
+      });
       return {
         exited: proc.exited,
         stdout: proc.stdout,
         stderr: proc.stderr,
-        kill: () => killRun(proc),
+        kill: () => killProcessGroup(proc),
       };
     },
     {
@@ -272,12 +285,24 @@ const watcher = createWatcher({
             write: (chunk) => void proc.stdin.write(chunk),
             close: () => void proc.stdin.end(),
           }),
-          kill: (signal) => (signal === "SIGKILL" ? killRun(proc) : proc.kill()),
+          kill: (signal) => (signal === "SIGKILL" ? killProcessGroup(proc) : proc.kill()),
         };
       },
       env: process.env,
       configDir: configDir(),
       home: homedir(),
+      mcp: client,
+      workspaces,
+      sessions: {
+        newRunId: () => crypto.randomUUID(),
+        now: () => new Date(),
+        secrets: envSecrets,
+        terminal: {
+          out: (text) => void process.stdout.write(text),
+          err: (text) => void process.stderr.write(text),
+        },
+        openLog: sessionLogFiles(sessionLogsDir),
+      },
       logger,
       ...(config.runLog && { runLog }),
       fetchStop: async (url, secret, signal) => {

@@ -66,6 +66,8 @@ export default defineConfig({
         "packages/testing/**",
         // Browser stand-in for the e2e suites.
         "apps/e2e/src/browse.ts",
+        // GitHub stand-in for the Watcher's workspace tests.
+        "apps/watcher/src/fake-github.ts",
       ],
       reporter: ["text", "html", "json", "json-summary"],
       reportOnFailure: true,

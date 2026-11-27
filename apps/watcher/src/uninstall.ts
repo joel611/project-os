@@ -33,6 +33,10 @@ export const uninstallWatcher = async (io: UninstallIo, options: { yes: boolean 
   io.log("  - uninstall the package (" + PACKAGE_UNINSTALL.join(" ") + ")");
   io.log(`  - delete ${files.join(" and ")} (the registration secret, agent and model)`);
   io.log(`  - remove the project-os entry from ${piMcpPath(io.home)}, if there is one`);
+  const kept = ["workspaces", "logs"].map((dir) => join(io.configDir, dir));
+  io.log(
+    `It keeps ${kept.join(" and ")}: ticket workspaces may hold uncommitted or unpushed work, and logs/sessions holds each session's log. Delete them yourself once you don't need them.`,
+  );
   if (!options.yes && !(await io.confirm())) {
     io.log("Cancelled.");
     return 1;

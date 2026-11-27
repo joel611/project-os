@@ -85,6 +85,15 @@ describe("uninstallWatcher", () => {
     expect(logs.at(-1)).toBe("Cancelled.");
   });
 
+  it("keeps ticket workspaces and logs, and says where they are", async () => {
+    const { io, events, logs } = harness();
+    await uninstallWatcher(io, { yes: true });
+    expect(events.filter((e) => /workspaces|logs/.test(e))).toEqual([]);
+    expect(logs.join("\n")).toContain(
+      `It keeps ${CONFIG}/workspaces and ${CONFIG}/logs: ticket workspaces may hold uncommitted or unpushed work, and logs/sessions holds each session's log.`,
+    );
+  });
+
   it("goes ahead on yes without --yes", async () => {
     const { io, events } = harness();
     expect(await uninstallWatcher(io, { yes: false })).toBe(0);

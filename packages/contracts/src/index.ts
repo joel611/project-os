@@ -16,3 +16,4 @@ export * from "./permissions.ts";
 export * from "./runs.ts";
 export * from "./worker-http.ts";
 export * from "./email.ts";
+export * from "./pull-requests.ts";

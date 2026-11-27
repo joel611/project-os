@@ -15,6 +15,7 @@ import type { RunLogIo } from "../../watcher/src/run-log.ts";
 import { resendSpooled } from "../../watcher/src/run-log.ts";
 import { bunSpawner, type SpawnProcess } from "../../watcher/src/spawn.ts";
 import { silentLogger } from "../../watcher/src/logger.ts";
+import { httpMcpClient } from "../../watcher/src/mcp-client.ts";
 import { browse } from "./browse.ts";
 import { type Stack, startStack } from "./stack.ts";
 
@@ -136,12 +137,8 @@ const watcherSession = async (
       list: () => [...spool].map(([name, contents]) => ({ name, contents })),
       remove: (name) => void spool.delete(name),
     },
-    newRunId: () => crypto.randomUUID(),
-    now: () => new Date(),
-    secrets: [],
     flushEveryMs: 60_000,
     sleep: async () => {},
-    terminal: { out: (t) => void shown.push(t), err: (t) => void shown.push(t) },
   };
   const spawnProcess: SpawnProcess = (cmd) => {
     shown.push(cmd.join(" "));
@@ -157,10 +154,17 @@ const watcherSession = async (
     env: {},
     configDir: "/cfg",
     home: "/home/me",
+    mcp: httpMcpClient(config.mcpUrl, fetch, config.secret),
+    workspaces: stack.workspaces(),
+    sessions: stack.sessions({
+      out: (t) => void shown.push(t),
+      err: (t) => void shown.push(t),
+    }),
     runLog,
     logger: silentLogger,
   });
-  const exit = await spawner.spawn(ticketId);
+  const [project] = await stack.json("GET", "/projects");
+  const exit = await spawner.spawn({ id: ticketId, projectId: project.id });
   return { exit, shown, spool, runLog, config };
 };
 

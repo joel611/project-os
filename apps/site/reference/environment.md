@@ -133,8 +133,7 @@ Read by `apps/watcher` on the computer that works tickets, from its shell.
 | `WATCHER_MODEL`           | No       | the agent's own default        | Passed to the agent as `--model`. Overrides the saved model                 |
 | `POLL_INTERVAL_MS`        | No       | `300000`                       | How often it polls for tickets                                              |
 | `MAX_SESSIONS`            | No       | `1`                            | Agent sessions it runs at once                                              |
-| `WORKER_CWD`              | No       | current directory              | Directory agent sessions start in                                           |
-| `PROJECT_OS_WATCHER_HOME` | No       | `$XDG_CONFIG_HOME/project-os`  | Where its registration is saved (`XDG_CONFIG_HOME` defaults to `~/.config`) |
+| `PROJECT_OS_WATCHER_HOME` | No       | `$XDG_CONFIG_HOME/project-os`  | Where its registration, workspaces and logs live (`XDG_CONFIG_HOME` defaults to `~/.config`) |
 
 ## Cloud sandbox pool
 
@@ -173,6 +172,7 @@ Build task types on the dashboard's **Task types** page. The Coordinator uses a 
 | `SKILLS_GITHUB_TOKEN` | No       |         | Fallback token when no shared GitHub credential is available. A token with no scopes reads public repos. Not sent to Workers |
 | `WATCHER_SKILLS`     | No       | on      | On a Watcher computer, `0` stops it installing a ticket's task type before a session starts       |
 | `WATCHER_RUN_LOG`    | No       | on      | On a Watcher computer, `0` (or `--no-run-log`) keeps session transcripts local instead of sending them to the Coordinator |
+| `WATCHER_GIT_TIMEOUT_MS` | No   | `600000` | On a Watcher computer, how long a `git clone` or `git fetch` of a project repo may run before it is stopped |
 | `WATCHER_PI_ACP`     | No       | off     | On a Watcher computer, `1` runs Pi through ACP (the Agent Client Protocol) instead of `pi --print`, which gives Pi a structured run log |
 | `WATCHER_PI_ACP_COMMAND` | No   | `pi-acp` | Program the Watcher starts to speak ACP for Pi; the repo's `@project-os/pi-acp` package provides it |
 

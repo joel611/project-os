@@ -1,6 +1,12 @@
-import type { RunUpload } from "@project-os/contracts";
+import type { RunEvent, RunUpload } from "@project-os/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { createRunRecorder, type PostResult, type RunLogIo, resendSpooled } from "./run-log.ts";
+import {
+  createRunRecorder,
+  type PostResult,
+  type RunLogIo,
+  resendSpooled,
+  runUploadSink,
+} from "./run-log.ts";
 
 const AT = "2026-11-04T00:00:00.000Z";
 
@@ -19,23 +25,28 @@ const makeIo = (answer: (upload: RunUpload, call: number) => PostResult | "offli
       list: () => [...files].map(([name, contents]) => ({ name, contents })),
       remove: (name) => void files.delete(name),
     },
-    newRunId: () => "run-00000001",
-    now: () => new Date(AT),
-    secrets: ["env-secret-value"],
     flushEveryMs: 3_600_000,
     sleep: async () => {},
-    terminal: { out: () => {}, err: () => {} },
   };
   return { io, posted, files };
 };
 
+/** A session recorded the way the Watcher records it, with only the upload as a sink. */
 const recorder = (io: RunLogIo, model?: string) =>
   createRunRecorder({
-    io,
-    url: "http://c/tickets/t1/runs",
-    secret: "device-secret-1",
-    agent: "claude",
-    ...(model && { model }),
+    runId: "run-00000001",
+    secrets: ["device-secret-1", "env-secret-value"],
+    sinks: [
+      runUploadSink({
+        io,
+        runId: "run-00000001",
+        startedAt: AT,
+        url: "http://c/tickets/t1/runs",
+        secret: "device-secret-1",
+        agent: "claude",
+        ...(model && { model }),
+      }),
+    ],
   });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const out = (text: string) => ({ at: AT, type: "output" as const, text });
@@ -49,6 +60,27 @@ describe("createRunRecorder", () => {
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({ runId: "run-00000001", seq: 0, finished: { exitCode: 0 } });
     expect(posted[0]!.events[0]!.text).toBe("using [REDACTED] and [REDACTED]");
+  });
+
+  it("hands every sink the same masked events and waits for all of them to finish", async () => {
+    const seen: Array<{ pushed: RunEvent[]; finished?: number }> = [{ pushed: [] }, { pushed: [] }];
+    const r = createRunRecorder({
+      runId: "r1",
+      secrets: ["hunter22"],
+      sinks: seen.map((sink) => ({
+        push: (event) => void sink.pushed.push(event),
+        finish: async (exitCode) => {
+          await tick();
+          sink.finished = exitCode;
+        },
+      })),
+    });
+    r.push(out("password hunter22"));
+    await r.finish(4);
+    expect(r.runId).toBe("r1");
+    for (const sink of seen) {
+      expect(sink).toEqual({ pushed: [out("password [REDACTED]")], finished: 4 });
+    }
   });
 
   it("splits a large backlog into chunks and puts the exit on the last", async () => {
