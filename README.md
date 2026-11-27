@@ -3,6 +3,7 @@
 > The open-source control tower for your team's AI agents.  
 > Questions land in chat → tickets get cleared → grounded answers return. Engineers stay focused.
 
+[![Status](https://img.shields.io/badge/status-beta-orange)](#project-status)
 [![CI](https://img.shields.io/github/actions/workflow/status/joel611/project-os/ci.yml?branch=main)](https://github.com/joel611/project-os/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
@@ -13,6 +14,10 @@
 **[Website](https://joel611.github.io/project-os/)** · **[Quick start](apps/site/guide/quick-start.md)** · **[Why](apps/site/why.md)** · **[Architecture](apps/site/reference/architecture.md)**
 
 ---
+
+## Project status
+
+project-os is in **beta**. The full loop works end to end, but APIs, configuration, and the database schema can still change in breaking ways. Please [report problems](https://github.com/joel611/project-os/issues).
 
 ## Why project-os?
 
@@ -55,7 +60,7 @@ The same Markdown files are published as the product site at **[joel611.github.i
 
 ## Contributing
 
-This is still a focused proof-of-concept of the full loop.  
+project-os is in beta, so feedback from real use is especially useful.  
 We welcome issues, discussions, and PRs — especially around:
 
 - Additional channel adapters
