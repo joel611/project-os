@@ -58,7 +58,8 @@ export default defineConfig({
       {
         text: "Doc",
         link: "/why",
-        activeMatch: "^/(why|how-it-works|guide|channels|connectors|workers|reference/infra)",
+        activeMatch:
+          "^/(why|how-it-works|security|guide|channels|connectors|workers|reference/infra)",
       },
       { text: "Reference", link: "/reference/environment", activeMatch: "^/reference/(?!infra)" },
     ],
@@ -70,6 +71,7 @@ export default defineConfig({
           { text: "How it works", link: "/how-it-works" },
           { text: "Quick start", link: "/guide/quick-start" },
           { text: "Configuration", link: "/guide/setup" },
+          { text: "Security", link: "/security" },
         ],
       },
       {
