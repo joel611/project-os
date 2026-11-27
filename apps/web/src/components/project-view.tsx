@@ -1,4 +1,9 @@
-import { isChannelDigestSource, type MemoryEntry, type Ticket } from "@project-os/contracts";
+import {
+  isChannelDigestSource,
+  isEmailDigestSource,
+  type MemoryEntry,
+  type Ticket,
+} from "@project-os/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { FileText, Settings, Star } from "lucide-react";
@@ -222,6 +227,29 @@ const Memory = ({ entries }: { entries: ReadonlyArray<MemoryEntry> }) => {
                 </li>
               ))}
             </ul>
+          )}
+          {isEmailDigestSource(m.sourceMetadata) && (
+            <div className="border-l-2 pl-3 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{m.sourceMetadata.from}</span>
+              {" · "}
+              {m.sourceMetadata.subject}
+              {" · "}
+              {relativeTime(m.sourceMetadata.receivedAt, now)}
+              {m.sourceMetadata.url && (
+                <>
+                  {" · "}
+                  <a
+                    href={m.sourceMetadata.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Open in Gmail
+                  </a>
+                </>
+              )}
+              <span className="block whitespace-pre-wrap">“{m.sourceMetadata.quote}”</span>
+            </div>
           )}
           {m.ticketId && (
             <Link

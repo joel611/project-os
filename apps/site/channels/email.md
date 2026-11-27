@@ -21,6 +21,8 @@ When reading the whole inbox, promotions, social, spam, and sent mail are skippe
 3. If it is at least 90% sure, the decisions and facts are saved to Project Memory with the sender, subject, and a redacted quote. The email body is then deleted.
 4. If it is less sure, the email waits on the **Email** page for you to pick a project or dismiss it. Your choice helps it match similar emails later. Waiting emails are dropped after 30 days.
 
+New entries saved from an email link to the original in Gmail. Only someone with that email in their own mailbox can open it. The link opens in the Google account your browser uses by default, so if you are signed in to more than one, switch accounts in Gmail when it does not open.
+
 ## Set up
 
 For the person who runs project-os.

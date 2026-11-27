@@ -1,9 +1,10 @@
-import type {
-  EmailAssignedBy,
-  EmailDigestSource,
-  EmailItem,
-  MyEmail,
-  Requester,
+import {
+  type EmailAssignedBy,
+  type EmailDigestSource,
+  type EmailItem,
+  GMAIL_WEB,
+  type MyEmail,
+  type Requester,
 } from "@project-os/contracts";
 import { Data, Effect } from "effect";
 import {
@@ -171,6 +172,8 @@ const fileEmail = (email: EmailItem, projectId: string, by: EmailAssignedBy) =>
       receivedAt: email.receivedAt,
       quote: clip(email.body, QUOTE_MAX),
       assignedBy: by,
+      // No account index or address: Project Memory is shared, and this must not name the owner.
+      url: `${GMAIL_WEB}mail/#all/${email.threadId}`,
     };
     for (const point of points) {
       yield* writeMemory({
