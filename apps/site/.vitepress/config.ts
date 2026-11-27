@@ -130,6 +130,6 @@ export default defineConfig({
         `https://github.com/joel611/project-os/edit/main/apps/site/${filePath}`,
       text: "Edit this page on GitHub",
     },
-    footer: { message: "Released under the MIT License." },
+    footer: { message: "Released under the Apache License 2.0." },
   },
 });
