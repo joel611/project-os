@@ -17,16 +17,22 @@ See [inbound channels](channels/index.md) for how messages get in, and [connecto
 
 ## How project memory is built
 
-Project OS puts an agent in each project's channel. Besides answering questions, it collects what the team learns and digests it into **memory points**.
+::: info Target design
+This section describes where Project OS is heading, and some of it is not built yet. See [Limitations](security.md#limitations) for how it works today.
+:::
 
-| Source      | What is read                                                                                       | What each memory point keeps as its source                         |
-| ----------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **Discord** | The project's channel and its ticket threads, with or without a mention. Digested after a conversation goes quiet. | The messages it came from: who, when, a quote, and a link.         |
-| **Email**   | Only mailboxes whose owners turned it on: the whole inbox or one Gmail label.                      | The sender, subject, date received, and a quote from the masked email. |
+Project OS puts an agent in each project's channel. Besides answering questions, it collects messages from the channel and from email, and digests them into **memory points**.
 
-A memory point is short: a headline and a few sentences about one decision or lasting fact. It keeps its source, so when someone asks "why do we do it this way?", there is something to check. Points that a worker saves while researching are linked to the ticket instead.
+Each memory point is a **single sentence** that keeps its **root message**, so every memory has a source you can check. When someone asks "why do we do it this way?", the answer is grounded in what was actually said.
 
-Before an email body is stored or sent to an AI model, Project OS masks secrets and sensitive numbers. Discord messages are not masked. See [Security](security.md) for what is protected, who can see what, and the limits.
+| Source      | What is read                                                                  | Root message                                                |
+| ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Discord** | The project's channel and its ticket threads, with or without a mention.      | A link to the message, with who said it, when, and a quote. |
+| **Email**   | Only mailboxes whose owners turned it on: the whole inbox or one Gmail label. | A Gmail link that the mailbox owner can open in Gmail.      |
+
+Sensitive data is redacted before anything is sent to an AI model.
+
+The agent keeps each person's own permissions. If someone asks about sensitive information in the project channel, the agent does not repeat it there. It points to the original email instead, and only people who already have that email can open it. See [Security](security.md).
 
 ## What a question goes through
 
