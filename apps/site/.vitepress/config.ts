@@ -52,6 +52,8 @@ export default defineConfig({
     },
   },
   themeConfig: {
+    // Rendered as HTML. VPBadge is the default theme's badge style.
+    siteTitle: 'project-os <span class="VPBadge warning">beta</span>',
     nav: [
       // `activeMatch` keeps one entry highlighted on every page. The Cloudflare infrastructure
       // page sits under reference/ but belongs to the Deployment docs.

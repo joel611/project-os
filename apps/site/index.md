@@ -36,3 +36,7 @@ features:
     details: Workers write durable facts to Project Memory, so the next similar question starts with more context.
     link: /how-it-works
 ---
+
+::: warning Beta
+project-os is in beta. The full loop works end to end, but APIs, configuration, and the database schema can still change in breaking ways. Please [report problems](https://github.com/joel611/project-os/issues).
+:::
