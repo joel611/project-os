@@ -13,6 +13,8 @@ Your team's project knowledge is spread across chat, documents, code, and people
 | **Ticket system** | Tracks each piece of work from question to answer.                                                          |
 | **Workers**       | Do the research, in a cloud serverless sandbox or on a local PC with Claude, Codex, or pi.                  |
 
+See [inbound channels](channels/index.md) for how messages get in, and [connectors](connectors/index.md) for what project-os can reach.
+
 ## What a question goes through
 
 1. Someone asks a question in the project's Discord channel.

@@ -55,6 +55,8 @@ export default defineConfig({
     nav: [
       { text: "Why", link: "/why" },
       { text: "How it works", link: "/how-it-works" },
+      { text: "Channels", link: "/channels/" },
+      { text: "Connectors", link: "/connectors/" },
       { text: "Guide", link: "/guide/quick-start" },
       { text: "Reference", link: "/reference/architecture" },
     ],
@@ -65,6 +67,23 @@ export default defineConfig({
           { text: "Why project-os", link: "/why" },
           { text: "How it works", link: "/how-it-works" },
           { text: "Product brief", link: "/product-brief" },
+        ],
+      },
+      {
+        text: "Inbound channels",
+        items: [
+          { text: "Overview", link: "/channels/" },
+          { text: "Discord", link: "/channels/discord" },
+          { text: "Email", link: "/channels/email" },
+        ],
+      },
+      {
+        text: "Connectors",
+        items: [
+          { text: "Overview", link: "/connectors/" },
+          { text: "GitHub", link: "/connectors/github" },
+          { text: "Google", link: "/connectors/google" },
+          { text: "ClickUp", link: "/connectors/clickup" },
         ],
       },
       {
