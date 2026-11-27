@@ -16,4 +16,19 @@ Run `/connect` and choose ClickUp, then pick the workspaces to share. ClickUp do
 
 ## Set up
 
-ClickUp is optional. To create the app, follow [ClickUp app setup](../guide/setup.md#_3b-clickup-app-optional).
+ClickUp is optional. For the person who runs project-os. Values go into `.env`.
+
+Discord caps an upload at 25 MB, so a PM sends a big video through ClickUp: they attach it to a ClickUp task, paste the task link in Discord, and the Worker downloads it with that PM's own ClickUp token (read access follows their workspace permissions). Images and other small files go straight in Discord and need no ClickUp.
+
+1. In ClickUp, open the avatar menu → **Settings → Apps → Create new app**.
+2. Set the **Redirect URL** to `<PUBLIC_URL>/api/auth/callback/clickup`, e.g. `http://localhost:8080/api/auth/callback/clickup`.
+3. Copy the **Client ID** and **Client Secret**:
+
+   ```sh
+   CLICKUP_CLIENT_ID=...
+   CLICKUP_CLIENT_SECRET=...
+   ```
+
+People link it with `/connect provider:ClickUp`. During authorization ClickUp asks them to pick the workspace(s) the app can reach. ClickUp has no scopes.
+
+Then [turn on account linking](../guide/setup.md#turn-on-account-linking).

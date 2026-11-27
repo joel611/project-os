@@ -1,17 +1,19 @@
 # Setup
 
-How to connect project-os to Discord, Google Drive, and GitHub, step by step, with the exact permissions each one needs. For what the system does, see [How it works](../how-it-works.md).
+How to run project-os, step by step. For what the system does, see [How it works](../how-it-works.md).
 
-You need three things working, in this order:
+Each channel and connector has its own setup steps, with the exact permissions it needs:
 
-| Step                                                 | What it gives you                                                                                          | Required?         | `.env` keys                                                                                                  |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| [1. Discord bot](#1-discord-bot)                     | The bot hears messages, replies, creates project channels and ticket threads                               | Yes               | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS` |
-| [2. Google Drive](#2-google-drive-oauth-client)      | Each person links their own Google account, so Workers read Drive with that person's access                | Optional          | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
-| [3. GitHub](#3-github-app)                           | Each person links their own GitHub account, so Workers use `gh` / `git` with that person's access          | Optional          | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
-| [4. Account linking](#4-turn-on-account-linking)     | Turns on `/connect` for steps 2 and 3                                                                      | If you did 2 or 3 | `PUBLIC_URL`                                                                                                 |
-| [5. Registered workers](#5-registered-workers)       | People run `/register-worker` to use their own computer; admins add shared computers for everyone          | Optional          | `PUBLIC_URL`, `SHARED_WORKER_MAX_TICKETS`, `WATCHER_INSTALL_COMMAND`                                         |
-| [6. Cloud sandbox workers](#6-cloud-sandbox-workers) | The Coordinator runs each shared ticket in a Daytona, Cloudflare or boat.dev sandbox, from a pool you pick | Optional          | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `BOAT_API_KEY`           |
+| Set up                                               | What it gives you                                                           | Required?                    | `.env` keys                                                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [Discord bot](../channels/discord.md#set-up)         | The bot hears messages, replies, creates project channels and ticket threads | Yes                          | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_PROJECT_CATEGORY_ID`, `ADMIN_CHANNEL_ID`, `ADMIN_USER_IDS` |
+| [Email](../channels/email.md#set-up)                 | People can add their Gmail to Project Memory                                | Optional                     | `EMAIL_DIGEST`                                                                                               |
+| [Google](../connectors/google.md#set-up)             | Each person links their own Google account, so Workers read Drive as them   | Optional                     | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                                                   |
+| [GitHub](../connectors/github.md#set-up)             | Each person links their own GitHub account, for `gh` / `git`                | Optional                     | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`                                                                   |
+| [ClickUp](../connectors/clickup.md#set-up)           | Workers download files attached to ClickUp tasks                            | Optional                     | `CLICKUP_CLIENT_ID`, `CLICKUP_CLIENT_SECRET`                                                                 |
+| [Account linking](#turn-on-account-linking)          | Turns on `/connect` for the connectors                                      | If you set up any connector  | `PUBLIC_URL`                                                                                                 |
+| [Registered workers](#registered-workers)            | People run `/register-worker` to use their own computer                     | Optional                     | `PUBLIC_URL`, `SHARED_WORKER_MAX_TICKETS`, `WATCHER_INSTALL_COMMAND`                                         |
+| [Cloud sandbox workers](#cloud-sandbox-workers)      | Shared tickets run in a Daytona, Cloudflare or boat.dev sandbox             | Optional                     | `WORKER_PROVIDERS`, `SANDBOX_MCP_URL`, `DAYTONA_API_KEY`, `CLOUDFLARE_SANDBOX_URL`, `BOAT_API_KEY`           |
 
 Start with:
 
@@ -49,142 +51,40 @@ Each model is one `provider/model` string: the provider is everything before the
 | ---------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `DEFAULT_MODEL`        | The Coordinator's chat, and every model below that's unset | Required: the Coordinator refuses to start (Compose and Cloudflare default it to `openrouter/anthropic/claude-sonnet-4.5`) |
 | `CHANNEL_DIGEST_MODEL` | The Channel Digest                                         | `DEFAULT_MODEL`                                                                                                            |
-| `SANDBOX_PI_MODEL`     | Pi in cloud sandbox workers (step 6)                       | `DEFAULT_MODEL`                                                                                                            |
+| `SANDBOX_PI_MODEL`     | Pi in [cloud sandbox workers](#cloud-sandbox-workers)                       | `DEFAULT_MODEL`                                                                                                            |
 | `DECISION_MODEL`       | Classifying each message (a classifier model)              | `openrouter/typesafe/jev-1.14`, never `DEFAULT_MODEL`                                                                      |
 
 The Coordinator also refuses to start when a model isn't one pi-ai knows, and when an old name is set: `CHAT_MODEL_ID` and `CHAT_MODEL_PROVIDER` became `DEFAULT_MODEL`, `CHANNEL_DIGEST_MODEL_ID` and `CHANNEL_DIGEST_MODEL_PROVIDER` became `CHANNEL_DIGEST_MODEL`, and `JEV_MODEL_ID` became `DECISION_MODEL`.
 
-Workers never use a shared Google or GitHub credential. They call the `user_token` MCP tool, which returns the token of the person who asked, so Google's and GitHub's own permissions decide what a Worker can reach. Cloud sandbox workers can instead go through the credential proxy (step [6](#credential-proxy)), so the token never reaches the sandbox or its model.
+Workers call the `user_token` MCP tool, which returns the token of the person behind the ticket's latest message (or a shared account an admin assigned to a person who linked none), so Google's and GitHub's own permissions decide what a Worker can reach. Cloud sandbox workers can instead go through the credential proxy ([credential proxy](#credential-proxy)), so the token never reaches the sandbox or its model.
 
 ---
 
-## 1. Discord bot
+## Turn on account linking
 
-### 1.1 Create the application and bot
+Account linking stays off until at least one of the Google, GitHub or ClickUp clients is set, besides the `BETTER_AUTH_SECRET` every Coordinator needs. The Coordinator logs `account linking off: ...` while it is off.
 
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**. Name it (this is the bot's display name).
-2. On **General Information**, copy the **Application ID**. You need it for the invite link.
-3. Go to **Bot**:
-   1. Click **Reset Token**, copy it, and put it in `.env` as `DISCORD_BOT_TOKEN`. Discord shows it once.
-   2. Under **Privileged Gateway Intents**, turn on **Message Content Intent** and save. Without it the bot receives messages with empty text and can't see @mentions.
-   3. Leave **Presence Intent** and **Server Members Intent** off. They aren't used.
-   4. Optional: turn off **Public Bot** so only you can add it to servers.
-
-The bot connects with these gateway intents (`packages/channel-discord/src/main.bun.ts`):
-
-| Intent           | Privileged                     | Why                                             |
-| ---------------- | ------------------------------ | ----------------------------------------------- |
-| `Guilds`         | No                             | See servers, channels, and threads              |
-| `GuildMessages`  | No                             | Receive messages in server channels and threads |
-| `MessageContent` | **Yes** (toggle in the portal) | Read message text and @mentions                 |
-
-### 1.2 Invite the bot to your server
-
-The invite needs two **scopes**:
-
-| Scope                   | Why                                                                                                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bot`                   | Adds the bot user to the server                                                                                                                                       |
-| `applications.commands` | Lets the bot register `/project-create`, `/connect`, `/disconnect`, `/connections`, `/dashboard`, `/register-worker`, `/workers`, `/unregister-worker`, `/source-add` |
-
-And these **bot permissions**:
-
-| Permission               | Used for                                                                                                              |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| View Channels            | See project channels and the admin channel                                                                            |
-| Send Messages            | Post replies in channels                                                                                              |
-| Read Message History     | Fetch the message a ticket thread is started from                                                                     |
-| Manage Channels          | Create a channel for each new project (`/project-create`, admin `create project`)                                     |
-| Create Public Threads    | Open a thread for each new ticket                                                                                     |
-| Send Messages in Threads | Post ticket updates and the final answer inside that thread                                                           |
-| Add Reactions            | React 👀 on a message the bot accepted (from [PR #53](https://github.com/joel611/project-os/pull/53), not merged yet) |
-
-Together these are permissions integer `309237714000`. Open this URL with your Application ID filled in, pick your server, and authorize:
-
-```text
-https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=309237714000
+```sh
+# Where browsers reach the Coordinator. Used for connect links and OAuth callbacks,
+# and must match the redirect / callback URLs you registered for each connector.
+PUBLIC_URL=http://localhost:8080
 ```
 
-You can also build the same link in the portal under **OAuth2 → URL Generator** (or **Installation → Guild Install**) by ticking the scopes and permissions above.
+`http://localhost:8080` only works for people opening the link on the machine running the Coordinator. For teammates on other machines, expose the Coordinator on an HTTPS URL (a tunnel such as `cloudflared` or `ngrok`, or a real deploy), set `PUBLIC_URL` to it, and update the Google redirect URI and the GitHub callback URL to match. Google only allows `http://` redirect URIs for `localhost`.
 
-If you'd rather not grant Manage Channels, set `DISCORD_PROJECT_CHANNEL_AUTO_CREATE=false` and link existing channels to projects instead. If threads are refused, tickets still work, the conversation just stays in the channel.
+How a person links an account:
 
-### 1.3 Copy the ids into `.env`
-
-Turn on **Developer Mode** in Discord (User Settings → Advanced → Developer Mode). Then right-click to **Copy ID**:
-
-| Right-click                         | `.env` key                    | Notes                                                                                                                                                   |
-| ----------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The server icon → Copy Server ID    | `DISCORD_GUILD_ID`            | Where project channels are created. Also makes slash commands appear immediately; without it they register globally and can take up to an hour to show. |
-| A category → Copy Channel ID        | `DISCORD_PROJECT_CATEGORY_ID` | Optional. New project channels go under it. The bot needs View Channels and Manage Channels on the category if it has its own permission overrides.     |
-| The admin channel → Copy Channel ID | `ADMIN_CHANNEL_ID`            | A private channel for creating projects. Create one if needed.                                                                                          |
-| Your own name → Copy User ID        | `ADMIN_USER_IDS`              | Comma-separated. Only these people can use the admin channel. Empty means nobody.                                                                       |
-
-Two behaviour switches, both on by default:
-
-- `DISCORD_REQUIRE_MENTION=true`: in project channels, the bot only answers top-level messages that @mention it. Messages inside ticket threads and the admin channel don't need a mention. Set `false` to answer every message.
-- Channel digest: the Coordinator also keeps the messages it doesn't answer, in linked project channels and their ticket threads, and saves the decisions and facts in them to Project Memory once a conversation has been quiet for 30 minutes (`CHANNEL_DIGEST_QUIET_MIN`). Each entry keeps the messages it came from (who, when, a quote and a link). Raw messages are deleted once digested, or after 7 days. Turn it off, or have it post what it saved, per project in the dashboard under Settings → General.
-- `DISCORD_PROJECT_CHANNEL_AUTO_CREATE=true`: creating a project also creates its channel.
-
-From [PR #50](https://github.com/joel611/project-os/pull/50) (not merged yet): the bot only works in server channels. It ignores DMs, and every slash command, `/connect` included, is unavailable in DMs. It also adds one optional setting:
-
-- `DISCORD_MEMBER_ROLE_IDS`: comma-separated role ids (right-click a role → Copy Role ID). When set, only people holding one of those roles can trigger the bot. Others' messages are ignored silently, and their slash commands get a private refusal. People in `ADMIN_USER_IDS` always pass, whatever roles they hold. Unset means everyone can use the bot.
-
-### 1.4 Check it
-
-Start the stack (see [7. Run it](#7-run-it)), then:
-
-1. The adapter logs `registered slash commands in guild <id>`.
-2. In the admin channel, run `/project-create name:Demo`. A new `#demo` channel appears.
-3. In that channel, post `@YourBot hello`. The bot replies. A request that becomes a ticket opens a thread on your message.
+1. Run `/connect provider:Google` (or GitHub) in any server channel the bot can see. The reply is private.
+2. Open the one-time link (it works once, for 10 minutes) and approve on Google or GitHub.
+3. The browser lands on "account connected". `/connections` shows what's linked, and `/disconnect` unlinks.
 
 ---
 
-## 2. Google Drive (OAuth client)
+## Dashboard sign-in
 
-This lets each person run `/connect provider:Google` and link their own Google account. The Coordinator asks Google for these scopes (`packages/auth/src/connections.ts`):
+Dashboard sign-in with Google uses the [Google connector's OAuth client](../connectors/google.md#set-up).
 
-| Scope                                            | Why                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------- |
-| `openid`, `email`, `profile`                     | Show who linked the account                                   |
-| `https://www.googleapis.com/auth/drive.readonly` | Read Drive files the person can already see. No write access. |
-
-It also asks for offline access with a consent prompt, so it gets a refresh token and Workers keep access after the first hour.
-
-### 2.1 Create a Google Cloud project and enable Drive
-
-1. Open the [Google Cloud console](https://console.cloud.google.com/) and create a project (or pick one).
-2. Go to **APIs & Services → Library**, search **Google Drive API**, and click **Enable**.
-
-### 2.2 Configure the consent screen
-
-Go to **Google Auth Platform** (APIs & Services → OAuth consent screen):
-
-1. **Branding**: set the app name and a support email.
-2. **Audience**:
-   - If everyone who will link an account is in one Google Workspace, choose **Internal**. No test user list, and refresh tokens don't expire after 7 days.
-   - Otherwise choose **External** and leave it in **Testing**. Under **Test users**, add the Google email of every person who will link an account (up to 100). Anyone not on the list gets "access blocked".
-3. **Data access**: click **Add or remove scopes** and add `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`, and `.../auth/drive.readonly`. Save.
-
-`drive.readonly` is a restricted scope. Publishing an External app to Production needs Google's verification and a security assessment, so this project stays in Testing for now. In Testing, **refresh tokens expire after 7 days**, so people need to run `/connect` again about once a week. When a token stops working, the Worker sets the ticket to blocked and the bot asks the person to reconnect.
-
-### 2.3 Create the OAuth client
-
-1. Go to **Clients → Create client** (APIs & Services → Credentials → Create credentials → OAuth client ID).
-2. **Application type**: **Web application**.
-3. **Authorized redirect URIs**: add `<PUBLIC_URL>/api/auth/callback/google` for account linking, and `<PUBLIC_URL>/api/auth/callback/google-signin` for signing in to the dashboard with Google. Locally that is:
-   ```text
-   http://localhost:8080/api/auth/callback/google
-   http://localhost:8080/api/auth/callback/google-signin
-   ```
-   No JavaScript origins are needed.
-4. Click **Create** and copy the values into `.env`:
-   ```sh
-   GOOGLE_CLIENT_ID=...apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=...
-   ```
-
-The same client also adds **Continue with Google** to the dashboard's sign-in page once `WEB_ORIGIN` is set to where the dashboard is served (`http://localhost:5173` for `bun run --cwd apps/web dev`). Google returns there after sign-in. Only `ADMIN_EMAIL` and the emails in `ADMIN_EMAILS` get in, and only when Google has verified the address. A Google account with the same address as the `ADMIN_EMAIL` operator signs in as that operator, so the password and Google both work.
+That client adds **Continue with Google** to the dashboard's sign-in page once `WEB_ORIGIN` is set to where the dashboard is served (`http://localhost:5173` for `bun run --cwd apps/web dev`). Google returns there after sign-in. Only `ADMIN_EMAIL` and the emails in `ADMIN_EMAILS` get in, and only when Google has verified the address. A Google account with the same address as the `ADMIN_EMAIL` operator signs in as that operator, so the password and Google both work.
 
 To let your whole team in without listing everyone, set `GOOGLE_ALLOWED_DOMAINS` to your Google Workspace domain (comma-separate several):
 
@@ -206,111 +106,20 @@ Anyone on Discord can also sign in to see **My tickets**: the tickets they asked
 
 ---
 
-## 3. GitHub App
-
-GitHub uses a **GitHub App**, not an OAuth App. A GitHub App's user tokens are limited to the repos the app is installed on, intersected with what the person can access, and they expire after 8 hours and refresh. GitHub Apps ignore OAuth scopes: what the token can do is set by the app's permissions below.
-
-### 3.1 Create the app
-
-1. Go to GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**. To own it from an organization, use the organization's **Settings → Developer settings** instead.
-2. Fill in:
-
-   | Field                                                  | Value                                                                                          |
-   | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-   | GitHub App name                                        | Anything unique, e.g. `project-os-<yourname>`                                                  |
-   | Homepage URL                                           | Your `PUBLIC_URL`, e.g. `http://localhost:8080`                                                |
-   | Callback URL                                           | `<PUBLIC_URL>/api/auth/callback/github`, e.g. `http://localhost:8080/api/auth/callback/github` |
-   | Expire user authorization tokens                       | **On** (default). Better Auth refreshes them.                                                  |
-   | Request user authorization (OAuth) during installation | Off. People link through `/connect`.                                                           |
-   | Enable Device Flow                                     | Off                                                                                            |
-   | Webhook → Active                                       | **Off**. project-os doesn't receive GitHub webhooks.                                           |
-   | Where can this GitHub App be installed?                | **Only on this account**, unless repos live in other accounts or orgs                          |
-
-3. **Permissions**. Pick what you want Workers to be able to do. The token can never exceed both these and the person's own access.
-
-   | Permission                 | Level                                                            | Why                                                              |
-   | -------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-   | Repository → Metadata      | Read-only (always on)                                            | Required by GitHub                                               |
-   | Repository → Contents      | Read-only, or **Read and write** if Workers should push branches | Clone and read code                                              |
-   | Repository → Pull requests | Read-only, or **Read and write** if Workers should open PRs      | Read and open PRs                                                |
-   | Repository → Issues        | Read-only, or Read and write                                     | Read and comment on issues                                       |
-   | Account → Email addresses  | Read-only (optional)                                             | Shows the person's email; without it a `noreply` address is used |
-
-   Start with read-only. You can raise a permission later, and each installation owner then has to accept the change.
-
-4. Click **Create GitHub App**.
-
-### 3.2 Get the client credentials
-
-On the app's **General** page:
-
-1. Copy the **Client ID** (starts with `Iv`). It is not the App ID.
-2. Under **Client secrets**, click **Generate a new client secret** and copy it.
-
-```sh
-GITHUB_CLIENT_ID=Iv...
-GITHUB_CLIENT_SECRET=...
-```
-
-You don't need the app's private key. project-os only uses user tokens.
-
-### 3.3 Install the app on your repos
-
-On the app page, click **Install App**, choose the account or organization that owns the repos, and select **Only select repositories** (or all). A person's token only reaches repos this installation covers. Install it on each account or org whose repos Workers should see.
-
----
-
-## 3b. ClickUp app (optional)
-
-Discord caps an upload at 25 MB, so a PM sends a big video through ClickUp: they attach it to a ClickUp task, paste the task link in Discord, and the Worker downloads it with that PM's own ClickUp token (read access follows their workspace permissions). Images and other small files go straight in Discord and need no ClickUp.
-
-1. In ClickUp, open the avatar menu → **Settings → Apps → Create new app**.
-2. Set the **Redirect URL** to `<PUBLIC_URL>/api/auth/callback/clickup`, e.g. `http://localhost:8080/api/auth/callback/clickup`.
-3. Copy the **Client ID** and **Client Secret**:
-
-   ```sh
-   CLICKUP_CLIENT_ID=...
-   CLICKUP_CLIENT_SECRET=...
-   ```
-
-People link it with `/connect provider:ClickUp`. During authorization ClickUp asks them to pick the workspace(s) the app can reach. ClickUp has no scopes.
-
----
-
-## 4. Turn on account linking
-
-Account linking stays off until at least one of the Google, GitHub or ClickUp clients is set, besides the `BETTER_AUTH_SECRET` every Coordinator needs. The Coordinator logs `account linking off: ...` while it is off.
-
-```sh
-# Where browsers reach the Coordinator. Used for connect links and OAuth callbacks,
-# and must match the redirect / callback URLs you registered in steps 2 and 3.
-PUBLIC_URL=http://localhost:8080
-```
-
-`http://localhost:8080` only works for people opening the link on the machine running the Coordinator. For teammates on other machines, expose the Coordinator on an HTTPS URL (a tunnel such as `cloudflared` or `ngrok`, or a real deploy), set `PUBLIC_URL` to it, and update the Google redirect URI and the GitHub callback URL to match. Google only allows `http://` redirect URIs for `localhost`.
-
-How a person links an account:
-
-1. Run `/connect provider:Google` (or GitHub) in any server channel the bot can see. The reply is private.
-2. Open the one-time link (it works once, for 10 minutes) and approve on Google or GitHub.
-3. The browser lands on "account connected". `/connections` shows what's linked, and `/disconnect` unlinks.
-
----
-
-## 5. Registered workers
+## Registered workers
 
 Computers running the Watcher take tickets after they register with a one-time code. There are two kinds:
 
 - **Personal:** a developer's own computer. It works only on the tickets they start.
 - **Shared:** a computer an admin adds to the pool. It works on anyone's tickets.
 
-A new ticket goes to the requester's own computer if it's online, else to an online shared computer with room, else to a sandbox (step 6). If none of them has room, the ticket is **queued**: its thread says so, and the health sweep assigns it as soon as something frees up. Nothing runs tickets unless at least one of these is set up.
+A new ticket goes to the requester's own computer if it's online, else to an online shared computer with room, else to a [sandbox](#cloud-sandbox-workers). If none of them has room, the ticket is **queued**: its thread says so, and the health sweep assigns it as soon as something frees up. Nothing runs tickets unless at least one of these is set up.
 
 Coordinator `.env`:
 
 ```sh
 # Where people's computers reach the Coordinator (the Watcher registers and polls here).
-# Same value as step 4; must be reachable from their machines, so a tunnel or public host.
+# Same value as for account linking; must be reachable from their machines, so a tunnel or public host.
 PUBLIC_URL=https://coordinator.example.com
 
 # Tickets one shared computer holds at once before the next goes to another one or a sandbox.
@@ -338,9 +147,9 @@ A computer counts as online if it checked in within `HEALTH_WORKER_STALE_MIN` (1
 
 ---
 
-## 6. Cloud sandbox workers
+## Cloud sandbox workers
 
-Tickets that no personal or shared computer takes (step 5) can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. No Watcher ever sees these tickets.
+Tickets that no personal or shared computer takes ([registered workers](#registered-workers)) can run in a cloud sandbox: the Coordinator starts a fresh sandbox per ticket, runs a Pi session in it under its own worker id (`daytona-<ticketId>`, `cloudflare-<ticketId>` or `boat-<ticketId>`), and deletes the sandbox when the session ends. No Watcher ever sees these tickets.
 
 You choose the providers. Each one joins the **pool** when its credentials are set, and `WORKER_PROVIDERS` sets which ones and in what order:
 
@@ -412,7 +221,7 @@ The sandbox image is Cloudflare's base image (`docker.io/cloudflare/sandbox`, wi
 
 ---
 
-## 7. Run it
+## Run it
 
 ```sh
 docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
@@ -428,9 +237,9 @@ bun apps/watcher/src/main.bun.ts
 
 Also set `OPENROUTER_API_KEY` in `.env`, and the models if you want others than the defaults (see [Models](#models)). SQLite and agent state live in the `coordinator-data` volume (`/data`). By default the Watcher launches `claude -p` with `--allowedTools "mcp__project-os__*"`, so headless sessions can call the Coordinator's MCP tools. `WATCHER_AGENT=pi` runs `pi --print` and `WATCHER_AGENT=codex` runs `codex exec` instead, each with the Coordinator added as an MCP server. See the README for running without Docker and for the dashboard.
 
-The dashboard expects the Coordinator on `:8080` (override with `COORDINATOR_URL`) and opens on a sign-in page. Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or with Google (step 2). `bun run --cwd apps/web build` exports it as a static site.
+The dashboard expects the Coordinator on `:8080` (override with `COORDINATOR_URL`) and opens on a sign-in page. Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or with Google ([Dashboard sign-in](#dashboard-sign-in)). `bun run --cwd apps/web build` exports it as a static site.
 
-## 8. Cloudflare
+## Cloudflare
 
 Deploying to Cloudflare with Alchemy is covered in [Deploy to Cloudflare](deployment.md). The same values become Worker vars and secrets (`OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `COORDINATOR_SERVICE_TOKEN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET` as secrets). The deploy fails without `BETTER_AUTH_SECRET` and `COORDINATOR_SERVICE_TOKEN`, and the Discord gateway container gets the service token too. `PUBLIC_URL` plus the Google and GitHub callback URLs must point at the deployed Coordinator. Discord keeps running as its own process there, because a Worker can't hold a gateway WebSocket (`bun run --cwd apps/discord-gateway start`, see `apps/site/guide/deployment.md`).
 
@@ -473,7 +282,7 @@ Renamed, and the Coordinator stops if one is still set: `CHAT_MODEL_ID` and `CHA
 
 ### Discord
 
-Step [1](#1-discord-bot). Read by the Discord bot, whether it runs inside the Coordinator or as `apps/discord-gateway`.
+See [Discord setup](../channels/discord.md#set-up). Read by the Discord bot, whether it runs inside the Coordinator or as `apps/discord-gateway`.
 
 | Variable                              | Required | Default | Description                                                                                                      |
 | ------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -511,7 +320,7 @@ Turns project channel chatter into Project Memory. Whether a project is digested
 
 ### Email Digest
 
-Reads each person's Gmail inbox, read-only, into Project Memory. Off unless `EMAIL_DIGEST=true`, because it changes what Google link asks for: the Gmail read scope (`https://www.googleapis.com/auth/gmail.readonly`) is added to Drive's. Also enable the **Gmail API** in the Google Cloud project (step [2.1](#_2-1-create-a-google-cloud-project-and-enable-drive)) and add the scope to the consent screen. People who linked Google before need to `/connect provider:Google` again. Nobody's mailbox is read until they turn it on themselves on the dashboard's **Email** page, and they must first choose what to read: all mail (the inbox) or one Gmail label. Nothing is read without that choice, and they can change it later. Mailboxes switched on before labels existed stay idle until a label is chosen.
+Reads each person's Gmail inbox, read-only, into Project Memory. See [Email](../channels/email.md) for what it does and how to turn it on.
 
 Each new email (with all mail chosen, promotions, social, spam and sent mail are skipped; with one label, only mail carrying it is read, whether it arrived with it or got it later) is redacted first: quoted replies are dropped, and secrets, one-time codes, card and phone numbers, link query strings and the address part of email addresses are masked. The classifier then matches it to a project. At 90% or more it is filed: the decisions and facts in it go to Project Memory, with the sender, subject and a redacted quote, and the email body is deleted. Below 90% it waits on the Email page for the person to pick a project (or dismiss it). Filing one by hand teaches the classifier: that sender and subject are shown as examples under the project from then on. Waiting emails are dropped after 30 days. It never sends, labels or changes mail.
 
@@ -523,7 +332,7 @@ The classifier is the `DECISION_MODEL`, and the summary uses the Channel Digest'
 
 ### Sign-in and account linking
 
-Steps [2](#2-google-drive-oauth-client), [3](#3-github-app), [3b](#3b-clickup-app-optional) and [4](#4-turn-on-account-linking). `/connect` for a provider is off until its client id and secret are both set. Callbacks are served at `PUBLIC_URL`.
+See [Google](../connectors/google.md#set-up), [GitHub](../connectors/github.md#set-up), [ClickUp](../connectors/clickup.md#set-up) and [account linking](#turn-on-account-linking). `/connect` for a provider is off until its client id and secret are both set. Callbacks are served at `PUBLIC_URL`.
 
 | Variable                 | Required | Default | Description                                                                                                   |
 | ------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------- |
@@ -551,7 +360,7 @@ The sweep runs on a timer in host runs and on a per-minute Cron on Cloudflare.
 
 ### Registered workers
 
-Step [5](#5-registered-workers). Coordinator side.
+See [Registered workers](#registered-workers). Coordinator side.
 
 | Variable                    | Required | Default                              | Description                                                         |
 | --------------------------- | -------- | ------------------------------------ | ------------------------------------------------------------------- |
@@ -574,7 +383,7 @@ Read by `apps/watcher` on the computer that works tickets, from its shell.
 
 ### Cloud sandbox pool
 
-Step [6](#6-cloud-sandbox-workers). A provider joins the pool when its credentials are set.
+See [Cloud sandbox workers](#cloud-sandbox-workers). A provider joins the pool when its credentials are set.
 
 | Variable                          | Required | Default                          | Description                                                                                                                         |
 | --------------------------------- | -------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -685,7 +494,7 @@ Read by `alchemy.run.ts` on top of the values above. See [Deploy to Cloudflare](
 | `/connect` says linking is off                                                     | The provider's client id/secret is missing from the Coordinator's environment                                                                     |
 | `/register-worker` code says "expired, or already used"                            | Codes work once, for 10 minutes. Run `/register-worker` again                                                                                     |
 | Your tickets still go to a sandbox after registering                               | The Watcher isn't running or can't reach `PUBLIC_URL`. `/workers` shows whether it's online                                                       |
-| Tickets say they're queued and stay `open`                                         | No personal or shared computer is online with room and no sandbox provider has room. Start a Watcher, or set up a provider (step 6)               |
+| Tickets say they're queued and stay `open`                                         | No personal or shared computer is online with room and no sandbox provider has room. Start a Watcher, or set up a [provider](#cloud-sandbox-workers)               |
 | Watcher exits with "isn't registered yet"                                          | It no longer runs unregistered. Run `/register-worker` (or `shared:True` as an admin) and paste the command                                       |
 | Sandbox tickets stay `assigned` and nothing claims them                            | `SANDBOX_MCP_URL` isn't reachable from the provider's cloud (it must be public). The Coordinator logs `sandbox-<provider>: <worker> failed: …`    |
 | Coordinator exits with `... was renamed to ...` or `Missing env var DEFAULT_MODEL` | An old model var is still set, or `DEFAULT_MODEL` isn't (see [Models](#models))                                                                   |
