@@ -69,7 +69,11 @@ See the issues tab and [CONTEXT.md](CONTEXT.md) for the language we use (Project
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+project-os is open source under the [MIT License](LICENSE). Copies and substantial portions must include the copyright and permission notice, which names project-os.
+
+If you reuse project-os or build on it, please also credit it where users can see it. This is a request, not a license condition:
+
+> Built on [project-os](https://github.com/joel611/project-os)
 
 ---
 
