@@ -1,5 +1,11 @@
 # Why project-os
 
+## Background
+
+A project's story rarely lives in one place. Conversations with the client sit in email. The team talks things over in its own chat. Tasks and issues are tracked in a ticket system. Each holds a piece of the picture, and nothing joins them together.
+
+So people become the link. The longer a project runs, the more it depends on who remembers what. When that person is busy, away, or has moved on, answers are hard to find. Sometimes the reason behind a past decision can't be traced at all: everyone can see what was decided, but no one can say why.
+
 ## A Tuesday afternoon
 
 Maya is a PM. A client emails: "Can we ship single sign-on by the end of the month?"
