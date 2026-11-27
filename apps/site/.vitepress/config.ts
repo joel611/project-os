@@ -53,20 +53,21 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: "Why", link: "/why" },
-      { text: "How it works", link: "/how-it-works" },
+      { text: "Start", link: "/why" },
       { text: "Channels", link: "/channels/" },
       { text: "Connectors", link: "/connectors/" },
-      { text: "Guide", link: "/guide/quick-start" },
-      { text: "Reference", link: "/reference/architecture" },
+      { text: "Workers", link: "/workers/" },
+      { text: "Deployment", link: "/guide/deployment" },
+      { text: "Reference", link: "/reference/environment" },
     ],
     sidebar: [
       {
-        text: "Product",
+        text: "Start",
         items: [
           { text: "Why project-os", link: "/why" },
           { text: "How it works", link: "/how-it-works" },
-          { text: "Product brief", link: "/product-brief" },
+          { text: "Quick start", link: "/guide/quick-start" },
+          { text: "Configuration", link: "/guide/setup" },
         ],
       },
       {
@@ -82,27 +83,39 @@ export default defineConfig({
         items: [
           { text: "Overview", link: "/connectors/" },
           { text: "GitHub", link: "/connectors/github" },
-          { text: "Google", link: "/connectors/google" },
+          { text: "Google Drive", link: "/connectors/google" },
           { text: "ClickUp", link: "/connectors/clickup" },
         ],
       },
       {
-        text: "Guide",
+        text: "Workers",
         items: [
-          { text: "Quick start", link: "/guide/quick-start" },
-          { text: "Setup", link: "/guide/setup" },
-          { text: "Deploy to Cloudflare", link: "/guide/deployment" },
-          { text: "Testing without Discord", link: "/guide/testing" },
-          { text: "Development", link: "/guide/development" },
+          { text: "Overview", link: "/workers/" },
+          { text: "Local computer", link: "/workers/local" },
+          { text: "Cloud sandbox", link: "/workers/cloud-sandbox" },
+        ],
+      },
+      {
+        text: "Deployment",
+        items: [
+          { text: "Cloudflare", link: "/guide/deployment" },
+          { text: "Cloudflare infrastructure", link: "/reference/infra-cloudflare" },
         ],
       },
       {
         text: "Reference",
         items: [
-          { text: "Environment variables", link: "/guide/setup#environment" },
+          { text: "Environment variables", link: "/reference/environment" },
           { text: "Technical architecture", link: "/reference/architecture" },
-          { text: "Cloudflare infrastructure", link: "/reference/infra-cloudflare" },
+          { text: "Troubleshooting", link: "/reference/troubleshooting" },
           { text: "Glossary", link: `${repoUrl}/blob/main/CONTEXT.md` },
+        ],
+      },
+      {
+        text: "Contributing",
+        items: [
+          { text: "Development", link: "/guide/development" },
+          { text: "Testing without Discord", link: "/guide/testing" },
         ],
       },
     ],

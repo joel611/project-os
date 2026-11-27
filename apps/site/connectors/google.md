@@ -1,4 +1,4 @@
-# Google
+# Google Drive
 
 Connect Google so project-os can use the documents your team keeps in Google Drive.
 

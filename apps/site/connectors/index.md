@@ -5,7 +5,7 @@ Connectors let project-os reach the places where your project's work lives.
 | Connector             | Used for                        | Can be a project source |
 | --------------------- | ------------------------------- | ----------------------- |
 | [GitHub](github.md)   | Code, pull requests, and issues | Yes, a repository       |
-| [Google](google.md)   | Documents in Google Drive       | Yes, a Drive folder     |
+| [Google Drive](google.md) | Documents in Google Drive       | Yes, a Drive folder     |
 | [ClickUp](clickup.md) | Files attached to ClickUp tasks | No                      |
 
 A **project source** tells project-os which repository or folder a project is about. Add one with `/source-add` in Discord, or in the dashboard.

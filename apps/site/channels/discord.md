@@ -93,7 +93,7 @@ Turn on **Developer Mode** in Discord (User Settings → Advanced → Developer 
 Two behaviour switches, both on by default:
 
 - `DISCORD_REQUIRE_MENTION=true`: in project channels, the bot only answers top-level messages that @mention it. Messages inside ticket threads and the admin channel don't need a mention. Set `false` to answer every message.
-- Channel digest: on by default, see [Learning from conversations](#learning-from-conversations). Its timings are in [Environment](../guide/setup.md#channel-digest).
+- Channel digest: on by default, see [Learning from conversations](#learning-from-conversations). Its timings are in [Environment](../reference/environment.md#channel-digest).
 - `DISCORD_PROJECT_CHANNEL_AUTO_CREATE=true`: creating a project also creates its channel.
 
 The bot only works in server channels. It ignores DMs, and every slash command, `/connect` included, is unavailable in DMs. One more setting is optional:
@@ -102,7 +102,7 @@ The bot only works in server channels. It ignores DMs, and every slash command, 
 
 ### Check it
 
-Start the stack (see [Run it](../guide/setup.md#run-it)), then:
+Start the stack (see [Run it](../guide/quick-start.md)), then:
 
 1. The adapter logs `registered slash commands in guild <id>`.
 2. In the admin channel, run `/project-create name:Demo`. A new `#demo` channel appears.

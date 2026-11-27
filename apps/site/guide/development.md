@@ -38,6 +38,16 @@ bun run test:integration
 
 Integration suite and the fake Discord adapter: [Testing without Discord](testing.md).
 
+## Docker (development only)
+
+Docker Compose is for running project-os while you develop. It is not a supported way to deploy it: for that, see [Deploy to Cloudflare](deployment.md).
+
+```sh
+docker compose up --build            # Coordinator :8080 (with the Discord bot), Grafana :3000
+```
+
+**Try it in Docker.** `scripts/watcher-vm.sh up` starts the Coordinator and a `watcher-vm` container that stands in for an external VM, and seeds a demo project with tickets. `scripts/watcher-vm.sh register` runs `/register-worker` through `POST /commands` (no Discord) and runs the printed install script line inside the container. The package isn't on npm, so the image links the Watcher from the repo and the script's install step is set to `true`. The image has both `pi` and `codex`, so `register` asks for the agent through `/register-worker agent:`: `WATCHER_VM_AGENT` (default `pi`) and `WATCHER_VM_MODEL`. Pi uses `OPENROUTER_API_KEY` and `SANDBOX_PI_MODEL` (the default model for Pi). For Codex, `up` copies your host `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`) into the container at start, so it is never baked into the image and goes away with the container; run `WATCHER_VM_AGENT=codex scripts/watcher-vm.sh register`. The VM reaches the Coordinator at `host.docker.internal:8080` (the script sets `PUBLIC_URL` to that). `scripts/watcher-vm.sh logs` follows the Watcher.
+
 ## Docs site
 
 The site is built with [VitePress](https://vitepress.dev) from the Markdown in `apps/site`, laid out by URL (`guide/setup.md` is `/guide/setup`). To edit a page, edit its Markdown file. To add one, create it in `apps/site` and add it to the sidebar in `apps/site/.vitepress/config.ts`. Links to files outside `apps/site` (the glossary, ADRs, source files) go to GitHub. The Pages workflow runs only when `apps/site`, its workflow, or the root `package.json` / `bun.lock` change.

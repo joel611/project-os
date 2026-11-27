@@ -30,4 +30,4 @@ For the person who runs project-os.
 3. Add the Gmail read scope, `https://www.googleapis.com/auth/gmail.readonly`, to the consent screen.
 4. Set `EMAIL_DIGEST=true` in `.env`. It is off by default because it changes what linking Google asks for: the Gmail read scope is added to Drive's.
 
-People who linked Google before need to run `/connect provider:Google` again. Nobody's mailbox is read until they turn it on themselves. Mailboxes switched on before labels existed stay idle until a label is chosen. Other settings are in [Environment](../guide/setup.md#email-digest).
+People who linked Google before need to run `/connect provider:Google` again. Nobody's mailbox is read until they turn it on themselves. Mailboxes switched on before labels existed stay idle until a label is chosen. Other settings are in [Environment](../reference/environment.md#email-digest).
