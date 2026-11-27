@@ -53,4 +53,8 @@ bun run --cwd apps/web dev
 
 The dashboard expects the Coordinator on `:8080` (override with `COORDINATOR_URL`). Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or with Google ([Dashboard sign-in](setup.md#dashboard-sign-in)). You should see projects, live tickets, Project Memory, and worker health refreshing every few seconds. `bun run --cwd apps/web build` exports the dashboard as a static site.
 
+![A project page in the dashboard with its sources, tickets and workers](../images/dashboard-project.png)
+
+Next, [add a project source](../connectors/index.md#add-a-project-source) so project-os knows which repository or folder the project is about.
+
 If something does not work, see [Troubleshooting](../reference/troubleshooting.md).
