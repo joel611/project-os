@@ -4,7 +4,7 @@
 > Questions land in chat → tickets get cleared → grounded answers return. Engineers stay focused.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/joel611/project-os/ci.yml?branch=main)](https://github.com/joel611/project-os/actions)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1)](https://bun.sh)
 [![MCP](https://img.shields.io/badge/MCP-ready-black)](https://modelcontextprotocol.io)
 
@@ -69,15 +69,9 @@ See the issues tab and [CONTEXT.md](CONTEXT.md) for the language we use (Project
 
 ## License
 
-project-os is open source under the [Apache License 2.0](LICENSE). You can use, modify, and build on it, including commercially.
+project-os is open source under the [MIT License](LICENSE). Copies and substantial portions must include the copyright and permission notice, which names project-os.
 
-If you redistribute it or a work based on it, the license requires you to:
-
-- include a copy of the license and keep the existing copyright notices
-- include the attribution from [NOTICE](NOTICE)
-- mark the files you changed
-
-We also ask, as a courtesy, that products and projects built on project-os credit it where users can see it:
+If you reuse project-os or build on it, please also credit it where users can see it. This is a request, not a license condition:
 
 > Built on [project-os](https://github.com/joel611/project-os)
 
