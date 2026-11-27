@@ -25,6 +25,7 @@ const edgeOnly = [
 }));
 
 export default defineConfig({
+  resolve: { alias: { "@": `${import.meta.dirname}/apps/web/src` } },
   staged: {
     "*.{js,jsx,ts,tsx,json,jsonc,css,md,mdx}": "vp check --fix",
     "*.{ts,tsx,js,jsx}": "vp test related --run --passWithNoTests",

@@ -1,7 +1,7 @@
 import { detectSource, type ProjectSource, suggestAlias } from "@project-os/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink, Pencil, Star, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Link2, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 import { api, ApiError, describeError, type ProjectDetail } from "@/api";
 import { SLOW_MS } from "@/polling";
@@ -30,6 +30,7 @@ import {
   removalNote,
   sourceUrl,
   type SourceInput,
+  type SourceProvider,
 } from "@/model";
 
 const PANEL = "rounded-xl border bg-card p-6 shadow-card md:p-7";
@@ -279,18 +280,39 @@ const SourceRow = ({
   );
 };
 
-const SourceList = ({
+export const ProjectSources = ({
   projectId,
   sources,
 }: {
   projectId: string;
   sources: ReadonlyArray<ProjectSource>;
-}) =>
-  sources.length === 0 ? (
-    <Empty title="No sources yet" hint="Link a repo or Drive folder above." />
-  ) : (
+}) => {
+  const [adding, setAdding] = useState<"github" | "google_drive" | "any" | null>(null);
+  const groups = groupSources(sources);
+  const providers: SourceProvider[] = [
+    "github",
+    "google_drive",
+    ...groups.map((g) => g.provider).filter((p) => p !== "github" && p !== "google_drive"),
+  ];
+  return (
     <div className="flex flex-col gap-6">
-      {groupSources(sources).map(({ provider, sources: group }) => {
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => setAdding("any")}>
+          <Plus className="size-4" /> Add source
+        </Button>
+      </div>
+      {adding && (
+        <AddSource
+          key={adding}
+          projectId={projectId}
+          sources={sources}
+          provider={adding}
+          onDone={() => setAdding(null)}
+        />
+      )}
+      {providers.map((provider) => {
+        const group = groups.find((g) => g.provider === provider)?.sources ?? [];
+        const canAdd = provider === "github" || provider === "google_drive";
         const { Logo, label } = PROVIDER_META[provider];
         const headingId = `sources-${provider}`;
         return (
@@ -302,25 +324,53 @@ const SourceList = ({
               <h3 id={headingId} className="text-sm font-semibold">
                 {label}
               </h3>
-              <span className="text-[13px] text-muted-foreground tabular-nums">{group.length}</span>
+              <span className="flex-1 text-[13px] text-muted-foreground tabular-nums">
+                {group.length}
+              </span>
+              {canAdd && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Add ${label}`}
+                  onClick={() => setAdding(provider)}
+                >
+                  <Plus className="size-4" />
+                </Button>
+              )}
             </div>
-            <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
-              {group.map((s) => (
-                <SourceRow key={s.id} projectId={projectId} source={s} sources={sources} />
-              ))}
-            </ul>
+            {group.length ? (
+              <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card shadow-card">
+                {group.map((s) => (
+                  <SourceRow key={s.id} projectId={projectId} source={s} sources={sources} />
+                ))}
+              </ul>
+            ) : (
+              <button
+                type="button"
+                onClick={() => canAdd && setAdding(provider)}
+                className="flex w-full items-center gap-2 rounded-xl border border-dashed p-5 text-sm text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+              >
+                <Plus className="size-4" />
+                Add your first {provider === "github" ? "repository" : "folder"}
+              </button>
+            )}
           </section>
         );
       })}
     </div>
   );
+};
 
 const AddSource = ({
   projectId,
   sources,
+  provider,
+  onDone,
 }: {
   projectId: string;
   sources: ReadonlyArray<ProjectSource>;
+  provider: "github" | "google_drive" | "any";
+  onDone: () => void;
 }) => {
   const qc = useQueryClient();
   const [text, setText] = useState("");
@@ -337,6 +387,7 @@ const AddSource = ({
       setAlias("");
       setAliasEdited(false);
       setDescription("");
+      onDone();
       return qc.invalidateQueries({ queryKey: ["project", projectId] });
     },
     onError: (e, input) => setProblem(sourceProblem(e, input.alias, input.externalId)),
@@ -365,10 +416,22 @@ const AddSource = ({
 
   return (
     <form onSubmit={submit} className={`${PANEL} flex flex-col gap-4`}>
-      <h3 className="text-sm font-semibold">Add source</h3>
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <Link2 className="size-4 text-muted-foreground" />
+        Add source
+      </h3>
+      <Label htmlFor="source-link">Source link</Label>
       <Input
+        id="source-link"
+        autoFocus
         aria-label="GitHub repo or Google Drive folder link"
-        placeholder="Paste a GitHub repo or Google Drive folder link"
+        placeholder={
+          provider === "github"
+            ? "https://github.com/owner/repo"
+            : provider === "google_drive"
+              ? "https://drive.google.com/drive/folders/…"
+              : "Paste a GitHub repo or Google Drive folder link"
+        }
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -376,6 +439,9 @@ const AddSource = ({
           setProblem(null);
         }}
       />
+      <p className="text-xs text-muted-foreground">
+        GitHub repositories and Google Drive folders are detected automatically.
+      </p>
       {detected && !problem && (
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           {(() => {
@@ -418,9 +484,12 @@ const AddSource = ({
         />
       </div>
       <Problems lines={problem ? [problem] : []} />
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" disabled={add.isPending} onClick={onDone}>
+          Cancel
+        </Button>
         <Button type="submit" disabled={!text.trim() || !alias.trim() || add.isPending}>
-          {add.isPending ? "Adding…" : "Add"}
+          {add.isPending ? "Adding…" : "Add source"}
         </Button>
       </div>
     </form>
@@ -550,10 +619,7 @@ export const SettingsPage = ({ projectId }: { projectId: string }) => {
             title={`Sources · ${detail.data.sources.length}`}
             hint="Repos and Drive folders this project reads from. Workers refer to them by alias."
           >
-            <div className="flex flex-col gap-5">
-              <AddSource projectId={projectId} sources={detail.data.sources} />
-              <SourceList projectId={projectId} sources={detail.data.sources} />
-            </div>
+            <ProjectSources projectId={projectId} sources={detail.data.sources} />
           </Section>
         </>
       )}
