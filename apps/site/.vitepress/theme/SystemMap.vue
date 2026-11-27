@@ -1,131 +1,123 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
-// Same boxes, zones and arrows as how-it-works.svg, played as two looping stories:
-// a Discord question answered by a cloud sandbox, then an email answered by a local PC.
+// Simplified home-page schematic in the dashboard's "Schematic" style: channels -> Coordinator -> workers.
+// Two looping stories: a Discord question answered by a cloud worker, an email answered by a local worker.
 type Hop = { id: string; rev?: boolean; label: string };
-type Step = { caption: string; hops: Hop[]; nodes: string[]; tone?: "msg" | "ticket" | "reply" };
-type Scenario = { title: string; steps: Step[] };
+type Step = {
+  caption: string;
+  stage: string;
+  hops: Hop[];
+  nodes: string[];
+  chips: string[];
+  waiting: number;
+  pill: string;
+  ramp?: boolean;
+  done?: boolean;
+  tone?: "msg" | "ticket" | "reply";
+};
+type Scenario = {
+  title: string;
+  channel: "discord" | "email";
+  worker: "cloud" | "local";
+  ticket: string;
+  steps: Step[];
+};
 
 const EDGES: Record<string, string> = {
-  discord: "M104 112 H114 Q120 112 120 106 V106 Q120 100 126 100 H162",
-  email: "M104 192 H124 Q132 192 132 184 V132 Q132 124 140 124 H162",
-  clsMem: "M300 112 H366",
-  clsPi: "M232 152 V198",
-  piTicket: "M304 240 H366",
-  ticketMem: "M444 200 V154",
-  ticketCf: "M520 240 H552 Q560 240 560 232 V136 Q560 128 568 128 H574",
-  ticketLocal: "M520 262 H548 Q560 262 560 270 V314 Q560 322 568 322 H574",
+  discord: "M158 80 C204 80 204 120 250 120",
+  email: "M158 200 C204 200 204 160 250 160",
+  cloud: "M510 120 C555 120 555 80 600 80",
+  local: "M510 160 C555 160 555 200 600 200",
 };
+
+const story = (channel: "discord" | "email", worker: "cloud" | "local", id: string): Step[] => [
+  {
+    caption:
+      channel === "discord"
+        ? "Someone asks in a project channel on Discord."
+        : "A client emails the project inbox.",
+    stage: "Message received",
+    hops: [{ id: channel, label: channel === "discord" ? "question" : "email" }],
+    nodes: [channel, "coord"],
+    chips: [],
+    waiting: 0,
+    pill: "idle",
+    tone: "msg",
+  },
+  {
+    caption:
+      "The Coordinator classifies it and opens a ticket. It reads Project Memory for context.",
+    stage: `Classified · ${id} open`,
+    hops: [],
+    nodes: ["coord"],
+    chips: ["classify", "tickets", "memory"],
+    waiting: 1,
+    pill: "idle",
+  },
+  {
+    caption:
+      worker === "cloud"
+        ? "A cloud worker pulls the ticket and claims it. Workers are never pushed."
+        : "A teammate's local worker polls, pulls the ticket and claims it.",
+    stage: `${id} claimed`,
+    hops: [
+      { id: worker, rev: true, label: "claim" },
+      { id: worker, label: id },
+    ],
+    nodes: ["coord", worker],
+    chips: ["tickets"],
+    waiting: 1,
+    pill: "claiming",
+    tone: "ticket",
+  },
+  {
+    caption: "The worker does the job and reads Project Memory through MCP.",
+    stage: `${id} in progress`,
+    hops: [],
+    nodes: [worker],
+    chips: ["memory"],
+    waiting: 0,
+    pill: "in_progress",
+    ramp: true,
+  },
+  {
+    caption: "It reports back. The result and new facts land in the ticket and Project Memory.",
+    stage: `${id} completed`,
+    hops: [{ id: worker, rev: true, label: "result" }],
+    nodes: [worker, "coord"],
+    chips: ["tickets", "memory"],
+    waiting: 0,
+    pill: "done",
+    done: true,
+    tone: "ticket",
+  },
+  {
+    caption: "Only the Coordinator speaks outside: the answer goes back to the same channel.",
+    stage: "Reply posted",
+    hops: [{ id: channel, rev: true, label: "answer" }],
+    nodes: ["coord", channel],
+    chips: [],
+    waiting: 0,
+    pill: "idle",
+    tone: "reply",
+  },
+];
 
 const scenarios: Scenario[] = [
   {
-    title: "A question in Discord, answered by a cloud sandbox",
-    steps: [
-      {
-        caption: "Someone asks in a project channel on Discord.",
-        hops: [{ id: "discord", label: "question" }],
-        nodes: ["discord", "classifier"],
-        tone: "msg",
-      },
-      {
-        caption: "The classifier reads Project Memory to find the right project and context.",
-        hops: [{ id: "clsMem", label: "context" }],
-        nodes: ["classifier", "memory"],
-      },
-      {
-        caption: "Pi Durable takes over and decides what to do.",
-        hops: [{ id: "clsPi", label: "intent" }],
-        nodes: ["classifier", "pi"],
-      },
-      {
-        caption: "It opens a ticket in the ticket system.",
-        hops: [{ id: "piTicket", label: "T-142" }],
-        nodes: ["pi", "ticket"],
-        tone: "ticket",
-      },
-      {
-        caption: "A sandbox pulls the ticket and claims it. Workers are never pushed.",
-        hops: [
-          { id: "ticketCf", rev: true, label: "claim" },
-          { id: "ticketCf", label: "T-142" },
-        ],
-        nodes: ["ticket", "cloudflare"],
-        tone: "ticket",
-      },
-      {
-        caption: "The Worker finishes. The result and new facts land in Project Memory.",
-        hops: [
-          { id: "ticketCf", rev: true, label: "done" },
-          { id: "ticketMem", label: "memory" },
-        ],
-        nodes: ["cloudflare", "ticket", "memory"],
-      },
-      {
-        caption: "Only the tower speaks: the answer goes back to the same Discord channel.",
-        hops: [
-          { id: "piTicket", rev: true, label: "answer" },
-          { id: "clsPi", rev: true, label: "answer" },
-          { id: "discord", rev: true, label: "answer" },
-        ],
-        nodes: ["ticket", "pi", "classifier", "discord"],
-        tone: "reply",
-      },
-    ],
+    title: "A question in Discord, answered by a cloud worker",
+    channel: "discord",
+    worker: "cloud",
+    ticket: "T-142",
+    steps: story("discord", "cloud", "T-142"),
   },
   {
-    title: "An email, answered by a Claude Code on a local PC",
-    steps: [
-      {
-        caption: "A client emails the project inbox.",
-        hops: [{ id: "email", label: "email" }],
-        nodes: ["email", "classifier"],
-        tone: "msg",
-      },
-      {
-        caption: "The classifier checks Project Memory for what we already know.",
-        hops: [{ id: "clsMem", label: "context" }],
-        nodes: ["classifier", "memory"],
-      },
-      {
-        caption: "Pi Durable takes over and decides what to do.",
-        hops: [{ id: "clsPi", label: "intent" }],
-        nodes: ["classifier", "pi"],
-      },
-      {
-        caption: "It opens a ticket in the ticket system.",
-        hops: [{ id: "piTicket", label: "T-143" }],
-        nodes: ["pi", "ticket"],
-        tone: "ticket",
-      },
-      {
-        caption: "A teammate's local PC polls, pulls the ticket and starts working.",
-        hops: [
-          { id: "ticketLocal", rev: true, label: "claim" },
-          { id: "ticketLocal", label: "T-143" },
-        ],
-        nodes: ["ticket", "local"],
-        tone: "ticket",
-      },
-      {
-        caption: "Claude, Codex or pi finishes and writes what it learned to Project Memory.",
-        hops: [
-          { id: "ticketLocal", rev: true, label: "done" },
-          { id: "ticketMem", label: "memory" },
-        ],
-        nodes: ["local", "ticket", "memory"],
-      },
-      {
-        caption: "The answer is sent back to the person who emailed.",
-        hops: [
-          { id: "piTicket", rev: true, label: "answer" },
-          { id: "clsPi", rev: true, label: "answer" },
-          { id: "email", rev: true, label: "answer" },
-        ],
-        nodes: ["ticket", "pi", "classifier", "email"],
-        tone: "reply",
-      },
-    ],
+    title: "An email, answered by a local worker",
+    channel: "email",
+    worker: "local",
+    ticket: "T-143",
+    steps: story("email", "local", "T-143"),
   },
 ];
 
@@ -142,39 +134,37 @@ const packet = ref<{ x: number; y: number; label: string; tone: string } | null>
 const current = computed(() => flat[index.value]!);
 const scenario = computed(() => scenarios[current.value.si]!);
 const isActive = (node: string) => current.value.step.nodes.includes(node);
-// Worker cards: idle/polling until the ticket is claimed (step 5), then working, then done.
+const chipOn = (chip: string) => current.value.step.chips.includes(chip);
+const hotEdges = computed(() => new Set(current.value.step.hops.map((h) => h.id)));
+
 type WorkerState = { pill: string; progress: number };
 const workerOf = (which: "cloud" | "local"): WorkerState => {
-  const mine = (current.value.si === 0) === (which === "cloud");
-  const idle = which === "local" ? "polling" : "idle";
-  if (!mine) return { pill: idle, progress: 0 };
-  const i = current.value.i;
-  if (i < 4) return { pill: idle, progress: 0 };
-  if (i === 4) return { pill: progress.value < 0.5 ? "claiming" : "in_progress", progress: 0 };
-  if (i === 5) return { pill: "in_progress", progress: Math.min(1, progress.value * 1.2) };
-  return { pill: "done", progress: 1 };
+  if (scenario.value.worker !== which)
+    return { pill: which === "local" ? "polling" : "idle", progress: 0 };
+  const { step } = current.value;
+  const pill = step.pill === "idle" && which === "local" ? "polling" : step.pill;
+  const prog = step.done ? 1 : step.ramp ? Math.min(1, progress.value * 1.1) : 0;
+  return { pill, progress: prog };
 };
 const cloud = computed(() => workerOf("cloud"));
 const local = computed(() => workerOf("local"));
-const hotEdges = computed(() => new Set(current.value.step.hops.map((h) => h.id)));
 
 const place = () => {
   const { step } = current.value;
   const n = step.hops.length;
+  if (n === 0) {
+    packet.value = null;
+    return;
+  }
   const slot = Math.min(n - 1, Math.floor(progress.value * n));
   const hop = step.hops[slot]!;
   const el = paths.get(hop.id);
   if (!el) return;
-  const local = Math.min(1, Math.max(0, progress.value * n - slot));
-  const eased = local < 0.5 ? 2 * local * local : 1 - (-2 * local + 2) ** 2 / 2;
-  const len = el.getTotalLength();
-  const pt = el.getPointAtLength((hop.rev ? 1 - eased : eased) * len);
-  packet.value = {
-    x: pt.x,
-    y: pt.y,
-    label: hop.label,
-    tone: hop.rev && step.tone === "reply" ? "reply" : (step.tone ?? "ping"),
-  };
+  const part = Math.min(1, Math.max(0, progress.value * n - slot));
+  const eased = part < 0.5 ? 2 * part * part : 1 - (-2 * part + 2) ** 2 / 2;
+  const pt = el.getPointAtLength((hop.rev ? 1 - eased : eased) * el.getTotalLength());
+  const tone = hop.rev && step.tone === "reply" ? "reply" : (step.tone ?? "ping");
+  packet.value = { x: pt.x, y: pt.y, label: hop.label, tone };
 };
 
 let raf = 0;
@@ -213,124 +203,150 @@ onMounted(() => {
   raf = requestAnimationFrame(tick);
 });
 onBeforeUnmount(() => cancelAnimationFrame(raf));
+
+const ICON = {
+  discord: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z",
+  email:
+    "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M22 7l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7",
+  brain:
+    "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z M12 5v13",
+  cloud: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z",
+  laptop:
+    "M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16",
+};
+const chips = [
+  { id: "classify", label: "Classify", x: 266, w: 64 },
+  { id: "tickets", label: "Tickets", x: 334, w: 58 },
+  { id: "memory", label: "Memory", x: 396, w: 60 },
+];
 </script>
 
 <template>
   <section class="sysmap" aria-label="How project-os works, animated">
     <div class="sysmap-frame">
-      <svg viewBox="0 0 760 400" role="img" aria-labelledby="sysmap-title sysmap-desc">
+      <svg viewBox="0 0 760 290" role="img" aria-labelledby="sysmap-title sysmap-desc">
         <title id="sysmap-title">How project-os works</title>
         <desc id="sysmap-desc">
-          A looping story. A question arrives through the Discord or email broker, the classifier
-          reads Project Memory, Pi Durable opens a ticket, a cloud sandbox or a local PC pulls the
-          ticket, finishes, writes to Project Memory, and the answer goes back the way it came.
+          A looping story. A question arrives from Discord or email. The Coordinator classifies it,
+          opens a ticket and reads Project Memory. A cloud worker or a local worker pulls the
+          ticket, does the job and reports back. The Coordinator sends the answer to the same
+          channel.
         </desc>
-        <defs>
-          <marker
-            id="sm-head"
-            viewBox="0 0 8 8"
-            refX="6"
-            refY="4"
-            markerWidth="8"
-            markerHeight="8"
-            orient="auto"
-          >
-            <path d="M0 0 L8 4 L0 8 Z" class="sm-head" />
-          </marker>
-        </defs>
         <defs>
           <pattern id="sm-dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="1" class="sm-dot" />
           </pattern>
         </defs>
-        <rect width="760" height="400" rx="8" class="sm-bg" />
-        <rect width="760" height="400" rx="8" fill="url(#sm-dots)" />
-        <text x="340" y="28">Project OS</text>
-        <text x="664" y="28">Cloud serverless sandbox</text>
-        <rect class="sm-zone" x="144" y="40" width="400" height="344" rx="10" />
-        <rect class="sm-zone sm-dashed" x="576" y="40" width="176" height="176" rx="10" />
-        <rect class="sm-zone sm-dashed" x="576" y="232" width="176" height="152" rx="10" />
-        <text x="664" y="252">Your machine</text>
+        <rect width="760" height="290" class="sm-bg" />
+        <rect width="760" height="290" fill="url(#sm-dots)" />
 
         <path
           v-for="(d, id) in EDGES"
           :key="id"
           :ref="(el) => el && paths.set(id, el as SVGPathElement)"
           :d="d"
-          class="sm-arrow"
+          class="sm-edge"
           :class="{ hot: hotEdges.has(id) }"
-          marker-end="url(#sm-head)"
         />
 
-        <g class="sm-node" :class="{ on: isActive('discord') }">
-          <rect x="8" y="88" width="96" height="48" rx="8" />
-          <text x="56" y="108">Discord</text>
-          <text x="56" y="126">broker</text>
-        </g>
-        <g class="sm-node" :class="{ on: isActive('email') }">
-          <rect x="8" y="168" width="96" height="48" rx="8" />
-          <text x="56" y="188">Email</text>
-          <text x="56" y="206">broker</text>
-        </g>
-        <g class="sm-node" :class="{ on: isActive('classifier') }">
-          <rect x="164" y="72" width="136" height="80" rx="8" />
-          <text x="232" y="117">Classifier</text>
-        </g>
-        <g class="sm-node" :class="{ on: isActive('memory') }">
-          <rect x="368" y="72" width="152" height="80" rx="8" />
-          <text x="444" y="117">Project Memory</text>
-        </g>
-        <g class="sm-node" :class="{ on: isActive('pi') }">
-          <rect x="164" y="200" width="140" height="80" rx="8" />
-          <text x="234" y="245">Pi Durable</text>
-        </g>
-        <g class="sm-node" :class="{ on: isActive('ticket') }">
-          <rect x="368" y="200" width="152" height="80" rx="8" />
-          <text x="444" y="245">Ticket system</text>
-        </g>
-        <g class="sm-node worker" :class="{ on: isActive('cloudflare') }">
-          <rect x="588" y="80" width="152" height="100" rx="10" />
-          <rect x="600" y="92" width="30" height="30" rx="8" class="sm-icon-bg" />
-          <g class="sm-icon" transform="translate(606.5 98.5) scale(0.7)">
-            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+        <!-- Channels -->
+        <g class="sm-card" :class="{ on: isActive('discord') }">
+          <rect x="8" y="48" width="150" height="64" rx="10" />
+          <rect x="20" y="64" width="32" height="32" rx="8" class="sm-tile discord" />
+          <g class="sm-icon white" transform="translate(27 71) scale(0.75)">
+            <path :d="ICON.discord" />
           </g>
-          <text x="640" y="111" class="sm-title">Cloud worker</text>
-          <text x="600" y="138" class="sm-sub">Cloudflare / Boat.dev</text>
+          <text x="64" y="77" class="sm-title">Discord</text>
+          <text x="64" y="93" class="sm-sub">channels</text>
+        </g>
+        <g class="sm-card" :class="{ on: isActive('email') }">
+          <rect x="8" y="168" width="150" height="64" rx="10" />
+          <rect x="20" y="184" width="32" height="32" rx="8" class="sm-tile email" />
+          <g class="sm-icon white" transform="translate(27 191) scale(0.75)">
+            <path :d="ICON.email" />
+          </g>
+          <text x="64" y="197" class="sm-title">Email</text>
+          <text x="64" y="213" class="sm-sub">inbox</text>
+        </g>
+
+        <!-- Coordinator -->
+        <g class="sm-card coord" :class="{ on: isActive('coord') }">
+          <rect x="250" y="40" width="260" height="200" rx="14" />
+          <rect x="266" y="56" width="36" height="36" rx="9" class="sm-tile accent" />
+          <g class="sm-icon white" transform="translate(275 65) scale(0.75)">
+            <path :d="ICON.brain" />
+          </g>
+          <text x="312" y="72" class="sm-title big">Coordinator</text>
+          <text x="312" y="88" class="sm-sub">speaks to the outside</text>
+          <g v-for="c in chips" :key="c.id">
+            <rect
+              :x="c.x"
+              y="108"
+              :width="c.w"
+              height="22"
+              rx="6"
+              class="sm-chip"
+              :class="{ on: chipOn(c.id) }"
+            />
+            <text :x="c.x + c.w / 2" y="123" class="sm-chiptext" :class="{ on: chipOn(c.id) }">
+              {{ c.label }}
+            </text>
+          </g>
+          <line x1="266" x2="494" y1="146" y2="146" class="sm-rule" />
+          <text x="266" y="170" class="sm-stage">{{ current.step.stage }}</text>
+          <text x="266" y="192" class="sm-sub">{{ current.step.waiting }} waiting for pull</text>
+        </g>
+        <g v-if="current.step.waiting" class="sm-queue">
+          <rect x="250" y="252" width="62" height="22" rx="6" />
+          <text x="281" y="267">{{ scenario.ticket }}</text>
+        </g>
+
+        <!-- Workers -->
+        <g class="sm-card" :class="{ on: isActive('cloud') }">
+          <rect x="600" y="30" width="152" height="100" rx="10" />
+          <rect x="612" y="42" width="30" height="30" rx="8" class="sm-tile soft" />
+          <g class="sm-icon" transform="translate(618.5 48.5) scale(0.7)">
+            <path :d="ICON.cloud" />
+          </g>
+          <text x="652" y="61" class="sm-title">Cloud worker</text>
+          <text x="612" y="88" class="sm-sub">Cloudflare / Boat.dev</text>
           <rect
-            x="600"
-            y="146"
+            x="612"
+            y="96"
             width="80"
             height="18"
             rx="9"
-            class="sm-pillbg"
+            class="sm-pill"
             :class="`st-${cloud.pill}`"
           />
-          <text x="640" y="159" class="sm-pill" :class="`st-${cloud.pill}`">{{ cloud.pill }}</text>
-          <rect x="600" y="170" width="128" height="4" rx="2" class="sm-track" />
-          <rect x="600" y="170" :width="128 * cloud.progress" height="4" rx="2" class="sm-prog" />
+          <text x="652" y="109" class="sm-pilltext" :class="`st-${cloud.pill}`">
+            {{ cloud.pill }}
+          </text>
+          <rect x="612" y="120" width="128" height="4" rx="2" class="sm-track" />
+          <rect x="612" y="120" :width="128 * cloud.progress" height="4" rx="2" class="sm-prog" />
         </g>
-        <g class="sm-node worker" :class="{ on: isActive('local') }">
-          <rect x="588" y="272" width="152" height="100" rx="10" />
-          <rect x="600" y="284" width="30" height="30" rx="8" class="sm-icon-bg" />
-          <g class="sm-icon" transform="translate(606.5 290.5) scale(0.7)">
-            <path
-              d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"
-            />
+        <g class="sm-card" :class="{ on: isActive('local') }">
+          <rect x="600" y="150" width="152" height="100" rx="10" />
+          <rect x="612" y="162" width="30" height="30" rx="8" class="sm-tile soft" />
+          <g class="sm-icon" transform="translate(618.5 168.5) scale(0.7)">
+            <path :d="ICON.laptop" />
           </g>
-          <text x="640" y="303" class="sm-title">Local worker</text>
-          <text x="600" y="330" class="sm-sub">Claude / Codex / pi</text>
+          <text x="652" y="181" class="sm-title">Local worker</text>
+          <text x="612" y="208" class="sm-sub">Claude / Codex / pi</text>
           <rect
-            x="600"
-            y="338"
+            x="612"
+            y="216"
             width="80"
             height="18"
             rx="9"
-            class="sm-pillbg"
+            class="sm-pill"
             :class="`st-${local.pill}`"
           />
-          <text x="640" y="351" class="sm-pill" :class="`st-${local.pill}`">{{ local.pill }}</text>
-          <rect x="600" y="362" width="128" height="4" rx="2" class="sm-track" />
-          <rect x="600" y="362" :width="128 * local.progress" height="4" rx="2" class="sm-prog" />
+          <text x="652" y="229" class="sm-pilltext" :class="`st-${local.pill}`">
+            {{ local.pill }}
+          </text>
+          <rect x="612" y="240" width="128" height="4" rx="2" class="sm-track" />
+          <rect x="612" y="240" :width="128 * local.progress" height="4" rx="2" class="sm-prog" />
         </g>
 
         <g
@@ -397,12 +413,11 @@ svg {
 }
 text {
   font:
-    14px system-ui,
+    13px system-ui,
     -apple-system,
     "Segoe UI",
     sans-serif;
   fill: var(--vp-c-text-1);
-  text-anchor: middle;
 }
 .sm-bg {
   fill: var(--vp-c-bg-soft);
@@ -410,20 +425,72 @@ text {
 .sm-dot {
   fill: var(--vp-c-divider);
 }
+.sm-edge {
+  fill: none;
+  stroke: var(--vp-c-text-3);
+  stroke-width: 1.5;
+  opacity: 0.6;
+  transition: stroke 0.3s;
+}
+.sm-edge.hot {
+  stroke: var(--vp-c-brand-1);
+  opacity: 1;
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+  animation: sm-march 0.7s linear infinite;
+}
+.sm-card > rect:first-child {
+  fill: var(--vp-c-bg);
+  stroke: var(--vp-c-divider);
+  stroke-width: 1;
+  transition:
+    stroke 0.25s,
+    stroke-width 0.25s;
+}
+.sm-card.on > rect:first-child {
+  stroke: var(--vp-c-brand-1);
+  stroke-width: 2;
+}
+.sm-card.coord > rect:first-child {
+  stroke-width: 1.5;
+}
 .sm-title {
   font-size: 13.5px;
   font-weight: 600;
-  text-anchor: start;
+}
+.sm-title.big {
+  font-size: 16px;
 }
 .sm-sub {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10px;
+  font:
+    10.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
   fill: var(--vp-c-text-2);
-  text-anchor: start;
 }
-.sm-icon-bg {
+.sm-stage {
+  font:
+    12px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  fill: var(--vp-c-text-1);
+}
+.sm-tile {
+  stroke: none;
+}
+.sm-tile.discord {
+  fill: #5865d8;
+}
+.sm-tile.email {
+  fill: #b9661a;
+}
+.sm-tile.accent {
+  fill: var(--vp-c-brand-1);
+}
+.sm-tile.soft {
   fill: var(--vp-c-default-soft);
-  stroke: none !important;
 }
 .sm-icon path {
   fill: none;
@@ -432,78 +499,78 @@ text {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.sm-pillbg {
+.sm-icon.white path {
+  stroke: #fff;
+}
+.sm-chip {
+  fill: var(--vp-c-default-soft);
+  transition: fill 0.2s;
+}
+.sm-chip.on {
+  fill: var(--vp-c-brand-1);
+}
+.sm-chiptext {
+  font:
+    10.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  fill: var(--vp-c-text-2);
+  text-anchor: middle;
+}
+.sm-chiptext.on {
+  fill: var(--vp-c-white);
+}
+.sm-rule {
+  stroke: var(--vp-c-divider);
+}
+.sm-queue rect {
   fill: none;
-  stroke-width: 1;
-  stroke: var(--vp-c-text-3) !important;
+  stroke: #1d8fa3;
+  stroke-dasharray: 3 2;
+}
+.sm-queue text {
+  font:
+    10.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  fill: #1d8fa3;
+  text-anchor: middle;
 }
 .sm-pill {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10.5px;
-  fill: var(--vp-c-text-2);
+  fill: none;
+  stroke: var(--vp-c-text-3);
+  stroke-width: 1;
 }
-.sm-pillbg.st-in_progress,
-.sm-pillbg.st-claiming {
-  stroke: var(--vp-c-warning-1) !important;
+.sm-pilltext {
+  font:
+    10.5px ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  fill: var(--vp-c-text-2);
+  text-anchor: middle;
 }
 .sm-pill.st-in_progress,
 .sm-pill.st-claiming {
+  stroke: var(--vp-c-warning-1);
+}
+.sm-pilltext.st-in_progress,
+.sm-pilltext.st-claiming {
   fill: var(--vp-c-warning-1);
 }
-.sm-pillbg.st-done {
-  stroke: var(--vp-c-success-1) !important;
-}
 .sm-pill.st-done {
+  stroke: var(--vp-c-success-1);
+}
+.sm-pilltext.st-done {
   fill: var(--vp-c-success-1);
 }
 .sm-track {
   fill: var(--vp-c-default-soft);
-  stroke: none !important;
 }
 .sm-prog {
   fill: var(--vp-c-warning-1);
-  stroke: none !important;
-}
-.sm-node.worker .sm-pillbg,
-.sm-node.worker .sm-track,
-.sm-node.worker .sm-prog,
-.sm-node.worker .sm-icon-bg {
-  transition: none;
-}
-.sm-zone {
-  fill: none;
-  stroke: var(--vp-c-text-2);
-  stroke-width: 1.25;
-}
-.sm-dashed {
-  stroke-dasharray: 6 5;
-}
-.sm-arrow {
-  fill: none;
-  stroke: var(--vp-c-text-3);
-  stroke-width: 1.5;
-  transition: stroke 0.3s;
-}
-.sm-arrow.hot {
-  stroke: var(--vp-c-brand-1);
-  stroke-width: 2;
-  stroke-dasharray: 6 5;
-  animation: sm-march 0.7s linear infinite;
-}
-.sm-head {
-  fill: var(--vp-c-text-3);
-}
-.sm-node rect {
-  fill: var(--vp-c-bg);
-  stroke: var(--vp-c-divider);
-  stroke-width: 1.25;
-  transition:
-    stroke 0.25s,
-    fill 0.25s;
-}
-.sm-node.on rect:first-child {
-  stroke: var(--vp-c-brand-1);
-  stroke-width: 2;
 }
 .sm-packet rect {
   fill: var(--vp-c-brand-1);
@@ -512,6 +579,7 @@ text {
   fill: var(--vp-c-white);
   font-size: 11px;
   font-weight: 600;
+  text-anchor: middle;
 }
 .sm-packet.tone-ticket rect {
   fill: #1d8fa3;
@@ -524,11 +592,11 @@ text {
 }
 @keyframes sm-march {
   to {
-    stroke-dashoffset: -11;
+    stroke-dashoffset: -10;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sm-arrow.hot {
+  .sm-edge.hot {
     animation: none;
   }
 }
@@ -608,12 +676,6 @@ button:focus-visible {
 @media (max-width: 640px) {
   .sysmap {
     padding: 4px 16px 24px;
-  }
-  text {
-    font-size: 15px;
-  }
-  .sm-packet text {
-    font-size: 12px;
   }
   .sysmap-caption {
     flex-wrap: wrap;
