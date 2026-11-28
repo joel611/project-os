@@ -35,7 +35,8 @@ const advance = () => {
 };
 const sync = () => {
   window.clearInterval(timer);
-  if (playing.value && visible.value && !reduced.value) timer = window.setInterval(advance, STEP_MS);
+  if (playing.value && visible.value && !reduced.value)
+    timer = window.setInterval(advance, STEP_MS);
 };
 const toggle = () => {
   if (reduced.value) {
@@ -86,7 +87,9 @@ onBeforeUnmount(() => {
           :aria-label="reduced ? 'Next step' : playing ? 'Pause animation' : 'Play animation'"
           @click="toggle"
         >
-          <svg v-if="reduced" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5l8 7-8 7z M16 5h3v14h-3z" /></svg>
+          <svg v-if="reduced" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 5l8 7-8 7z M16 5h3v14h-3z" />
+          </svg>
           <svg v-else-if="playing" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 5h3v14H7zM14 5h3v14h-3z" />
           </svg>
