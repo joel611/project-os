@@ -150,7 +150,7 @@ See [Cloud sandbox workers](../workers/cloud-sandbox.md). A provider joins the p
 
 ## Built-in skills over MCP (experimental)
 
-Off unless `EXPERIMENTAL_MCP_SKILLS=true`. When on, the Coordinator's `/mcp` also serves the skills Project OS ships about itself: `project-os-tickets` (the claim, progress, ask, attach and finish loop), `project-os-memory` (what to read and what is worth saving) and `project-os-accounts` (`user_token` and the credential proxy). They are written in the repo and bundled with the Coordinator, so there is nothing to configure, store or sync, and every worker sees the same text. They are separate from the **Task types** skills above, which still install on the Worker before a ticket starts.
+Off unless `EXPERIMENTAL_MCP_SKILLS=true`. When on, the Coordinator's `/mcp` also serves the skills Project OS ships about itself: `project-os-tickets` (the claim, progress, ask, attach and finish loop), `project-os-memory` (what to read and what is worth saving) and `project-os-accounts` (`user_token` and the credential proxy). They are written in the repo and bundled with the Coordinator, so there is nothing to configure, store or sync, and every worker sees the same text. They are separate from the **Task types** skills above, which still install on the Worker before a ticket starts ([how](../workers/skills.md)).
 
 They are offered two ways, following the MCP [Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension) (SEP-2640):
 
@@ -165,7 +165,7 @@ This is experimental: the names, the URI layout and the flag can change, and no 
 
 ## Skills
 
-Build task types on the dashboard's **Task types** page. The Coordinator uses a connected shared GitHub account first, then `SKILLS_GITHUB_TOKEN`, then anonymous access. With multiple shared accounts, it uses the oldest account whose token it can retrieve or refresh. Account ID breaks ties. Personal accounts are not used. Anonymous access has a limit of 60 requests an hour.
+How they reach a worker is in [How skills reach a worker](../workers/skills.md). Build task types on the dashboard's **Task types** page. The Coordinator uses a connected shared GitHub account first, then `SKILLS_GITHUB_TOKEN`, then anonymous access. With multiple shared accounts, it uses the oldest account whose token it can retrieve or refresh. Account ID breaks ties. Personal accounts are not used. Anonymous access has a limit of 60 requests an hour.
 
 | Variable             | Required | Default | Description                                                                                       |
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |

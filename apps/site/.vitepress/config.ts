@@ -99,6 +99,7 @@ export default defineConfig({
           { text: "Overview", link: "/workers/" },
           { text: "Local computer", link: "/workers/local" },
           { text: "Cloud sandbox", link: "/workers/cloud-sandbox" },
+          { text: "How skills reach a worker", link: "/workers/skills" },
         ],
       },
       {
