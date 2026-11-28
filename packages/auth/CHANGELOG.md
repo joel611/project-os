@@ -1,0 +1,16 @@
+# @project-os/auth
+
+## 0.1.0
+
+### Minor Changes
+
+- [`be64de9`](https://github.com/joel611/project-os/commit/be64de91b5eae66644a1726b5cd8118a388c117e) Thanks [@joel611](https://github.com/joel611)! - Add `GOOGLE_ALLOWED_DOMAINS` to limit dashboard sign-in with Google to Google Workspace domains. When it's set, anyone with a verified account at those domains may sign in without being listed, and every other Google account is refused, including `ADMIN_EMAILS` outside them. The `ADMIN_EMAIL` password sign-in still works. The login page names the allowed domains when Google refuses someone. Unset, nothing changes.
+
+- [`30b9b68`](https://github.com/joel611/project-os/commit/30b9b689988692da32ebd25c5f0ccf1a4f5733fd) Thanks [@joel611](https://github.com/joel611)! - Discord members can sign in to the dashboard and see the tickets they're involved in. `/dashboard` hands out the Google link (the same as `/connect provider:Google`). Google sign-in then finds the Discord user who linked that Google account and signs in as them, as a member who sees only **My tickets**: tickets they asked for or wrote in. New `GET /me` and `GET /me/tickets` routes. `GET /tickets/:id` and its attachments are narrowed to the member's own tickets, and every other route stays operator-only. Operators whose Google account is linked the same way get My tickets too.
+
+### Patch Changes
+
+- Updated dependencies [[`675ae17`](https://github.com/joel611/project-os/commit/675ae1726843d843de3bb4c3d2a4aae00d352ed4), [`1e9c152`](https://github.com/joel611/project-os/commit/1e9c1525f45ccebb5a8c6b4120978382dc303fb8), [`5e25017`](https://github.com/joel611/project-os/commit/5e25017e0786482b99fa74c7bb00e0a3f0f055d7), [`4005fbe`](https://github.com/joel611/project-os/commit/4005fbe4ee887feb10f88878c07e3f3e112e2716), [`d7a51a4`](https://github.com/joel611/project-os/commit/d7a51a4384f79328e3af51ac09a64a015c6d88f2), [`0d8e6ee`](https://github.com/joel611/project-os/commit/0d8e6ee744c667efa0d5009de29ccc79fea0baa8), [`30b9b68`](https://github.com/joel611/project-os/commit/30b9b689988692da32ebd25c5f0ccf1a4f5733fd), [`bca5f49`](https://github.com/joel611/project-os/commit/bca5f494ac662733ad4d40fda34427cac6937473), [`48fe8c5`](https://github.com/joel611/project-os/commit/48fe8c5f74d213f37ac3d0d46282041122395934), [`c4aa859`](https://github.com/joel611/project-os/commit/c4aa859f5ef2fef50497637943181e50d9e4a5ba), [`83a71e7`](https://github.com/joel611/project-os/commit/83a71e741488e1c32573a767940d6c015b460b97), [`fb7c21e`](https://github.com/joel611/project-os/commit/fb7c21e7374dce697dba2ab0cd561af95af3ceef), [`e6922f3`](https://github.com/joel611/project-os/commit/e6922f308f5ef96f31352f4132b073f96c8ad877), [`1399050`](https://github.com/joel611/project-os/commit/1399050dfe82d2f9ff28c792e8bbdb047b1b3d22), [`46ef966`](https://github.com/joel611/project-os/commit/46ef966750827109fad42b6f1794d7e6ee82cdcb), [`4cca370`](https://github.com/joel611/project-os/commit/4cca370a20110fb35c9adc98aa248ea14e47b775), [`05ff204`](https://github.com/joel611/project-os/commit/05ff2041ed8dfb4f5f2b762d132119736da84ea2), [`3c3c23a`](https://github.com/joel611/project-os/commit/3c3c23a0c59a77b21223c78e0af6735c797ecb05)]:
+  - @project-os/contracts@0.1.0
+  - @project-os/core@0.1.0
+  - @project-os/db-sqlite@0.1.0
