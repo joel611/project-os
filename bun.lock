@@ -25,7 +25,7 @@
     },
     "apps/cloudflare-sandbox": {
       "name": "@project-os/cloudflare-sandbox",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@cloudflare/sandbox": "0.12.14",
         "@project-os/sandbox-cloudflare": "workspace:*",
@@ -36,7 +36,7 @@
     },
     "apps/coordinator": {
       "name": "@project-os/coordinator",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@elysiajs/cors": "^1.4.3",
         "@modelcontextprotocol/sdk": "^1.32.2",
@@ -76,7 +76,7 @@
     },
     "apps/discord-gateway": {
       "name": "@project-os/discord-gateway",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@project-os/channel-discord": "workspace:*",
         "@project-os/config": "workspace:*",
@@ -120,7 +120,7 @@
     },
     "apps/watcher": {
       "name": "@project-os/watcher",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "bin": {
         "project-os-watcher": "./src/main.bun.ts",
       },
@@ -136,7 +136,7 @@
     },
     "apps/web": {
       "name": "@project-os/web",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "simple-icons": "^16.37.0",
       },
@@ -168,14 +168,14 @@
     },
     "libs/config": {
       "name": "@project-os/config",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "effect": "4.1.2",
       },
     },
     "packages/agent-runtime": {
       "name": "@project-os/agent-runtime",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@earendil-works/chord": "1.5.0",
         "@earendil-works/pi-ai": "1.5.0",
@@ -195,7 +195,7 @@
     },
     "packages/auth": {
       "name": "@project-os/auth",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
@@ -214,7 +214,7 @@
     },
     "packages/channel-discord": {
       "name": "@project-os/channel-discord",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/config": "workspace:*",
         "@project-os/contracts": "workspace:*",
@@ -225,21 +225,21 @@
     },
     "packages/channel-email": {
       "name": "@project-os/channel-email",
-      "version": "0.0.0",
+      "version": "0.0.1",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
       },
     },
     "packages/contracts": {
       "name": "@project-os/contracts",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "effect": "4.1.2",
       },
     },
     "packages/core": {
       "name": "@project-os/core",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/system-prompts": "workspace:*",
@@ -249,7 +249,7 @@
     },
     "packages/db-sqlite": {
       "name": "@project-os/db-sqlite",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
@@ -262,7 +262,7 @@
     },
     "packages/infra-cloudflare": {
       "name": "@project-os/infra-cloudflare",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
@@ -277,7 +277,7 @@
     },
     "packages/infra-local": {
       "name": "@project-os/infra-local",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
@@ -288,7 +288,7 @@
     },
     "packages/pi-acp": {
       "name": "@project-os/pi-acp",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "bin": {
         "pi-acp": "./src/main.bun.ts",
       },
@@ -299,7 +299,7 @@
     },
     "packages/sandbox-boat": {
       "name": "@project-os/sandbox-boat",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@boatdev/sdk": "1.13.0",
         "@project-os/sandbox-core": "workspace:*",
@@ -307,14 +307,14 @@
     },
     "packages/sandbox-cloudflare": {
       "name": "@project-os/sandbox-cloudflare",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/sandbox-core": "workspace:*",
       },
     },
     "packages/sandbox-core": {
       "name": "@project-os/sandbox-core",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",
@@ -327,7 +327,7 @@
     },
     "packages/sandbox-daytona": {
       "name": "@project-os/sandbox-daytona",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@daytona/sdk": "0.230.0",
         "@project-os/sandbox-core": "workspace:*",
@@ -335,11 +335,11 @@
     },
     "packages/system-prompts": {
       "name": "@project-os/system-prompts",
-      "version": "0.0.0",
+      "version": "0.1.0",
     },
     "packages/testing": {
       "name": "@project-os/testing",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@project-os/contracts": "workspace:*",
         "@project-os/core": "workspace:*",

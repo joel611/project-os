@@ -1,6 +1,6 @@
 {
   "name": "@project-os/pi-acp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "bin": {
     "pi-acp": "./src/main.bun.ts"
