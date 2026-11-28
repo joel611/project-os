@@ -1,127 +1,98 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import ScenarioLane, { type LaneNode, type LaneStep } from "./ScenarioLane.vue";
+import ScenarioLane, { type LaneData } from "./ScenarioLane.vue";
 
-export type LaneData = { nodes: LaneNode[]; steps: LaneStep[]; result: string };
 const props = defineProps<{
+  id: string;
   title: string;
   situation: string;
   oldWay: LaneData;
   newWay: LaneData;
 }>();
 
-const STEP_MS = 2200;
-const HOLD = 3; // extra ticks to rest on the finished state before looping
+const STEP_MS = 1000;
 
-const root = ref<HTMLElement | null>(null);
-const t = ref(0);
-const playing = ref(true);
-const visible = ref(false);
-const reduced = ref(false);
+const count = computed(() => Math.max(props.oldWay.steps.length, props.newWay.steps.length));
+// Server render, no-JS and reduced motion all show the complete diagrams.
+const step = ref(count.value);
+const playing = ref(false);
+const animated = ref(false); // playback controls are available
+const started = ref(false); // false until playback leaves the initial frame
 let timer = 0;
-let observer: IntersectionObserver | undefined;
 
-const longest = computed(() => Math.max(props.oldWay.steps.length, props.newWay.steps.length));
-const lane = (data: LaneData) => {
-  const last = data.steps.length - 1;
-  return { step: Math.min(t.value, last), finished: t.value >= last };
+const pause = () => {
+  window.clearTimeout(timer);
+  playing.value = false;
 };
-const oldState = computed(() => lane(props.oldWay));
-const newState = computed(() => lane(props.newWay));
-const snap = computed(() => t.value === 0);
-
-const advance = () => {
-  t.value = (t.value + 1) % (longest.value + HOLD);
+const tick = () => {
+  step.value++;
+  if (step.value >= count.value) pause();
+  else timer = window.setTimeout(tick, STEP_MS);
 };
-const sync = () => {
-  window.clearInterval(timer);
-  if (playing.value && visible.value && !reduced.value)
-    timer = window.setInterval(advance, STEP_MS);
+const play = () => {
+  pause();
+  if (step.value >= count.value) step.value = 0;
+  started.value = true;
+  playing.value = true;
+  timer = window.setTimeout(tick, STEP_MS);
 };
-const toggle = () => {
-  if (reduced.value) {
-    // Reduced motion: step manually instead of auto-playing.
-    advance();
-    return;
-  }
-  playing.value = !playing.value;
-  sync();
+const go = (next: number) => {
+  pause();
+  started.value = true;
+  step.value = Math.max(0, Math.min(count.value, next));
 };
 const replay = () => {
-  t.value = 0;
-  playing.value = !reduced.value;
-  sync();
+  step.value = 0;
+  play();
+};
+const onVisibility = () => {
+  if (document.visibilityState === "hidden") pause();
 };
 
 onMounted(() => {
-  reduced.value = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduced.value) {
-    playing.value = false;
-    t.value = longest.value - 1; // show the finished picture, steppable
-  }
-  observer = new IntersectionObserver(
-    ([entry]) => {
-      visible.value = !!entry?.isIntersecting;
-      sync();
-    },
-    { threshold: 0.25 },
-  );
-  if (root.value) observer.observe(root.value);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  animated.value = true;
+  step.value = 0;
+  document.addEventListener("visibilitychange", onVisibility);
 });
 onBeforeUnmount(() => {
-  window.clearInterval(timer);
-  observer?.disconnect();
+  pause();
+  document.removeEventListener("visibilitychange", onVisibility);
 });
 </script>
 
 <template>
-  <article ref="root" class="scn">
+  <article class="scn">
     <header class="scn-head">
-      <div>
-        <h3>{{ title }}</h3>
-        <p>{{ situation }}</p>
-      </div>
-      <div class="scn-ctl">
-        <button
-          type="button"
-          :aria-label="reduced ? 'Next step' : playing ? 'Pause animation' : 'Play animation'"
-          @click="toggle"
-        >
-          <svg v-if="reduced" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 5l8 7-8 7z M16 5h3v14h-3z" />
-          </svg>
-          <svg v-else-if="playing" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M7 5h3v14H7zM14 5h3v14h-3z" />
-          </svg>
-          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg>
-        </button>
-        <button type="button" aria-label="Replay from the start" @click="replay">
-          <svg viewBox="0 0 24 24" aria-hidden="true" class="stroke">
-            <path d="M3 12a9 9 0 1 0 3-6.7 M3 4v5h5" />
-          </svg>
-        </button>
-      </div>
+      <h3>{{ title }}</h3>
+      <p>{{ situation }}</p>
     </header>
+    <div v-if="animated" class="scn-ctl" role="group" :aria-label="`Playback: ${title}`">
+      <button type="button" :disabled="step === 0" @click="go(step - 1)">Previous</button>
+      <button type="button" :aria-pressed="playing" @click="play">Play</button>
+      <button type="button" :disabled="!playing" @click="pause">Pause</button>
+      <button type="button" :disabled="step === count" @click="go(step + 1)">Next</button>
+      <button type="button" @click="replay">Replay</button>
+      <span>Step {{ step }} of {{ count }}</span>
+    </div>
     <div class="scn-lanes">
       <ScenarioLane
+        v-bind="oldWay"
+        :id="`${id}-old`"
         kind="old"
         heading="Old way"
-        :nodes="oldWay.nodes"
-        :steps="oldWay.steps"
-        :step="oldState.step"
-        :finished="oldState.finished"
-        :result="oldWay.result"
-        :snap="snap"
+        :title="title"
+        :step="step"
+        :playing="started && step < count"
       />
       <ScenarioLane
+        v-bind="newWay"
+        :id="`${id}-new`"
         kind="new"
-        heading="With project-os"
-        :nodes="newWay.nodes"
-        :steps="newWay.steps"
-        :step="newState.step"
-        :finished="newState.finished"
-        :result="newWay.result"
-        :snap="snap"
+        heading="With ProjectOS"
+        :title="title"
+        :step="step"
+        :playing="started && step < count"
       />
     </div>
   </article>
@@ -129,7 +100,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .scn {
-  padding: 20px;
+  padding: 16px 12px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 12px;
   background: var(--vp-c-bg-soft);
@@ -138,11 +109,7 @@ onBeforeUnmount(() => {
   margin-top: 20px;
 }
 .scn-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 .scn-head h3 {
   margin: 0;
@@ -160,47 +127,48 @@ onBeforeUnmount(() => {
 }
 .scn-ctl {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  flex: none;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
 }
 .scn-ctl button {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
   border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
   background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
-  display: grid;
-  place-items: center;
   cursor: pointer;
 }
-.scn-ctl button:hover {
+.scn-ctl button:hover:enabled {
   border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-1);
 }
 .scn-ctl button:focus-visible {
   outline: 2px solid var(--vp-c-brand-1);
   outline-offset: 2px;
 }
-.scn-ctl svg {
-  width: 15px;
-  height: 15px;
-  fill: currentColor;
-}
-.scn-ctl svg.stroke {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.scn-ctl button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .scn-lanes {
   display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
   gap: 12px;
 }
-@media (max-width: 640px) {
-  .scn {
-    padding: 14px 12px;
+@media (max-width: 760px) {
+  .scn-lanes {
+    grid-template-columns: 1fr;
+  }
+}
+@media print {
+  .scn-ctl {
+    display: none;
   }
 }
 </style>

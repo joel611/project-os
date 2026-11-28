@@ -14,7 +14,7 @@ Each one below is a normal request. First the way most teams handle it, then the
 
 **Old way.** The client emails. The project manager reads it and can't answer alone, so they message a developer. The developer stops what they are doing, opens the repo, and asks their coding agent for the current version and the upgrade steps. They turn that into an estimate and send it back to the project manager.
 
-**With project-os.** The email arrives in the project inbox. project-os reads it, opens a ticket, and starts a worker agent that reads the source code. The worker's findings and estimate are posted in the internal project channel. No one was pinged.
+**With project-os.** The email arrives in the project inbox. project-os reads it, checks the source code, and writes up findings and an estimate, which it posts in the internal project channel. No one was pinged.
 
 ### Months later: why was it built this way?
 
@@ -22,13 +22,13 @@ A project manager asks for a feature. Developers discuss solutions in the team c
 
 **Old way.** The team head searches the chat room for a keyword, then reads through message after message, trying other keywords, hoping to find the discussion and who made the call.
 
-**With project-os.** When the decision was made, project-os saved a memory point: what was decided, why, and by whom. Now the agent reads that memory point and replies in the channel with the reason and who decided.
+**With project-os.** project-os actively reads the project channel and digests it into memory points. When the team head asks, it reads its memory, locates the history, and answers with the reason and who decided.
 
 ### A simple copy update on the marketing site
 
-**Old way.** The project manager writes a Jira ticket and assigns it to a developer. The developer checks out the latest source, asks Claude Code on their own computer to make the change, submits a pull request, and sends the preview link back to the project manager.
+**Old way.** The project manager writes a Jira ticket and assigns it to a developer. The developer checks out the latest source, asks Claude Code on their own computer to make the change, and submits a pull request. The developer gets the preview link from the pull request and sends it back to the project manager.
 
-**With project-os.** The project manager asks the agent directly in the project channel. The Coordinator classifies it as a development task and opens a focus thread. It assigns the ticket to a shared worker, which implements the change and submits a PR. The PR pipeline deploys a preview, and the worker reports the preview link back through the Coordinator to the focus thread. The project manager then asks a developer to review. The developer reads the CI result and approves.
+**With project-os.** The project manager asks directly in the project channel. project-os makes the change and submits a PR, the pipeline deploys a preview, and project-os sends the preview link back to the project manager. The project manager then asks a developer to review. The developer reads the CI result and approves.
 
 In all three, the people who are expensive to interrupt are no longer the router. The knowledge and the routine work sit in the project, not in someone's head.
 

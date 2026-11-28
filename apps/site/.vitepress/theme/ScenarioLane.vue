@@ -1,275 +1,373 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-export type LaneNode = { icon: string; title: string; sub?: string };
-export type LaneStep = { at: number; label: string; caption: string };
+// Short tag shown in a step box for each team member who acts in it.
+const WHO = { PM: "Project manager", Dev: "Developer", Head: "Team head" } as const;
+export type Who = keyof typeof WHO;
 
-const props = defineProps<{
-  kind: "old" | "new";
-  heading: string;
-  nodes: LaneNode[];
-  steps: LaneStep[];
-  step: number; // current step index, clamped by the parent
-  finished: boolean;
-  result: string;
-  snap: boolean; // jump without transition (loop restart)
-}>();
+// A step is: lane index, short label, caption, team members who act in it.
+export type LaneStep = [at: number, label: string, caption: string, who: Who[]];
+export type LaneData = { lanes: string[]; steps: LaneStep[] };
 
-const ICON: Record<string, string> = {
-  email:
-    "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M22 7l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7",
-  chat: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z",
-  user: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
-  brain:
-    "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z M12 5v13",
-  cloud: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z",
-  terminal: "M4 17l6-6-6-6 M12 19h8",
-  search: "M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M21 21l-4.3-4.3",
-  pr: "M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M13 6h3a2 2 0 0 1 2 2v7 M6 9v12",
-  list: "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01",
-  threads: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z M8 9h8 M8 13h5",
+const props = defineProps<
+  LaneData & {
+    id: string;
+    kind: "old" | "new";
+    heading: string;
+    title: string;
+    step: number; // steps revealed so far, shared by both lanes
+    playing: boolean; // false shows the complete diagram without a current step
+  }
+>();
+
+const PERSON_LANES = new Set(["Client", "Project manager", "Developer", "Team head"]);
+const ICON = "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z";
+const HEAD = 72;
+const ROW = 80;
+const BOX_W = 72;
+const BOX_H = 56;
+const R = 6;
+
+// Greedy word wrap for SVG text.
+const wrap = (text: string) =>
+  text.split(" ").reduce<string[]>((lines, word) => {
+    const last = lines.at(-1);
+    if (last && `${last} ${word}`.length <= 11) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+    return lines;
+  }, []);
+
+const laneWidth = computed(() => (props.lanes.length > 3 ? 80 : 104));
+const width = computed(() => props.lanes.length * laneWidth.value);
+const height = computed(() => HEAD + props.steps.length * ROW);
+
+const columns = computed(() =>
+  props.lanes.map((name, i) => ({
+    name,
+    lines: wrap(name),
+    x: i * laneWidth.value,
+    person: PERSON_LANES.has(name),
+    os: name === "ProjectOS",
+  })),
+);
+
+const boxes = computed(() =>
+  props.steps.map(([at, label, caption, who], i) => {
+    const x = (at + 0.5) * laneWidth.value;
+    const y = HEAD + i * ROW + 8;
+    // One icon and tag per acting team member, centred along the bottom of the box.
+    const widths = who.map((w) => 12 + w.length * 5.6);
+    let left = x - (widths.reduce((a, b) => a + b, 0) + 5 * Math.max(0, who.length - 1)) / 2;
+    const actors = who.map((tag, k) => {
+      const actor = { tag, x: left };
+      left += widths[k]! + 5;
+      return actor;
+    });
+    return { x, y, caption, lines: wrap(label), actors };
+  }),
+);
+
+// Orthogonal connector from the previous step into step i.
+const link = (i: number) => {
+  const from = boxes.value[i - 1]!;
+  const to = boxes.value[i]!;
+  const y1 = from.y + BOX_H;
+  const y2 = to.y - 1;
+  const mid = (y1 + y2) / 2;
+  const d = Math.sign(to.x - from.x);
+  if (!d) return `M${from.x} ${y1}V${y2}`;
+  return `M${from.x} ${y1}V${mid - R}Q${from.x} ${mid} ${from.x + d * R} ${mid}H${to.x - d * R}Q${to.x} ${mid} ${to.x} ${mid + R}V${y2}`;
 };
 
-const n = computed(() => props.nodes.length);
-const current = computed(() => props.steps[props.step]!);
-const visited = computed(() => {
-  const seen = new Set<number>();
-  for (let i = 0; i <= props.step; i++) seen.add(props.steps[i]!.at);
-  return seen;
-});
-const left = computed(() => `${((current.value.at + 0.5) / n.value) * 100}%`);
+// A round is one step in which a team member acts.
+const rounds = computed(() =>
+  (Object.keys(WHO) as Who[])
+    .map((key) => ({
+      name: WHO[key],
+      at: props.steps.flatMap((s, i) => (s[3].includes(key) ? [i + 1] : [])),
+    }))
+    .filter((r) => r.at.length),
+);
 </script>
 
 <template>
-  <div class="lane" :class="[kind, { finished }]">
-    <div class="lane-head">
-      <span class="lane-tag">{{ heading }}</span>
-      <span class="lane-result" :class="{ on: finished }">{{ result }}</span>
-    </div>
-    <div class="lane-nodes" :style="{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }">
-      <div
-        v-for="(node, i) in nodes"
-        :key="i"
-        class="node"
-        :class="{ on: current.at === i, seen: visited.has(i) }"
-      >
-        <span class="node-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path :d="ICON[node.icon]" /></svg>
+  <section class="lane" :class="kind">
+    <h4 class="tag">{{ heading }}</h4>
+    <ul class="rounds">
+      <li v-if="!rounds.length">
+        <b>0</b>
+        <span>rounds<small>no team member involved</small></span>
+      </li>
+      <li v-for="r in rounds" :key="r.name">
+        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path :d="ICON" /></svg>
+        <b>{{ r.at.length }}</b>
+        <span>
+          {{ r.name }}
+          <small
+            >{{ r.at.length === 1 ? "round · step" : "rounds · steps" }}
+            {{ r.at.join(", ") }}</small
+          >
         </span>
-        <span class="node-title">{{ node.title }}</span>
-        <span v-if="node.sub" class="node-sub">{{ node.sub }}</span>
-      </div>
-    </div>
-    <div class="lane-track">
-      <span
-        v-for="(_, i) in nodes"
+      </li>
+    </ul>
+
+    <svg
+      class="swim"
+      :viewBox="`0 0 ${width} ${height}`"
+      :style="{ maxWidth: `${width * 1.2}px` }"
+      role="img"
+      :aria-labelledby="`${id}-title ${id}-desc`"
+    >
+      <title :id="`${id}-title`">{{ title }}: {{ heading }}</title>
+      <desc :id="`${id}-desc`">{{ steps.map((s) => s[2]).join(" ") }}</desc>
+      <defs>
+        <marker
+          :id="`${id}-arrow`"
+          viewBox="0 0 8 8"
+          refX="7"
+          refY="4"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto"
+        >
+          <path d="M0 0L8 4L0 8z" class="arrow" />
+        </marker>
+      </defs>
+
+      <template v-for="(col, i) in columns" :key="col.name">
+        <rect
+          v-if="col.person || col.os"
+          :x="col.x"
+          y="0"
+          :width="laneWidth"
+          :height="height"
+          :class="col.os ? 'band-os' : 'band-person'"
+        />
+        <line v-if="i" :x1="col.x" y1="0" :x2="col.x" :y2="height" class="rule" />
+        <g
+          v-if="col.person"
+          class="ico"
+          :transform="`translate(${col.x + laneWidth / 2 - 10} 8) scale(${20 / 24})`"
+        >
+          <path :d="ICON" />
+        </g>
+        <text
+          v-for="(line, k) in col.lines"
+          :key="k"
+          :x="col.x + laneWidth / 2"
+          :y="42 + k * 13"
+          class="name"
+          :class="{ 'name-os': col.os }"
+        >
+          {{ line }}
+        </text>
+      </template>
+      <line x1="0" :y1="HEAD - 6" :x2="width" :y2="HEAD - 6" class="rule" />
+
+      <g
+        v-for="(box, i) in boxes"
         :key="i"
-        class="tick"
-        :style="{ left: `${((i + 0.5) / n) * 100}%` }"
-      />
-      <span class="packet" :class="{ snap }" :style="{ left }">{{ current.label }}</span>
-    </div>
-    <p class="lane-caption" aria-live="off">{{ current.caption }}</p>
-  </div>
+        class="step"
+        :class="{ acts: box.actors.length, hidden: i >= step, current: playing && i === step - 1 }"
+      >
+        <title>{{ i + 1 }}. {{ box.caption }}</title>
+        <path v-if="i" :d="link(i)" class="link" :marker-end="`url(#${id}-arrow)`" />
+        <rect :x="box.x - BOX_W / 2" :y="box.y" :width="BOX_W" :height="BOX_H" rx="6" />
+        <text :x="box.x" :y="box.y + 13" class="num">{{ i + 1 }}</text>
+        <text
+          v-for="(line, k) in box.lines"
+          :key="k"
+          :x="box.x"
+          :y="box.y + (box.lines.length > 1 ? 24 : 28) + k * 11"
+        >
+          {{ line }}
+        </text>
+        <template v-for="actor in box.actors" :key="actor.tag">
+          <g
+            class="ico"
+            :transform="`translate(${actor.x} ${box.y + BOX_H - 15}) scale(${10 / 24})`"
+          >
+            <path :d="ICON" />
+          </g>
+          <text :x="actor.x + 12" :y="box.y + BOX_H - 7" class="who">{{ actor.tag }}</text>
+        </template>
+      </g>
+    </svg>
+
+    <details>
+      <summary>Step captions</summary>
+      <ol>
+        <li v-for="(s, i) in steps" :key="i">{{ s[2] }}</li>
+      </ol>
+    </details>
+  </section>
 </template>
 
 <style scoped>
 .lane {
-  --accent: var(--vp-c-text-3);
-  padding: 14px 16px 12px;
-  border-radius: 10px;
+  --accent: var(--vp-c-warning-1);
+  min-width: 0;
+  padding: 10px 4px;
   border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
   background: var(--vp-c-bg);
 }
 .lane.new {
   --accent: var(--vp-c-brand-1);
-  border-color: var(--vp-c-brand-soft);
 }
-.lane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.lane-tag {
-  font:
-    11px ui-monospace,
-    "SF Mono",
-    Menlo,
-    monospace;
-  letter-spacing: 0.06em;
+.tag {
+  margin: 0;
+  padding: 0 8px 8px;
+  font: 600 12px var(--vp-font-family-mono);
   text-transform: uppercase;
-  color: var(--vp-c-text-2);
+  color: var(--accent);
 }
-.lane.new .lane-tag {
-  color: var(--vp-c-brand-1);
-  font-weight: 600;
-}
-.lane-result {
-  font-size: 12px;
-  color: var(--vp-c-text-3);
-  opacity: 0;
-  transition: opacity 0.3s;
-  text-align: right;
-}
-.lane-result.on {
-  opacity: 1;
-  color: var(--vp-c-text-2);
-}
-.lane.new .lane-result.on {
-  color: var(--vp-c-success-1);
-}
-.lane-nodes {
-  display: grid;
-  gap: 8px;
-}
-.node {
+.rounds {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  min-height: 50px;
+  margin: 0 0 12px;
+  padding: 0 8px;
+  list-style: none;
+}
+.rounds li {
+  display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1.5px solid var(--accent);
   border-radius: 8px;
-  border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg-soft);
-  text-align: center;
-  transition:
-    border-color 0.25s,
-    background 0.25s;
+  font-size: 13px;
+  line-height: 1.3;
 }
-.node.seen {
-  border-color: var(--vp-c-text-3);
+.rounds b {
+  font-size: 24px;
+  color: var(--accent);
 }
-.node.on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-  background: var(--vp-c-bg);
+.rounds small {
+  display: block;
+  font-size: 11px;
+  color: var(--vp-c-text-2);
 }
-.node-icon {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: var(--vp-c-default-soft);
-  transition: background 0.25s;
+.rounds .ico {
+  width: 22px;
+  height: 22px;
+  color: var(--accent);
 }
-.node.on .node-icon {
-  background: var(--accent);
+.swim {
+  display: block;
+  width: 100%;
+  margin: auto;
 }
-.node-icon svg {
-  width: 15px;
-  height: 15px;
+.swim text {
+  text-anchor: middle;
+}
+.ico {
   fill: none;
-  stroke: var(--vp-c-text-1);
-  stroke-width: 2;
+  stroke: currentColor;
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-.node.on .node-icon svg {
-  stroke: #fff;
-}
-.node-title {
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.25;
   color: var(--vp-c-text-1);
 }
-.node-sub {
-  font:
-    10px ui-monospace,
-    "SF Mono",
-    Menlo,
-    monospace;
-  color: var(--vp-c-text-2);
-  line-height: 1.2;
+.band-person {
+  fill: var(--vp-c-text-1);
+  fill-opacity: 0.07;
 }
-.lane-track {
-  position: relative;
-  height: 28px;
-  margin-top: 6px;
+.band-os {
+  fill: var(--vp-c-brand-1);
+  fill-opacity: 0.09;
 }
-.lane-track::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  border-top: 1.5px dashed var(--vp-c-divider);
+.rule {
+  stroke: var(--vp-c-divider);
 }
-.tick {
-  position: absolute;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  margin: -3.5px 0 0 -3.5px;
-  border-radius: 50%;
-  background: var(--vp-c-text-3);
-}
-.packet {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  max-width: 44%;
-  padding: 3px 10px;
-  border-radius: 11px;
-  background: var(--accent);
-  color: #fff;
+.name {
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: left 0.9s cubic-bezier(0.45, 0, 0.25, 1);
+  fill: var(--vp-c-text-1);
 }
-.lane.old .packet {
-  background: #b9661a;
+.name-os {
+  font-size: 12px;
+  fill: var(--vp-c-brand-1);
 }
-.packet.snap {
-  transition: none;
+.link {
+  fill: none;
+  stroke: var(--vp-c-text-2);
+  stroke-width: 1.25;
 }
-.lane-caption {
-  margin: 8px 0 0;
-  min-height: 2.9em;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--vp-c-text-1);
+.arrow {
+  fill: var(--vp-c-text-2);
 }
-@media (max-width: 640px) {
-  .lane {
-    padding: 12px 10px 10px;
-  }
-  .lane-nodes {
-    gap: 4px;
-  }
-  .node {
-    padding: 6px 2px;
-  }
-  .node-title {
-    font-size: 10.5px;
-  }
-  .node-sub {
-    display: none;
-  }
-  .packet {
-    font-size: 10px;
-    padding: 2px 7px;
-    max-width: 52%;
-  }
-  .lane-caption {
-    min-height: 4.4em;
-    font-size: 13px;
-  }
-  .lane-head {
-    flex-wrap: wrap;
-    gap: 2px;
+.step {
+  transition:
+    opacity 0.48s,
+    transform 0.48s;
+}
+.step.hidden {
+  opacity: 0.12;
+  transform: translateY(8px);
+}
+.step rect {
+  fill: var(--vp-c-bg);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.step.acts rect {
+  fill: var(--accent);
+}
+.step.current rect {
+  stroke: var(--vp-c-text-1);
+  stroke-width: 3;
+}
+.step text {
+  font: 10px var(--vp-font-family-mono);
+  fill: var(--vp-c-text-1);
+}
+.step .num {
+  font-weight: 700;
+  fill: var(--accent);
+}
+.step.acts text {
+  fill: var(--vp-c-bg);
+}
+.step .who {
+  text-anchor: start;
+  font-size: 9px;
+  font-weight: 700;
+}
+.step.acts .ico {
+  color: var(--vp-c-bg);
+}
+details {
+  padding: 8px 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+summary {
+  cursor: pointer;
+}
+ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  list-style: decimal;
+}
+@media (max-width: 760px) {
+  .rounds {
+    min-height: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .packet {
+  .step {
     transition: none;
+  }
+}
+@media print {
+  .step.hidden {
+    opacity: 1;
+    transform: none;
   }
 }
 </style>
